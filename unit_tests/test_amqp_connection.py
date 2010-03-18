@@ -13,6 +13,7 @@ class TestAQMPConnection(unittest.TestCase):
     """test tools/amqp_connection.py"""
 
     def test_connect(self):
+        """test connection, channel, create_exchange, verify_exchange"""
         connection = amqp_connection.open_connection()
         self.assertNotEqual(connection, None)
         channel = connection.channel()

@@ -7,6 +7,7 @@ test AMQP Messages
 import logging
 import time
 import unittest
+import uuid
 
 from diyapi_database_server import database_content
 from messages.database_key_insert import DatabaseKeyInsert
@@ -25,10 +26,14 @@ class TestMessages(unittest.TestCase):
             adler32=345, 
             md5="ffffffffffffffff" 
         )
+        original_request_id = uuid.uuid1().hex
         original_key  = "abcdefghijk"
-        message = DatabaseKeyInsert(original_key, original_content)
+        message = DatabaseKeyInsert(
+            original_request_id, original_key, original_content
+        )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyInsert.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.key, original_key)
         self.assertEqual(unmarshalled_message.content, original_content)
 

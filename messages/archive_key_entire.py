@@ -16,6 +16,8 @@ class ArchiveKeyEntire(object):
     def __init__( 
         self, 
         request_id, 
+        reply_exchange,
+        reply_routing_key,
         avatar_id, 
         key, 
         timestamp, 
@@ -25,6 +27,8 @@ class ArchiveKeyEntire(object):
         content
     ):
         self.request_id = request_id
+        self.reply_exchange = reply_exchange
+        self.reply_routing_key = reply_routing_key
         self.avatar_id = avatar_id
         self.key = key
         self.begin_timestamp = timestamp

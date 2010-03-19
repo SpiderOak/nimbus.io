@@ -17,8 +17,12 @@ class DatabaseKeyInsert(object):
 
     routing_key = "database.key_insert"
 
-    def __init__(self, request_id, key, content):
+    def __init__(
+        self, request_id, reply_exchange, reply_routing_key, key, content
+    ):
         self.request_id = request_id
+        self.reply_exchange = reply_exchange
+        self.reply_routing_key = reply_routing_key
         self.key = key
         self.content = content
 

@@ -11,6 +11,8 @@ from socket import error as socket_error
 import sys
 from threading import Event
 
+import amqplib.client_0_8 as amqp
+
 from tools import amqp_connection
 
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
@@ -48,6 +50,14 @@ def _create_bindings(channel, queue_name, routing_key_binding):
     )
 
 def _process_message(state, connection, dispatch_table, message):
+    """
+    process an incoming message, based on routing key
+    we call a function in the dispatch table, giving it the state dict
+    and the raw incoming string.
+    The function must unmarshall the string into a message,
+    process the message,
+    and return a list of zero or more reply messages.    
+    """
     log = logging.getLogger("_process_message")
 
     routing_key = message.delivery_info["routing_key"]
@@ -55,7 +65,19 @@ def _process_message(state, connection, dispatch_table, message):
         log.error("unknown routing key '%s'" % (routing_key, ))
         return
 
-    dispatch_table[routing_key](state, connection, message.body)
+    replies = dispatch_table[routing_key](state, message.body)
+
+    if replies is not None and len(replies) > 0:
+        channel = connection.channel()
+        for reply_exchange, reply_key, reply_message in replies:
+            message = amqp.Message(reply_message.marshall())
+            channel.basic_publish( 
+                message, 
+                exchange=reply_exchange, 
+                routing_key=reply_routing_key,
+                mandatory = True
+            )
+        channel.close()
 
 def _process_message_wrapper(state, connection, dispatch_table, message):
     log = logging.getLogger("_process_message_wrapper")

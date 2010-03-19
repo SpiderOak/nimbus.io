@@ -12,9 +12,9 @@ class ArchiveKeyFinal(object):
     routing_key = "data_writer.archive_key_final"
 
     def __init__(
-        self, content_id, sequence, segment, total_size, adler32, md5, content
+        self, request_id, sequence, segment, total_size, adler32, md5, content
     ):
-        self.content_id = content_id
+        self.request_id = request_id
         self.sequence = sequence
         self.segment = segment
         self.total_size = total_size

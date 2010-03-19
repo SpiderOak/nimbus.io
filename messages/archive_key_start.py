@@ -12,9 +12,9 @@ class ArchiveKeyStart(object):
     routing_key = "data_writer.archive_key_start"
 
     def __init__(
-        self, content_id, avatar_id, key, timestamp, sequence, segment, content
+        self, request_id, avatar_id, key, timestamp, sequence, segment, content
     ):
-        self.content_id = content_id
+        self.request_id = request_id
         self._avatar_id = avatar_id
         self.key = key
         self.begin_timestamp = timestamp

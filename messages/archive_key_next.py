@@ -11,8 +11,8 @@ class ArchiveKeyNext(object):
 
     routing_key = "data_writer.archive_key_next"
 
-    def __init__(self, content_id, sequence, segment, content):
-        self.content_id = content_id
+    def __init__(self, request_id, sequence, segment, content):
+        self.request_id = request_id
         self.sequence = sequence
         self.segment = segment
         self.content = content

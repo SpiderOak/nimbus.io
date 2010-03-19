@@ -15,7 +15,7 @@ class ArchiveKeyEntire(object):
 
     def __init__( 
         self, 
-        content_id, 
+        request_id, 
         avatar_id, 
         key, 
         timestamp, 
@@ -24,7 +24,7 @@ class ArchiveKeyEntire(object):
         md5, 
         content
     ):
-        self.content_id = content_id
+        self.request_id = request_id
         self.avatar_id = avatar_id
         self.key = key
         self.begin_timestamp = timestamp

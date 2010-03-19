@@ -14,8 +14,8 @@ class ArchiveKeyStart(object):
     def __init__(
         self, content_id, avatar_id, key, timestamp, sequence, segment, content
     ):
-        self._avatar_id = avatar_id
         self.content_id = content_id
+        self._avatar_id = avatar_id
         self.key = key
         self.begin_timestamp = timestamp
         self.sequence = sequence

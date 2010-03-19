@@ -14,8 +14,17 @@ class ArchiveKeyEntire(object):
     routing_key = "data_writer.archive_key_entire"
 
     def __init__( 
-        self, avatar_id, key, timestamp, segment, adler32, md5, content
+        self, 
+        content_id, 
+        avatar_id, 
+        key, 
+        timestamp, 
+        segment, 
+        adler32, 
+        md5, 
+        content
     ):
+        self.content_id = content_id
         self.avatar_id = avatar_id
         self.key = key
         self.begin_timestamp = timestamp

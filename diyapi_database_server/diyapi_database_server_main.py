@@ -17,12 +17,19 @@ and the md5 of the segment.
 import sys
 
 from tools import message_driven_process as process
+from messages.database_key_insertimport DatabaseKeyInsert
 
 _log_path = u"/var/log/pandora/diyapi_database_server.log"
 _queue_name = "database_server"
 _routing_key_binding = "database_server.*"
 
+def _handle_key_insert(state, connection, message_body):
+    log = logging.getLogger("_handle_key_insert")
+    message = DatabaseKeyInsert.unmarshall(message_body)
+    log.info("key = %s" % (message.key, ))
+
 _dispatch_table = {
+    DatabaseKeyInsert.routing_key : _handle_key_insert
 }
 
 if __name__ == "__main__":

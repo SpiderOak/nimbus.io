@@ -27,13 +27,26 @@ class TestMessages(unittest.TestCase):
             md5="ffffffffffffffff" 
         )
         original_request_id = uuid.uuid1().hex
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_key = "reply.routing-key"
         original_key  = "abcdefghijk"
         message = DatabaseKeyInsert(
-            original_request_id, original_key, original_content
+            original_request_id,
+            original_reply_exchange,
+            original_reply_routing_key,
+            original_key, 
+            original_content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyInsert.unmarshall(marshalled_message)
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_key, 
+            original_reply_routing_key
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
         self.assertEqual(unmarshalled_message.key, original_key)
         self.assertEqual(unmarshalled_message.content, original_content)
 

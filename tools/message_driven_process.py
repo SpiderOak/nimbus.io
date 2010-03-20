@@ -14,7 +14,7 @@ from threading import Event
 import amqplib.client_0_8 as amqp
 
 from tools import amqp_connection
-from tools.standard.logging import initialize_logging
+from tools.standard_logging import initialize_logging
 
 def _create_signal_handler(halt_event, channel, amqp_tag):
     def cb_handler(signum, frame):

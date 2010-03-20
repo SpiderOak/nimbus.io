@@ -20,6 +20,10 @@ _string_format = "%ds"
 
 class DatabaseKeyInsertReply(object):
     """AMQP message to insert a key in the database"""
+   
+    successful = 0
+    error_invalid_duplicate = 1
+
     def __init__(
         self, request_id, result, previous_size=0, error_message=""
     ):
@@ -30,7 +34,7 @@ class DatabaseKeyInsertReply(object):
 
     @property
     def error(self):
-        return self.result != 0
+        return self.result != DatabaseKeyInsertReply.successful
 
     @classmethod
     def unmarshall(cls, data):

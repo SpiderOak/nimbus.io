@@ -14,18 +14,7 @@ from threading import Event
 import amqplib.client_0_8 as amqp
 
 from tools import amqp_connection
-
-_log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
-
-def _initialize_logging(log_path):
-    """initialize the log"""
-    log_level = logging.DEBUG
-    handler = logging.FileHandler(log_path, mode="a", encoding="utf-8" )
-    formatter = logging.Formatter(_log_format_template)
-    handler.setFormatter(formatter)
-
-    logging.root.addHandler(handler)
-    logging.root.setLevel(log_level)
+from tools.standard.logging import initialize_logging
 
 def _create_signal_handler(halt_event, channel, amqp_tag):
     def cb_handler(signum, frame):
@@ -137,7 +126,7 @@ def _run_until_halt(queue_name, routing_key_bindings, dispatch_table):
 
 def main(log_path, queue_name, routing_key_binding, dispatch_table):
     """main processing entry point"""
-    _initialize_logging(log_path)
+    initialize_logging(log_path)
     log = logging.getLogger("main")
     log.info("start")
 

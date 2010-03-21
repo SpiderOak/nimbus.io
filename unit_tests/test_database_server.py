@@ -73,5 +73,149 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
+    def test_key_insert_over_existing_key(self):
+        """test inserting data for a valid key over some exsting data"""
+        avatar_id = 1001
+        original_size = 4200
+        content = database_content.factory(
+            timestamp=time.time(), 
+            is_tombstone=False,  
+            segment_number=1,  
+            segment_size=42,  
+            total_size=original_size,  
+            adler32=345, 
+            md5="ffffffffffffffff" 
+        )
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        routing_key = "reply.routing-key"
+        key  = "abcdefghijk"
+        message = DatabaseKeyInsert(
+            request_id,
+            avatar_id,
+            exchange,
+            routing_key,
+            key, 
+            content
+        )
+        marshalled_message = message.marshall()
+
+        state = dict()
+        replies = _handle_key_insert(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        content = database_content.factory(
+            timestamp=time.time(), 
+            is_tombstone=False,  
+            segment_number=1,  
+            segment_size=42,  
+            total_size=original_size+1024,  
+            adler32=345, 
+            md5="ffffffffffffffff" 
+        )
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        routing_key = "reply.routing-key"
+        key  = "abcdefghijk"
+        message = DatabaseKeyInsert(
+            request_id,
+            avatar_id,
+            exchange,
+            routing_key,
+            key, 
+            content
+        )
+        marshalled_message = message.marshall()
+
+        state = dict()
+        replies = _handle_key_insert(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, original_size)
+
+    def test_key_insert_over_newer_existing_key(self):
+        """
+        test error condition where data timestamp is older than existing data
+        """
+        avatar_id = 1001
+        original_size = 4200
+        base_timestamp = time.time()
+        content = database_content.factory(
+            timestamp=base_timestamp, 
+            is_tombstone=False,  
+            segment_number=1,  
+            segment_size=42,  
+            total_size=original_size,  
+            adler32=345, 
+            md5="ffffffffffffffff" 
+        )
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        routing_key = "reply.routing-key"
+        key  = "abcdefghijk"
+        message = DatabaseKeyInsert(
+            request_id,
+            avatar_id,
+            exchange,
+            routing_key,
+            key, 
+            content
+        )
+        marshalled_message = message.marshall()
+
+        state = dict()
+        replies = _handle_key_insert(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        content = database_content.factory(
+            timestamp=base_timestamp - 1.0, 
+            is_tombstone=False,  
+            segment_number=1,  
+            segment_size=42,  
+            total_size=original_size+1024,  
+            adler32=345, 
+            md5="ffffffffffffffff" 
+        )
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        routing_key = "reply.routing-key"
+        key  = "abcdefghijk"
+        message = DatabaseKeyInsert(
+            request_id,
+            avatar_id,
+            exchange,
+            routing_key,
+            key, 
+            content
+        )
+        marshalled_message = message.marshall()
+
+        state = dict()
+        replies = _handle_key_insert(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(
+            reply.result, DatabaseKeyInsertReply.error_invalid_duplicate
+        )
+
 if __name__ == "__main__":
     unittest.main()

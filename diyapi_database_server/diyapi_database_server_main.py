@@ -18,6 +18,7 @@ import bsddb3.db
 import logging
 import os
 import sys
+import time
 
 from tools import message_driven_process as process
 from tools import repository
@@ -47,12 +48,12 @@ def _handle_key_insert(state, message_body):
     previous_size = 0L
     reply = None
     if database.exists(message.key):
-        existing_entry = database_content.factory._make(database,get(key))
+        existing_entry = database_content.unmarshall(database.get(message.key))
         if not existing_entry.is_tombstone:
             if message.content.timestamp < existing_entry.timestamp:
                 error_string = "invalid duplicate %s < %s" % (
-                    time.asctime(message.content.timestamp),
-                    time.asctime(existing_entry.timestamp),
+                    time.asctime(time.localtime(message.content.timestamp)),
+                    time.asctime(time.localtime(existing_entry.timestamp)),
                 )
                 log.error(error_string)
                 reply = DatabaseKeyInsertReply(
@@ -62,9 +63,9 @@ def _handle_key_insert(state, message_body):
                 )
             else:
                 log.debug("found previous entry, size = %s" % (
-                    entry.total_size,
+                    existing_entry.total_size,
                 ))
-                previous_size = entry.total_size
+                previous_size = existing_entry.total_size
 
     if reply is None: # no error message so far
         database.put(message.key, database_content.marshall(message.content))

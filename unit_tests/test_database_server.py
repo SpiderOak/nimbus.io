@@ -17,19 +17,15 @@ from diyapi_database_server import database_content
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
+from unit_tests.util import generate_key
+
 _log_path = "/var/log/pandora/test_database_server.log"
 _test_dir = os.path.join("/tmp", "test_database_server")
 _repository_path = os.path.join(_test_dir, "repository")
-os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
+os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert
-
-def _generate_key():
-    n = 0
-    while True:
-        n += 1
-        yield "test-key-%06d" % (n, )
 
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
@@ -38,7 +34,7 @@ class TestDatabaseServer(unittest.TestCase):
         self.tearDown()
         os.makedirs(_repository_path)
         initialize_logging(_log_path)
-        self._key_generator = _generate_key()
+        self._key_generator = generate_key()
 
     def tearDown(self):
         if os.path.exists(_repository_path):

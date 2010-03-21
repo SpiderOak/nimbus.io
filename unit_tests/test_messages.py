@@ -6,7 +6,6 @@ test AMQP Messages
 """
 from hashlib import md5
 import logging
-import random
 import time
 import unittest
 import uuid
@@ -17,8 +16,7 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.archive_key_entire import ArchiveKeyEntire
 
-def _random_string(size):
-    return "".join([chr(random.randrange(255)) for _ in xrange(size)])
+from unit_tests.util import random_string
 
 class TestMessages(unittest.TestCase):
     """test AMQP Messages"""
@@ -83,7 +81,7 @@ class TestMessages(unittest.TestCase):
 
     def test_archive_key_entire(self):
         """test ArchiveKeyEntire"""
-        original_content = _random_string(64 * 1024) 
+        original_content = random_string(64 * 1024) 
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"

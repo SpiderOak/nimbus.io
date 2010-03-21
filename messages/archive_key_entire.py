@@ -26,9 +26,9 @@ _header_tuple = namedtuple("Header", [
 # I   - key size
 # d   - timestamp
 # B   - segment_number
-# I   - adler32
+# l   - adler32
 # 16s - md5
-_header_format = "!32sQIIIdBI16s"
+_header_format = "!32sQIIIdBl16s"
 _header_size = struct.calcsize(_header_format)
 
 _string_format = "%ds"

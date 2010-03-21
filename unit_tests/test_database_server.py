@@ -23,7 +23,13 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
 from diyapi_database_server.diyapi_database_server_main import \
-        _handle_key_insert
+        _database_cache, _handle_key_insert
+
+def _generate_key():
+    n = 0
+    while True:
+        n += 1
+        yield "test-key-%06d" % (n, )
 
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
@@ -32,6 +38,7 @@ class TestDatabaseServer(unittest.TestCase):
         self.tearDown()
         os.mkdir(_repository_path)
         initialize_logging(_log_path)
+        self._key_generator = _generate_key()
 
     def tearDown(self):
         if os.path.exists(_repository_path):
@@ -52,7 +59,7 @@ class TestDatabaseServer(unittest.TestCase):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
         routing_key = "reply.routing-key"
-        key  = "abcdefghijk"
+        key  = self._key_generator.next()
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
@@ -63,7 +70,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = dict()
+        state = {_database_cache : dict()}
         replies = _handle_key_insert(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -89,7 +96,7 @@ class TestDatabaseServer(unittest.TestCase):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
         routing_key = "reply.routing-key"
-        key  = "abcdefghijk"
+        key  = self._key_generator.next()
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
@@ -100,7 +107,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = dict()
+        state = {_database_cache : dict()}
         replies = _handle_key_insert(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -120,9 +127,6 @@ class TestDatabaseServer(unittest.TestCase):
             md5="ffffffffffffffff" 
         )
         request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
-        routing_key = "reply.routing-key"
-        key  = "abcdefghijk"
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
@@ -133,7 +137,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = dict()
+        state = {_database_cache : dict()}
         replies = _handle_key_insert(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -162,7 +166,7 @@ class TestDatabaseServer(unittest.TestCase):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
         routing_key = "reply.routing-key"
-        key  = "abcdefghijk"
+        key  = self._key_generator.next()
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
@@ -173,7 +177,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = dict()
+        state = {_database_cache : dict()}
         replies = _handle_key_insert(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -193,9 +197,6 @@ class TestDatabaseServer(unittest.TestCase):
             md5="ffffffffffffffff" 
         )
         request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
-        routing_key = "reply.routing-key"
-        key  = "abcdefghijk"
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
@@ -206,7 +207,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = dict()
+        state = {_database_cache : dict()}
         replies = _handle_key_insert(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies

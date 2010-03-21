@@ -58,7 +58,7 @@ def _process_message(state, connection, dispatch_table, message):
 
     if replies is not None and len(replies) > 0:
         channel = connection.channel()
-        for reply_exchange, reply_key, reply_message in replies:
+        for reply_exchange, reply_routing_key, reply_message in replies:
             message = amqp.Message(reply_message.marshall())
             channel.basic_publish( 
                 message, 
@@ -80,7 +80,7 @@ def _callback_closure(state, connection, dispatch_table):
         _process_message_wrapper(state, connection, dispatch_table, message)
     return __callback
 
-def _run_until_halt(queue_name, routing_key_bindings, dispatch_table):
+def _run_until_halt(queue_name, routing_key_bindings, dispatch_table, state):
     log = logging.getLogger("_run_until_halt")
 
     halt_event = Event()
@@ -89,9 +89,6 @@ def _run_until_halt(queue_name, routing_key_bindings, dispatch_table):
     channel = connection.channel()
     amqp_connection.create_exchange(channel)
     _create_bindings(channel, queue_name, routing_key_bindings)
-
-    # a dict where functons can store state keyed by action_id
-    state = dict()
 
     # Let AMQP know to send us messages
     amqp_tag = channel.basic_consume( 
@@ -124,14 +121,14 @@ def _run_until_halt(queue_name, routing_key_bindings, dispatch_table):
     channel.close()
     connection.close()
 
-def main(log_path, queue_name, routing_key_binding, dispatch_table):
+def main(log_path, queue_name, routing_key_binding, dispatch_table, state):
     """main processing entry point"""
     initialize_logging(log_path)
     log = logging.getLogger("main")
     log.info("start")
 
     try:
-        _run_until_halt(queue_name, routing_key_binding, dispatch_table)
+        _run_until_halt(queue_name, routing_key_binding, dispatch_table, state)
     except Exception, instance:
         log.exception(instance)
         print >> sys.stderr, instance.__class__.__name__, str(instance)

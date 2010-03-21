@@ -2,7 +2,7 @@
 """
 test_database_server.py
 
-test AMQP Messages
+test database_server
 """
 import logging
 import os
@@ -18,7 +18,7 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
 _log_path = "/var/log/pandora/test_database_server.log"
-_test_dir = "/tmp"
+_test_dir = os.path.join("/tmp", "test_database_server")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
@@ -36,7 +36,7 @@ class TestDatabaseServer(unittest.TestCase):
 
     def setUp(self):
         self.tearDown()
-        os.mkdir(_repository_path)
+        os.makedirs(_repository_path)
         initialize_logging(_log_path)
         self._key_generator = _generate_key()
 

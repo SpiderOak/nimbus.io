@@ -31,7 +31,8 @@ class TestMessages(unittest.TestCase):
             segment_size=42,  
             total_size=4200,  
             adler32=345, 
-            md5="ffffffffffffffff" 
+            md5="ffffffffffffffff", 
+            file_name="aaa"
         )
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001

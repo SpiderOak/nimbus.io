@@ -7,12 +7,11 @@ ArchiveKeyEntire message
 from collections import namedtuple
 import struct
 
+from tools.marshalling import marshall_string, unmarshall_string
+
 _header_tuple = namedtuple("Header", [ 
     "request_id", 
     "avatar_id", 
-    "reply_exchange_size", 
-    "reply_routing_key_size", 
-    "key_size",
     "timestamp",
     "segment_number",
     "adler32",
@@ -21,17 +20,12 @@ _header_tuple = namedtuple("Header", [
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
-# I   - reply-exchange size
-# I   - reply-key size
-# I   - key size
 # d   - timestamp
 # B   - segment_number
 # l   - adler32
 # 16s - md5
-_header_format = "!32sQIIIdBl16s"
+_header_format = "32sQdBl16s"
 _header_size = struct.calcsize(_header_format)
-
-_string_format = "%ds"
 
 class ArchiveKeyEntire(object):
     """
@@ -72,21 +66,9 @@ class ArchiveKeyEntire(object):
             _header_format, data[pos:pos+_header_size]
         ))
         pos += _header_size
-        (reply_exchange, ) = struct.unpack(
-            _string_format % (header.reply_exchange_size, ),
-            data[pos:pos+header.reply_exchange_size]
-        )
-        pos += header.reply_exchange_size
-        (reply_routing_key, ) = struct.unpack(
-            _string_format % (header.reply_routing_key_size, ), 
-            data[pos:pos+header.reply_routing_key_size]
-        )
-        pos += header.reply_routing_key_size
-        (key, ) = struct.unpack(
-            _string_format % (header.key_size, ), 
-            data[pos:pos+header.key_size]
-        )
-        pos += header.key_size
+        (reply_exchange, pos) = unmarshall_string(data, pos)
+        (reply_routing_key, pos) = unmarshall_string(data, pos)
+        (key, pos) = unmarshall_string(data, pos)
         content = data[pos:]
         return ArchiveKeyEntire(
             header.request_id, 
@@ -103,30 +85,19 @@ class ArchiveKeyEntire(object):
 
     def marshall(self):
         """return a data string suitable for transmission"""
-        reply_exchange_size = len(self.reply_exchange)
-        reply_routing_key_size = len(self.reply_routing_key)
-        key_size = len(self.key)
         header = struct.pack(
             _header_format,
             self.request_id,
             self.avatar_id,
-            reply_exchange_size, 
-            reply_routing_key_size, 
-            key_size, 
             self.timestamp,
             self.segment_number,
             self.adler32,
             self.md5
         )
 
-        packed_reply_exchange = struct.pack(
-            _string_format % (reply_exchange_size, ), self.reply_exchange
-        )
-        packed_reply_routing_key = struct.pack(
-            _string_format % (reply_routing_key_size, ), 
-            self.reply_routing_key
-        )
-        packed_key = struct.pack(_string_format % (key_size, ), self.key)
+        packed_reply_exchange =  marshall_string(self.reply_exchange)
+        packed_reply_routing_key = marshall_string(self.reply_routing_key)
+        packed_key = marshall_string(self.key)
         return "".join(
             [
                 header,

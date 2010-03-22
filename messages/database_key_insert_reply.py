@@ -6,17 +6,14 @@ DatabaseKeyInsertReply message
 """
 import struct
 
+from tools.marshalling import marshall_string, unmarshall_string
 from diyapi_database_server import database_content
 
 # 32s - request-id 32 char hex uuid
 # B   - result: 0 = success 
 # Q   - previous size
-# I   - error message size
-_header_format = "!32sBQI"
+_header_format = "!32sBQ"
 _header_size = struct.calcsize(_header_format)
-
-# error message
-_string_format = "%ds"
 
 class DatabaseKeyInsertReply(object):
     """AMQP message to insert a key in the database"""
@@ -40,7 +37,7 @@ class DatabaseKeyInsertReply(object):
     def unmarshall(cls, data):
         """return a DatabaseKeyInsert message"""
         pos = 0
-        request_id, result, previous_size, error_message_size = struct.unpack(
+        request_id, result, previous_size = struct.unpack(
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
@@ -48,25 +45,21 @@ class DatabaseKeyInsertReply(object):
         if result == 0:
             return DatabaseKeyInsertReply(request_id, result, previous_size)
 
-        (error_message, ) = struct.unpack(
-            _string_format % (error_message_size, ), 
-            data[pos:pos+error_message_size]
-        )
+        (error_message, pos) = unmarshall_string(data, pos)
+
         return DatabaseKeyInsertReply(
             request_id, result, previous_size, error_message
         )
 
     def marshall(self):
         """return a data string suitable for transmission"""
-        error_message_size = len(self.error_message)
         header = struct.pack(
             _header_format, 
             self.request_id, 
             self.result, 
-            self.previous_size, 
-            error_message_size
+            self.previous_size 
         )
-        packed_error_message = struct.pack(
-            _string_format % (error_message_size, ), self.error_message)
+        packed_error_message = marshall_string(self.error_message)
+
         return "".join([header, packed_error_message, ])
 

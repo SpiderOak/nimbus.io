@@ -22,7 +22,8 @@ class TestDatabaseContent(unittest.TestCase):
             segment_size=42,  
             total_size=4200,  
             adler32=345, 
-            md5="ffffffffffffffff" 
+            md5="ffffffffffffffff",
+            file_name="amblsmp0555"
         )
         marshalled = database_content.marshall(original)
         unmarshalled = database_content.unmarshall(marshalled)

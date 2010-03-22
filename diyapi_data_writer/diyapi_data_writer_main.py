@@ -53,6 +53,8 @@ def _handle_archive_key_entire(state, message_body):
     try:
         with open(input_path, "w") as content_file:
             content_file.write(message.content)
+            content_file.flush()
+            os.fsync(content_file.fileno())
 
         os.rename(input_path, content_path)
     except Exception, instance:
@@ -93,14 +95,13 @@ def _handle_key_insert_reply(state, message_body):
     log = logging.getLogger("_handle_key_insert_reply")
     message = DatabaseKeyInsertReply.unmarshall(message_body)
 
-    # if we don't have any state for this message body, there's nobody we 
-    # can complain too
-    if message.request_id not in state:
+    try:
+        original = state.pop(message.request_id)
+    except KeyError:
+        # if we don't have any state for this message body, there's nobody we 
+        # can complain too
         log.error("No state for %r" % (message.request_id, ))
         return
-
-    original = state[message.request_id]
-    del state[message.request_id]
 
     # if we got a database error, heave the data we stored
     if message.error:

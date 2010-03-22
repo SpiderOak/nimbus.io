@@ -31,6 +31,14 @@ _queue_name = "data_writer"
 _routing_key_binding = "data_writer.*"
 _key_insert_reply_routing_key = "data_writer.database_key_insert_reply"
 
+
+def _compute_filename(message):
+    """
+    compute a unique filename from message attributes
+    to begin with, let's just use request_id
+    """
+    return message.request_id
+
 def _handle_archive_key_entire(state, message_body):
     log = logging.getLogger("_handle_archive_key_entire")
     message = ArchiveKeyEntire.unmarshall(message_body)
@@ -47,16 +55,15 @@ def _handle_archive_key_entire(state, message_body):
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    # store the message content on disk
-    input_path = repository.content_input_path(message.avatar_id, message.key) 
-    content_path = repository.content_path(message.avatar_id, message.key) 
+    file_name = _compute_filename(message)
+
+    # store the message content in a work area
+    input_path = repository.content_input_path(message.avatar_id, file_name) 
     try:
         with open(input_path, "w") as content_file:
             content_file.write(message.content)
             content_file.flush()
             os.fsync(content_file.fileno())
-
-        os.rename(input_path, content_path)
     except Exception, instance:
         log.exception("%s %s" % (message.avatar_id, message.key, ))
         reply = ArchiveKeyEntireReply(
@@ -66,8 +73,8 @@ def _handle_archive_key_entire(state, message_body):
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    # save the original message in state
-    state[message.request_id] = message
+    # save the original message and file_name in state
+    state[message.request_id] = (message, file_name, )
 
     # send an insert request to the database, with the reply
     # coming back to us
@@ -78,7 +85,8 @@ def _handle_archive_key_entire(state, message_body):
         segment_size=len(message.content),  
         total_size=len(message.content),  
         adler32=message.adler32, 
-        md5=message.md5 
+        md5=message.md5 ,
+        file_name=file_name
     )
     local_exchange = amqp_connection.local_exchange_name
     database_request = DatabaseKeyInsert(
@@ -96,41 +104,63 @@ def _handle_key_insert_reply(state, message_body):
     message = DatabaseKeyInsertReply.unmarshall(message_body)
 
     try:
-        original = state.pop(message.request_id)
+        (original_message, file_name, ) = state.pop(message.request_id)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
         return
 
+    input_path = repository.content_input_path(
+        original_message.avatar_id, file_name
+    ) 
+    content_path = repository.content_path(
+        original_message.avatar_id, file_name
+    ) 
+
     # if we got a database error, heave the data we stored
     if message.error:
-        content_path = repository.content_path(
-            original.avatar_id, original.key
-        ) 
         log.error("%s %s database error: (%s) %s removing %s" % (
-            original.avatar_id,
-            original.key,
+            original_message.avatar_id,
+            original_message.key,
             message.result,
             message.error_message,
-            content_path
+            input_path
         ))
         try:
-            os.unlink(content_path)
+            os.unlink(input_path)
         except Exception, instance:
             log.exception("%s %s %s" % (
-                original.avatar_id, original.key, instance
+                original_message.avatar_id, original_message.key, instance
             ))    
 
-    reply = ArchiveKeyEntireReply(
-        message.request_id,
-        message.result,
-        message.previous_size,
-        message.error_message
-    )
+    # move the stored message to a permanent location
+    try:
+        os.rename(input_path, content_path)
+    except Exception, instance:
+        error_string = "%s %s renaming %s to %s %s" % (
+            original_message.avatar_id,
+            original_message.key,
+            input_path,
+            content_path,
+            instance
+        )
+        log.exception(error_string)
+        reply = ArchiveKeyEntireReply(
+            message.request_id,
+            ArchiveKeyEntireReply.error_exception,
+            error_message = error_string
+        )
+    else:
+        reply = ArchiveKeyEntireReply(
+            message.request_id,
+            message.result,
+            message.previous_size,
+            message.error_message
+        )
 
-    reply_exchange = original.reply_exchange
-    reply_routing_key = original.reply_routing_key
+    reply_exchange = original_message.reply_exchange
+    reply_routing_key = original_message.reply_routing_key
     return [(reply_exchange, reply_routing_key, reply, )]      
 
 _dispatch_table = {

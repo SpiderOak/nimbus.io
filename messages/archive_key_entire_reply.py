@@ -23,6 +23,7 @@ class ArchiveKeyEntireReply(object):
    
     successful = 0
     error_invalid_duplicate = 1
+    error_exception = 2
 
     def __init__(
         self, request_id, result, previous_size=0, error_message=""

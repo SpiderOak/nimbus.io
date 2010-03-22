@@ -4,7 +4,7 @@ test_data_writer.py
 
 test the data writer process
 """
-from hashlib import md5
+import hashlib
 import logging
 import os
 import os.path
@@ -12,10 +12,13 @@ import shutil
 import time
 import unittest
 import uuid
-from zlib import adler32
+import zlib
 
 from tools.standard_logging import initialize_logging
+from tools import amqp_connection
+
 from messages.archive_key_entire import ArchiveKeyEntire
+from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
@@ -27,7 +30,9 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
 from diyapi_data_writer.diyapi_data_writer_main import \
-        _handle_archive_key_entire
+        _handle_archive_key_entire, _handle_key_insert_reply
+from diyapi_database_server.diyapi_database_server_main import \
+        _database_cache, _handle_key_insert
 
 class TestDataWriter(unittest.TestCase):
     """test message handling in data writer"""
@@ -44,37 +49,63 @@ class TestDataWriter(unittest.TestCase):
 
     def test_archive_key_entire(self):
         """test archiving all data for a key in a single message"""
-        original_content = random_string(64 * 1024) 
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_key = "reply.routing-key"
-        original_key  = "abcdefghijk"
-        original_timestamp = time.time()
-        original_segment_number = 3
-        original_adler32 = adler32(original_content)
-        original_md5 = md5(original_content).digest()
+        content = random_string(64 * 1024) 
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        test_exchange = "reply-exchange"
+        test_routing_key = "reply.routing-key"
+        key  = self._key_generator.next()
+        timestamp = time.time()
+        segment_number = 3
+        adler32 = zlib.adler32(content)
+        md5 = hashlib.md5(content).digest()
         message = ArchiveKeyEntire(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_key,
-            original_key, 
-            original_timestamp,
-            original_segment_number,
-            original_adler32,
-            original_md5,
-            original_content
+            request_id,
+            avatar_id,
+            test_exchange,
+            test_routing_key,
+            key, 
+            timestamp,
+            segment_number,
+            adler32,
+            md5,
+            content
         )
         marshalled_message = message.marshall()
 
-        state = dict()
-        replies = _handle_archive_key_entire(state, marshalled_message)
+        data_writer_state = dict()
+        replies = _handle_archive_key_entire(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # after a successful write, we expect the data writer to send a
+        # database_key_insert to the database server
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply_routing_key, DatabaseKeyInsert.routing_key)
+        self.assertEqual(reply.__class__, DatabaseKeyInsert)
+        self.assertEqual(reply.request_id, request_id)
+
+        # hand off the reply to the database server
+        marshalled_message = reply.marshall()
+        database_state = {_database_cache : dict()}
+        replies = _handle_key_insert(database_state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
         self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        # pass the database server reply back to data_writer
+        # we should get a reply we can send to the web api 
+        marshalled_message = reply.marshall()
+        replies = _handle_key_insert_reply(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.__class__, ArchiveKeyEntireReply)
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 

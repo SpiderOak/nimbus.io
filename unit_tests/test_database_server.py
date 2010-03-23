@@ -16,6 +16,8 @@ from tools.standard_logging import initialize_logging
 from diyapi_database_server import database_content
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
+from messages.database_key_lookup import DatabaseKeyLookup
+from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
 from unit_tests.util import generate_key
 
@@ -25,14 +27,11 @@ _repository_path = os.path.join(_test_dir, "repository")
 
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_insert
+        _database_cache, _handle_key_insert, _handle_key_lookup
 
-def _generate_content(timestamp=None):
-    if timestamp is None:
-        timestamp = time.time()
-
+def _generate_content():
     return database_content.factory(
-        timestamp=timestamp, 
+        timestamp=time.time(), 
         is_tombstone=False,  
         segment_number=1,  
         segment_size=42,  
@@ -55,14 +54,10 @@ class TestDatabaseServer(unittest.TestCase):
         if os.path.exists(_repository_path):
             shutil.rmtree(_repository_path)
 
-    def test_valid_key_insert(self):
-        """test inserting data for a valid key"""
-        avatar_id = 1001
-        content = _generate_content()
+    def _insert_key(self, avatar_id, key, content):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
         routing_key = "reply.routing-key"
-        key  = self._key_generator.next()
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
@@ -80,57 +75,59 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply_exchange, exchange)
         self.assertEqual(reply_routing_key, routing_key)
         self.assertEqual(reply.request_id, request_id)
+
+        return reply
+
+    def _lookup_key(self, avatar_id, key):
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        routing_key = "reply.routing-key"
+        message = DatabaseKeyLookup(
+            request_id,
+            avatar_id,
+            exchange,
+            routing_key,
+            key 
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_key_lookup(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(reply.request_id, request_id)
+
+        return reply
+
+    def test_valid_key_insert(self):
+        """test inserting data for a valid key"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        content = _generate_content()
+
+        reply = self._insert_key(avatar_id, key, content)
+
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
     def test_key_insert_over_existing_key(self):
         """test inserting data for a valid key over some exsting data"""
         avatar_id = 1001
-        original_size = 4200
-        content = _generate_content()
-        request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
-        routing_key = "reply.routing-key"
         key  = self._key_generator.next()
-        message = DatabaseKeyInsert(
-            request_id,
-            avatar_id,
-            exchange,
-            routing_key,
-            key, 
-            content
-        )
-        marshalled_message = message.marshall()
+        content = _generate_content()
+        original_size = content.total_size
 
-        state = {_database_cache : dict()}
-        replies = _handle_key_insert(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
-        self.assertEqual(reply.request_id, request_id)
+        reply = self._insert_key(avatar_id, key, content)
+
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
-        content = _generate_content()
-        request_id = uuid.uuid1().hex
-        message = DatabaseKeyInsert(
-            request_id,
-            avatar_id,
-            exchange,
-            routing_key,
-            key, 
-            content
-        )
-        marshalled_message = message.marshall()
+        new_content = content._replace(total_size=content.total_size+42)
 
-        state = {_database_cache : dict()}
-        replies = _handle_key_insert(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
-        self.assertEqual(reply.request_id, request_id)
+        reply = self._insert_key(avatar_id, key, new_content)
+
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, original_size)
 
@@ -139,55 +136,38 @@ class TestDatabaseServer(unittest.TestCase):
         test error condition where data timestamp is older than existing data
         """
         avatar_id = 1001
-        original_size = 4200
-        base_timestamp = time.time()
-        content = _generate_content(timestamp=base_timestamp)
-        request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
-        routing_key = "reply.routing-key"
         key  = self._key_generator.next()
-        message = DatabaseKeyInsert(
-            request_id,
-            avatar_id,
-            exchange,
-            routing_key,
-            key, 
-            content
-        )
-        marshalled_message = message.marshall()
+        content = _generate_content()
 
-        state = {_database_cache : dict()}
-        replies = _handle_key_insert(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
-        self.assertEqual(reply.request_id, request_id)
+        reply = self._insert_key(avatar_id, key, content)
+
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
-        content = _generate_content(timestamp=base_timestamp - 1.0)
-        request_id = uuid.uuid1().hex
-        message = DatabaseKeyInsert(
-            request_id,
-            avatar_id,
-            exchange,
-            routing_key,
-            key, 
-            content
-        )
-        marshalled_message = message.marshall()
+        new_content = content._replace(timestamp=content.timestamp-1.0)
 
-        state = {_database_cache : dict()}
-        replies = _handle_key_insert(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
-        self.assertEqual(reply.request_id, request_id)
+        reply = self._insert_key(avatar_id, key, new_content)
+
         self.assertEqual(
             reply.result, DatabaseKeyInsertReply.error_invalid_duplicate
         )
+
+    def test_valid_key_lookup(self):
+        """test retrieving data for a valid key"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        content = _generate_content()
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        reply = self._lookup_key(avatar_id, key)
+
+        self.assertEqual(reply.result, 0)
+        self.assertTrue(reply.key_found)
+        self.assertEqual(reply.unmarshalled_content, content)
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,8 @@ from tools import repository
 from diyapi_database_server import database_content
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
+from messages.database_key_lookup import DatabaseKeyLookup
+from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
 _log_path = u"/var/log/pandora/diyapi_database_server.log"
 _queue_name = "database_server"
@@ -53,12 +55,25 @@ def _handle_key_insert(state, message_body):
     message = DatabaseKeyInsert.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
-    database = _open_database(state, message.avatar_id)
+    reply_exchange = message.reply_exchange
+    reply_routing_key = message.reply_routing_key
 
+    try:
+        database = _open_database(state, message.avatar_id)
+        packed_existing_entry = database.get(message.key)
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        reply = DatabaseKeyInsertReply(
+            message.request_id,
+            DatabaseKeyInsertReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+        
     previous_size = 0L
-    reply = None
-    if database.exists(message.key):
-        existing_entry = database_content.unmarshall(database.get(message.key))
+    if packed_existing_entry is not None:
+        existing_entry = database_content.unmarshall(packed_existing_entry)
+
         # 2020-03-21 dougfort -- IRC conversation with Alan. we don't care
         # if it's a tombstone or not: an earlier timestamp is an error
         if message.content.timestamp < existing_entry.timestamp:
@@ -72,26 +87,64 @@ def _handle_key_insert(state, message_body):
                 DatabaseKeyInsertReply.error_invalid_duplicate,
                 error_message=error_string
             )
-        elif not existing_entry.is_tombstone:
+            return [(reply_exchange, reply_routing_key, reply, )]
+
+        if not existing_entry.is_tombstone:
             log.debug("found previous entry, size = %s" % (
                 existing_entry.total_size,
             ))
             previous_size = existing_entry.total_size
 
-    if reply is None: # no error message so far
+    try:
         database.put(message.key, database_content.marshall(message.content))
         database.sync()
         os.fsync(database.fd())
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
         reply = DatabaseKeyInsertReply(
             message.request_id,
-            DatabaseKeyInsertReply.successful,
-            previous_size,
+            DatabaseKeyInsertReply.error_database_failure,
+            error_message=error_string
         )
+        return [(reply_exchange, reply_routing_key, reply, )]
 
-    return [(message.reply_exchange, message.reply_routing_key, reply, )]
+    reply = DatabaseKeyInsertReply(
+        message.request_id,
+        DatabaseKeyInsertReply.successful,
+        previous_size,
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
+def _handle_key_lookup(state, message_body):
+    log = logging.getLogger("_handle_key_insert")
+    message = DatabaseKeyLookup.unmarshall(message_body)
+    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = message.reply_routing_key
+
+    try:
+        database = _open_database(state, message.avatar_id)
+        packed_existing_entry = database.get(message.key)
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        reply = DatabaseKeyLookupReply(
+            message.request_id,
+            DatabaseKeyLookupReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    reply = DatabaseKeyLookupReply(
+        message.request_id,
+        DatabaseKeyLookupReply.successful,
+        database_content=packed_existing_entry
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
 
 _dispatch_table = {
-    DatabaseKeyInsert.routing_key : _handle_key_insert
+    DatabaseKeyInsert.routing_key : _handle_key_insert,
+    DatabaseKeyLookup.routing_key : _handle_key_lookup,
 }
 
 if __name__ == "__main__":

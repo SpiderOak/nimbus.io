@@ -19,7 +19,7 @@ from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
-from unit_tests.util import generate_key
+from unit_tests.util import generate_key, generate_database_content
 
 _log_path = "/var/log/pandora/test_database_server.log"
 _test_dir = os.path.join("/tmp", "test_database_server")
@@ -28,18 +28,6 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup
-
-def _generate_content():
-    return database_content.factory(
-        timestamp=time.time(), 
-        is_tombstone=False,  
-        segment_number=1,  
-        segment_size=42,  
-        total_size=4200,  
-        adler32=345, 
-        md5="ffffffffffffffff",
-        file_name="aaa"
-    )
 
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
@@ -105,7 +93,7 @@ class TestDatabaseServer(unittest.TestCase):
         """test inserting data for a valid key"""
         avatar_id = 1001
         key  = self._key_generator.next()
-        content = _generate_content()
+        content = generate_database_content()
 
         reply = self._insert_key(avatar_id, key, content)
 
@@ -116,7 +104,7 @@ class TestDatabaseServer(unittest.TestCase):
         """test inserting data for a valid key over some exsting data"""
         avatar_id = 1001
         key  = self._key_generator.next()
-        content = _generate_content()
+        content = generate_database_content()
         original_size = content.total_size
 
         reply = self._insert_key(avatar_id, key, content)
@@ -137,7 +125,7 @@ class TestDatabaseServer(unittest.TestCase):
         """
         avatar_id = 1001
         key  = self._key_generator.next()
-        content = _generate_content()
+        content = generate_database_content()
 
         reply = self._insert_key(avatar_id, key, content)
 
@@ -156,7 +144,7 @@ class TestDatabaseServer(unittest.TestCase):
         """test retrieving data for a valid key"""
         avatar_id = 1001
         key  = self._key_generator.next()
-        content = _generate_content()
+        content = generate_database_content()
 
         reply = self._insert_key(avatar_id, key, content)
 

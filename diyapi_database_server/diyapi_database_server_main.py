@@ -72,7 +72,9 @@ def _handle_key_insert(state, message_body):
         
     previous_size = 0L
     if packed_existing_entry is not None:
-        existing_entry = database_content.unmarshall(packed_existing_entry)
+        (existing_entry, _) = database_content.unmarshall(
+            packed_existing_entry, 0
+        )
 
         # 2020-03-21 dougfort -- IRC conversation with Alan. we don't care
         # if it's a tombstone or not: an earlier timestamp is an error

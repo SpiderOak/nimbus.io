@@ -44,7 +44,8 @@ class DatabaseKeyLookupReply(object):
         data comes from the database already marshalled, so that's how
         we store it.
         """
-        return database_content.unmarshall(self.database_content)
+        (db_content, _) = database_content.unmarshall(self.database_content, 0)
+        return db_content
 
     @classmethod
     def unmarshall(cls, data):

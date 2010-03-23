@@ -1,76 +1,74 @@
 # -*- coding: utf-8 -*-
 """
-database_key_insert.py
+retrieve_key.py
 
-DatabaseKeyInsert message
+RetrieveKey message
 """
 import struct
 
 from tools.marshalling import marshall_string, unmarshall_string
-from diyapi_database_server import database_content
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
-# I   - key size
-_header_format = "!32sQ"
+_header_format = "32sQ"
 _header_size = struct.calcsize(_header_format)
 
-class DatabaseKeyInsert(object):
-    """AMQP message to insert a key in the database"""
+class RetrieveKey(object):
+    """
+    AMQP message to start retrieving a key 
+    """
+    routing_key = "data_writer.archive_key_entire"
 
-    routing_key = "database.key_insert"
-
-    def __init__(
+    def __init__( 
         self, 
         request_id, 
         avatar_id, 
-        reply_exchange, 
-        reply_routing_key, 
-        key, 
-        content
+        reply_exchange,
+        reply_routing_key,
+        key 
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
         self.reply_routing_key = reply_routing_key
         self.key = key
-        self.content = content
 
     @classmethod
     def unmarshall(cls, data):
-        """return a DatabaseKeyInsert message"""
+        """return a RetrieveKey message"""
         pos = 0
-        (request_id, avatar_id, ) = struct.unpack(
+        request_id, avatar_id = struct.unpack(
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
         (reply_exchange, pos) = unmarshall_string(data, pos)
         (reply_routing_key, pos) = unmarshall_string(data, pos)
         (key, pos) = unmarshall_string(data, pos)
-        (content, pos) = database_content.unmarshall(data, pos)
-        return DatabaseKeyInsert(
+        return RetrieveKey(
             request_id, 
-            avatar_id,
-            reply_exchange, 
-            reply_routing_key, 
-            key, 
-            content
+            avatar_id, 
+            reply_exchange,
+            reply_routing_key,
+            key 
         )
 
     def marshall(self):
         """return a data string suitable for transmission"""
-        header = struct.pack(_header_format, self.request_id, self.avatar_id)
-        packed_reply_exchange = marshall_string(self.reply_exchange)
+        header = struct.pack(
+            _header_format,
+            self.request_id,
+            self.avatar_id
+        )
+
+        packed_reply_exchange =  marshall_string(self.reply_exchange)
         packed_reply_routing_key = marshall_string(self.reply_routing_key)
         packed_key = marshall_string(self.key)
-        db_content = database_content.marshall(self.content)
         return "".join(
             [
                 header,
                 packed_reply_exchange,
                 packed_reply_routing_key,
-                packed_key,
-                db_content
+                packed_key
             ]
         )
 

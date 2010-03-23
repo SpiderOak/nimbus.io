@@ -11,6 +11,8 @@ import unittest
 import uuid
 from zlib import adler32
 
+from unit_tests.util import generate_database_content
+
 from diyapi_database_server import database_content
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
@@ -18,8 +20,8 @@ from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
-#from messages.archive_key_entire import RetrieveKey
-#from messages.archive_key_entire_reply import RetrieveKeyReply
+from messages.retrieve_key import RetrieveKey
+from messages.retrieve_key_reply import RetrieveKeyReply
 
 from unit_tests.util import random_string
 
@@ -28,16 +30,7 @@ class TestMessages(unittest.TestCase):
 
     def test_database_key_insert(self):
         """test DatabaseKeyInsert"""
-        original_content = database_content.factory(
-            timestamp=time.time(), 
-            is_tombstone=False,  
-            segment_number=1,  
-            segment_size=42,  
-            total_size=4200,  
-            adler32=345, 
-            md5="ffffffffffffffff", 
-            file_name="aaa"
-        )
+        original_content = generate_database_content()
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
@@ -114,16 +107,7 @@ class TestMessages(unittest.TestCase):
 
     def test_database_key_lookup_reply_ok(self):
         """test DatabaseKeyLookupReply"""
-        original_content = database_content.factory(
-            timestamp=time.time(), 
-            is_tombstone=False,  
-            segment_number=1,  
-            segment_size=42,  
-            total_size=4200,  
-            adler32=345, 
-            md5="ffffffffffffffff", 
-            file_name="aaa"
-        )
+        original_content = generate_database_content()
         marshalled_content = database_content.marshall(original_content)
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
@@ -205,6 +189,56 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.previous_size, original_previous_size
         )
 
+    def test_retrieve_key(self):
+        """test RetrieveKey"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_key = "reply.routing-key"
+        original_key  = "abcdefghijk"
+        message = RetrieveKey(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_key,
+            original_key 
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = RetrieveKey.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_routing_key, original_reply_routing_key
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+
+    def test_retrieve_key_reply_ok(self):
+        """test RetrieveKeyReply"""
+        original_database_content = generate_database_content()
+        original_data_content = random_string(64 * 1024) 
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = RetrieveKeyReply(
+            original_request_id,
+            original_result,
+            original_database_content,
+            original_data_content
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = RetrieveKeyReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(
+            unmarshalled_message.database_content, original_database_content
+        )
+        self.assertEqual(
+            unmarshalled_message.data_content, original_data_content
+        )
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,8 +26,10 @@ class TestDatabaseContent(unittest.TestCase):
             file_name="amblsmp0555"
         )
         marshalled = database_content.marshall(original)
-        unmarshalled = database_content.unmarshall(marshalled)
+        pos = 0
+        (unmarshalled, pos) = database_content.unmarshall(marshalled, pos)
         self.assertEquals(unmarshalled, original)
+        self.assertEquals(pos, len(marshalled))
 
 if __name__ == "__main__":
     unittest.main()

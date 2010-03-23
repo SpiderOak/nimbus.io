@@ -37,8 +37,8 @@ def marshall(content):
     packed_content = struct.pack(
         _content_template,
         content.timestamp, 
-        content.is_tombstone, 
-        content.segment_number, 
+        content.is_tombstone & 0xFF, 
+        content.segment_number & 0xFF, 
         content.segment_size, 
         content.total_size, 
         content.adler32,
@@ -47,15 +47,18 @@ def marshall(content):
     packed_file_name = marshall_string(content.file_name)
     return "".join([packed_content, packed_file_name, ])
 
-def unmarshall(data):
-    """return a DatabaseContent tuple unmarshaled from raw data"""
-    pos = 0
+def unmarshall(data, pos):
+    """
+    unmarshall DatabaseContent tuple
+    return (DatabaseContent, pos)
+    with pos pointing one character after the marshalled tuple
+    """
     content = struct.unpack(
         _content_template, data[pos:pos+_content_template_size]
     )
     pos += _content_template_size
-    (file_name, _, ) = unmarshall_string(data, pos)
+    (file_name, pos, ) = unmarshall_string(data, pos)
     total_content = list(content)
     total_content.append(file_name)
-    return factory._make(total_content)
+    return (factory._make(total_content), pos)
 

@@ -5,6 +5,9 @@ util.py
 utility functions for unit tests
 """
 import random
+import time
+
+from diyapi_database_server import database_content
 
 def random_string(size):
     return "".join([chr(random.randrange(255)) for _ in xrange(size)])
@@ -15,4 +18,16 @@ def generate_key():
     while True:
         n += 1
         yield "test-key-%06d" % (n, )
+
+def generate_database_content():
+    return database_content.factory(
+        timestamp=time.time(), 
+        is_tombstone=False,  
+        segment_number=1,  
+        segment_size=42,  
+        total_size=4200,  
+        adler32=345, 
+        md5="ffffffffffffffff",
+        file_name="aaa"
+    )
 

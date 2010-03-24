@@ -48,8 +48,8 @@ class TestDataReader(unittest.TestCase):
         self._key_generator = generate_key()
 
     def tearDown(self):
-        if os.path.exists(_repository_path):
-            shutil.rmtree(_repository_path)
+        if os.path.exists(_test_dir):
+            shutil.rmtree(_test_dir)
 
     def _archive_content(self, avatar_id, key, content):
         """utility function to set up retrieve"""

@@ -44,8 +44,8 @@ class TestDataWriter(unittest.TestCase):
         self._key_generator = generate_key()
 
     def tearDown(self):
-        if os.path.exists(_repository_path):
-            shutil.rmtree(_repository_path)
+        if os.path.exists(_test_dir):
+            shutil.rmtree(_test_dir)
 
     def test_archive_key_entire(self):
         """test archiving all data for a key in a single message"""

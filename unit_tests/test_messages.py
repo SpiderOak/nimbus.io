@@ -22,6 +22,8 @@ from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.retrieve_key import RetrieveKey
 from messages.retrieve_key_reply import RetrieveKeyReply
 
@@ -247,6 +249,39 @@ class TestMessages(unittest.TestCase):
         )
         marshaled_message = message.marshall()
         unmarshalled_message = ArchiveKeyStartReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+
+    def test_archive_key_next(self):
+        """test ArchiveKeyNext"""
+        original_segment_size = 64 * 1024
+        original_content = random_string(original_segment_size) 
+        original_request_id = uuid.uuid1().hex
+        original_sequence = 01
+
+        message = ArchiveKeyNext(
+            original_request_id,
+            original_sequence,
+            original_content
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = ArchiveKeyNext.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+        self.assertEqual(unmarshalled_message.data_content, original_content)
+
+    def test_archive_key_next_reply_ok(self):
+        """test ArchiveKeyNextReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = ArchiveKeyNextReply(
+            original_request_id,
+            original_result
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = ArchiveKeyNextReply.unmarshall(
             marshaled_message
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)

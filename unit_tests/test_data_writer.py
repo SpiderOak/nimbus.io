@@ -19,6 +19,10 @@ from tools import amqp_connection
 
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
+from messages.archive_key_start import ArchiveKeyStart
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_final import ArchiveKeyFinal
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
@@ -30,7 +34,8 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
 from diyapi_data_writer.diyapi_data_writer_main import \
-        _handle_archive_key_entire, _handle_key_insert_reply
+        _handle_archive_key_entire, _handle_key_insert_reply, \
+        _handle_archive_key_start
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert
 
@@ -108,6 +113,57 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply.__class__, ArchiveKeyEntireReply)
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
+
+    def test_large_archive(self):
+        """
+        test archiving a file that needs more than one message.
+        For example, a 10 Mb file: each node would get 10 120kb 
+        zefec shares.
+        """
+        segment_size = 120 * 1024
+        test_data = [random_string(segment_size) for _ in range(10)]
+
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        test_exchange = "reply-exchange"
+        test_routing_key = "reply.routing-key"
+        key  = self._key_generator.next()
+        timestamp = time.time()
+        segment_number = 3
+
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        sequence = 0
+
+        message = ArchiveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            test_routing_key,
+            key, 
+            timestamp,
+            sequence,
+            segment_number,
+            segment_size,
+            test_data[0]
+        )
+        marshalled_message = message.marshall()
+
+        data_writer_state = dict()
+        replies = _handle_archive_key_start(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we should get a successful reply 
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
+        self.assertEqual(reply.result, 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()

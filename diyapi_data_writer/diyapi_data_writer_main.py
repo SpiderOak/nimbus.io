@@ -23,6 +23,8 @@ from tools import repository
 from diyapi_database_server import database_content
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
+from messages.archive_key_start import ArchiveKeyStart
+from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
@@ -58,9 +60,9 @@ def _handle_archive_key_entire(state, message_body):
     file_name = _compute_filename(message)
 
     # store the message content in a work area
-    input_path = repository.content_input_path(message.avatar_id, file_name) 
+    work_path = repository.content_input_path(message.avatar_id, file_name) 
     try:
-        with open(input_path, "w") as content_file:
+        with open(work_path, "w") as content_file:
             content_file.write(message.content)
             content_file.flush()
             os.fsync(content_file.fileno())
@@ -111,7 +113,7 @@ def _handle_key_insert_reply(state, message_body):
         log.error("No state for %r" % (message.request_id, ))
         return
 
-    input_path = repository.content_input_path(
+    work_path = repository.content_input_path(
         original_message.avatar_id, file_name
     ) 
     content_path = repository.content_path(
@@ -125,10 +127,10 @@ def _handle_key_insert_reply(state, message_body):
             original_message.key,
             message.result,
             message.error_message,
-            input_path
+            work_path
         ))
         try:
-            os.unlink(input_path)
+            os.unlink(work_path)
         except Exception, instance:
             log.exception("%s %s %s" % (
                 original_message.avatar_id, original_message.key, instance
@@ -136,12 +138,12 @@ def _handle_key_insert_reply(state, message_body):
 
     # move the stored message to a permanent location
     try:
-        os.rename(input_path, content_path)
+        os.rename(work_path, content_path)
     except Exception, instance:
         error_string = "%s %s renaming %s to %s %s" % (
             original_message.avatar_id,
             original_message.key,
-            input_path,
+            work_path,
             content_path,
             instance
         )
@@ -163,9 +165,53 @@ def _handle_key_insert_reply(state, message_body):
     reply_routing_key = original_message.reply_routing_key
     return [(reply_exchange, reply_routing_key, reply, )]      
 
+def _handle_archive_key_start(state, message_body):
+    log = logging.getLogger("_handle_archive_key_start")
+    message = ArchiveKeyStart.unmarshall(message_body)
+    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+
+    # if we already have a state entry for this request_id, something is wrong
+    if message.request_id in state:
+        error_string = "invalid duplicate request_id in ArchiveKeyEntire"
+        log.error(error_string)
+        reply = ArchiveKeyStart(
+            message.request_id,
+            ArchiveKeyStartReply.error_invalid_duplicate,
+            error_message=error_string
+        )
+        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+
+    file_name = _compute_filename(message)
+
+    # store the message content in a work area
+    work_path = repository.content_input_path(message.avatar_id, file_name) 
+    try:
+        with open(work_path, "w") as content_file:
+            content_file.write(message.data_content)
+            content_file.flush()
+            os.fsync(content_file.fileno())
+    except Exception, instance:
+        log.exception("%s %s" % (message.avatar_id, message.key, ))
+        reply = ArchiveKeyStartReply(
+            message.request_id,
+            ArchiveKeyStartReply.error_exception,
+            error_message=str(instance)
+        )
+        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+
+    # save the original message, file_name and sequence in state
+    state[message.request_id] = (message, file_name, )
+
+    reply = ArchiveKeyStartReply(
+        message.request_id,
+        ArchiveKeyStartReply.successful
+    )
+    return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+
 _dispatch_table = {
     ArchiveKeyEntire.routing_key    : _handle_archive_key_entire,
     _key_insert_reply_routing_key   : _handle_key_insert_reply,
+    ArchiveKeyStart.routing_key     : _handle_archive_key_start,
 }
 
 if __name__ == "__main__":

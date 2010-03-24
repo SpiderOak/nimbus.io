@@ -24,6 +24,8 @@ from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next import ArchiveKeyNext
 from messages.archive_key_next_reply import ArchiveKeyNextReply
+from messages.archive_key_final import ArchiveKeyFinal
+from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.retrieve_key import RetrieveKey
 from messages.retrieve_key_reply import RetrieveKeyReply
 
@@ -286,6 +288,51 @@ class TestMessages(unittest.TestCase):
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.result, original_result)
+
+    def test_archive_key_final(self):
+        """test ArchiveKeyFinal"""
+        original_content = random_string(64 * 1024) 
+        original_request_id = uuid.uuid1().hex
+        original_sequence = 3
+        original_total_size = 42L
+        original_adler32 = -10
+        original_md5 = "ffffffffffffffff"
+        message = ArchiveKeyFinal(
+            original_request_id,
+            original_sequence,
+            original_total_size,
+            original_adler32,
+            original_md5,
+            original_content
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = ArchiveKeyFinal.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+        self.assertEqual(unmarshalled_message.total_size, original_total_size)
+        self.assertEqual(unmarshalled_message.adler32, original_adler32)
+        self.assertEqual(unmarshalled_message.md5, original_md5)
+        self.assertEqual(unmarshalled_message.data_content, original_content)
+
+    def test_archive_key_final_reply_ok(self):
+        """test ArchiveKeyFinalReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        original_previous_size = 42
+        message = ArchiveKeyFinalReply(
+            original_request_id,
+            original_result,
+            original_previous_size
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = ArchiveKeyFinalReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(
+            unmarshalled_message.previous_size, original_previous_size
+        )
 
     def test_retrieve_key(self):
         """test RetrieveKey"""

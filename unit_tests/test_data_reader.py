@@ -23,6 +23,8 @@ from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
+from messages.database_key_lookup import DatabaseKeyLookup
+from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
 from unit_tests.util import random_string, generate_key
 
@@ -36,7 +38,7 @@ from diyapi_data_reader.diyapi_data_reader_main import \
 from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_archive_key_entire, _handle_key_insert_reply
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_insert
+        _database_cache, _handle_key_insert, _handle_key_lookup
 
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
@@ -116,6 +118,54 @@ class TestDataReader(unittest.TestCase):
         key  = self._key_generator.next()
         original_content = random_string(64 * 1024) 
         self._archive_content(avatar_id, key, original_content)
+
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        test_routing_key = "reply.routing-key"
+        message = RetrieveKey(
+            request_id,
+            avatar_id,
+            test_exchange,
+            test_routing_key,
+            key, 
+        )
+        marshalled_message = message.marshall()
+
+        data_writer_state = dict()
+        replies = _handle_retrieve_key(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the data reader to send a
+        # database_key_lookup to the database server
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply_routing_key, DatabaseKeyLookup.routing_key)
+        self.assertEqual(reply.__class__, DatabaseKeyLookup)
+        self.assertEqual(reply.request_id, request_id)
+
+        # hand off the reply to the database server
+        marshalled_message = reply.marshall()
+        database_state = {_database_cache : dict()}
+        replies = _handle_key_lookup(database_state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertTrue(reply.key_found)
+
+        # pass the database server reply back to data_reader
+        # we should get a reply we can send to the web api 
+        marshalled_message = reply.marshall()
+        replies = _handle_key_lookup_reply(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.__class__, RetrieveKeyReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.data_content, original_content)
 
 if __name__ == "__main__":
     unittest.main()

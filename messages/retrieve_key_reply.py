@@ -20,6 +20,8 @@ class RetrieveKeyReply(object):
     successful = 0
     error_key_not_found = 1
     error_exception = 2
+    error_database = 3
+    error_invalid_duplicate = 4
 
     def __init__(
         self, 

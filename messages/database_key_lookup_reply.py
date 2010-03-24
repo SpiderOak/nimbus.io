@@ -28,6 +28,7 @@ class DatabaseKeyLookupReply(object):
         self.result = result
         self.database_content = database_content
         self.error_message = error_message
+        self._unmarshalled_content = None
 
     @property
     def error(self):
@@ -44,8 +45,11 @@ class DatabaseKeyLookupReply(object):
         data comes from the database already marshalled, so that's how
         we store it.
         """
-        (db_content, _) = database_content.unmarshall(self.database_content, 0)
-        return db_content
+        if self._unmarshalled_content is None:
+            (self._unmarshalled_content, _) = database_content.unmarshall(
+                self.database_content, 0
+            )
+        return self._unmarshalled_content
 
     @classmethod
     def unmarshall(cls, data):

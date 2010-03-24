@@ -19,6 +19,7 @@ class ArchiveKeyNextReply(object):
     successful = 0
     error_invalid_duplicate = 1
     error_exception = 2
+    error_out_of_sequence = 3
 
     def __init__(self, request_id, result, error_message=""):
         self.request_id = request_id

@@ -12,6 +12,7 @@ sends message to the database server to record key as stored.
 ACK back to to requestor includes size (from the database server) 
 of any previous key this key supersedes (for space accounting.)
 """
+from collections import namedtuple
 import logging
 import os
 import sys
@@ -25,6 +26,8 @@ from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
@@ -34,12 +37,24 @@ _routing_key_binding = "data_writer.*"
 _key_insert_reply_routing_key = "data_writer.database_key_insert_reply"
 
 
-def _compute_filename(message):
+_archive_state_tuple = namedtuple("ArchiveState", [ 
+    "timestamp",
+    "avatar_id",
+    "key",
+    "sequence",
+    "segment_number",
+    "segment_size",
+    "file_name",
+    "reply_exchange",
+    "reply_routing_key",
+])
+
+def _compute_filename(message_request_id):
     """
     compute a unique filename from message attributes
     to begin with, let's just use request_id
     """
-    return message.request_id
+    return message_request_id
 
 def _handle_archive_key_entire(state, message_body):
     log = logging.getLogger("_handle_archive_key_entire")
@@ -57,7 +72,7 @@ def _handle_archive_key_entire(state, message_body):
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    file_name = _compute_filename(message)
+    file_name = _compute_filename(message.request_id)
 
     # store the message content in a work area
     work_path = repository.content_input_path(message.avatar_id, file_name) 
@@ -75,8 +90,18 @@ def _handle_archive_key_entire(state, message_body):
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    # save the original message and file_name in state
-    state[message.request_id] = (message, file_name, )
+    # save stuff we need to recall in state
+    state[message.request_id] = _archive_state_tuple(
+        timestamp=message.timestamp,
+        avatar_id=message.avatar_id,
+        key=message.key,
+        sequence=0,
+        segment_number=message.segment_number,
+        segment_size=len(message.content),
+        file_name=file_name,
+        reply_exchange=message.reply_exchange,
+        reply_routing_key=message.reply_routing_key
+    )
 
     # send an insert request to the database, with the reply
     # coming back to us
@@ -106,7 +131,7 @@ def _handle_key_insert_reply(state, message_body):
     message = DatabaseKeyInsertReply.unmarshall(message_body)
 
     try:
-        (original_message, file_name, ) = state.pop(message.request_id)
+        archive_state = state.pop(message.request_id)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
@@ -114,17 +139,17 @@ def _handle_key_insert_reply(state, message_body):
         return
 
     work_path = repository.content_input_path(
-        original_message.avatar_id, file_name
+        archive_state.avatar_id, archive_state.file_name
     ) 
     content_path = repository.content_path(
-        original_message.avatar_id, file_name
+        archive_state.avatar_id, archive_state.file_name
     ) 
 
     # if we got a database error, heave the data we stored
     if message.error:
         log.error("%s %s database error: (%s) %s removing %s" % (
-            original_message.avatar_id,
-            original_message.key,
+            archive_state.avatar_id,
+            archive_state.key,
             message.result,
             message.error_message,
             work_path
@@ -133,7 +158,7 @@ def _handle_key_insert_reply(state, message_body):
             os.unlink(work_path)
         except Exception, instance:
             log.exception("%s %s %s" % (
-                original_message.avatar_id, original_message.key, instance
+                archive_state.avatar_id, archive_state.key, instance
             ))    
 
     # move the stored message to a permanent location
@@ -141,8 +166,8 @@ def _handle_key_insert_reply(state, message_body):
         os.rename(work_path, content_path)
     except Exception, instance:
         error_string = "%s %s renaming %s to %s %s" % (
-            original_message.avatar_id,
-            original_message.key,
+            archive_state.avatar_id,
+            archive_state.key,
             work_path,
             content_path,
             instance
@@ -161,8 +186,8 @@ def _handle_key_insert_reply(state, message_body):
             message.error_message
         )
 
-    reply_exchange = original_message.reply_exchange
-    reply_routing_key = original_message.reply_routing_key
+    reply_exchange = archive_state.reply_exchange
+    reply_routing_key = archive_state.reply_routing_key
     return [(reply_exchange, reply_routing_key, reply, )]      
 
 def _handle_archive_key_start(state, message_body):
@@ -174,14 +199,14 @@ def _handle_archive_key_start(state, message_body):
     if message.request_id in state:
         error_string = "invalid duplicate request_id in ArchiveKeyEntire"
         log.error(error_string)
-        reply = ArchiveKeyStart(
+        reply = ArchiveKeyStartReply(
             message.request_id,
             ArchiveKeyStartReply.error_invalid_duplicate,
             error_message=error_string
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    file_name = _compute_filename(message)
+    file_name = _compute_filename(message.request_id)
 
     # store the message content in a work area
     work_path = repository.content_input_path(message.avatar_id, file_name) 
@@ -199,8 +224,18 @@ def _handle_archive_key_start(state, message_body):
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    # save the original message, file_name and sequence in state
-    state[message.request_id] = (message, file_name, )
+    # save stuff we need to recall in state
+    state[message.request_id] = _archive_state_tuple(
+        timestamp=message.timestamp,
+        avatar_id=message.avatar_id,
+        key=message.key,
+        sequence=message.sequence,
+        segment_number=message.segment_number,
+        segment_size=message.segment_size,
+        file_name=file_name,
+        reply_exchange=message.reply_exchange,
+        reply_routing_key=message.reply_routing_key
+    )
 
     reply = ArchiveKeyStartReply(
         message.request_id,
@@ -208,10 +243,78 @@ def _handle_archive_key_start(state, message_body):
     )
     return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
+def _handle_archive_key_next(state, message_body):
+    log = logging.getLogger("_handle_archive_key_next")
+    message = ArchiveKeyNext.unmarshall(message_body)
+
+    try:
+        archive_state = state.pop(message.request_id)
+    except KeyError:
+        # if we don't have any state for this message body, there's nobody we 
+        # can complain too
+        log.error("No state for %r" % (message.request_id, ))
+        return
+
+    log.info("avatar_id = %s, key = %s" % (
+        archive_state.avatar_id, archive_state.key, 
+    ))
+
+    reply_exchange = archive_state.reply_exchange
+    reply_routing_key = archive_state.reply_routing_key
+    work_path = repository.content_input_path(
+        archive_state.avatar_id, archive_state.file_name
+    ) 
+
+    # is this message is out of sequence, give up on the whole thing 
+    if message.sequence != archive_state.sequence+1:
+        error_string = "%s %s message out of sequence %s %s" % (
+            archive_state.avatar_id,
+            archive_state.key,
+            message.sequence,
+            archive_state.sequence
+        )
+        log.error(error_string)
+        try:
+            os.unlink(work_path)
+        except Exception:
+            log.exception("error")
+        reply = ArchiveKeyNextReply(
+            message.request_id,
+            ArchiveKeyNextReply.error_out_of_sequence,
+            error_message=error_string
+        )
+        return [(reply_exchange, reply_routing_key, reply, )] 
+
+    try:
+        with open(work_path, "a") as content_file:
+            content_file.write(message.data_content)
+            content_file.flush()
+            os.fsync(content_file.fileno())
+    except Exception, instance:
+        log.exception("%s %s" % (archive_state.avatar_id, archive_state.key, ))
+        reply = ArchiveKeyNextReply(
+            message.request_id,
+            ArchiveKeyNextReply.error_exception,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )] 
+
+    # save stuff we need to recall in state
+    state[message.request_id] = archive_state._replace(
+        sequence=archive_state.sequence+1
+    )
+
+    reply = ArchiveKeyNextReply(
+        message.request_id,
+        ArchiveKeyNextReply.successful
+    )
+    return [(reply_exchange, reply_routing_key, reply, )] 
+
 _dispatch_table = {
     ArchiveKeyEntire.routing_key    : _handle_archive_key_entire,
     _key_insert_reply_routing_key   : _handle_key_insert_reply,
     ArchiveKeyStart.routing_key     : _handle_archive_key_start,
+    ArchiveKeyNext.routing_key      : _handle_archive_key_next,
 }
 
 if __name__ == "__main__":

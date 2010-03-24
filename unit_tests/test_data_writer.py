@@ -22,6 +22,7 @@ from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final import ArchiveKeyFinal
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
@@ -35,7 +36,8 @@ os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
 from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_archive_key_entire, _handle_key_insert_reply, \
-        _handle_archive_key_start
+        _handle_archive_key_start, \
+        _handle_archive_key_next
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert
 
@@ -163,7 +165,26 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply.__class__, ArchiveKeyStartReply)
         self.assertEqual(reply.result, 0)
 
+        # do the interior content
+        for test_data_content in test_data[1:-1]:
+            sequence += 1
 
+            message = ArchiveKeyNext(
+                request_id,
+                sequence,
+                test_data_content
+            )
+            marshalled_message = message.marshall()
+
+            replies = _handle_archive_key_next(
+                data_writer_state, marshalled_message
+            )
+            self.assertEqual(len(replies), 1)
+
+            # we should get a successful reply 
+            [(reply_exchange, reply_routing_key, reply, ), ] = replies
+            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
+            self.assertEqual(reply.result, 0)
 
 if __name__ == "__main__":
     unittest.main()

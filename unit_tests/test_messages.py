@@ -19,7 +19,6 @@ from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from messages.archive_key_entire import ArchiveKeyEntire
-from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next import ArchiveKeyNext
@@ -174,26 +173,6 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.adler32, original_adler32)
         self.assertEqual(unmarshalled_message.md5, original_md5)
         self.assertEqual(unmarshalled_message.content, original_content)
-
-    def test_archive_key_entire_reply_ok(self):
-        """test ArchiveKeyEntireReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_previous_size = 42
-        message = ArchiveKeyEntireReply(
-            original_request_id,
-            original_result,
-            original_previous_size
-        )
-        marshaled_message = message.marshall()
-        unmarshalled_message = ArchiveKeyEntireReply.unmarshall(
-            marshaled_message
-        )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
-        self.assertEqual(
-            unmarshalled_message.previous_size, original_previous_size
-        )
 
     def test_archive_key_start(self):
         """test ArchiveKeyStart"""

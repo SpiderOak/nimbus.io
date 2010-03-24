@@ -18,12 +18,12 @@ from tools.standard_logging import initialize_logging
 from tools import amqp_connection
 
 from messages.archive_key_entire import ArchiveKeyEntire
-from messages.archive_key_entire_reply import ArchiveKeyEntireReply
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next import ArchiveKeyNext
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final import ArchiveKeyFinal
+from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
@@ -37,7 +37,8 @@ os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_archive_key_entire, _handle_key_insert_reply, \
         _handle_archive_key_start, \
-        _handle_archive_key_next
+        _handle_archive_key_next, \
+        _handle_archive_key_final
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert
 
@@ -112,7 +113,7 @@ class TestDataWriter(unittest.TestCase):
         )
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply.__class__, ArchiveKeyEntireReply)
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
@@ -123,7 +124,9 @@ class TestDataWriter(unittest.TestCase):
         zefec shares.
         """
         segment_size = 120 * 1024
-        test_data = [random_string(segment_size) for _ in range(10)]
+        chunk_count = 10
+        total_size = segment_size * chunk_count
+        test_data = [random_string(segment_size) for _ in range(chunk_count)]
 
         request_id = uuid.uuid1().hex
         avatar_id = 1001
@@ -185,6 +188,54 @@ class TestDataWriter(unittest.TestCase):
             [(reply_exchange, reply_routing_key, reply, ), ] = replies
             self.assertEqual(reply.__class__, ArchiveKeyNextReply)
             self.assertEqual(reply.result, 0)
+
+        # send the last one
+        sequence += 1
+
+        message = ArchiveKeyFinal(
+            request_id,
+            sequence,
+            total_size,
+            adler32,
+            md5,
+            test_data[-1]
+        )
+        marshalled_message = message.marshall()
+
+        replies = _handle_archive_key_final(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # after a successful write, we expect the data writer to send a
+        # database_key_insert to the database server
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply_routing_key, DatabaseKeyInsert.routing_key)
+        self.assertEqual(reply.__class__, DatabaseKeyInsert)
+        self.assertEqual(reply.request_id, request_id)
+
+        # hand off the reply to the database server
+        marshalled_message = reply.marshall()
+        database_state = {_database_cache : dict()}
+        replies = _handle_key_insert(database_state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        # pass the database server reply back to data_writer
+        # we should get a reply we can send to the web api 
+        marshalled_message = reply.marshall()
+        replies = _handle_key_insert_reply(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
 if __name__ == "__main__":
     unittest.main()

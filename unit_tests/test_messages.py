@@ -20,6 +20,8 @@ from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_entire_reply import ArchiveKeyEntireReply
+from messages.archive_key_start import ArchiveKeyStart
+from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.retrieve_key import RetrieveKey
 from messages.retrieve_key_reply import RetrieveKeyReply
 
@@ -188,6 +190,67 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.previous_size, original_previous_size
         )
+
+    def test_archive_key_start(self):
+        """test ArchiveKeyStart"""
+        original_segment_size = 64 * 1024
+        original_content = random_string(original_segment_size) 
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_key = "reply.routing-key"
+        original_key  = "abcdefghijk"
+        original_timestamp = time.time()
+        original_sequence = 0
+        original_segment_number = 3
+
+        message = ArchiveKeyStart(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_key,
+            original_key, 
+            original_timestamp,
+            original_sequence,
+            original_segment_number,
+            original_segment_size,
+            original_content
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = ArchiveKeyStart.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_routing_key, original_reply_routing_key
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_size, original_segment_size
+        )
+        self.assertEqual(unmarshalled_message.data_content, original_content)
+
+    def test_archive_key_start_reply_ok(self):
+        """test ArchiveKeyStartReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = ArchiveKeyStartReply(
+            original_request_id,
+            original_result
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = ArchiveKeyStartReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
 
     def test_retrieve_key(self):
         """test RetrieveKey"""

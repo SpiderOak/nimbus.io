@@ -39,9 +39,9 @@ def marshall(content):
         content.timestamp, 
         content.is_tombstone & 0xFF, 
         content.segment_number & 0xFF, 
-        content.segment_size, 
+        content.segment_size & 0xFFFFFFFF, 
         content.total_size, 
-        content.adler32,
+        content.adler32 & 0xFFFFFFFF,
         content.md5
     )
     packed_file_name = marshall_string(content.file_name)

@@ -7,6 +7,7 @@ Looks up pointers to data by querying the database server
 Looks for files in both the hashfanout area 
 Responds with content or "not available"
 """
+from collections import namedtuple
 import logging
 import sys
 
@@ -23,6 +24,13 @@ _log_path = u"/var/log/pandora/diyapi_data_reader.log"
 _queue_name = "data_reader"
 _routing_key_binding = "data_reader.*"
 _key_lookup_reply_routing_key = "data_reader.database_key_lookup_reply"
+
+_retrieve_state_tuple = namedtuple("RetrieveState", [ 
+    "avatar_id",
+    "key",
+    "reply_exchange",
+    "reply_routing_key",
+])
 
 
 def _handle_retrieve_key(state, message_body):
@@ -41,8 +49,13 @@ def _handle_retrieve_key(state, message_body):
         )
         return [(message.reply_exchange, message.reply_routing_key, reply, )] 
 
-    # save the original message in state
-    state[message.request_id] = message
+    # save stuff we need to recall in state
+    state[message.request_id] = _retrieve_state_tuple(
+        avatar_id = message.avatar_id,
+        key = message.key,
+        reply_exchange = message.reply_exchange,
+        reply_routing_key = message.reply_routing_key
+    )
 
     # send a lookup request to the database, with the reply
     # coming back to us
@@ -61,21 +74,21 @@ def _handle_key_lookup_reply(state, message_body):
     message = DatabaseKeyLookupReply.unmarshall(message_body)
 
     try:
-        original_message = state.pop(message.request_id)
+        retrieve_state = state.pop(message.request_id)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
         return
 
-    reply_exchange = original_message.reply_exchange
-    reply_routing_key = original_message.reply_routing_key
+    reply_exchange = retrieve_state.reply_exchange
+    reply_routing_key = retrieve_state.reply_routing_key
 
     # if we got a database error, pass it on 
     if message.error:
         log.error("%s %s database error: (%s) %s" % (
-            original_message.avatar_id,
-            original_message.key,
+            retrieve_state.avatar_id,
+            retrieve_state.key,
             message.result,
             message.error_message,
         ))
@@ -87,7 +100,7 @@ def _handle_key_lookup_reply(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )]      
 
     content_path = repository.content_path(
-        original_message.avatar_id, 
+        retrieve_state.avatar_id, 
         message.unmarshalled_content.file_name
     ) 
 
@@ -96,8 +109,8 @@ def _handle_key_lookup_reply(state, message_body):
             data_content = input_file.read()
     except Exception, instance:
         log.exception("%s %s" % (
-            original_message.avatar_id,
-            original_message.key,
+            retrieve_state.avatar_id,
+            retrieve_state.key,
         ))
         reply = RetrieveKeyReply(
             message.request_id,

@@ -369,6 +369,13 @@ def _handle_key_insert_reply(state, message_body):
     # move the stored message to a permanent location
     try:
         os.rename(work_path, content_path)
+        dirno = os.open(
+            os.path.dirname(content_path), os.O_RDONLY | os.O_DIRECTORY
+        )
+        try:
+            os.fsync(dirno)
+        finally:
+            os.close(dirno)    
     except Exception, instance:
         error_string = "%s %s renaming %s to %s %s" % (
             archive_state.avatar_id,

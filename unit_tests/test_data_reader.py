@@ -34,6 +34,8 @@ from diyapi_data_reader.diyapi_data_reader_main import \
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_lookup
 
+_key_generator = generate_key()
+
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
 
@@ -41,19 +43,13 @@ class TestDataReader(unittest.TestCase):
         self.tearDown()
         os.makedirs(_repository_path)
         initialize_logging(_log_path)
-        self._key_generator = generate_key()
 
     def tearDown(self):
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
-    def test_retrieve_small_content(self):
-        """test retrieving content that fits in a single message"""
-        avatar_id = 1001
-        key  = self._key_generator.next()
-        original_content = random_string(64 * 1024) 
-        archive_small_content(self, avatar_id, key, original_content)
-
+    def _retrieve(self, avatar_id, key):
+        """retrieve content for a key"""
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         test_routing_key = "reply.routing-key"
@@ -100,7 +96,19 @@ class TestDataReader(unittest.TestCase):
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply.__class__, RetrieveKeyReply)
         self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.data_content, original_content)
+
+        return reply.data_content
+
+    def test_retrieve_small_content(self):
+        """test retrieving content that fits in a single message"""
+        avatar_id = 1001
+        key  = _key_generator.next()
+        original_content = random_string(64 * 1024) 
+
+        archive_small_content(self, avatar_id, key, original_content)
+        test_content = self._retrieve(avatar_id, key)
+
+        self.assertEqual(test_content, original_content)
 
     def test_retrieve_large_content(self):
         """test retrieving content that fits in a multiple messages"""
@@ -109,10 +117,14 @@ class TestDataReader(unittest.TestCase):
         total_size = segment_size * chunk_count
         avatar_id = 1001
         test_data = [random_string(segment_size) for _ in range(chunk_count)]
-        key  = self._key_generator.next()
+        key  = _key_generator.next()
         archive_large_content(
             self, avatar_id, key, segment_size, total_size, test_data
         )    
+
+        expected_content = "".join(test_data)
+        test_content = self._retrieve(avatar_id, key)
+        self.assertEqual(test_content, expected_content)
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,8 +25,12 @@ from messages.archive_key_next import ArchiveKeyNext
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final import ArchiveKeyFinal
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
-from messages.retrieve_key import RetrieveKey
-from messages.retrieve_key_reply import RetrieveKeyReply
+from messages.retrieve_key_start import RetrieveKeyStart
+from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+from messages.retrieve_key_next import RetrieveKeyNext
+from messages.retrieve_key_next_reply import RetrieveKeyNextReply
+from messages.retrieve_key_final import RetrieveKeyFinal
+from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 
 from unit_tests.util import random_string
 
@@ -313,14 +317,14 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.previous_size, original_previous_size
         )
 
-    def test_retrieve_key(self):
-        """test RetrieveKey"""
+    def test_retrieve_key_start(self):
+        """test RetrieveKeyStart"""
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
         original_reply_routing_key = "reply.routing-key"
         original_key  = "abcdefghijk"
-        message = RetrieveKey(
+        message = RetrieveKeyStart(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
@@ -328,7 +332,7 @@ class TestMessages(unittest.TestCase):
             original_key 
         )
         marshalled_message = message.marshall()
-        unmarshalled_message = RetrieveKey.unmarshall(marshalled_message)
+        unmarshalled_message = RetrieveKeyStart.unmarshall(marshalled_message)
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
         self.assertEqual(
@@ -339,20 +343,20 @@ class TestMessages(unittest.TestCase):
         )
         self.assertEqual(unmarshalled_message.key, original_key)
 
-    def test_retrieve_key_reply_ok(self):
-        """test RetrieveKeyReply"""
+    def test_retrieve_key_start_reply_ok(self):
+        """test RetrieveKeyStartReply"""
         original_database_content = generate_database_content()
         original_data_content = random_string(64 * 1024) 
         original_request_id = uuid.uuid1().hex
         original_result = 0
-        message = RetrieveKeyReply(
+        message = RetrieveKeyStartReply(
             original_request_id,
             original_result,
             original_database_content,
             original_data_content
         )
         marshaled_message = message.marshall()
-        unmarshalled_message = RetrieveKeyReply.unmarshall(
+        unmarshalled_message = RetrieveKeyStartReply.unmarshall(
             marshaled_message
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
@@ -360,6 +364,72 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.database_content, original_database_content
         )
+        self.assertEqual(
+            unmarshalled_message.data_content, original_data_content
+        )
+
+    def test_retrieve_key_next(self):
+        """test RetrieveKeyNext"""
+        original_request_id = uuid.uuid1().hex
+        original_sequence  = 2
+        message = RetrieveKeyNext(
+            original_request_id,
+            original_sequence 
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = RetrieveKeyNext.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+
+    def test_retrieve_key_next_reply_ok(self):
+        """test RetrieveKeyNextReply"""
+        original_data_content = random_string(64 * 1024) 
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = RetrieveKeyNextReply(
+            original_request_id,
+            original_result,
+            original_data_content
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = RetrieveKeyNextReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(
+            unmarshalled_message.data_content, original_data_content
+        )
+
+    def test_retrieve_key_final(self):
+        """test RetrieveKeyFinal"""
+        original_request_id = uuid.uuid1().hex
+        original_sequence  = 2
+        message = RetrieveKeyFinal(
+            original_request_id,
+            original_sequence 
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = RetrieveKeyFinal.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+
+    def test_retrieve_key_next_final_ok(self):
+        """test RetrieveKeyFinalReply"""
+        original_data_content = random_string(64 * 1024) 
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = RetrieveKeyFinalReply(
+            original_request_id,
+            original_result,
+            original_data_content
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = RetrieveKeyFinalReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(
             unmarshalled_message.data_content, original_data_content
         )

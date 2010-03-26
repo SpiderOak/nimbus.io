@@ -80,7 +80,14 @@ def _callback_closure(state, connection, dispatch_table):
         _process_message_wrapper(state, connection, dispatch_table, message)
     return __callback
 
-def _run_until_halt(queue_name, routing_key_bindings, dispatch_table, state):
+def _run_until_halt(
+    queue_name, 
+    routing_key_bindings, 
+    dispatch_table, 
+    state,
+    pre_loop_function,
+    post_loop_function
+):
     log = logging.getLogger("_run_until_halt")
 
     halt_event = Event()
@@ -101,6 +108,10 @@ def _run_until_halt(queue_name, routing_key_bindings, dispatch_table, state):
         signal.SIGTERM, 
         _create_signal_handler(halt_event, channel, amqp_tag)
     )
+
+    if pre_loop_function is not None:
+        log.debug("pre_loop_function")
+        pre_loop_function(state)
 
     log.debug("start AMQP loop")
     # 2010-03-18 dougfort -- channel wait does a blocking read, 
@@ -124,14 +135,33 @@ def _run_until_halt(queue_name, routing_key_bindings, dispatch_table, state):
     channel.close()
     connection.close()
 
-def main(log_path, queue_name, routing_key_binding, dispatch_table, state):
+    if post_loop_function is not None:
+        log.debug("post_loop_function")
+        post_loop_function(state)
+
+def main(
+    log_path, 
+    queue_name, 
+    routing_key_binding, 
+    dispatch_table, 
+    state,
+    pre_loop_function=None,
+    post_loop_function=None
+):
     """main processing entry point"""
     initialize_logging(log_path)
     log = logging.getLogger("main")
     log.info("start")
 
     try:
-        _run_until_halt(queue_name, routing_key_binding, dispatch_table, state)
+        _run_until_halt(
+            queue_name, 
+            routing_key_binding, 
+            dispatch_table, 
+            state,
+            pre_loop_function,
+            post_loop_function
+        )
     except Exception, instance:
         log.exception(instance)
         print >> sys.stderr, instance.__class__.__name__, str(instance)

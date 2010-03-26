@@ -22,7 +22,7 @@ from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from unit_tests.util import generate_key, generate_database_content
 
 _log_path = "/var/log/pandora/test_database_server.log"
-_test_dir = os.path.join("/tmp", "test_database_server")
+_test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path

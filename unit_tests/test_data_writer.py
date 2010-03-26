@@ -18,7 +18,7 @@ from tools import amqp_connection
 from unit_tests.util import random_string, generate_key
 
 _log_path = "/var/log/pandora/test_data_writer.log"
-_test_dir = os.path.join("/tmp", "test_data_writer")
+_test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 

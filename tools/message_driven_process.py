@@ -108,6 +108,9 @@ def _run_until_halt(queue_name, routing_key_bindings, dispatch_table, state):
     while not halt_event.is_set():
         try:
             channel.wait()
+        except (KeyboardInterrupt, SystemExit):
+            log.info("KeyboardInterrupt or SystemExit")
+            halt_event.set()
         except socket_error, instance:
             if instance.errno == errno.EINTR:
                 log.warn("Interrupted system call: assuming SIGTERM %s" % (

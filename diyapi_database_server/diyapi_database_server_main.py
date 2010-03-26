@@ -29,7 +29,9 @@ from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
-_log_path = u"/var/log/pandora/diyapi_database_server.log"
+_log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
+    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+)
 _queue_name = "database_server"
 _routing_key_binding = "database_server.*"
 _max_cached_databases = 10

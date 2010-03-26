@@ -25,7 +25,9 @@ from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
-_log_path = u"/var/log/pandora/diyapi_data_reader.log"
+_log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
+    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+)
 _queue_name = "data_reader"
 _routing_key_binding = "data_reader.*"
 _key_lookup_reply_routing_key = "data_reader.database_key_lookup_reply"

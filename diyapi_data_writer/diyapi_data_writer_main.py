@@ -32,7 +32,9 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
-_log_path = u"/var/log/pandora/diyapi_data_writer.log"
+_log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
+    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+)
 _queue_name = "data_writer"
 _routing_key_binding = "data_writer.*"
 _key_insert_reply_routing_key = "data_writer.database_key_insert_reply"

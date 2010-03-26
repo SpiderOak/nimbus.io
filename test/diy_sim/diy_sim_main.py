@@ -40,7 +40,9 @@ def main():
     halt_event = Event()
     signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
 
-    node_sims = [NodeSim(i) for i in xrange(_node_count)]
+    test_dir = "/tmp"
+
+    node_sims = [NodeSim(test_dir, i) for i in xrange(_node_count)]
 
     print "starting node sims with delay"
     for node_sim in node_sims:
@@ -50,10 +52,14 @@ def main():
     log.info("entering main loop")
     print "entering main loop"
     while not halt_event.is_set():
+        for node_sim in node_sims:
+            node_sim.poll()
+
         try:
             halt_event.wait(_polling_interval)
         except KeyboardInterrupt:
             halt_event.set()
+        
     print "leaving main loop"
     log.info("leaving main loop")
 

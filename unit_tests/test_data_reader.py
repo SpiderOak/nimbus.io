@@ -167,5 +167,46 @@ class TestDataReader(unittest.TestCase):
         test_content = self._retrieve(avatar_id, key)
         self.assertEqual(test_content, expected_content)
 
+    def test_retrieve_large_content_short_last_segment(self):
+        """
+        test retrieving content that fits in a multiple messages
+        wiht the last segment samller than the others
+        """
+        segment_size = 120 * 1024
+        short_size = 1024
+        chunk_count = 10
+        total_size = (segment_size * (chunk_count-1)) + short_size 
+        avatar_id = 1001
+        test_data = [random_string(segment_size) for _ in range(chunk_count-1)]
+        test_data.append(random_string(short_size))
+        key  = _key_generator.next()
+        archive_large_content(
+            self, avatar_id, key, segment_size, total_size, test_data
+        )    
+
+        expected_content = "".join(test_data)
+        test_content = self._retrieve(avatar_id, key)
+        self.assertEqual(test_content, expected_content)
+
+    def test_retrieve_large_content_2_segments(self):
+        """
+        test retrieving content that fits in a multiple messages
+        but without a 'middle' i.e. no RetrieveKeyNext
+        """
+        segment_size = 120 * 1024
+        chunk_count = 2
+        total_size = segment_size * chunk_count
+        avatar_id = 1001
+        test_data = [random_string(segment_size) for _ in range(chunk_count)]
+        key  = _key_generator.next()
+        archive_large_content(
+            self, avatar_id, key, segment_size, total_size, test_data
+        )    
+
+        expected_content = "".join(test_data)
+        test_content = self._retrieve(avatar_id, key)
+        self.assertEqual(test_content, expected_content)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -65,7 +65,9 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
         self.assertEqual(unmarshalled_message.key, original_key)
-        self.assertEqual(unmarshalled_message.content, original_content)
+        self.assertEqual(
+            unmarshalled_message.database_content, original_content
+        )
 
     def test_database_key_insert_reply_ok(self):
         """test DatabaseKeyInsertReply"""
@@ -117,13 +119,12 @@ class TestMessages(unittest.TestCase):
     def test_database_key_lookup_reply_ok(self):
         """test DatabaseKeyLookupReply"""
         original_content = generate_database_content()
-        marshalled_content = database_content.marshall(original_content)
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         message = DatabaseKeyLookupReply(
             original_request_id,
             0,
-            marshalled_content
+            original_content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyLookupReply.unmarshall(
@@ -132,7 +133,7 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertTrue(unmarshalled_message.key_found)
         self.assertEqual(
-            unmarshalled_message.unmarshalled_content, original_content
+            unmarshalled_message.database_content, original_content
         )
 
     def test_archive_key_entire(self):
@@ -352,7 +353,14 @@ class TestMessages(unittest.TestCase):
         message = RetrieveKeyStartReply(
             original_request_id,
             original_result,
-            original_database_content,
+            original_database_content.timestamp,
+            original_database_content.is_tombstone,
+            original_database_content.segment_number,
+            original_database_content.segment_count,
+            original_database_content.segment_size,
+            original_database_content.total_size,
+            original_database_content.adler32,
+            original_database_content.md5,
             original_data_content
         )
         marshaled_message = message.marshall()
@@ -362,7 +370,36 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(
-            unmarshalled_message.database_content, original_database_content
+            unmarshalled_message.timestamp, 
+            original_database_content.timestamp
+        )
+        self.assertEqual(
+            unmarshalled_message.is_tombstone, 
+            original_database_content.is_tombstone
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_number, 
+            original_database_content.segment_number
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_count, 
+            original_database_content.segment_count
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_size, 
+            original_database_content.segment_size
+        )
+        self.assertEqual(
+            unmarshalled_message.total_size, 
+            original_database_content.total_size
+        )
+        self.assertEqual(
+            unmarshalled_message.adler32, 
+            original_database_content.adler32
+        )
+        self.assertEqual(
+            unmarshalled_message.md5, 
+            original_database_content.md5
         )
         self.assertEqual(
             unmarshalled_message.data_content, original_data_content

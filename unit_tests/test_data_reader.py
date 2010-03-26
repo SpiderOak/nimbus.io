@@ -14,8 +14,12 @@ import uuid
 from tools.standard_logging import initialize_logging
 from tools import amqp_connection
 
-from messages.retrieve_key import RetrieveKey
-from messages.retrieve_key_reply import RetrieveKeyReply
+from messages.retrieve_key_start import RetrieveKeyStart
+from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+from messages.retrieve_key_next import RetrieveKeyNext
+from messages.retrieve_key_next_reply import RetrieveKeyNextReply
+from messages.retrieve_key_final import RetrieveKeyFinal
+from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 
@@ -30,7 +34,10 @@ from unit_tests.archive_util import archive_small_content, \
         archive_large_content
 
 from diyapi_data_reader.diyapi_data_reader_main import \
-        _handle_retrieve_key, _handle_key_lookup_reply
+        _handle_retrieve_key_start, \
+        _handle_retrieve_key_next, \
+        _handle_retrieve_key_final, \
+        _handle_key_lookup_reply
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_lookup
 
@@ -53,7 +60,7 @@ class TestDataReader(unittest.TestCase):
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         test_routing_key = "reply.routing-key"
-        message = RetrieveKey(
+        message = RetrieveKeyStart(
             request_id,
             avatar_id,
             test_exchange,
@@ -62,9 +69,9 @@ class TestDataReader(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        data_writer_state = dict()
-        replies = _handle_retrieve_key(
-            data_writer_state, marshalled_message
+        data_reader_state = dict()
+        replies = _handle_retrieve_key_start(
+            data_reader_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
@@ -90,14 +97,48 @@ class TestDataReader(unittest.TestCase):
         # we should get a reply we can send to the web api 
         marshalled_message = reply.marshall()
         replies = _handle_key_lookup_reply(
-            data_writer_state, marshalled_message
+            data_reader_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply.__class__, RetrieveKeyReply)
+        self.assertEqual(reply.__class__, RetrieveKeyStartReply)
         self.assertEqual(reply.result, 0)
 
-        return reply.data_content
+        segment_count = reply.segment_count
+
+        # if the file only has one segment, we are done
+        if  segment_count == 1:
+            return reply.data_content
+
+        content_list = [reply.data_content]
+
+        # we have segment 0, get segments 1..N-1
+        for sequence in range(1, segment_count-1):
+            message = RetrieveKeyNext(request_id, sequence)
+            marshalled_message = message.marshall()
+            replies = _handle_retrieve_key_next(
+                data_reader_state, marshalled_message
+            )
+            self.assertEqual(len(replies), 1)
+            [(reply_exchange, reply_routing_key, reply, ), ] = replies
+            self.assertEqual(reply.__class__, RetrieveKeyNextReply)
+            self.assertEqual(reply.result, 0)
+            content_list.append(reply.data_content)
+
+        # get the last segment
+        sequence = segment_count - 1
+        message = RetrieveKeyFinal(request_id, sequence)
+        marshalled_message = message.marshall()
+        replies = _handle_retrieve_key_final(
+            data_reader_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.__class__, RetrieveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        content_list.append(reply.data_content)
+
+        return "".join(content_list)
 
     def test_retrieve_small_content(self):
         """test retrieving content that fits in a single message"""

@@ -10,13 +10,14 @@ import struct
 from tools.marshalling import marshall_string, unmarshall_string
 
 # d - timestamp
-# ? - is_tompbstone
+# ? - is_tombstone
 # B - segment_number
 # I - segment size
+# I - segment count
 # Q - total_size
 # L - adler32
 #16s- md5 
-_content_template = "d?BIQL16s"
+_content_template = "d?BIIQL16s"
 _content_template_size = struct.calcsize(_content_template)
 
 factory =  namedtuple(
@@ -24,6 +25,7 @@ factory =  namedtuple(
         "timestamp", 
         "is_tombstone", 
         "segment_number", 
+        "segment_count",
         "segment_size", 
         "total_size", 
         "adler32",
@@ -38,7 +40,8 @@ def marshall(content):
         _content_template,
         content.timestamp, 
         content.is_tombstone & 0xFF, 
-        content.segment_number & 0xFF, 
+        content.segment_number & 0xFF,
+        content.segment_count & 0xFFFFFFFF,
         content.segment_size & 0xFFFFFFFF, 
         content.total_size, 
         content.adler32 & 0xFFFFFFFF,

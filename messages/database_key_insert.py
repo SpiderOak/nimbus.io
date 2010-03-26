@@ -34,7 +34,7 @@ class DatabaseKeyInsert(object):
         self.reply_exchange = reply_exchange
         self.reply_routing_key = reply_routing_key
         self.key = key
-        self.content = content
+        self.database_content = content
 
     @classmethod
     def unmarshall(cls, data):
@@ -63,14 +63,14 @@ class DatabaseKeyInsert(object):
         packed_reply_exchange = marshall_string(self.reply_exchange)
         packed_reply_routing_key = marshall_string(self.reply_routing_key)
         packed_key = marshall_string(self.key)
-        db_content = database_content.marshall(self.content)
+        content = database_content.marshall(self.database_content)
         return "".join(
             [
                 header,
                 packed_reply_exchange,
                 packed_reply_routing_key,
                 packed_key,
-                db_content
+                content
             ]
         )
 

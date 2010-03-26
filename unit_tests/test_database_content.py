@@ -20,6 +20,7 @@ class TestDatabaseContent(unittest.TestCase):
             is_tombstone=False,  
             segment_number=1,  
             segment_size=42,  
+            segment_count=1,
             total_size=4200,  
             adler32=345, 
             md5="ffffffffffffffff",

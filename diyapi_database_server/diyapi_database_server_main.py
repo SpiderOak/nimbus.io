@@ -78,9 +78,11 @@ def _handle_key_insert(state, message_body):
 
         # 2020-03-21 dougfort -- IRC conversation with Alan. we don't care
         # if it's a tombstone or not: an earlier timestamp is an error
-        if message.content.timestamp < existing_entry.timestamp:
+        if message.database_content.timestamp < existing_entry.timestamp:
             error_string = "invalid duplicate %s < %s" % (
-                time.asctime(time.localtime(message.content.timestamp)),
+                time.asctime(time.localtime(
+                    message.database_content.timestamp)
+                ),
                 time.asctime(time.localtime(existing_entry.timestamp)),
             )
             log.error(error_string)
@@ -98,7 +100,9 @@ def _handle_key_insert(state, message_body):
             previous_size = existing_entry.total_size
 
     try:
-        database.put(message.key, database_content.marshall(message.content))
+        database.put(
+            message.key, database_content.marshall(message.database_content)
+        )
         database.sync()
         os.fsync(database.fd())
     except Exception, instance:
@@ -106,7 +110,7 @@ def _handle_key_insert(state, message_body):
         reply = DatabaseKeyInsertReply(
             message.request_id,
             DatabaseKeyInsertReply.error_database_failure,
-            error_message=error_string
+            error_message=str(instance)
         )
         return [(reply_exchange, reply_routing_key, reply, )]
 
@@ -137,10 +141,11 @@ def _handle_key_lookup(state, message_body):
         )
         return [(reply_exchange, reply_routing_key, reply, )]
 
+    (content, _) = database_content.unmarshall(packed_existing_entry, 0)
     reply = DatabaseKeyLookupReply(
         message.request_id,
         DatabaseKeyLookupReply.successful,
-        database_content=packed_existing_entry
+        database_content=content
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 

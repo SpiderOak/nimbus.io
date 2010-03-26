@@ -22,6 +22,7 @@ class RetrieveKeyNextReply(object):
     error_exception = 2
     error_database = 3
     error_invalid_duplicate = 4
+    error_out_of_sequence = 5
 
     def __init__(
         self, 

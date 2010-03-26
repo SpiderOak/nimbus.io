@@ -155,7 +155,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         self.assertEqual(reply.result, 0)
         self.assertTrue(reply.key_found)
-        self.assertEqual(reply.unmarshalled_content, content)
+        self.assertEqual(reply.database_content, content)
 
 if __name__ == "__main__":
     unittest.main()

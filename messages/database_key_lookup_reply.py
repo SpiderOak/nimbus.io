@@ -28,7 +28,6 @@ class DatabaseKeyLookupReply(object):
         self.result = result
         self.database_content = database_content
         self.error_message = error_message
-        self._unmarshalled_content = None
 
     @property
     def error(self):
@@ -37,19 +36,6 @@ class DatabaseKeyLookupReply(object):
     @property
     def key_found(self):
         return database_content != ""
-
-    @property
-    def unmarshalled_content(self):
-        """
-        convenience property to unmarshall dtatabase entry
-        data comes from the database already marshalled, so that's how
-        we store it.
-        """
-        if self._unmarshalled_content is None:
-            (self._unmarshalled_content, _) = database_content.unmarshall(
-                self.database_content, 0
-            )
-        return self._unmarshalled_content
 
     @classmethod
     def unmarshall(cls, data):
@@ -61,8 +47,9 @@ class DatabaseKeyLookupReply(object):
         pos += _header_size
 
         if result == 0:
+            (db_content, pos) = database_content.unmarshall(data, pos)
             return DatabaseKeyLookupReply(
-                request_id, result, database_content=data[pos:]
+                request_id, result, database_content=db_content
             )
 
         (error_message, pos) = unmarshall_string(data, pos)
@@ -80,7 +67,8 @@ class DatabaseKeyLookupReply(object):
         )
         packed_error_message = marshall_string(self.error_message)
 
+        db_content = database_content.marshall(self.database_content)
         return "".join(
-            [header, self.database_content, packed_error_message, ]
+            [header, db_content, packed_error_message, ]
         )
 

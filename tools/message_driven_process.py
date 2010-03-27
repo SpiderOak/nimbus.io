@@ -39,8 +39,12 @@ def _create_bindings(channel, queue_name, routing_key_binding):
     )
 
 def _process_outgoing_traffic(connection, outgoing_traffic):
+    log = logging.getLogger("_process_outgoing_traffic")
     channel = connection.channel()
     for exchange, routing_key, message in outgoing_traffic:
+        log.debug("exchange = '%s', routing_key = '%s'" % (
+            exchange, routing_key
+        ))
         amqp_message = amqp.Message(message.marshall())
         channel.basic_publish( 
             amqp_message, 

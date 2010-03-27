@@ -29,6 +29,8 @@ os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup
 
+_reply_routing_header = "test_database_server"
+
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
 
@@ -45,12 +47,11 @@ class TestDatabaseServer(unittest.TestCase):
     def _insert_key(self, avatar_id, key, content):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
-        routing_key = "reply.routing-key"
         message = DatabaseKeyInsert(
             request_id,
             avatar_id,
             exchange,
-            routing_key,
+            _reply_routing_header,
             key, 
             content
         )
@@ -61,7 +62,10 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_key_insert_reply" % (_reply_routing_header, )
+        )
         self.assertEqual(reply.request_id, request_id)
 
         return reply
@@ -69,12 +73,11 @@ class TestDatabaseServer(unittest.TestCase):
     def _lookup_key(self, avatar_id, key):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
-        routing_key = "reply.routing-key"
         message = DatabaseKeyLookup(
             request_id,
             avatar_id,
             exchange,
-            routing_key,
+            _reply_routing_header,
             key 
         )
         marshalled_message = message.marshall()
@@ -84,7 +87,10 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(reply_routing_key, routing_key)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_key_lookup_reply" % (_reply_routing_header, )
+        )
         self.assertEqual(reply.request_id, request_id)
 
         return reply

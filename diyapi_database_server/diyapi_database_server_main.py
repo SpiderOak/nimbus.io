@@ -58,7 +58,9 @@ def _handle_key_insert(state, message_body):
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
     reply_exchange = message.reply_exchange
-    reply_routing_key = message.reply_routing_key
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", DatabaseKeyInsertReply.routing_tag]
+    )
 
     try:
         database = _open_database(state, message.avatar_id)
@@ -129,7 +131,9 @@ def _handle_key_lookup(state, message_body):
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
     reply_exchange = message.reply_exchange
-    reply_routing_key = message.reply_routing_key
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", DatabaseKeyLookupReply.routing_tag]
+    )
 
     try:
         database = _open_database(state, message.avatar_id)

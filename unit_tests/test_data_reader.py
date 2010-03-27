@@ -42,6 +42,7 @@ from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_lookup
 
 _key_generator = generate_key()
+_reply_routing_header = "test_data_reader"
 
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
@@ -59,12 +60,11 @@ class TestDataReader(unittest.TestCase):
         """retrieve content for a key"""
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
-        test_routing_key = "reply.routing-key"
         message = RetrieveKeyStart(
             request_id,
             avatar_id,
             test_exchange,
-            test_routing_key,
+            _reply_routing_header,
             key, 
         )
         marshalled_message = message.marshall()

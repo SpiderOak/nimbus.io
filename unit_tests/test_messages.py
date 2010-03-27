@@ -43,13 +43,13 @@ class TestMessages(unittest.TestCase):
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
-        original_reply_routing_key = "reply.routing-key"
+        original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
         message = DatabaseKeyInsert(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
-            original_reply_routing_key,
+            original_reply_routing_header,
             original_key, 
             original_content
         )
@@ -58,8 +58,8 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_routing_key, 
-            original_reply_routing_key
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
         )
         self.assertEqual(
             unmarshalled_message.reply_exchange, original_reply_exchange
@@ -94,13 +94,13 @@ class TestMessages(unittest.TestCase):
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
-        original_reply_routing_key = "reply.routing-key"
+        original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
         message = DatabaseKeyLookup(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
-            original_reply_routing_key,
+            original_reply_routing_header,
             original_key, 
         )
         marshalled_message = message.marshall()
@@ -108,8 +108,8 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_routing_key, 
-            original_reply_routing_key
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
         )
         self.assertEqual(
             unmarshalled_message.reply_exchange, original_reply_exchange
@@ -142,7 +142,7 @@ class TestMessages(unittest.TestCase):
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
-        original_reply_routing_key = "reply.routing-key"
+        original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
         original_timestamp = time.time()
         original_segment_number = 3
@@ -152,7 +152,7 @@ class TestMessages(unittest.TestCase):
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
-            original_reply_routing_key,
+            original_reply_routing_header,
             original_key, 
             original_timestamp,
             original_segment_number,
@@ -168,7 +168,7 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.reply_routing_key, original_reply_routing_key
+            unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
         self.assertEqual(unmarshalled_message.key, original_key)
         self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
@@ -186,7 +186,7 @@ class TestMessages(unittest.TestCase):
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
-        original_reply_routing_key = "reply.routing-key"
+        original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
         original_timestamp = time.time()
         original_sequence = 0
@@ -196,7 +196,7 @@ class TestMessages(unittest.TestCase):
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
-            original_reply_routing_key,
+            original_reply_routing_header,
             original_key, 
             original_timestamp,
             original_sequence,
@@ -212,7 +212,7 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.reply_routing_key, original_reply_routing_key
+            unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
         self.assertEqual(unmarshalled_message.key, original_key)
         self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
@@ -323,13 +323,13 @@ class TestMessages(unittest.TestCase):
         original_request_id = uuid.uuid1().hex
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
-        original_reply_routing_key = "reply.routing-key"
+        original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
         message = RetrieveKeyStart(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
-            original_reply_routing_key,
+            original_reply_routing_header,
             original_key 
         )
         marshalled_message = message.marshall()
@@ -340,7 +340,7 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.reply_routing_key, original_reply_routing_key
+            unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
         self.assertEqual(unmarshalled_message.key, original_key)
 

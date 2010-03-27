@@ -17,6 +17,8 @@ _header_size = struct.calcsize(_header_format)
 
 class DatabaseKeyInsertReply(object):
     """AMQP message to insert a key in the database"""
+
+    routing_tag = "database_key_insert_reply"
    
     successful = 0
     error_invalid_duplicate = 1

@@ -40,6 +40,8 @@ _header_tuple =  namedtuple(
 
 class RetrieveKeyStartReply(object):
     """AMQP message to request retrieval of a key"""
+
+    routing_tag = "retrieve_key_start_reply"
    
     successful = 0
     error_key_not_found = 1

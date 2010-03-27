@@ -18,6 +18,8 @@ _header_size = struct.calcsize(_header_format)
 class ArchiveKeyFinalReply(object):
     """AMQP message to archive an entire key"""
    
+    routing_tag = "archive_key_final_reply"
+
     successful = 0
     error_invalid_duplicate = 1
     error_exception = 2

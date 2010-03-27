@@ -16,6 +16,8 @@ _header_size = struct.calcsize(_header_format)
 
 class DatabaseKeyLookupReply(object):
     """AMQP message to insert a key in the database"""
+
+    routing_tag = "database_key_lookup_reply"
    
     successful = 0
     error_unknown_key = 1

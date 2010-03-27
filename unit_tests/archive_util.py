@@ -32,6 +32,8 @@ from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_archive_key_next, \
         _handle_archive_key_final
 
+_reply_routing_header = "test_archive"
+
 def archive_small_content(self, avatar_id, key, content):
     """
     utility function to push content all the way through the archive process
@@ -40,7 +42,6 @@ def archive_small_content(self, avatar_id, key, content):
     """
     request_id = uuid.uuid1().hex
     test_exchange = "reply-exchange"
-    test_routing_key = "reply.routing-key"
     timestamp = time.time()
     segment_number = 3
     adler32 = zlib.adler32(content)
@@ -49,7 +50,7 @@ def archive_small_content(self, avatar_id, key, content):
         request_id,
         avatar_id,
         test_exchange,
-        test_routing_key,
+        _reply_routing_header,
         key, 
         timestamp,
         segment_number,
@@ -100,7 +101,6 @@ def archive_large_content(
 ):
     request_id = uuid.uuid1().hex
     test_exchange = "reply-exchange"
-    test_routing_key = "reply.routing-key"
     timestamp = time.time()
     segment_number = 3
 
@@ -115,7 +115,7 @@ def archive_large_content(
         request_id,
         avatar_id,
         test_exchange,
-        test_routing_key,
+        _reply_routing_header,
         key, 
         timestamp,
         sequence,

@@ -37,7 +37,11 @@ _log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
 )
 _queue_name = "data_writer"
 _routing_key_binding = "data_writer.*"
-_key_insert_reply_routing_key = "data_writer.database_key_insert_reply"
+_reply_routing_header = "data_writer"
+_key_insert_reply_routing_key = "%s.%s" % (
+    _reply_routing_header,
+    DatabaseKeyInsertReply.routing_tag,
+)
 
 
 _archive_state_tuple = namedtuple("ArchiveState", [ 
@@ -49,7 +53,7 @@ _archive_state_tuple = namedtuple("ArchiveState", [
     "segment_size",
     "file_name",
     "reply_exchange",
-    "reply_routing_key",
+    "reply_routing_header",
 ])
 
 def _compute_filename(message_request_id):
@@ -64,6 +68,10 @@ def _handle_archive_key_entire(state, message_body):
     message = ArchiveKeyEntire.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", ArchiveKeyFinalReply.routing_tag]
+    )
+
     # if we already have a state entry for this request_id, something is wrong
     if message.request_id in state:
         error_string = "invalid duplicate request_id in ArchiveKeyEntire"
@@ -73,7 +81,7 @@ def _handle_archive_key_entire(state, message_body):
             ArchiveKeyFinalReply.error_invalid_duplicate,
             error_message=error_string
         )
-        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+        return [(message.reply_exchange, reply_routing_key, reply, )] 
 
     file_name = _compute_filename(message.request_id)
 
@@ -91,7 +99,7 @@ def _handle_archive_key_entire(state, message_body):
             ArchiveKeyFinalReply.error_exception,
             error_message=str(instance)
         )
-        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+        return [(message.reply_exchange, reply_routing_key, reply, )] 
 
     # save stuff we need to recall in state
     state[message.request_id] = _archive_state_tuple(
@@ -103,7 +111,7 @@ def _handle_archive_key_entire(state, message_body):
         segment_size=len(message.content),
         file_name=file_name,
         reply_exchange=message.reply_exchange,
-        reply_routing_key=message.reply_routing_key
+        reply_routing_header=message.reply_routing_header
     )
 
     # send an insert request to the database, with the reply
@@ -124,7 +132,7 @@ def _handle_archive_key_entire(state, message_body):
         message.request_id,
         message.avatar_id,
         local_exchange,
-        _key_insert_reply_routing_key,
+        _reply_routing_header,
         message.key, 
         database_entry
     )
@@ -135,6 +143,10 @@ def _handle_archive_key_start(state, message_body):
     message = ArchiveKeyStart.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", ArchiveKeyStartReply.routing_tag]
+    )
+
     # if we already have a state entry for this request_id, something is wrong
     if message.request_id in state:
         error_string = "invalid duplicate request_id in ArchiveKeyEntire"
@@ -144,7 +156,7 @@ def _handle_archive_key_start(state, message_body):
             ArchiveKeyStartReply.error_invalid_duplicate,
             error_message=error_string
         )
-        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+        return [(message.reply_exchange, reply_routing_key, reply, )] 
 
     file_name = _compute_filename(message.request_id)
 
@@ -162,7 +174,7 @@ def _handle_archive_key_start(state, message_body):
             ArchiveKeyStartReply.error_exception,
             error_message=str(instance)
         )
-        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+        return [(message.reply_exchange, reply_routing_key, reply, )] 
 
     # save stuff we need to recall in state
     state[message.request_id] = _archive_state_tuple(
@@ -174,14 +186,14 @@ def _handle_archive_key_start(state, message_body):
         segment_size=message.segment_size,
         file_name=file_name,
         reply_exchange=message.reply_exchange,
-        reply_routing_key=message.reply_routing_key
+        reply_routing_header=message.reply_routing_header
     )
 
     reply = ArchiveKeyStartReply(
         message.request_id,
         ArchiveKeyStartReply.successful
     )
-    return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+    return [(message.reply_exchange, reply_routing_key, reply, )] 
 
 def _handle_archive_key_next(state, message_body):
     log = logging.getLogger("_handle_archive_key_next")
@@ -200,7 +212,11 @@ def _handle_archive_key_next(state, message_body):
     ))
 
     reply_exchange = archive_state.reply_exchange
-    reply_routing_key = archive_state.reply_routing_key
+    reply_routing_key = "".join(
+        [archive_state.reply_routing_header, 
+         ".", 
+         ArchiveKeyNextReply.routing_tag]
+    )
     work_path = repository.content_input_path(
         archive_state.avatar_id, archive_state.file_name
     ) 
@@ -267,7 +283,11 @@ def _handle_archive_key_final(state, message_body):
     ))
 
     reply_exchange = archive_state.reply_exchange
-    reply_routing_key = archive_state.reply_routing_key
+    reply_routing_key = "".join(
+        [archive_state.reply_routing_header, 
+         ".", 
+         ArchiveKeyFinalReply.routing_tag]
+    )
     work_path = repository.content_input_path(
         archive_state.avatar_id, archive_state.file_name
     ) 
@@ -285,7 +305,7 @@ def _handle_archive_key_final(state, message_body):
             os.unlink(work_path)
         except Exception:
             log.exception("error")
-        reply = ArchiveKeyNextReply(
+        reply = ArchiveKeyFinalReply(
             message.request_id,
             ArchiveKeyNextReply.error_out_of_sequence,
             error_message=error_string
@@ -299,7 +319,7 @@ def _handle_archive_key_final(state, message_body):
             os.fsync(content_file.fileno())
     except Exception, instance:
         log.exception("%s %s" % (archive_state.avatar_id, archive_state.key, ))
-        reply = ArchiveKeyNextReply(
+        reply = ArchiveKeyFinalReply(
             message.request_id,
             ArchiveKeyNextReply.error_exception,
             error_message=str(instance)
@@ -403,7 +423,12 @@ def _handle_key_insert_reply(state, message_body):
         )
 
     reply_exchange = archive_state.reply_exchange
-    reply_routing_key = archive_state.reply_routing_key
+    reply_routing_key = "".join(
+        [archive_state.reply_routing_header,
+         ".",
+        ArchiveKeyFinalReply.routing_tag]
+    )
+
     return [(reply_exchange, reply_routing_key, reply, )]      
 
 _dispatch_table = {

@@ -16,6 +16,8 @@ _header_size = struct.calcsize(_header_format)
 
 class RetrieveKeyFinalReply(object):
     """AMQP message to request retrieval of a key"""
+
+    routing_tag = "retrieve_key_final_reply"
    
     successful = 0
     error_key_not_found = 1

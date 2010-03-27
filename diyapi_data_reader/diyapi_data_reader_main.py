@@ -30,13 +30,17 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
 )
 _queue_name = "data_reader"
 _routing_key_binding = "data_reader.*"
-_key_lookup_reply_routing_key = "data_reader.database_key_lookup_reply"
+_reply_routing_header = "data_reader"
+_key_lookup_reply_routing_key = "%s.%s" % (
+    _reply_routing_header,
+    DatabaseKeyLookupReply.routing_tag,
+)
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
     "avatar_id",
     "key",
     "reply_exchange",
-    "reply_routing_key",
+    "reply_routing_header",
     "segment_size",
     "sequence",
     "file_name",
@@ -48,6 +52,10 @@ def _handle_retrieve_key_start(state, message_body):
     message = RetrieveKeyStart.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", RetrieveKeyStartReply.routing_tag]
+    )
+
     # if we already have a state entry for this request_id, something is wrong
     if message.request_id in state:
         error_string = "invalid duplicate request_id in RetrieveKeyStart"
@@ -57,14 +65,14 @@ def _handle_retrieve_key_start(state, message_body):
             RetrieveKeyStartReply.error_invalid_duplicate,
             error_message=error_string
         )
-        return [(message.reply_exchange, message.reply_routing_key, reply, )] 
+        return [(message.reply_exchange, reply_routing_key, reply, )] 
 
     # save stuff we need to recall in state
     state[message.request_id] = _retrieve_state_tuple(
         avatar_id = message.avatar_id,
         key = message.key,
         reply_exchange = message.reply_exchange,
-        reply_routing_key = message.reply_routing_key,
+        reply_routing_header = message.reply_routing_header,
         segment_size = None,
         sequence = None,
         file_name = None
@@ -77,7 +85,7 @@ def _handle_retrieve_key_start(state, message_body):
         message.request_id,
         message.avatar_id,
         local_exchange,
-        _key_lookup_reply_routing_key,
+        _reply_routing_header,
         message.key 
     )
     return [(local_exchange, database_request.routing_key, database_request, )]
@@ -99,7 +107,11 @@ def _handle_retrieve_key_next(state, message_body):
     ))
 
     reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = retrieve_state.reply_routing_key
+    reply_routing_key = "".join(
+        [retrieve_state.reply_routing_header, 
+         ".", 
+         RetrieveKeyNextReply.routing_tag]
+    )
 
     if message.sequence != retrieve_state.sequence+1:
         error_string = "%s %s out of sequence %s %s" % (
@@ -168,7 +180,11 @@ def _handle_retrieve_key_final(state, message_body):
     ))
 
     reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = retrieve_state.reply_routing_key
+    reply_routing_key = "".join(
+        [retrieve_state.reply_routing_header, 
+         ".", 
+         RetrieveKeyFinalReply.routing_tag]
+    )
 
     if message.sequence != retrieve_state.sequence+1:
         error_string = "%s %s out of sequence %s %s" % (
@@ -231,7 +247,11 @@ def _handle_key_lookup_reply(state, message_body):
         return
 
     reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = retrieve_state.reply_routing_key
+    reply_routing_key = "".join(
+        [retrieve_state.reply_routing_header, 
+         ".", 
+         RetrieveKeyStartReply.routing_tag]
+    )
 
     # if we got a database error, pass it on 
     if message.error:

@@ -45,9 +45,9 @@ _segment_size = 120 * 1024
 def _pre_loop_function(state):
     log = logging.getLogger("_pre_loop_function")
     input_path = sys.argv[1]
-    input_size = os.path.getsize(input_path)
-    state["segment-count"] = input_size / _segment_size
-    if input_size % _segment_size != 0:
+    state["total-size"] = os.path.getsize(input_path)
+    state["segment-count"] = state["total_size"] / _segment_size
+    if state["total-size"] % _segment_size != 0:
         state["segment-count"] += 1
 
     log.info("input path = %s %s segments" % (
@@ -57,15 +57,15 @@ def _pre_loop_function(state):
     state["input-file"] = open(input_path, "r")
     state["key"] = os.path.basename(input_path)
     state["sequence"] = 0
-    state["md5"] = hashlib.md5()
+    state["archive-md5"] = hashlib.md5()
 
     segment = state["input-file"].read(_segment_size)
-    state["md5"].update(segment)
+    state["archive-md5"].update(segment)
 
-    request_id = uuid.uuid1().hex
+    archive["request-id"] = uuid.uuid1().hex
     local_exchange = amqp_connection.local_exchange_name
     message = ArchiveKeyStart(
-        request_id,
+        archive["request-id"],
         _avatar_id,
         local_exchange,
         _archive_key_start_reply_routing_key,
@@ -76,20 +76,67 @@ def _pre_loop_function(state):
         _segment_size,
         segment
     )
-    marshalled_message = message.marshall()
     return [(local_exchange, ArchiveKeyStart.routing_key, message), ]
+
+def _next_chunk_message(state):
+    log = logging.getLogger("_next_chunk_message")
+    segment = state["input-file"].read(_segment_size)
+    state["archive-md5"].update(segment)
+
+    state["sequence"] += 1
+    log.debug("sequence = %s" % (state["sequence"], ))
+
+    if state["sequence"] < state["segment-count"]-1:
+        message = ArchiveKeyNext(
+            state["request_id"],
+            state["sequence"],
+            segment
+        )
+    else:
+        state["input-file"].close()
+        del state["input-file"]
+        message = ArchiveKeyFinal(
+            state["request_id"],
+            state["sequence"],
+            state["total_size"],
+            42,
+            state["archive-md5"].hexdigest(),
+            segment
+        )
+    return message
 
 def _handle_archive_key_start_reply(state, message_body):
     log = logging.getLogger("_handle_archive_key_start_reply")
     message = ArchiveKeyStartReply.unmarshall(message_body)
+    log.info("reply result = %s" % (message.result, ))
+    assert message.request_id == archive["request-id"]
+    assert message.result == 0, message.error_message 
+    
+    message = _next_chunk_message(state)
+    local_exchange = amqp_connection.local_exchange_name
+    return [(local_exchange, message.routing_key, message), ]
 
 def _handle_archive_key_next_reply(state, message_body):
     log = logging.getLogger("_handle_archive_key_next_reply")
     message = ArchiveKeyNextReply.unmarshall(message_body)
+    log.info("reply result = %s" % (message.result, ))
+    assert message.request_id == archive["request-id"]
+    assert message.result == 0, message.error_message 
+    
+    message = _next_chunk_message(state)
+    local_exchange = amqp_connection.local_exchange_name
+    return [(local_exchange, message.routing_key, message), ]
 
 def _handle_archive_key_final_reply(state, message_body):
     log = logging.getLogger("_handle_archive_key_final_reply")
     message = ArchiveKeyFinalReply.unmarshall(message_body)
+        message = RetrieveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            test_routing_key,
+            key, 
+        )
 
 def _handle_retrieve_key_start_reply(state, message_body):
     log = logging.getLogger("_handle_retrieve_key_start_reply")

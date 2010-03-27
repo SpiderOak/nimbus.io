@@ -25,14 +25,14 @@ class DatabaseKeyInsert(object):
         request_id, 
         avatar_id, 
         reply_exchange, 
-        reply_routing_key, 
+        reply_routing_header, 
         key, 
         content
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
-        self.reply_routing_key = reply_routing_key
+        self.reply_routing_header = reply_routing_header
         self.key = key
         self.database_content = content
 
@@ -45,14 +45,14 @@ class DatabaseKeyInsert(object):
         )
         pos += _header_size
         (reply_exchange, pos) = unmarshall_string(data, pos)
-        (reply_routing_key, pos) = unmarshall_string(data, pos)
+        (reply_routing_header, pos) = unmarshall_string(data, pos)
         (key, pos) = unmarshall_string(data, pos)
         (content, pos) = database_content.unmarshall(data, pos)
         return DatabaseKeyInsert(
             request_id, 
             avatar_id,
             reply_exchange, 
-            reply_routing_key, 
+            reply_routing_header, 
             key, 
             content
         )
@@ -61,14 +61,14 @@ class DatabaseKeyInsert(object):
         """return a data string suitable for transmission"""
         header = struct.pack(_header_format, self.request_id, self.avatar_id)
         packed_reply_exchange = marshall_string(self.reply_exchange)
-        packed_reply_routing_key = marshall_string(self.reply_routing_key)
+        packed_reply_routing_header = marshall_string(self.reply_routing_header)
         packed_key = marshall_string(self.key)
         content = database_content.marshall(self.database_content)
         return "".join(
             [
                 header,
                 packed_reply_exchange,
-                packed_reply_routing_key,
+                packed_reply_routing_header,
                 packed_key,
                 content
             ]

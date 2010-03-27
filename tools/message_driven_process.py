@@ -38,6 +38,18 @@ def _create_bindings(channel, queue_name, routing_key_binding):
         routing_key=routing_key_binding 
     )
 
+def _process_outgoing_traffic(connection, outgoing_traffic):
+    channel = connection.channel()
+    for exchange, routing_key, message in outgoing_traffic:
+        amqp_message = amqp.Message(message.marshall())
+        channel.basic_publish( 
+            amqp_message, 
+            exchange=exchange, 
+            routing_key=routing_key,
+            mandatory = True
+        )
+    channel.close()
+
 def _process_message(state, connection, dispatch_table, message):
     """
     process an incoming message, based on routing key
@@ -54,19 +66,10 @@ def _process_message(state, connection, dispatch_table, message):
         log.error("unknown routing key '%s'" % (routing_key, ))
         return
 
-    replies = dispatch_table[routing_key](state, message.body)
+    outgoing_traffic = dispatch_table[routing_key](state, message.body)
 
-    if replies is not None and len(replies) > 0:
-        channel = connection.channel()
-        for reply_exchange, reply_routing_key, reply_message in replies:
-            message = amqp.Message(reply_message.marshall())
-            channel.basic_publish( 
-                message, 
-                exchange=reply_exchange, 
-                routing_key=reply_routing_key,
-                mandatory = True
-            )
-        channel.close()
+    if outgoing_traffic is not None and len(outgoing_traffic) > 0:
+        _process_outgoing_traffic(connection, outgoing_traffic)
 
 def _process_message_wrapper(state, connection, dispatch_table, message):
     log = logging.getLogger("_process_message_wrapper")
@@ -111,7 +114,9 @@ def _run_until_halt(
 
     if pre_loop_function is not None:
         log.debug("pre_loop_function")
-        pre_loop_function(state)
+        outgoing_traffic = pre_loop_function(state)
+        if outgoing_traffic is not None and len(outgoing_traffic) > 0:
+            _process_outgoing_traffic(connection, outgoing_traffic)
 
     log.debug("start AMQP loop")
     # 2010-03-18 dougfort -- channel wait does a blocking read, 

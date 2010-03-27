@@ -12,13 +12,27 @@ import sys
 
 from gevent import wsgi
 
-from diyapi_web_server import Application
+from diyapi_web_server.application import Application
+from diyapi_web_server.amqp_handler import AMQPHandler
 
 
-def make_wsgi_server():
-    app = Application()
-    host, port = ('', 8088)
-    return wsgi.WSGIServer((host, port), app)
+class WSGIServer(wsgi.WSGIServer):
+    def __init__(self):
+        super(WSGIServer, self).__init__(('', 8088), Application())
+
+
+class WebServer(object):
+    def __init__(self):
+        self.wsgi_server = WSGIServer()
+        self.amqp_handler = AMQPHandler()
+
+    def start(self):
+        self.wsgi_server.start()
+        self.amqp_handler.start()
+
+    def stop(self):
+        self.amqp_handler.stop()
+        self.wsgi_server.stop()
 
 
 def main():

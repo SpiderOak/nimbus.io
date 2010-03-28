@@ -4,6 +4,7 @@ message_driven_process.py
 
 A framework for process that are driven by AMQP messages
 """
+from collections import deque
 import errno
 import logging
 import signal
@@ -38,23 +39,28 @@ def _create_bindings(channel, queue_name, routing_key_binding):
         routing_key=routing_key_binding 
     )
 
-def _process_outgoing_traffic(connection, outgoing_traffic):
+def _process_outgoing_traffic(channel, outgoing_queue):
     log = logging.getLogger("_process_outgoing_traffic")
-    channel = connection.channel()
-    for exchange, routing_key, message in outgoing_traffic:
+    while True:
+        try:
+            exchange, routing_key, message = outgoing_queue.popleft()
+        except IndexError:
+            break
+
         log.debug("exchange = '%s', routing_key = '%s'" % (
             exchange, routing_key
         ))
+
         amqp_message = amqp.Message(message.marshall())
+        amqp_message.properties["delivery_mode"] = 2
         channel.basic_publish( 
             amqp_message, 
             exchange=exchange, 
             routing_key=routing_key,
             mandatory = True
         )
-    channel.close()
 
-def _process_message(state, connection, dispatch_table, message):
+def _process_message(state, outgoing_queue, dispatch_table, message):
     """
     process an incoming message, based on routing key
     we call a function in the dispatch table, giving it the state dict
@@ -70,21 +76,21 @@ def _process_message(state, connection, dispatch_table, message):
         log.error("unknown routing key '%s'" % (routing_key, ))
         return
 
-    outgoing_traffic = dispatch_table[routing_key](state, message.body)
+    outgoing_queue.extend(dispatch_table[routing_key](state, message.body))
 
-    if outgoing_traffic is not None and len(outgoing_traffic) > 0:
-        _process_outgoing_traffic(connection, outgoing_traffic)
 
-def _process_message_wrapper(state, connection, dispatch_table, message):
+def _process_message_wrapper(state, outgoing_queue, dispatch_table, message):
     log = logging.getLogger("_process_message_wrapper")
     try:
-        _process_message(state, connection, dispatch_table, message)
+        _process_message(state, outgoing_queue, dispatch_table, message)
     except Exception, instance:
         log.exception(instance)
 
-def _callback_closure(state, connection, dispatch_table):
+def _callback_closure(state, outgoing_queue, dispatch_table):
     def __callback(message):
-        _process_message_wrapper(state, connection, dispatch_table, message)
+        _process_message_wrapper(
+            state, outgoing_queue, dispatch_table, message
+        )
     return __callback
 
 def _run_until_halt(
@@ -104,11 +110,13 @@ def _run_until_halt(
     amqp_connection.create_exchange(channel)
     _create_bindings(channel, queue_name, routing_key_bindings)
 
+    outgoing_queue = deque()
+
     # Let AMQP know to send us messages
     amqp_tag = channel.basic_consume( 
         queue=queue_name, 
         no_ack=True,
-        callback=_callback_closure(state, connection, dispatch_table)
+        callback=_callback_closure(state, outgoing_queue, dispatch_table)
     )
 
     signal.signal(
@@ -118,9 +126,8 @@ def _run_until_halt(
 
     if pre_loop_function is not None:
         log.debug("pre_loop_function")
-        outgoing_traffic = pre_loop_function(state)
-        if outgoing_traffic is not None and len(outgoing_traffic) > 0:
-            _process_outgoing_traffic(connection, outgoing_traffic)
+        outgoing_queue.extend(pre_loop_function(state))
+        _process_outgoing_traffic(channel, outgoing_queue)
 
     log.debug("start AMQP loop")
     # 2010-03-18 dougfort -- channel wait does a blocking read, 
@@ -139,6 +146,9 @@ def _run_until_halt(
                 halt_event.set()
             else:
                 raise
+
+        _process_outgoing_traffic(channel, outgoing_queue)
+
     log.debug("end AMQP loop")
 
     channel.close()

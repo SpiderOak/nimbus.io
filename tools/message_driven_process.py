@@ -52,7 +52,6 @@ def _process_outgoing_traffic(channel, outgoing_queue):
         ))
 
         amqp_message = amqp.Message(message.marshall())
-        amqp_message.properties["delivery_mode"] = 2
         channel.basic_publish( 
             amqp_message, 
             exchange=exchange, 

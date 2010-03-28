@@ -17,7 +17,7 @@ class RetrieveKeyStart(object):
     """
     AMQP message to start retrieving a key 
     """
-    routing_key = "data_writer.archive_key_start"
+    routing_key = "data_reader.retrieve_key_start"
 
     def __init__( 
         self, 

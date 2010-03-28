@@ -15,7 +15,7 @@ class RetrieveKeyNext(object):
     """
     AMQP message to start retrieving a key 
     """
-    routing_key = "data_writer.archive_key_next"
+    routing_key = "data_reader.retrieve_key_next"
 
     def __init__(self, request_id, sequence):
         self.request_id = request_id

@@ -35,7 +35,7 @@ from messages.database_key_insert_reply import DatabaseKeyInsertReply
 _log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
-_queue_name = "data_writer"
+_queue_name = "data-writer-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
 _routing_key_binding = "data_writer.*"
 _reply_routing_header = "data_writer"
 _key_insert_reply_routing_key = "%s.%s" % (
@@ -349,7 +349,7 @@ def _handle_archive_key_final(state, message_body):
         message.request_id,
         archive_state.avatar_id,
         local_exchange,
-        _key_insert_reply_routing_key,
+        _reply_routing_header,
         archive_state.key, 
         database_entry
     )

@@ -18,7 +18,7 @@ _header_size = struct.calcsize(_header_format)
 class DatabaseKeyInsert(object):
     """AMQP message to insert a key in the database"""
 
-    routing_key = "database.key_insert"
+    routing_key = "database_server.key_insert"
 
     def __init__(
         self, 

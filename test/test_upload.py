@@ -161,7 +161,7 @@ def _handle_archive_key_final_reply(state, message_body):
     return [(local_exchange, message.routing_key, message), ]
 
 def _prepare_retrieve_message(state):
-    log = logging.getLogger("_next_retrieve_message")
+    log = logging.getLogger("_prepare_retrieve_message")
 
     state["sequence"] += 1
     log.debug("sequence = %s" % (state["sequence"], ))
@@ -191,7 +191,6 @@ def _handle_retrieve_key_start_reply(state, message_body):
     message = _prepare_retrieve_message(state)
 
     local_exchange = amqp_connection.local_exchange_name
-    message = RetrieveKeyNext(state["retrieve-request-id"], state["sequence"])
     return [(local_exchange, message.routing_key, message), ]
 
 def _handle_retrieve_key_next_reply(state, message_body):
@@ -205,7 +204,6 @@ def _handle_retrieve_key_next_reply(state, message_body):
     message = _prepare_retrieve_message(state)
 
     local_exchange = amqp_connection.local_exchange_name
-    message = RetrieveKeyNext(state["retrieve-request-id"], state["sequence"])
     return [(local_exchange, message.routing_key, message), ]
 
 def _handle_retrieve_key_final_reply(state, message_body):

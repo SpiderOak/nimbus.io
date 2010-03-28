@@ -32,7 +32,7 @@ from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 _log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
-_queue_name = "database_server"
+_queue_name = "database-server-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
 _routing_key_binding = "database_server.*"
 _max_cached_databases = 10
 _database_cache = "open-database-cache"
@@ -126,7 +126,7 @@ def _handle_key_insert(state, message_body):
     return [(reply_exchange, reply_routing_key, reply, )]
 
 def _handle_key_lookup(state, message_body):
-    log = logging.getLogger("_handle_key_insert")
+    log = logging.getLogger("_handle_key_lookup")
     message = DatabaseKeyLookup.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
 
@@ -144,6 +144,18 @@ def _handle_key_lookup(state, message_body):
             message.request_id,
             DatabaseKeyLookupReply.error_database_failure,
             error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    if packed_existing_entry is None:
+        error_string = "unknown key: %s, %s" % (
+            message.avatar_id, message.key, 
+        )
+        log.warn(error_string)
+        reply = DatabaseKeyLookupReply(
+            message.request_id,
+            DatabaseKeyLookupReply.error_unknown_key,
+            error_message=error_string
         )
         return [(reply_exchange, reply_routing_key, reply, )]
 

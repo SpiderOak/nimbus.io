@@ -205,7 +205,7 @@ def _handle_archive_key_next(state, message_body):
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
-        return
+        return []
 
     log.info("avatar_id = %s, key = %s" % (
         archive_state.avatar_id, archive_state.key, 
@@ -276,7 +276,7 @@ def _handle_archive_key_final(state, message_body):
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
-        return
+        return []
 
     log.info("avatar_id = %s, key = %s" % (
         archive_state.avatar_id, archive_state.key, 
@@ -365,7 +365,7 @@ def _handle_key_insert_reply(state, message_body):
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
-        return
+        return []
 
     work_path = repository.content_input_path(
         archive_state.avatar_id, archive_state.file_name

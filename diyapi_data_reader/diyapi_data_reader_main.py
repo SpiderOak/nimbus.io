@@ -100,7 +100,7 @@ def _handle_retrieve_key_next(state, message_body):
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
-        return
+        return []
 
     log.info("avatar_id = %s, key = %s sequence = %s" % (
         retrieve_state.avatar_id, retrieve_state.key, message.sequence
@@ -173,7 +173,7 @@ def _handle_retrieve_key_final(state, message_body):
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
-        return
+        return []
 
     log.info("avatar_id = %s, key = %s sequence = %s" % (
         retrieve_state.avatar_id, retrieve_state.key, message.sequence
@@ -244,7 +244,7 @@ def _handle_key_lookup_reply(state, message_body):
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
         log.error("No state for %r" % (message.request_id, ))
-        return
+        return []
 
     reply_exchange = retrieve_state.reply_exchange
     reply_routing_key = "".join(

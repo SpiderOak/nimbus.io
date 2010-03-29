@@ -98,6 +98,7 @@ def _run_until_halt(
     dispatch_table, 
     state,
     pre_loop_function,
+    in_loop_function,
     post_loop_function
 ):
     log = logging.getLogger("_run_until_halt")
@@ -125,13 +126,15 @@ def _run_until_halt(
 
     if pre_loop_function is not None:
         log.debug("pre_loop_function")
-        outgoing_queue.extend(pre_loop_function(state))
-        _process_outgoing_traffic(channel, outgoing_queue)
+        outgoing_queue.extend(pre_loop_function(halt_event, connection, state))
 
     log.debug("start AMQP loop")
     # 2010-03-18 dougfort -- channel wait does a blocking read, 
     # it gets [Errno 4] Interrupted system call on SIGTERM 
     while not halt_event.is_set():
+        
+        _process_outgoing_traffic(channel, outgoing_queue)
+
         try:
             channel.wait()
         except (KeyboardInterrupt, SystemExit):
@@ -146,7 +149,8 @@ def _run_until_halt(
             else:
                 raise
 
-        _process_outgoing_traffic(channel, outgoing_queue)
+        if in_loop_function is not None:
+            outgoing_queue.extend(in_loop_function(state))
 
     log.debug("end AMQP loop")
 
@@ -164,6 +168,7 @@ def main(
     dispatch_table, 
     state,
     pre_loop_function=None,
+    in_loop_function=None,
     post_loop_function=None
 ):
     """main processing entry point"""
@@ -178,6 +183,7 @@ def main(
             dispatch_table, 
             state,
             pre_loop_function,
+            in_loop_function,
             post_loop_function
         )
     except Exception, instance:

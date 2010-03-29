@@ -23,6 +23,7 @@ class ArchiveKeyFinalReply(object):
     successful = 0
     error_invalid_duplicate = 1
     error_exception = 2
+    error_timeout_waiting_key_insert = 3
 
     def __init__(
         self, request_id, result, previous_size=0, error_message=""

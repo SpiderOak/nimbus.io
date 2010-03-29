@@ -16,8 +16,10 @@ from collections import namedtuple
 import logging
 import os
 import sys
+import time
 
 from tools import amqp_connection
+from tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
 from tools import message_driven_process as process
 from tools import repository
 
@@ -38,14 +40,21 @@ _log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
 _queue_name = "data-writer-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
 _routing_key_binding = "data_writer.*"
 _reply_routing_header = "data_writer"
-_key_insert_reply_routing_key = "%s.%s" % (
+_key_insert_reply_routing_key = ".".join([
     _reply_routing_header,
     DatabaseKeyInsertReply.routing_tag,
-)
-
+])
+_low_traffic_routing_key = ".".join([
+    _reply_routing_header, 
+    low_traffic_routing_tag,
+])
+_key_insert_timeout = 60.0
+_archive_timeout = 30 * 60.0
 
 _archive_state_tuple = namedtuple("ArchiveState", [ 
     "timestamp",
+    "timeout",
+    "timeout_function",
     "avatar_id",
     "key",
     "sequence",
@@ -55,6 +64,52 @@ _archive_state_tuple = namedtuple("ArchiveState", [
     "reply_exchange",
     "reply_routing_header",
 ])
+
+def _handle_key_insert_timeout(request_id, state):
+    """called when we wait too long for a reply to a KeyInsert message"""
+    log = logging.getLogger("_handle_key_insert_timeout")
+
+    try:
+        archive_state = state.pop(request_id)
+    except KeyError:
+        log.error("can't find %s in state" % (request_id, ))
+        return []
+
+    log.error("timeout: %s %s %s" % (
+        archive_state.avatar_id,
+        archive_state.key,
+        archive_state.request_id,
+    ))
+
+    # tell the caller that we're not working
+    reply_exchange = archive_state.reply_exchange
+    reply_routing_key = "".join(
+        [archive_state.reply_routing_header, 
+         ".", 
+         ArchiveKeyFinalReply.routing_tag]
+    )
+    reply = ArchiveKeyFinalReply(
+        request_id,
+        ArchiveKeyFinalReply.error_timeout_waiting_key_insert,
+        error_message="timeout waiting for database_server"
+    )
+    return [(reply_exchange, reply_routing_key, reply, )] 
+
+def _handle_archive_timeout(request_id, state):
+    """called when we wait too long for a ArchvieKeyNext or ArchiveKeyFinal"""
+    log = logging.getLogger("_handle_archive_timeout")
+
+    try:
+        archive_state = state.pop(request_id)
+    except KeyError:
+        log.error("can't find %s in state" % (request_id, ))
+        return []
+
+    log.error("timeout: %s %s %s" % (
+        archive_state.avatar_id,
+        archive_state.key,
+        archive_state.request_id,
+    ))
 
 def _compute_filename(message_request_id):
     """
@@ -104,6 +159,8 @@ def _handle_archive_key_entire(state, message_body):
     # save stuff we need to recall in state
     state[message.request_id] = _archive_state_tuple(
         timestamp=message.timestamp,
+        timeout=time.time()+_key_insert_timeout,
+        timeout_function=_handle_key_insert_timeout,
         avatar_id=message.avatar_id,
         key=message.key,
         sequence=0,
@@ -179,6 +236,8 @@ def _handle_archive_key_start(state, message_body):
     # save stuff we need to recall in state
     state[message.request_id] = _archive_state_tuple(
         timestamp=message.timestamp,
+        timeout=time.time()+_archive_timeout,
+        timeout_function=_handle_archive_timeout,
         avatar_id=message.avatar_id,
         key=message.key,
         sequence=message.sequence,
@@ -257,7 +316,8 @@ def _handle_archive_key_next(state, message_body):
 
     # save stuff we need to recall in state
     state[message.request_id] = archive_state._replace(
-        sequence=archive_state.sequence+1
+        sequence=archive_state.sequence+1,
+        timeout=time.time()+_archive_timeout
     )
 
     reply = ArchiveKeyNextReply(
@@ -328,7 +388,8 @@ def _handle_archive_key_final(state, message_body):
 
     # save stuff we need to recall in state
     state[message.request_id] = archive_state._replace(
-        sequence=archive_state.sequence+1
+        sequence=archive_state.sequence+1,
+        timeout=time.time()+_key_insert_timeout
     )
 
     # send an insert request to the database, with the reply
@@ -431,23 +492,64 @@ def _handle_key_insert_reply(state, message_body):
 
     return [(reply_exchange, reply_routing_key, reply, )]      
 
+def _handle_low_traffic(state, message_body):
+    log = logging.getLogger("_handle_low_traffic")
+    log.debug("ignoring low traffic message")
+
 _dispatch_table = {
     ArchiveKeyEntire.routing_key    : _handle_archive_key_entire,
     ArchiveKeyStart.routing_key     : _handle_archive_key_start,
     ArchiveKeyNext.routing_key      : _handle_archive_key_next,
     ArchiveKeyFinal.routing_key     : _handle_archive_key_final,
     _key_insert_reply_routing_key   : _handle_key_insert_reply,
+    _low_traffic_routing_key        : _handle_low_traffic,
 }
 
+def _start_low_traffic_thread(halt_event, connection, state):
+    state["low_traffic_thread"] = LowTrafficThread(
+        halt_event, connection, _reply_routing_header
+    )
+    state["low_traffic_thread"].start()
+    return []
+
+def _check_message_timeout(state):
+    """check request_ids who are waiting for a message"""
+    log = logging.getLogger("_check_message_timeout")
+
+    # return a (possibly empty) list of messages to send
+    return_list = list()
+
+    current_time = time.time()
+    for key in state.keys():
+        if key == "low_traffic_thread":
+            continue
+        archive_state = state[key]
+        if current_time > archive_state.timeout:
+            log.warn(
+                "%s timed out waiting message; running timeout function" % (
+                    request_id
+                )
+            )
+            return_list.extend(archive_state.timeout_function(state))
+
+    state["low_traffic_thread"].reset()
+    return return_list
+
+def _stop_low_traffic_thread(state):
+    state["low_traffic_thread"].join()
+
 if __name__ == "__main__":
-    state = dict()
+    state = {"expecting-message" : dict()}
     sys.exit(
         process.main(
             _log_path, 
             _queue_name, 
             _routing_key_binding, 
             _dispatch_table, 
-            state
+            state,
+            pre_loop_function=_start_low_traffic_thread,
+            in_loop_function=_check_message_timeout,
+            post_loop_function=_stop_low_traffic_thread
         )
     )
 

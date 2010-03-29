@@ -54,7 +54,7 @@ _avatar_id = 1001
 _segment_size = 120 * 1024
 
 
-def _pre_loop_function(state):
+def _pre_loop_function(halt_event, connection, state):
     log = logging.getLogger("_pre_loop_function")
     input_path = sys.argv[1]
     state["total-size"] = os.path.getsize(input_path)

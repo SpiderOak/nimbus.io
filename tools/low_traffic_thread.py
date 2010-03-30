@@ -6,6 +6,7 @@ A thread which sends a 'low_traffic' message if it doesn't get reset.
 This breaks the pyaqmp socket it of its blocking read, so we can run
 timeout checks, etc.
 """
+import logging
 from threading import Thread
 import time
 
@@ -18,14 +19,12 @@ _timeout_interval = 60.0
 
 class LowTrafficThread(Thread):
     """A thread which sends a 'low_traffic' message if it doesn't get reset."""
-    def __init__(self, halt_event, connection, routing_header):
+    def __init__(self, halt_event, routing_header):
         Thread.__init__(self)
 
         self._halt_event = halt_event
-        self._connection = connection
-
+        self._log = logging.getLogger("LowTrafficThread")
         self._routing_key = ".".join([routing_header, low_traffic_routing_tag])
-
         self._timeout = None
         self.reset()
 
@@ -45,13 +44,19 @@ class LowTrafficThread(Thread):
         self._timeout = time.time() + _timeout_interval
 
     def _send_timeout_message(self):
-        channel = self._connection.channel()
-        amqp_message = amqp.Message("low traffic")
-        channel.basic_publish( 
-            amqp_message, 
-            exchange=amqp_connection.local_exchange_name, 
-            routing_key=self._routing_key,
-            mandatory = True
-        )
-        channel.close()
+        connection = amqp_connection.open_connection()
+        channel = connection.channel()
+        try:
+            amqp_message = amqp.Message("low traffic")
+            channel.basic_publish( 
+                amqp_message, 
+                exchange=amqp_connection.local_exchange_name, 
+                routing_key=self._routing_key,
+                mandatory = True
+            )
+        except Exception, instance:
+            self._log.exception(instance)
+        finally:
+            channel.close()
+            connection.close()
 

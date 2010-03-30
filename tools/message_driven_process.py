@@ -75,8 +75,9 @@ def _process_message(state, outgoing_queue, dispatch_table, message):
         log.error("unknown routing key '%s'" % (routing_key, ))
         return
 
-    outgoing_queue.extend(dispatch_table[routing_key](state, message.body))
-
+    outgoing = dispatch_table[routing_key](state, message.body)
+    if outgoing is not None:
+        outgoing_queue.extend(outgoing)
 
 def _process_message_wrapper(state, outgoing_queue, dispatch_table, message):
     log = logging.getLogger("_process_message_wrapper")
@@ -126,7 +127,7 @@ def _run_until_halt(
 
     if pre_loop_function is not None:
         log.debug("pre_loop_function")
-        outgoing_queue.extend(pre_loop_function(halt_event, connection, state))
+        outgoing_queue.extend(pre_loop_function(halt_event, state))
 
     log.debug("start AMQP loop")
     # 2010-03-18 dougfort -- channel wait does a blocking read, 
@@ -154,12 +155,13 @@ def _run_until_halt(
 
     log.debug("end AMQP loop")
 
-    channel.close()
-    connection.close()
-
     if post_loop_function is not None:
         log.debug("post_loop_function")
-        post_loop_function(state)
+        outgoing_queue.extend(post_loop_function(state))
+        _process_outgoing_traffic(channel, outgoing_queue)
+
+    channel.close()
+    connection.close()
 
 def main(
     log_path, 

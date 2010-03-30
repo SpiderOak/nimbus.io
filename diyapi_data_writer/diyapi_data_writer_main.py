@@ -266,8 +266,8 @@ def _handle_archive_key_next(state, message_body):
         log.error("No state for %r" % (message.request_id, ))
         return []
 
-    log.info("avatar_id = %s, key = %s" % (
-        archive_state.avatar_id, archive_state.key, 
+    log.info("avatar_id = %s, key = %s sequence = %s" % (
+        archive_state.avatar_id, archive_state.key, message.sequence
     ))
 
     reply_exchange = archive_state.reply_exchange
@@ -495,6 +495,7 @@ def _handle_key_insert_reply(state, message_body):
 def _handle_low_traffic(state, message_body):
     log = logging.getLogger("_handle_low_traffic")
     log.debug("ignoring low traffic message")
+    return None
 
 _dispatch_table = {
     ArchiveKeyEntire.routing_key    : _handle_archive_key_entire,
@@ -505,38 +506,42 @@ _dispatch_table = {
     _low_traffic_routing_key        : _handle_low_traffic,
 }
 
-def _start_low_traffic_thread(halt_event, connection, state):
+def _start_low_traffic_thread(halt_event, state):
     state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, connection, _reply_routing_header
+        halt_event, _reply_routing_header
     )
     state["low_traffic_thread"].start()
     return []
+
+def _is_archive_state((_, value, )):
+    return value.__class__.__name__ == "ArchiveState"
 
 def _check_message_timeout(state):
     """check request_ids who are waiting for a message"""
     log = logging.getLogger("_check_message_timeout")
 
+    state["low_traffic_thread"].reset()
+
     # return a (possibly empty) list of messages to send
     return_list = list()
 
     current_time = time.time()
-    for key in state.keys():
-        if key == "low_traffic_thread":
-            continue
-        archive_state = state[key]
+    for request_id, archive_state in filter(_is_archive_state, state.items()):
         if current_time > archive_state.timeout:
             log.warn(
                 "%s timed out waiting message; running timeout function" % (
                     request_id
                 )
             )
-            return_list.extend(archive_state.timeout_function(state))
+            return_list.extend(
+                archive_state.timeout_function(request_id, state)
+            )
 
-    state["low_traffic_thread"].reset()
     return return_list
 
 def _stop_low_traffic_thread(state):
     state["low_traffic_thread"].join()
+    return []
 
 if __name__ == "__main__":
     state = {"expecting-message" : dict()}

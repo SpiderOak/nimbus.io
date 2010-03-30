@@ -62,5 +62,13 @@ class TestDataWriter(unittest.TestCase):
             self, avatar_id, key, segment_size, total_size, test_data
         )    
 
+    def test_destroy_nonexistent_key(self):
+        """test destroying a key that does not exists, wiht no complicatons"""
+        pass
+
+    def test_simple_destroy(self):
+        """test destroying a key that exists, wiht no complicatons"""
+        pass
+
 if __name__ == "__main__":
     unittest.main()

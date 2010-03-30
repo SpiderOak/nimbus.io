@@ -18,6 +18,8 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
+from messages.database_key_destroy import DatabaseKeyDestroy
+from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
@@ -31,6 +33,8 @@ from messages.retrieve_key_next import RetrieveKeyNext
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final import RetrieveKeyFinal
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
+from messages.destroy_key import DestroyKey
+from messages.destroy_key_reply import DestroyKeyReply
 
 from unit_tests.util import random_string
 
@@ -134,6 +138,53 @@ class TestMessages(unittest.TestCase):
         self.assertTrue(unmarshalled_message.key_found)
         self.assertEqual(
             unmarshalled_message.database_content, original_content
+        )
+
+    def test_database_key_destroy(self):
+        """test DatabaseKeyDestroy"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_key  = "abcdefghijk"
+        message = DatabaseKeyDestroy(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_key 
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseKeyDestroy.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+
+    def test_database_key_destroy_reply_ok(self):
+        """test DatabaseKeyDestroyReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        original_total_size = 42
+        message = DatabaseKeyDestroyReply(
+            original_request_id,
+            original_result,
+            original_total_size
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = DatabaseKeyDestroyReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(
+            unmarshalled_message.total_size, original_total_size
         )
 
     def test_archive_key_entire(self):
@@ -451,7 +502,7 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.sequence, original_sequence)
 
-    def test_retrieve_key_next_final_ok(self):
+    def test_retrieve_key_final_reply_ok(self):
         """test RetrieveKeyFinalReply"""
         original_data_content = random_string(64 * 1024) 
         original_request_id = uuid.uuid1().hex
@@ -470,6 +521,52 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.data_content, original_data_content
         )
+
+    def test_destroy_key(self):
+        """test DestroyKey"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id  = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_key = "test.key"
+        original_timestamp = time.time()
+        message = DestroyKey(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_key,
+            original_timestamp
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DestroyKey.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+
+    def test_destroy_key_reply_ok(self):
+        """test DestroyKeyReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        original_total_size = 43L
+        message = DestroyKeyReply(
+            original_request_id,
+            original_result,
+            original_total_size
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DestroyKeyReply.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.total_size, original_total_size)
 
 if __name__ == "__main__":
     unittest.main()

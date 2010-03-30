@@ -11,8 +11,10 @@ from collections import namedtuple
 import logging
 import os.path
 import sys
+import time
 
 from tools import amqp_connection
+from tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
 from tools import message_driven_process as process
 from tools import repository
 
@@ -31,12 +33,21 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
 _queue_name = "data-reader-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
 _routing_key_binding = "data_reader.*"
 _reply_routing_header = "data_reader"
-_key_lookup_reply_routing_key = "%s.%s" % (
+_key_lookup_reply_routing_key = ".".join([
     _reply_routing_header,
     DatabaseKeyLookupReply.routing_tag,
-)
+])
+_low_traffic_routing_key = ".".join([
+    _reply_routing_header, 
+    low_traffic_routing_tag,
+])
+_key_lookup_timeout = 60.0
+_retrieve_timeout = 30 * 60.0
+
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
+    "timeout",
+    "timeout_function",
     "avatar_id",
     "key",
     "reply_exchange",
@@ -45,6 +56,52 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "sequence",
     "file_name",
 ])
+
+def _handle_key_lookup_timeout(request_id, state):
+    """called when we wait too long for a reply to a KeyLookup message"""
+    log = logging.getLogger("_handle_key_lookup_timeout")
+
+    try:
+        retrieve_state = state.pop(request_id)
+    except KeyError:
+        log.error("can't find %s in state" % (request_id, ))
+        return []
+
+    log.error("timeout: %s %s %s" % (
+        retrieve_state.avatar_id,
+        retrieve_state.key,
+        retrieve_state.request_id,
+    ))
+
+    # tell the caller that we're not working
+    reply_exchange = retrieve_state.reply_exchange
+    reply_routing_key = "".join(
+        [retrieve_state.reply_routing_header, 
+         ".", 
+         RetrieveKeyStartReply.routing_tag]
+    )
+    reply = RetrieveKeyStartReply(
+        request_id,
+        RetrieveKeyStartReply.error_timeout_waiting_key_insert,
+        error_message="timeout waiting for database_server"
+    )
+    return [(reply_exchange, reply_routing_key, reply, )] 
+
+def _handle_retrieve_timeout(request_id, state):
+    """called when we wait too long for a RetrieveKeyNext or RetrieveKeyFinal"""
+    log = logging.getLogger("_handle_retrieve_timeout")
+
+    try:
+        retrieve_state = state.pop(request_id)
+    except KeyError:
+        log.error("can't find %s in state" % (request_id, ))
+        return []
+
+    log.error("timeout: %s %s %s" % (
+        retrieve_state.avatar_id,
+        retrieve_state.key,
+        retrieve_state.request_id,
+    ))
 
 
 def _handle_retrieve_key_start(state, message_body):
@@ -69,6 +126,8 @@ def _handle_retrieve_key_start(state, message_body):
 
     # save stuff we need to recall in state
     state[message.request_id] = _retrieve_state_tuple(
+        timeout=time.time()+_key_lookup_timeout,
+        timeout_function=_handle_key_lookup_timeout,
         avatar_id = message.avatar_id,
         key = message.key,
         reply_exchange = message.reply_exchange,
@@ -152,6 +211,7 @@ def _handle_retrieve_key_next(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )]      
 
     state[message.request_id] = retrieve_state._replace(
+        timeout=time.time()+_retrieve_timeout,
         sequence=message.sequence
     )
 
@@ -294,6 +354,7 @@ def _handle_key_lookup_reply(state, message_body):
     # otherwise this request is done
     if segment_count > 1:
         state[message.request_id] = retrieve_state._replace(
+            timeout=time.time()+_retrieve_timeout,
             sequence=0, 
             segment_size=segment_size,
             file_name=message.database_content.file_name
@@ -315,12 +376,55 @@ def _handle_key_lookup_reply(state, message_body):
 
     return [(reply_exchange, reply_routing_key, reply, )]      
 
+def _handle_low_traffic(state, message_body):
+    log = logging.getLogger("_handle_low_traffic")
+    log.debug("ignoring low traffic message")
+    return None
+
 _dispatch_table = {
     RetrieveKeyStart.routing_key    : _handle_retrieve_key_start,
     RetrieveKeyNext.routing_key     : _handle_retrieve_key_next,
     RetrieveKeyFinal.routing_key    : _handle_retrieve_key_final,
     _key_lookup_reply_routing_key   : _handle_key_lookup_reply,
+    _low_traffic_routing_key        : _handle_low_traffic,
 }
+
+def _start_low_traffic_thread(halt_event, state):
+    state["low_traffic_thread"] = LowTrafficThread(
+        halt_event, _reply_routing_header
+    )
+    state["low_traffic_thread"].start()
+    return []
+
+def _is_retrieve_state((_, value, )):
+    return value.__class__.__name__ == "RetrieveState"
+
+def _check_message_timeout(state):
+    """check request_ids who are waiting for a message"""
+    log = logging.getLogger("_check_message_timeout")
+
+    state["low_traffic_thread"].reset()
+
+    # return a (possibly empty) list of messages to send
+    return_list = list()
+
+    current_time = time.time()
+    for request_id, retrieve_state in filter(_is_retrieve_state, state.items()):
+        if current_time > retrieve_state.timeout:
+            log.warn(
+                "%s timed out waiting message; running timeout function" % (
+                    request_id
+                )
+            )
+            return_list.extend(
+                retrieve_state.timeout_function(request_id, state)
+            )
+
+    return return_list
+
+def _stop_low_traffic_thread(state):
+    state["low_traffic_thread"].join()
+    return []
 
 if __name__ == "__main__":
     state = dict()
@@ -330,7 +434,10 @@ if __name__ == "__main__":
             _queue_name, 
             _routing_key_binding, 
             _dispatch_table, 
-            state
+            state,
+            pre_loop_function=_start_low_traffic_thread,
+            in_loop_function=_check_message_timeout,
+            post_loop_function=_stop_low_traffic_thread
         )
     )
 

@@ -48,6 +48,7 @@ class RetrieveKeyStartReply(object):
     error_exception = 2
     error_database = 3
     error_invalid_duplicate = 4
+    error_timeout_waiting_key_insert = 5
 
     def __init__(
         self, 

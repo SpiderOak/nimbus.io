@@ -20,7 +20,10 @@ from tools.standard_logging import initialize_logging
 def _create_signal_handler(halt_event, channel, amqp_tag):
     def cb_handler(signum, frame):
         # Tell the channel we dont want to consume anymore  
-        channel.basic_cancel(amqp_tag)
+        try:
+            channel.basic_cancel(amqp_tag)
+        except Exception:
+            pass
         halt_event.set()
     return cb_handler
 

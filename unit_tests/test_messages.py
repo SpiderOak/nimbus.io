@@ -147,12 +147,14 @@ class TestMessages(unittest.TestCase):
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
+        original_timestamp = time.time()
         message = DatabaseKeyDestroy(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
             original_reply_routing_header,
-            original_key 
+            original_key,
+            original_timestamp
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyDestroy.unmarshall(marshalled_message)
@@ -166,6 +168,9 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
         self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.timestamp, original_timestamp
+        )
 
     def test_database_key_destroy_reply_ok(self):
         """test DatabaseKeyDestroyReply"""

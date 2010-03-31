@@ -18,7 +18,7 @@ _header_size = struct.calcsize(_header_format)
 class DatabaseListMatchReply(object):
     """AMQP message to reply with a (partial) list of keys"""
 
-    routing_tag = "database_key_lookup_reply"
+    routing_tag = "database_listmatch_reply"
    
     successful = 0
     error_database_failure = 2

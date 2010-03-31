@@ -20,6 +20,8 @@ from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_listmatch import DatabaseListMatch
+from messages.database_listmatch_reply import DatabaseListMatchReply
 
 from unit_tests.util import generate_key, generate_database_content
 
@@ -30,7 +32,7 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup, \
-        _handle_key_destroy
+        _handle_key_destroy, _handle_listmatch
 
 _reply_routing_header = "test_database_server"
 
@@ -267,6 +269,77 @@ class TestDatabaseServer(unittest.TestCase):
 
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.total_size, 0)
+
+    def test_listmatch_empty_database(self):
+        """test listmach on an empty database"""
+        avatar_id = 1001
+        prefix = "xxx"
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+
+        message = DatabaseListMatch(
+            request_id,
+            avatar_id,
+            exchange,
+            _reply_routing_header,
+            prefix
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_listmatch(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_listmatch_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.is_complete, True)
+        self.assertEqual(reply.key_list, [])
+
+    def test_listmatch_multiple_keys(self):
+        """test listmach wiht multiple keys"""
+        avatar_id = 1001
+        prefix = "xxx"
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        key_count = 1000
+    
+        key_list = ["%s-%05d" % (prefix, i, ) for i in xrange(key_count)]
+        for key in key_list:
+
+            content = generate_database_content()
+
+            reply = self._insert_key(avatar_id, key, content)
+
+            self.assertEqual(reply.result, 0)
+            self.assertEqual(reply.previous_size, 0)
+
+        message = DatabaseListMatch(
+            request_id,
+            avatar_id,
+            exchange,
+            _reply_routing_header,
+            prefix
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_listmatch(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_listmatch_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.is_complete, True)
+        self.assertEqual(reply.key_list, key_list)
 
 if __name__ == "__main__":
     unittest.main()

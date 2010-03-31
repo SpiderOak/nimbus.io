@@ -18,7 +18,6 @@ import bsddb3.db
 import logging
 import os
 import sys
-import time
 
 from tools.LRUCache import LRUCache
 from tools import message_driven_process as process
@@ -31,6 +30,8 @@ from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_listmatch import DatabaseListMatch
+from messages.database_listmatch_reply import DatabaseListMatchReply
 
 _log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
@@ -39,6 +40,7 @@ _queue_name = "database-server-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
 _routing_key_binding = "database_server.*"
 _max_cached_databases = 10
 _database_cache = "open-database-cache"
+_max_listmatch_size = 1024 * 1024 * 1024
 
 def _open_database(state, avatar_id):
     database = None
@@ -70,6 +72,7 @@ def _handle_key_insert(state, message_body):
         packed_existing_entry = database.get(message.key)
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        database.close()
         reply = DatabaseKeyInsertReply(
             message.request_id,
             DatabaseKeyInsertReply.error_database_failure,
@@ -147,6 +150,8 @@ def _handle_key_lookup(state, message_body):
             error_message=str(instance)
         )
         return [(reply_exchange, reply_routing_key, reply, )]
+    finally:
+        database.close()
 
     if packed_existing_entry is None:
         error_string = "unknown key: %s, %s" % (
@@ -188,6 +193,7 @@ def _handle_key_destroy(state, message_body):
             DatabaseKeyDestroyReply.error_database_failure,
             error_message=str(instance)
         )
+        database.close()
         return [(reply_exchange, reply_routing_key, reply, )]
 
     total_size = 0
@@ -264,6 +270,8 @@ def _handle_key_destroy(state, message_body):
             error_message=str(instance)
         )
         return [(reply_exchange, reply_routing_key, reply, )]
+    finally:
+        database.close()
 
     reply = DatabaseKeyDestroyReply(
         message.request_id,
@@ -272,10 +280,56 @@ def _handle_key_destroy(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
+def _handle_listmatch(state, message_body):
+    log = logging.getLogger("_handle_listmatch")
+    message = DatabaseListMatch.unmarshall(message_body)
+    log.info("avatar_id = %s, prefix = %s" % (
+        message.avatar_id, message.prefix, 
+    ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", DatabaseListMatchReply.routing_tag]
+    )
+
+    try:
+        database = _open_database(state, message.avatar_id)
+        all_keys = database.keys()
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.prefix, ))
+        reply = DatabaseListMatchReply(
+            message.request_id,
+            DatabaseListMatchReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+    finally:
+        database.close()
+
+    keys = list()
+    key_message_size = 0
+    is_complete = True
+    for key in all_keys:
+        if key.startswith(message.prefix):
+            key_message_size += len(key)
+            if key_message_size >  _max_listmatch_size:
+                is_complete = False
+                break
+            keys.append(key)
+
+    reply = DatabaseListMatchReply(
+        message.request_id,
+        DatabaseListMatchReply.successful,
+        is_complete,
+        keys
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]\
+
 _dispatch_table = {
     DatabaseKeyInsert.routing_key   : _handle_key_insert,
     DatabaseKeyLookup.routing_key   : _handle_key_lookup,
     DatabaseKeyDestroy.routing_key  : _handle_key_destroy,
+    DatabaseListMatch.routing_key   : _handle_listmatch,
 }
 
 if __name__ == "__main__":

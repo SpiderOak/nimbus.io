@@ -20,6 +20,8 @@ from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_listmatch import DatabaseListMatch
+from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
@@ -191,6 +193,54 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.total_size, original_total_size
         )
+
+    def test_database_listmatch(self):
+        """test DatabaseListMatch"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_prefix  = "abcdefghijk"
+        message = DatabaseListMatch(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_prefix 
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseListMatch.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(unmarshalled_message.prefix, original_prefix)
+
+    def test_database_listmatch_reply_ok(self):
+        """test DatabaseListMatchReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        original_is_complete = True
+        original_key_list = [str(x) for x in range(1000)]
+        message = DatabaseListMatchReply(
+            original_request_id,
+            original_result,
+            original_is_complete,
+            original_key_list
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseListMatchReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.is_complete, original_is_complete)
+        self.assertEqual(unmarshalled_message.key_list, original_key_list)
 
     def test_archive_key_entire(self):
         """test ArchiveKeyEntire"""

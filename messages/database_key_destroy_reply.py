@@ -21,6 +21,7 @@ class DatabaseKeyDestroyReply(object):
    
     successful = 0
     error_database_failure = 2
+    error_too_old = 2
 
     def __init__(
         self, request_id, result, total_size=0, error_message=""

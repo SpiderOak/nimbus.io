@@ -4,8 +4,14 @@ standard_logging.py
 
 common routines for logging
 """
+import datetime
 import logging
+
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
+
+def format_timestamp(timestamp):
+    """return python float time.time() as a human readable string"""
+    return datetime.datetime.fromtimestamp(timestamp).isoformat()
 
 def initialize_logging(log_path):
     """initialize the log"""

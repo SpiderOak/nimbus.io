@@ -18,6 +18,8 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
+from messages.database_key_destroy import DatabaseKeyDestroy
+from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 
 from unit_tests.util import generate_key, generate_database_content
 
@@ -27,7 +29,8 @@ _repository_path = os.path.join(_test_dir, "repository")
 
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_insert, _handle_key_lookup
+        _database_cache, _handle_key_insert, _handle_key_lookup, \
+        _handle_key_destroy
 
 _reply_routing_header = "test_database_server"
 
@@ -90,6 +93,32 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(
             reply_routing_key, 
             "%s.database_key_lookup_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+
+        return reply
+
+    def _destroy_key(self, avatar_id, key, timestamp):
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        message = DatabaseKeyDestroy(
+            request_id,
+            avatar_id,
+            exchange,
+            _reply_routing_header,
+            key, 
+            timestamp
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_key_destroy(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_key_destroy_reply" % (_reply_routing_header, )
         )
         self.assertEqual(reply.request_id, request_id)
 
@@ -162,6 +191,82 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply.result, 0)
         self.assertTrue(reply.key_found)
         self.assertEqual(reply.database_content, content)
+
+    def test_key_destroy_on_nonexistent_key(self):
+        """test destroying a key that does not exist"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        timestamp = time.time()
+
+        reply = self._destroy_key(avatar_id, key, timestamp)
+
+        # we expect the request to succeed by creating a new tombstone
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.total_size, 0)
+
+    def test_simple_key_destroy(self):
+        """test destroying a key that exists"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        base_timestamp = time.time()
+        content = generate_database_content(base_timestamp)
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        # simple destroy is where the destroy request is newer than
+        # the database content
+        destroy_timestamp = base_timestamp + 1.0
+        reply = self._destroy_key(avatar_id, key, destroy_timestamp)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.total_size, content.total_size)
+
+    def test_old_key_destroy(self):
+        """test sending a destroy request older than the database content"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        base_timestamp = time.time()
+        content = generate_database_content(base_timestamp)
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        destroy_timestamp = base_timestamp - 1.0
+        reply = self._destroy_key(avatar_id, key, destroy_timestamp)
+
+        self.assertEqual(reply.result, DatabaseKeyDestroyReply.error_too_old)
+
+    def test_key_destroy_on_tombstone(self):
+        """test destroying a key that was already destroyed"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        base_timestamp = time.time()
+        content = generate_database_content(base_timestamp)
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        # simple destroy is where the destroy request is newer than
+        # the database content
+        destroy_timestamp = base_timestamp + 1.0
+        reply = self._destroy_key(avatar_id, key, destroy_timestamp)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.total_size, content.total_size)
+
+        # now let's destroy it again
+        destroy_timestamp = base_timestamp + 1.0
+        reply = self._destroy_key(avatar_id, key, destroy_timestamp)
+
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.total_size, 0)
 
 if __name__ == "__main__":
     unittest.main()

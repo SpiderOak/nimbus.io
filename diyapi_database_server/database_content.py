@@ -34,6 +34,20 @@ factory =  namedtuple(
     ]
 )
 
+def create_tombstone(timestamp):
+    """create a 'tombstone' database entry wiht a specified timestamp"""
+    return factory(
+        timestamp = timestamp, 
+        is_tombstone = True, 
+        segment_number = 0, 
+        segment_count = 0,
+        segment_size = 0 ,
+        total_size = 0, 
+        adler32 = 0,
+        md5 = "",
+        file_name = "",
+    )
+
 def marshall(content):
     """return a string of marshalled content"""
     packed_content = struct.pack(

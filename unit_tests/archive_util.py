@@ -22,11 +22,10 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 
-from diyapi_data_writer.diyapi_data_writer_main import \
-        _handle_archive_key_entire, _handle_key_insert_reply
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert
 from diyapi_data_writer.diyapi_data_writer_main import \
+        _handle_archive_key_entire, \
         _handle_key_insert_reply, \
         _handle_archive_key_start, \
         _handle_archive_key_next, \
@@ -34,7 +33,7 @@ from diyapi_data_writer.diyapi_data_writer_main import \
 
 _reply_routing_header = "test_archive"
 
-def archive_small_content(self, avatar_id, key, content):
+def archive_small_content(self, avatar_id, key, content, timestamp=time.time()):
     """
     utility function to push content all the way through the archive process
     This function handles small content: content that can fit in a single
@@ -42,7 +41,6 @@ def archive_small_content(self, avatar_id, key, content):
     """
     request_id = uuid.uuid1().hex
     test_exchange = "reply-exchange"
-    timestamp = time.time()
     segment_number = 3
     adler32 = zlib.adler32(content)
     md5 = hashlib.md5(content).digest()
@@ -97,11 +95,16 @@ def archive_small_content(self, avatar_id, key, content):
     self.assertEqual(reply.previous_size, 0)
 
 def archive_large_content(
-    self, avatar_id, key, segment_size, total_size, content_list
+    self, 
+    avatar_id, 
+    key, 
+    segment_size, 
+    total_size, 
+    content_list,
+    timestamp=time.time()
 ):
     request_id = uuid.uuid1().hex
     test_exchange = "reply-exchange"
-    timestamp = time.time()
     segment_number = 3
 
     # the adler32 and md5 hashes should be of the original pre-zefec
@@ -119,6 +122,7 @@ def archive_large_content(
         key, 
         timestamp,
         sequence,
+
         segment_number,
         segment_size,
         content_list[0]

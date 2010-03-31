@@ -18,10 +18,13 @@ class DestroyKeyReply(object):
     """AMQP message reporting results of DestroyKey"""
    
     routing_tag = "destroy_key_reply"
-
+    
     successful = 0
     error_exception = 2
-    error_timeout_waiting_key_destroy = 3
+    error_invalid_duplicate = 3
+    error_too_old = 4
+    error_database_error = 5
+    error_timeout_waiting_key_destroy = 6
 
     def __init__(
         self, request_id, result, total_size=0, error_message=""

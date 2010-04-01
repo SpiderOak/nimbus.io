@@ -42,6 +42,11 @@ def _create_bindings(channel, queue_name, routing_key_binding):
         routing_key=routing_key_binding 
     )
 
+    channel.queue_bind(
+        queue=queue_name,
+        exchange=amqp_connection.broadcast_exchange_name
+    )
+
 def _process_outgoing_traffic(channel, outgoing_queue):
     log = logging.getLogger("_process_outgoing_traffic")
     while True:
@@ -75,7 +80,7 @@ def _process_message(state, outgoing_queue, dispatch_table, message):
 
     routing_key = message.delivery_info["routing_key"]
     if not routing_key in dispatch_table:
-        log.error("unknown routing key '%s'" % (routing_key, ))
+        log.debug("skipping unknown routing key '%s'" % (routing_key, ))
         return
 
     outgoing = dispatch_table[routing_key](state, message.body)

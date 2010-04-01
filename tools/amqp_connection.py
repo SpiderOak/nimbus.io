@@ -19,6 +19,7 @@ _socket_connect_timeout = float(
 )
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 local_exchange_name = "spideroak_diyapi_%s" % (_local_node_name, )
+broadcast_exchange_name = "spideroak_diyapi_broadcast"
 
 def open_connection():
     """

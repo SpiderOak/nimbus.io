@@ -37,6 +37,7 @@ from messages.retrieve_key_final import RetrieveKeyFinal
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
+from messages.process_status import ProcessStatus
 
 from unit_tests.util import random_string
 
@@ -622,6 +623,25 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(unmarshalled_message.total_size, original_total_size)
+
+    def test_process_status(self):
+        """test ProcessStatus"""
+        timestamp = time.time()
+        exchange = "test-exchange"
+        routing_header = "test-routing-header"
+        status = "test_status"
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            status
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = ProcessStatus.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.exchange, exchange)
+        self.assertEqual(unmarshalled_message.routing_header, routing_header)
+        self.assertEqual(unmarshalled_message.status, status)
 
 if __name__ == "__main__":
     unittest.main()

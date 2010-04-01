@@ -18,12 +18,18 @@ import bsddb3.db
 import logging
 import os
 import sys
+import time
 
+from tools import amqp_connection
 from tools.LRUCache import LRUCache
 from tools import message_driven_process as process
 from tools import repository
 from tools.standard_logging import format_timestamp 
+
 from diyapi_database_server import database_content
+
+from messages.process_status import ProcessStatus
+
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
@@ -37,7 +43,8 @@ _log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
 _queue_name = "database-server-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
-_routing_key_binding = "database_server.*"
+_routing_header = "database_server"
+_routing_key_binding = ".".join([_routing_header, "*"])
 _max_cached_databases = 10
 _database_cache = "open-database-cache"
 _max_listmatch_size = 1024 * 1024 * 1024
@@ -328,12 +335,50 @@ def _handle_listmatch(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]\
 
+def _handle_process_status(state, message_body):
+    log = logging.getLogger("_handle_process_status")
+    message = ProcessStatus.unmarshall(message_body)
+    log.debug("%s %s %s %s" % (
+        message.exchange,
+        message.routing_header,
+        message.status,
+        format_timestamp(message.timestamp),
+    ))
+    return []
+
 _dispatch_table = {
     DatabaseKeyInsert.routing_key   : _handle_key_insert,
     DatabaseKeyLookup.routing_key   : _handle_key_lookup,
     DatabaseKeyDestroy.routing_key  : _handle_key_destroy,
     DatabaseListMatch.routing_key   : _handle_listmatch,
+    ProcessStatus.routing_key       : _handle_process_status,
 }
+
+def _startup(halt_event, state):
+    message = ProcessStatus(
+        time.time(),
+        amqp_connection.local_exchange_name,
+        _routing_header,
+        ProcessStatus.status_startup
+    )
+
+    exchange = amqp_connection.broadcast_exchange_name
+    routing_key = ProcessStatus.routing_key
+
+    return [(exchange, routing_key, message, )]
+
+def _shutdown(state):
+    message = ProcessStatus(
+        time.time(),
+        amqp_connection.local_exchange_name,
+        _routing_header,
+        ProcessStatus.status_shutdown
+    )
+
+    exchange = amqp_connection.broadcast_exchange_name
+    routing_key = ProcessStatus.routing_key
+
+    return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
     state = {_database_cache : LRUCache(_max_cached_databases)}
@@ -343,7 +388,10 @@ if __name__ == "__main__":
             _queue_name, 
             _routing_key_binding, 
             _dispatch_table, 
-            state
+            state,
+            pre_loop_function=_startup,
+            in_loop_function=None,
+            post_loop_function=_shutdown
         )
     )
 

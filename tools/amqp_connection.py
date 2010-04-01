@@ -43,6 +43,13 @@ def verify_exchange(channel):
         durable=True,
         auto_delete=False
     )
+    channel.exchange_declare(
+        exchange=broadcast_exchange_name, 
+        type="fanout",
+        passive=True,
+        durable=True,
+        auto_delete=False
+    )
 
 def create_exchange(channel):
     """
@@ -52,6 +59,13 @@ def create_exchange(channel):
     channel.exchange_declare(
         exchange=local_exchange_name, 
         type="topic",
+        passive=False,
+        durable=True,
+        auto_delete=False
+    )
+    channel.exchange_declare(
+        exchange=broadcast_exchange_name, 
+        type="fanout",
         passive=False,
         durable=True,
         auto_delete=False

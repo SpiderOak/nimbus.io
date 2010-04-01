@@ -14,9 +14,12 @@ import sys
 import time
 
 from tools import amqp_connection
+from tools.standard_logging import format_timestamp
 from tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
 from tools import message_driven_process as process
 from tools import repository
+
+from messages.process_status import ProcessStatus
 
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
@@ -31,14 +34,14 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
 _queue_name = "data-reader-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
-_routing_key_binding = "data_reader.*"
-_reply_routing_header = "data_reader"
+_routing_header = "data_reader"
+_routing_key_binding = ".".join([_routing_header, "*"])
 _key_lookup_reply_routing_key = ".".join([
-    _reply_routing_header,
+    _routing_header,
     DatabaseKeyLookupReply.routing_tag,
 ])
 _low_traffic_routing_key = ".".join([
-    _reply_routing_header, 
+    _routing_header, 
     low_traffic_routing_tag,
 ])
 _key_lookup_timeout = 60.0
@@ -144,7 +147,7 @@ def _handle_retrieve_key_start(state, message_body):
         message.request_id,
         message.avatar_id,
         local_exchange,
-        _reply_routing_header,
+        _routing_header,
         message.key 
     )
     return [(local_exchange, database_request.routing_key, database_request, )]
@@ -294,6 +297,17 @@ def _handle_retrieve_key_final(state, message_body):
 
     return [(reply_exchange, reply_routing_key, reply, )]      
 
+def _handle_process_status(state, message_body):
+    log = logging.getLogger("_handle_process_status")
+    message = ProcessStatus.unmarshall(message_body)
+    log.debug("%s %s %s %s" % (
+        message.exchange,
+        message.routing_header,
+        message.status,
+        format_timestamp(message.timestamp),
+    ))
+    return []
+
 def _handle_key_lookup_reply(state, message_body):
     log = logging.getLogger("_handle_key_lookup_reply")
     message = DatabaseKeyLookupReply.unmarshall(message_body)
@@ -385,16 +399,28 @@ _dispatch_table = {
     RetrieveKeyStart.routing_key    : _handle_retrieve_key_start,
     RetrieveKeyNext.routing_key     : _handle_retrieve_key_next,
     RetrieveKeyFinal.routing_key    : _handle_retrieve_key_final,
+    ProcessStatus.routing_key       : _handle_process_status,
     _key_lookup_reply_routing_key   : _handle_key_lookup_reply,
     _low_traffic_routing_key        : _handle_low_traffic,
 }
 
-def _start_low_traffic_thread(halt_event, state):
+def _startup(halt_event, state):
     state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, _reply_routing_header
+        halt_event, _routing_header
     )
     state["low_traffic_thread"].start()
-    return []
+
+    message = ProcessStatus(
+        time.time(),
+        amqp_connection.local_exchange_name,
+        _routing_header,
+        ProcessStatus.status_startup
+    )
+
+    exchange = amqp_connection.broadcast_exchange_name
+    routing_key = ProcessStatus.routing_key
+
+    return [(exchange, routing_key, message, )]
 
 def _is_retrieve_state((_, value, )):
     return value.__class__.__name__ == "RetrieveState"
@@ -422,9 +448,20 @@ def _check_message_timeout(state):
 
     return return_list
 
-def _stop_low_traffic_thread(state):
+def _shutdown(state):
     state["low_traffic_thread"].join()
-    return []
+
+    message = ProcessStatus(
+        time.time(),
+        amqp_connection.local_exchange_name,
+        _routing_header,
+        ProcessStatus.status_shutdown
+    )
+
+    exchange = amqp_connection.broadcast_exchange_name
+    routing_key = ProcessStatus.routing_key
+
+    return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
     state = dict()
@@ -435,9 +472,9 @@ if __name__ == "__main__":
             _routing_key_binding, 
             _dispatch_table, 
             state,
-            pre_loop_function=_start_low_traffic_thread,
+            pre_loop_function=_startup,
             in_loop_function=_check_message_timeout,
-            post_loop_function=_stop_low_traffic_thread
+            post_loop_function=_shutdown
         )
     )
 

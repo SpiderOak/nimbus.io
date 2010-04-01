@@ -16,7 +16,10 @@ class ProcessStatus(object):
     """
     AMQP message to broadcast a process's status to the world
     """
-    routing_key = "process_startup"
+    status_startup = "startup"
+    status_shutdown = "shutdown"
+
+    routing_key = "process_status"
 
     def __init__(self, timestamp, exchange, routing_header, status):
         self.timestamp = timestamp

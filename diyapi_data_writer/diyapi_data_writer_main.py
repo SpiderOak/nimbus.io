@@ -19,11 +19,15 @@ import sys
 import time
 
 from tools import amqp_connection
+from tools.standard_logging import format_timestamp
 from tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
 from tools import message_driven_process as process
 from tools import repository
 
 from diyapi_database_server import database_content
+
+from messages.process_status import ProcessStatus
+
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply
@@ -43,18 +47,18 @@ _log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
 _queue_name = "data-writer-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
-_routing_key_binding = "data_writer.*"
-_reply_routing_header = "data_writer"
+_routing_header = "data_writer"
+_routing_key_binding = ".".join([_routing_header, "*"])
 _key_insert_reply_routing_key = ".".join([
-    _reply_routing_header,
+    _routing_header,
     DatabaseKeyInsertReply.routing_tag,
 ])
 _key_destroy_reply_routing_key = ".".join([
-    _reply_routing_header,
+    _routing_header,
     DatabaseKeyDestroyReply.routing_tag,
 ])
 _low_traffic_routing_key = ".".join([
-    _reply_routing_header, 
+    _routing_header, 
     low_traffic_routing_tag,
 ])
 _key_insert_timeout = 60.0
@@ -229,7 +233,7 @@ def _handle_archive_key_entire(state, message_body):
         message.request_id,
         message.avatar_id,
         local_exchange,
-        _reply_routing_header,
+        _routing_header,
         message.key, 
         database_entry
     )
@@ -450,7 +454,7 @@ def _handle_archive_key_final(state, message_body):
         message.request_id,
         archive_state.avatar_id,
         local_exchange,
-        _reply_routing_header,
+        _routing_header,
         archive_state.key, 
         database_entry
     )
@@ -500,11 +504,22 @@ def _handle_destroy_key(state, message_body):
         message.request_id,
         message.avatar_id,
         local_exchange,
-        _reply_routing_header,
+        _routing_header,
         message.key, 
         message.timestamp
     )
     return [(local_exchange, database_request.routing_key, database_request, )]
+
+def _handle_process_status(state, message_body):
+    log = logging.getLogger("_handle_process_status")
+    message = ProcessStatus.unmarshall(message_body)
+    log.debug("%s %s %s %s" % (
+        message.exchange,
+        message.routing_header,
+        message.status,
+        format_timestamp(message.timestamp),
+    ))
+    return []
 
 def _handle_key_insert_reply(state, message_body):
     log = logging.getLogger("_handle_key_insert_reply")
@@ -676,17 +691,29 @@ _dispatch_table = {
     ArchiveKeyNext.routing_key      : _handle_archive_key_next,
     ArchiveKeyFinal.routing_key     : _handle_archive_key_final,
     DestroyKey.routing_key          : _handle_destroy_key,
+    ProcessStatus.routing_key       : _handle_process_status,
     _key_insert_reply_routing_key   : _handle_key_insert_reply,
     _key_destroy_reply_routing_key  : _handle_key_destroy_reply,
     _low_traffic_routing_key        : _handle_low_traffic,
 }
 
-def _start_low_traffic_thread(halt_event, state):
+def _startup(halt_event, state):
     state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, _reply_routing_header
+        halt_event, _routing_header
     )
     state["low_traffic_thread"].start()
-    return []
+
+    message = ProcessStatus(
+        time.time(),
+        amqp_connection.local_exchange_name,
+        _routing_header,
+        ProcessStatus.status_startup
+    )
+
+    exchange = amqp_connection.broadcast_exchange_name
+    routing_key = ProcessStatus.routing_key
+
+    return [(exchange, routing_key, message, )]
 
 def _is_archive_state((_, value, )):
     return value.__class__.__name__ == "ArchiveState"
@@ -714,9 +741,20 @@ def _check_message_timeout(state):
 
     return return_list
 
-def _stop_low_traffic_thread(state):
+def _shutdown(state):
     state["low_traffic_thread"].join()
-    return []
+
+    message = ProcessStatus(
+        time.time(),
+        amqp_connection.local_exchange_name,
+        _routing_header,
+        ProcessStatus.status_shutdown
+    )
+
+    exchange = amqp_connection.broadcast_exchange_name
+    routing_key = ProcessStatus.routing_key
+
+    return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
     state = {"expecting-message" : dict()}
@@ -727,9 +765,9 @@ if __name__ == "__main__":
             _routing_key_binding, 
             _dispatch_table, 
             state,
-            pre_loop_function=_start_low_traffic_thread,
+            pre_loop_function=_startup,
             in_loop_function=_check_message_timeout,
-            post_loop_function=_stop_low_traffic_thread
+            post_loop_function=_shutdown
         )
     )
 

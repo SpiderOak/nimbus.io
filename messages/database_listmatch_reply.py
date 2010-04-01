@@ -27,13 +27,15 @@ class DatabaseListMatchReply(object):
         self, 
         request_id,
         result,
-        is_complete,
-        key_list,
+        is_complete=True,
+        key_list=[],
+        error_message=""
     ):
         self.request_id = request_id
         self.result = result
         self.is_complete = is_complete
         self.key_list = key_list
+        self.error_message=error_message
 
     @property
     def error(self):
@@ -52,11 +54,20 @@ class DatabaseListMatchReply(object):
             (entry, pos) = unmarshall_string(data, pos)
             key_list.append(entry)
 
+        if result == 0:
+            return DatabaseListMatchReply(
+                request_id, 
+                result,
+                is_complete, 
+                key_list
+            )
+
+        (error_message, pos) = unmarshall_string(data, pos)
+
         return DatabaseListMatchReply(
             request_id, 
             result,
-            is_complete, 
-            key_list
+            error_message
         )
 
     def marshall(self):
@@ -69,6 +80,7 @@ class DatabaseListMatchReply(object):
             len(self.key_list)
         )
         packed_keys = "".join([marshall_string(key) for key in self.key_list])
-        return "".join([header, packed_keys, ])
+        packed_error_message = marshall_string(self.error_message)
+        return "".join([header, packed_keys, packed_error_message, ])
 
 

@@ -296,7 +296,7 @@ class TestDatabaseServer(unittest.TestCase):
             "%s.database_listmatch_reply" % (_reply_routing_header, )
         )
         self.assertEqual(reply.request_id, request_id)
-        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.is_complete, True)
         self.assertEqual(reply.key_list, [])
 
@@ -337,7 +337,7 @@ class TestDatabaseServer(unittest.TestCase):
             "%s.database_listmatch_reply" % (_reply_routing_header, )
         )
         self.assertEqual(reply.request_id, request_id)
-        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.is_complete, True)
         self.assertEqual(reply.key_list, key_list)
 

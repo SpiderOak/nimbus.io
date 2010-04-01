@@ -292,9 +292,23 @@ def _handle_listmatch(state, message_body):
         [message.reply_routing_header, ".", DatabaseListMatchReply.routing_tag]
     )
 
+    keys = list()
+    key_message_size = 0
+    is_complete = True
     try:
         database = _open_database(state, message.avatar_id)
-        all_keys = database.keys()
+        cursor = database.cursor()
+        result = cursor.set_range(message.prefix)
+        while result is not None:
+            (key, _, ) = result
+            if not key.startswith(message.prefix):
+                break
+            key_message_size += len(key)
+            if key_message_size >  _max_listmatch_size:
+                is_complete = False
+                break
+            keys.append(key)
+            result = cursor.next()
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.prefix, ))
         reply = DatabaseListMatchReply(
@@ -305,17 +319,6 @@ def _handle_listmatch(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )]
     finally:
         database.close()
-
-    keys = list()
-    key_message_size = 0
-    is_complete = True
-    for key in all_keys:
-        if key.startswith(message.prefix):
-            key_message_size += len(key)
-            if key_message_size >  _max_listmatch_size:
-                is_complete = False
-                break
-            keys.append(key)
 
     reply = DatabaseListMatchReply(
         message.request_id,

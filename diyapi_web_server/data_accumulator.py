@@ -7,22 +7,26 @@ A class that splits an uploaded file into slices.
 
 
 class DataAccumulator(object):
-    """Reads data from a file-like object and splits it into slices."""
+    """Iterator that reads data from a file-like object and yields slices."""
 
-    def __init__(self, file_obj, slice_size, listener):
+    def __init__(self, file_obj, slice_size):
         self.file_obj = file_obj
         self.slice_size = slice_size
-        self.listener = listener
+        self.buf = ''
 
-    def accumulate(self):
-        buf = ''
-        while True:
+    def __iter__(self):
+        return self
+
+    def next(self):
+        while len(self.buf) < self.slice_size:
             data = self.file_obj.read(self.slice_size)
             if not data:
-                if buf:
-                    self.listener.handle_slice(buf)
-                return
-            buf += data
-            if len(buf) >= self.slice_size:
-                self.listener.handle_slice(buf[:self.slice_size])
-                buf = buf[self.slice_size:]
+                if self.buf:
+                    data = self.buf
+                    self.buf = ''
+                    return data
+                raise StopIteration()
+            self.buf += data
+        data = self.buf[:self.slice_size]
+        self.buf = self.buf[self.slice_size:]
+        return data

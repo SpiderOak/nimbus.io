@@ -15,14 +15,6 @@ from diyapi_web_server.data_accumulator import DataAccumulator
 SLICE_SIZE = 1024 * 1024
 
 
-class FakeAccumulatorListener(object):
-    def __init__(self):
-        self.data = []
-
-    def handle_slice(self, data):
-        self.data.append(data)
-
-
 class TestDataAccumulator(unittest.TestCase):
     """test diyapi_web_server/data_accumulator.py"""
 
@@ -31,10 +23,9 @@ class TestDataAccumulator(unittest.TestCase):
                 random_string(SLICE_SIZE),
                 'extra data at the end']
         f = StringIO(''.join(data))
-        listener = FakeAccumulatorListener()
-        accumulator = DataAccumulator(f, SLICE_SIZE, listener)
-        accumulator.accumulate()
-        self.assertEqual(listener.data, data)
+        accumulator = DataAccumulator(f, SLICE_SIZE)
+        yielded_data = list(accumulator)
+        self.assertEqual(yielded_data, data)
 
 
 if __name__ == "__main__":

@@ -4,22 +4,16 @@ application.py
 
 The diyapi wsgi application
 """
+import time
+
 from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from diyapi_web_server.data_accumulator import DataAccumulator
+from diyapi_web_server.amqp_data_archiver import AMQPDataArchiver
 
 
 SLICE_SIZE = 1024 * 1024    # 1MB
-
-
-class FakeDataDispatcher(object):
-    def __init__(self, _):
-        self.data = []
-
-    def handle_slice(self, data):
-        self.data.append(data)
 
 
 class Application(object):
@@ -28,7 +22,9 @@ class Application(object):
 
     @wsgify
     def __call__(self, req):
-        dispatcher = FakeDataDispatcher(self.amqp_handler)
-        accumulator = DataAccumulator(req.body_file, SLICE_SIZE, dispatcher)
-        accumulator.accumulate()
+        timestamp = time.time()
+        avatar_id = 1001
+        key = req.path.lstrip('/')
+        archiver = AMQPDataArchiver(self.amqp_handler)
+        archiver.archive_entire(avatar_id, key, req.body, timestamp)
         return Response('OK')

@@ -10,7 +10,8 @@ import time
 from diyapi_database_server import database_content
 
 def random_string(size):
-    return "".join([chr(random.randrange(255)) for _ in xrange(size)])
+    with open('/dev/urandom', 'rb') as f:
+        return f.read(size)
 
 def generate_key():
     """generate a unique key for data storage"""

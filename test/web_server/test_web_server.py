@@ -8,6 +8,8 @@ test diyapi_web_server/diyapi_web_server_main.py
 from diyapi_web_server import WebServer
 
 import os
+import re
+import sys
 import shutil
 import logging
 import unittest
@@ -39,12 +41,31 @@ class TestWebServer(unittest.TestCase):
         self.server.stop()
 
     def test_upload_small(self):
-        content = random_string(64 * 1024) 
+        content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = urllib2.urlopen('http://127.0.0.1:8088/' + key,
                                  content).read()
-        self.assertEqual(result, 'POST /%s (%d)' % (key, len(content)))
+        self.assertEqual(result, 'OK')
+
+
+def _load_unit_tests(path):
+    dotted_path = '.'.join(path.split('/'))
+    _test_re = re.compile("test_.+?\.py$", re.IGNORECASE)
+    _filename_to_module = lambda f: ('%s.%s' % (dotted_path,
+                                                os.path.splitext(f)[0]))
+    _load = unittest.defaultTestLoader.loadTestsFromModule
+    files = os.listdir(path)
+    files = filter(_test_re.search, files)
+    module_names = map(_filename_to_module, files)
+    for name in module_names:
+        __import__(name)
+    modules = [sys.modules[name] for name in module_names]
+    return map(_load, modules)
 
 
 if __name__ == "__main__":
-    unittest.main()
+    tests = _load_unit_tests('unit_tests/web_server')
+    tests.append(
+        unittest.defaultTestLoader.loadTestsFromTestCase(TestWebServer))
+    test_suite = unittest.TestSuite(tests)
+    unittest.TextTestRunner(verbosity=2).run(test_suite)

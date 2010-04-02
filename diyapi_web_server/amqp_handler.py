@@ -1,3 +1,9 @@
+# -*- coding: utf-8 -*-
+"""
+amqp_handler.py
+
+Handles AMQP messages.
+"""
 import errno
 import logging
 from socket import error as socket_error

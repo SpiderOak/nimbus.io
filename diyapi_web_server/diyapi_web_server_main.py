@@ -17,25 +17,21 @@ from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
 
 
-class WSGIServer(wsgi.WSGIServer):
-    def __init__(self):
-        super(WSGIServer, self).__init__(('', 8088), Application())
-
-
 class WebServer(object):
     def __init__(self):
-        self.wsgi_server = WSGIServer()
         self.amqp_handler = AMQPHandler()
+        self.application = Application(self.amqp_handler)
+        self.wsgi_server = wsgi.WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
 
     def start(self):
         self._stopped_event.clear()
-        self.wsgi_server.start()
         self.amqp_handler.start()
+        self.wsgi_server.start()
 
     def stop(self):
-        self.amqp_handler.stop()
         self.wsgi_server.stop()
+        self.amqp_handler.stop()
         self._stopped_event.set()
 
     def serve_forever(self):

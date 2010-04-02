@@ -11,6 +11,7 @@ monkey.patch_all()
 import sys
 
 from gevent import wsgi
+from gevent.event import Event
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
@@ -25,18 +26,25 @@ class WebServer(object):
     def __init__(self):
         self.wsgi_server = WSGIServer()
         self.amqp_handler = AMQPHandler()
+        self._stopped_event = Event()
 
     def start(self):
+        self._stopped_event.clear()
         self.wsgi_server.start()
         self.amqp_handler.start()
 
     def stop(self):
         self.amqp_handler.stop()
         self.wsgi_server.stop()
+        self._stopped_event.set()
+
+    def serve_forever(self):
+        self.start()
+        self._stopped_event.wait()
 
 
 def main():
-    make_wsgi_server().serve_forever()
+    WebServer().serve_forever()
     return 0
 
 

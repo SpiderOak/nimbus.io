@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-data_accumulator.py
+data_slicer.py
 
 A class that splits an uploaded file into slices.
 """
 
 
-class DataAccumulator(object):
+class DataSlicer(object):
     """Iterator that reads data from a file-like object and yields slices."""
 
     def __init__(self, file_obj, slice_size):

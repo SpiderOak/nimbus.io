@@ -2,7 +2,7 @@
 """
 amqp_handler.py
 
-Handles AMQP messages.
+A class that facilitates sending AMQP messages and receiving replies.
 """
 import errno
 import logging
@@ -39,7 +39,10 @@ class AMQPHandler(object):
         self.routing_key_binding = _routing_key_binding
         self.reply_queues = WeakValueDictionary()
 
-    def send_message(self, message):
+    def send_message(self, message, exchange=None):
+        if exchange is None:
+            exchange = self.exchange
+
         try:
             assert message.request_id not in self.reply_queues
             reply_queue = self.reply_queues[message.request_id] = Queue()
@@ -48,7 +51,7 @@ class AMQPHandler(object):
 
         self.channel.basic_publish(
             amqp.Message(message.marshall()),
-            exchange=self.exchange,
+            exchange=exchange,
             routing_key=message.routing_key,
             mandatory=True
         )

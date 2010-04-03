@@ -57,12 +57,35 @@ def _open_database(state, avatar_id):
     else:
         database_path = repository.content_database_path(avatar_id)
         database = bsddb3.db.DB()
+        database.set_flags(bsddb3.db.DB_DUPSORT)
         database.open(
-            database_path, dbtype=bsddb3.db.DB_BTREE, flags=bsddb3.db.DB_CREATE
+            database_path, 
+            dbtype=bsddb3.db.DB_BTREE, 
+            flags=bsddb3.db.DB_CREATE 
         )
         state[_database_cache][avatar_id] = database
 
     return database
+
+def _get_content(database, search_key, search_segment_number):
+    """
+    get a a database entry matching both key and segment number
+    return None on failure
+    """
+    cursor = database.cursor()
+    try:
+        result = cursor.set(search_key)
+        if result is None:
+            return None
+        key, content = result
+        while database_content.segment_number(content) != search_segment_number:
+            result = cursor.next_dup()
+            if result is None:
+                return None
+            _, content = result
+        return content
+    finally:
+        cursor.close()
 
 def _handle_key_insert(state, message_body):
     log = logging.getLogger("_handle_key_insert")
@@ -76,7 +99,9 @@ def _handle_key_insert(state, message_body):
 
     try:
         database = _open_database(state, message.avatar_id)
-        packed_existing_entry = database.get(message.key)
+        packed_existing_entry = _get_content(
+            database, message.key, message.database_content.segment_number
+        )
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
         database.close()
@@ -88,7 +113,9 @@ def _handle_key_insert(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )]
         
     previous_size = 0L
-    if packed_existing_entry is not None:
+    if packed_existing_entry is not None \
+    and database_content.segment_number(packed_existing_entry) == \
+        message.database_content.segment_number:
         (existing_entry, _) = database_content.unmarshall(
             packed_existing_entry, 0
         )
@@ -113,6 +140,8 @@ def _handle_key_insert(state, message_body):
                 existing_entry.total_size,
             ))
             previous_size = existing_entry.total_size
+
+        database.delete(message.key)
 
     try:
         database.put(
@@ -148,7 +177,9 @@ def _handle_key_lookup(state, message_body):
 
     try:
         database = _open_database(state, message.avatar_id)
-        packed_existing_entry = database.get(message.key)
+        packed_existing_entry = _get_content(
+            database, message.key, message.segment_number
+        )
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
         reply = DatabaseKeyLookupReply(
@@ -161,8 +192,8 @@ def _handle_key_lookup(state, message_body):
         database.close()
 
     if packed_existing_entry is None:
-        error_string = "unknown key: %s, %s" % (
-            message.avatar_id, message.key, 
+        error_string = "unknown key: %s, %s %s" % (
+            message.avatar_id, message.key, message.segment_number
         )
         log.warn(error_string)
         reply = DatabaseKeyLookupReply(
@@ -192,7 +223,9 @@ def _handle_key_destroy(state, message_body):
 
     try:
         database = _open_database(state, message.avatar_id)
-        packed_existing_entry = database.get(message.key)
+        packed_existing_entry = _get_content(
+            database, message.key, message.segment_number
+        )
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
         reply = DatabaseKeyDestroyReply(
@@ -216,6 +249,7 @@ def _handle_key_destroy(state, message_body):
         # if the entry is already a tombstone, our mission is accomplished
         # but we want to make sure the tombstone has the newest date
         if existing_entry.is_tombstone:
+            database.delete(message.key)
             content = existing_entry
             if message.timestamp > content.timestamp:
                 log.debug("%s %s updating tombstone from %s to %s" % (
@@ -235,6 +269,7 @@ def _handle_key_destroy(state, message_body):
         # if the timestamp on this message is newer than the existing entry
         # then we can overwrite
         elif message.timestamp > existing_entry.timestamp:
+            database.delete(message.key)
             log.debug("%s %s creating tombstone %s total_size = %s" % (
                 message.avatar_id, 
                 message.key, 

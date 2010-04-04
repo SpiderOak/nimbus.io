@@ -35,10 +35,6 @@ class DatabaseKeyLookupReply(object):
     def error(self):
         return self.result != DatabaseKeyLookupReply.successful
 
-    @property
-    def key_found(self):
-        return database_content != ""
-
     @classmethod
     def unmarshall(cls, data):
         """return a DatabaseKeyLookupReply message"""

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-database_key_lookup.py
+database_key_list.py
 
-DatabaseKeyLookup message
+DatabaseKeyList message
 """
 import struct
 
@@ -10,14 +10,13 @@ from tools.marshalling import marshall_string, unmarshall_string
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
-# B   - segment_number
-_header_format = "!32sQB"
+_header_format = "!32sQ"
 _header_size = struct.calcsize(_header_format)
 
-class DatabaseKeyLookup(object):
-    """AMQP message to lookup a specfic entry for a key and segment number"""
+class DatabaseKeyList(object):
+    """AMQP message list all entries in the database for a key"""
 
-    routing_key = "database_server.key_lookup"
+    routing_key = "database_server.key_list"
 
     def __init__(
         self, 
@@ -25,34 +24,31 @@ class DatabaseKeyLookup(object):
         avatar_id, 
         reply_exchange, 
         reply_routing_header, 
-        key,
-        segment_number
+        key
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
         self.key = key
-        self.segment_number = segment_number
 
     @classmethod
     def unmarshall(cls, data):
-        """return a DatabaseKeyLookup message"""
+        """return a DatabaseKeyList message"""
         pos = 0
-        (request_id, avatar_id, segment_number) = struct.unpack(
+        (request_id, avatar_id) = struct.unpack(
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
         (reply_exchange, pos) = unmarshall_string(data, pos)
         (reply_routing_header, pos) = unmarshall_string(data, pos)
         (key, pos) = unmarshall_string(data, pos)
-        return DatabaseKeyLookup(
+        return DatabaseKeyList(
             request_id, 
             avatar_id,
             reply_exchange, 
             reply_routing_header, 
-            key,
-            segment_number
+            key
         )
 
     def marshall(self):
@@ -60,8 +56,7 @@ class DatabaseKeyLookup(object):
         header = struct.pack(
             _header_format, 
             self.request_id, 
-            self.avatar_id, 
-            self.segment_number & 0xFF
+            self.avatar_id 
         )
         packed_reply_exchange = marshall_string(self.reply_exchange)
         packed_reply_routing_header = marshall_string(self.reply_routing_header)

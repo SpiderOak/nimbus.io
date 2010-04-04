@@ -34,6 +34,8 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
+from messages.database_key_list import DatabaseKeyList
+from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 from messages.database_listmatch import DatabaseListMatch
@@ -84,6 +86,24 @@ def _get_content(database, search_key, search_segment_number):
                 return None
             _, content = result
         return content
+    finally:
+        cursor.close()
+
+def _list_content(database, search_key):
+    """
+    get all database entry matching key (multiple segment numbers)
+    return [] on failure
+    """
+    result_list = list()
+    cursor = database.cursor()
+    try:
+        result = cursor.set(search_key)
+        while result is not None:
+            result_key, content = result
+            assert result_key == search_key
+            result_list.append(content)
+            result = cursor.next_dup()
+        return result_list
     finally:
         cursor.close()
 
@@ -214,6 +234,52 @@ def _handle_key_lookup(state, message_body):
         message.request_id,
         DatabaseKeyLookupReply.successful,
         database_content=content
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
+def _handle_key_list(state, message_body):
+    log = logging.getLogger("_handle_key_list")
+    message = DatabaseKeyList.unmarshall(message_body)
+    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", DatabaseKeyListReply.routing_tag]
+    )
+
+    try:
+        database = _open_database(state, message.avatar_id)
+        packed_content_list = _list_content(database, message.key)
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        reply = DatabaseKeyListReply(
+            message.request_id,
+            DatabaseKeyListReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    if len(packed_content_list) == 0:
+        error_string = "unknown key: %s, %s" % (
+            message.avatar_id, message.key
+        )
+        log.warn(error_string)
+        reply = DatabaseKeyListReply(
+            message.request_id,
+            DatabaseKeyListReply.error_unknown_key,
+            error_message=error_string
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    content_list = []
+    for packed_entry in packed_content_list:
+        (content, _) = database_content.unmarshall(packed_entry, 0)
+        content_list.append(content)
+
+    reply = DatabaseKeyListReply(
+        message.request_id,
+        DatabaseKeyListReply.successful,
+        content_list=content_list
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
@@ -388,6 +454,7 @@ def _handle_process_status(state, message_body):
 _dispatch_table = {
     DatabaseKeyInsert.routing_key   : _handle_key_insert,
     DatabaseKeyLookup.routing_key   : _handle_key_lookup,
+    DatabaseKeyList.routing_key     : _handle_key_list,
     DatabaseKeyDestroy.routing_key  : _handle_key_destroy,
     DatabaseListMatch.routing_key   : _handle_listmatch,
     ProcessStatus.routing_key       : _handle_process_status,

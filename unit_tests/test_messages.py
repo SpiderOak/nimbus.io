@@ -18,6 +18,8 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
+from messages.database_key_list import DatabaseKeyList
+from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 from messages.database_listmatch import DatabaseListMatch
@@ -143,9 +145,56 @@ class TestMessages(unittest.TestCase):
             marshalled_message
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertTrue(unmarshalled_message.key_found)
         self.assertEqual(
             unmarshalled_message.database_content, original_content
+        )
+
+    def test_database_key_list(self):
+        """test DatabaseKeyList"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_key  = "abcdefghijk"
+        message = DatabaseKeyList(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_key 
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseKeyList.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+
+    def test_database_key_list_reply_ok(self):
+        """test DatabaseKeyListReply"""
+        content_list = [
+            generate_database_content(segment_number=n) for n in range(3)
+        ]
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        message = DatabaseKeyListReply(
+            original_request_id,
+            0,
+            content_list
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseKeyListReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(
+            unmarshalled_message.content_list, content_list
         )
 
     def test_database_key_destroy(self):

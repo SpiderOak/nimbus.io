@@ -92,7 +92,6 @@ class TestDataReader(unittest.TestCase):
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply.request_id, request_id)
         self.assertEqual(reply.result, 0)
-        self.assertTrue(reply.key_found)
 
         # pass the database server reply back to data_reader
         # we should get a reply we can send to the web api 

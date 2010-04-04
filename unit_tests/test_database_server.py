@@ -18,6 +18,8 @@ from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
 from messages.database_key_lookup_reply import DatabaseKeyLookupReply
+from messages.database_key_list import DatabaseKeyList
+from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 from messages.database_listmatch import DatabaseListMatch
@@ -32,7 +34,7 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup, \
-        _handle_key_destroy, _handle_listmatch
+        _handle_key_list, _handle_key_destroy, _handle_listmatch
 
 _reply_routing_header = "test_database_server"
 
@@ -96,6 +98,31 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(
             reply_routing_key, 
             "%s.database_key_lookup_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+
+        return reply
+
+    def _list_key(self, avatar_id, key):
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        message = DatabaseKeyList(
+            request_id,
+            avatar_id,
+            exchange,
+            _reply_routing_header,
+            key
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_key_list(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_key_list_reply" % (_reply_routing_header, )
         )
         self.assertEqual(reply.request_id, request_id)
 
@@ -298,7 +325,6 @@ class TestDatabaseServer(unittest.TestCase):
         reply = self._lookup_key(avatar_id, key, segment_number)
 
         self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertTrue(reply.key_found)
         self.assertEqual(reply.database_content, content)
 
     def test_duplicate_key_lookup(self):
@@ -322,14 +348,55 @@ class TestDatabaseServer(unittest.TestCase):
         reply = self._lookup_key(avatar_id, key, 2)
 
         self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertTrue(reply.key_found)
         self.assertEqual(reply.database_content, content2)
 
         reply = self._lookup_key(avatar_id, key, 1)
 
         self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertTrue(reply.key_found)
         self.assertEqual(reply.database_content, content1)
+
+    def test_simple_key_list(self):
+        """test listing data for a key wiht no duplicagte entries"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        segment_number = 1
+        content = generate_database_content(segment_number=segment_number)
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        reply = self._list_key(avatar_id, key)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(len(reply.content_list), 1)
+        self.assertEqual(reply.content_list[0], content)
+
+    def test_duplicate_key_list(self):
+        """test listing data for a duplicate key"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        content1 = generate_database_content(segment_number=1)
+
+        reply = self._insert_key(avatar_id, key, content1)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        content2 = generate_database_content(segment_number=2)
+
+        reply = self._insert_key(avatar_id, key, content2)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        reply = self._list_key(avatar_id, key)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(
+            sorted(reply.content_list), sorted([content1, content2,])
+        )
 
     def test_key_destroy_on_nonexistent_key(self):
         """test destroying a key that does not exist"""

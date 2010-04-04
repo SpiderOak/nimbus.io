@@ -33,7 +33,9 @@ from diyapi_data_writer.diyapi_data_writer_main import \
 
 _reply_routing_header = "test_archive"
 
-def archive_small_content(self, avatar_id, key, content, timestamp=time.time()):
+def archive_small_content(
+    self, avatar_id, key, segment_number, content, timestamp=time.time()
+):
     """
     utility function to push content all the way through the archive process
     This function handles small content: content that can fit in a single
@@ -41,7 +43,6 @@ def archive_small_content(self, avatar_id, key, content, timestamp=time.time()):
     """
     request_id = uuid.uuid1().hex
     test_exchange = "reply-exchange"
-    segment_number = 3
     adler32 = zlib.adler32(content)
     md5 = hashlib.md5(content).digest()
     message = ArchiveKeyEntire(
@@ -98,6 +99,7 @@ def archive_large_content(
     self, 
     avatar_id, 
     key, 
+    segment_number,
     segment_size, 
     total_size, 
     content_list,
@@ -105,7 +107,6 @@ def archive_large_content(
 ):
     request_id = uuid.uuid1().hex
     test_exchange = "reply-exchange"
-    segment_number = 3
 
     # the adler32 and md5 hashes should be of the original pre-zefec
     # data segment. We don't have that so we make something up.

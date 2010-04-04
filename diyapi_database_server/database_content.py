@@ -49,7 +49,10 @@ def create_tombstone(timestamp):
     )
 
 def marshall(content):
-    """return a string of marshalled content"""
+    """
+    return a string of marshalled content
+    encode the segment number in the first byte
+    """
     packed_content = struct.pack(
         _content_template,
         content.timestamp, 
@@ -62,7 +65,9 @@ def marshall(content):
         content.md5
     )
     packed_file_name = marshall_string(content.file_name)
-    return "".join([packed_content, packed_file_name, ])
+    return "".join([
+        chr(content.segment_number & 0xFF), packed_content, packed_file_name, 
+    ])
 
 def unmarshall(data, pos):
     """
@@ -70,6 +75,8 @@ def unmarshall(data, pos):
     return (DatabaseContent, pos)
     with pos pointing one character after the marshalled tuple
     """
+    # the first byte is the segment_number
+    pos += 1
     content = struct.unpack(
         _content_template, data[pos:pos+_content_template_size]
     )
@@ -78,4 +85,10 @@ def unmarshall(data, pos):
     total_content = list(content)
     total_content.append(file_name)
     return (factory._make(total_content), pos)
+
+def segment_number(data):
+    """
+    return the segment number (1..10) of the item without fully unpacking it
+    """ 
+    return ord(data[0])
 

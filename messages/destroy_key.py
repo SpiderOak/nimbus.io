@@ -13,13 +13,15 @@ from tools.marshalling import marshall_string, unmarshall_string
 _header_tuple = namedtuple("Header", [ 
     "request_id", 
     "avatar_id", 
+    "segment_number",
     "timestamp",
 ])
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
+# B   - segment number
 # d   - timestamp
-_header_format = "32sQd"
+_header_format = "32sQBd"
 _header_size = struct.calcsize(_header_format)
 
 class DestroyKey(object):
@@ -35,6 +37,7 @@ class DestroyKey(object):
         reply_exchange,
         reply_routing_header,
         key, 
+        segment_number,
         timestamp 
     ):
         self.request_id = request_id
@@ -42,6 +45,7 @@ class DestroyKey(object):
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
         self.key = key
+        self.segment_number = segment_number
         self.timestamp = timestamp
 
     @classmethod
@@ -61,6 +65,7 @@ class DestroyKey(object):
             reply_exchange,
             reply_routing_header,
             key, 
+            header.segment_number,
             header.timestamp 
         )
 
@@ -70,6 +75,7 @@ class DestroyKey(object):
             _header_format,
             self.request_id,
             self.avatar_id,
+            self.segment_number,
             self.timestamp
         )
 

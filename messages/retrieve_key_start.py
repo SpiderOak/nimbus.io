@@ -10,7 +10,8 @@ from tools.marshalling import marshall_string, unmarshall_string
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
-_header_format = "32sQ"
+# B   - segment number
+_header_format = "32sQB"
 _header_size = struct.calcsize(_header_format)
 
 class RetrieveKeyStart(object):
@@ -25,19 +26,21 @@ class RetrieveKeyStart(object):
         avatar_id, 
         reply_exchange,
         reply_routing_header,
-        key 
+        key,
+        segment_number
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
         self.key = key
+        self.segment_number = segment_number
 
     @classmethod
     def unmarshall(cls, data):
         """return a RetrieveKeyStart message"""
         pos = 0
-        request_id, avatar_id = struct.unpack(
+        request_id, avatar_id, segment_number = struct.unpack(
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
@@ -49,7 +52,8 @@ class RetrieveKeyStart(object):
             avatar_id, 
             reply_exchange,
             reply_routing_header,
-            key 
+            key,
+            segment_number
         )
 
     def marshall(self):
@@ -57,7 +61,8 @@ class RetrieveKeyStart(object):
         header = struct.pack(
             _header_format,
             self.request_id,
-            self.avatar_id
+            self.avatar_id,
+            self.segment_number
         )
 
         packed_reply_exchange =  marshall_string(self.reply_exchange)

@@ -42,9 +42,9 @@ class TestDataWriter(unittest.TestCase):
     """test message handling in data writer"""
 
     def setUp(self):
+        logging.root.setLevel(logging.DEBUG)
         self.tearDown()
         os.makedirs(_repository_path)
-        initialize_logging(_log_path)
         self._key_generator = generate_key()
 
     def tearDown(self):
@@ -57,7 +57,8 @@ class TestDataWriter(unittest.TestCase):
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_small_content(self, avatar_id, key, content)
+        segment_number = 2
+        archive_small_content(self, avatar_id, key, segment_number, content)
 
     def test_large_archive(self):
         """
@@ -71,11 +72,18 @@ class TestDataWriter(unittest.TestCase):
         avatar_id = 1001
         test_data = [random_string(segment_size) for _ in range(chunk_count)]
         key  = self._key_generator.next()
+        segment_number = 4
         archive_large_content(
-            self, avatar_id, key, segment_size, total_size, test_data
+            self, 
+            avatar_id, 
+            key, 
+            segment_number, 
+            segment_size, 
+            total_size, 
+            test_data
         )    
 
-    def _destroy(self, avatar_id, key, timestamp):
+    def _destroy(self, avatar_id, key, segment_number, timestamp):
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         message = DestroyKey(
@@ -84,6 +92,7 @@ class TestDataWriter(unittest.TestCase):
             test_exchange,
             _reply_routing_header,
             key, 
+            segment_number,
             timestamp
         )
         marshalled_message = message.marshall()
@@ -126,8 +135,9 @@ class TestDataWriter(unittest.TestCase):
         """test destroying a key that does not exist, with no complicatons"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        segment_number = 4
         timestamp = time.time()
-        reply = self._destroy(avatar_id, key, timestamp)
+        reply = self._destroy(avatar_id, key, segment_number, timestamp)
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.total_size, 0)
 
@@ -138,12 +148,15 @@ class TestDataWriter(unittest.TestCase):
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
+        segment_number = 4
         archive_timestamp = time.time()
-        archive_small_content(self, avatar_id, key, content, archive_timestamp)
+        archive_small_content(
+            self, avatar_id, key, segment_number, content, archive_timestamp
+        )
 
         # the normal case is where the destroy mesage comes after the archive
         destroy_timestamp = archive_timestamp + 1.0
-        reply = self._destroy(avatar_id, key, destroy_timestamp)
+        reply = self._destroy(avatar_id, key, segment_number, destroy_timestamp)
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.total_size, content_size)
 
@@ -154,17 +167,24 @@ class TestDataWriter(unittest.TestCase):
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
+        segment_number = 4
         archive_timestamp = time.time()
-        archive_small_content(self, avatar_id, key, content, archive_timestamp)
+        archive_small_content(
+            self, avatar_id, key, segment_number, content, archive_timestamp
+        )
 
-        destroy_timestamp = archive_timestamp + 1.0
-        reply = self._destroy(avatar_id, key, destroy_timestamp)
+        destroy_timestamp1 = archive_timestamp + 1.0
+        reply = self._destroy(
+            avatar_id, key, segment_number, destroy_timestamp1
+        )
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.total_size, content_size)
 
         # now send the same thing again
-        destroy_timestamp = archive_timestamp + 1.0
-        reply = self._destroy(avatar_id, key, destroy_timestamp)
+        destroy_timestamp2 = destroy_timestamp1 + 1.0
+        reply = self._destroy(
+            avatar_id, key, segment_number, destroy_timestamp2
+        )
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.total_size, 0)
 
@@ -178,15 +198,19 @@ class TestDataWriter(unittest.TestCase):
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
+        segment_number = 4
         archive_timestamp = time.time()
-        archive_small_content(self, avatar_id, key, content, archive_timestamp)
+        archive_small_content(
+            self, avatar_id, key, segment_number, content, archive_timestamp
+        )
 
         # the destroy mesage is older than the archive
         destroy_timestamp = archive_timestamp - 1.0
-        reply = self._destroy(avatar_id, key, destroy_timestamp)
+        reply = self._destroy(avatar_id, key, segment_number, destroy_timestamp)
         self.assertEqual(
             reply.result, DestroyKeyReply.error_too_old, reply.error_message
         )
 
 if __name__ == "__main__":
+    initialize_logging(_log_path)
     unittest.main()

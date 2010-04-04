@@ -463,7 +463,9 @@ def _handle_archive_key_final(state, message_body):
 def _handle_destroy_key(state, message_body):
     log = logging.getLogger("_handle_destroy_key")
     message = DestroyKey.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s segment = %s" % (
+        message.avatar_id, message.key, message.segment_number
+    ))
 
     local_exchange = amqp_connection.local_exchange_name
     reply_routing_key = "".join(
@@ -506,6 +508,7 @@ def _handle_destroy_key(state, message_body):
         local_exchange,
         _routing_header,
         message.key, 
+        message.segment_number,
         message.timestamp
     )
     return [(local_exchange, database_request.routing_key, database_request, )]

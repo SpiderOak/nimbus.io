@@ -442,12 +442,14 @@ class TestMessages(unittest.TestCase):
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
+        original_segment_number = 5
         message = RetrieveKeyStart(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
             original_reply_routing_header,
-            original_key 
+            original_key,
+            original_segment_number
         )
         marshalled_message = message.marshall()
         unmarshalled_message = RetrieveKeyStart.unmarshall(marshalled_message)
@@ -460,6 +462,9 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
         self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
+        )
 
     def test_retrieve_key_start_reply_ok(self):
         """test RetrieveKeyStartReply"""
@@ -595,6 +600,7 @@ class TestMessages(unittest.TestCase):
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
         original_key = "test.key"
+        original_segment_number = 6
         original_timestamp = time.time()
         message = DestroyKey(
             original_request_id,
@@ -602,6 +608,7 @@ class TestMessages(unittest.TestCase):
             original_reply_exchange,
             original_reply_routing_header,
             original_key,
+            original_segment_number,
             original_timestamp
         )
         marshalled_message = message.marshall()
@@ -616,6 +623,9 @@ class TestMessages(unittest.TestCase):
             original_reply_routing_header
         )
         self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
+        )
         self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
 
     def test_destroy_key_reply_ok(self):

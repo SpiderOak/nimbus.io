@@ -56,7 +56,7 @@ class TestDataReader(unittest.TestCase):
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
-    def _retrieve(self, avatar_id, key):
+    def _retrieve(self, avatar_id, key, segment_number):
         """retrieve content for a key"""
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
@@ -65,7 +65,8 @@ class TestDataReader(unittest.TestCase):
             avatar_id,
             test_exchange,
             _reply_routing_header,
-            key, 
+            key,
+            segment_number
         )
         marshalled_message = message.marshall()
 
@@ -144,10 +145,13 @@ class TestDataReader(unittest.TestCase):
         """test retrieving content that fits in a single message"""
         avatar_id = 1001
         key  = _key_generator.next()
+        segment_number = 5
         original_content = random_string(64 * 1024) 
 
-        archive_small_content(self, avatar_id, key, original_content)
-        test_content = self._retrieve(avatar_id, key)
+        archive_small_content(
+            self, avatar_id, key, segment_number, original_content
+        )
+        test_content = self._retrieve(avatar_id, key, segment_number)
 
         self.assertEqual(test_content, original_content)
 
@@ -159,12 +163,19 @@ class TestDataReader(unittest.TestCase):
         avatar_id = 1001
         test_data = [random_string(segment_size) for _ in range(chunk_count)]
         key  = _key_generator.next()
+        segment_number = 5
         archive_large_content(
-            self, avatar_id, key, segment_size, total_size, test_data
+            self, 
+            avatar_id, 
+            key, 
+            segment_number, 
+            segment_size, 
+            total_size, 
+            test_data
         )    
 
         expected_content = "".join(test_data)
-        test_content = self._retrieve(avatar_id, key)
+        test_content = self._retrieve(avatar_id, key, segment_number)
         self.assertEqual(test_content, expected_content)
 
     def test_retrieve_large_content_short_last_segment(self):
@@ -180,12 +191,19 @@ class TestDataReader(unittest.TestCase):
         test_data = [random_string(segment_size) for _ in range(chunk_count-1)]
         test_data.append(random_string(short_size))
         key  = _key_generator.next()
+        segment_number = 5
         archive_large_content(
-            self, avatar_id, key, segment_size, total_size, test_data
+            self, 
+            avatar_id, 
+            key, 
+            segment_number, 
+            segment_size, 
+            total_size, 
+            test_data
         )    
 
         expected_content = "".join(test_data)
-        test_content = self._retrieve(avatar_id, key)
+        test_content = self._retrieve(avatar_id, key, segment_number)
         self.assertEqual(test_content, expected_content)
 
     def test_retrieve_large_content_2_segments(self):
@@ -199,12 +217,19 @@ class TestDataReader(unittest.TestCase):
         avatar_id = 1001
         test_data = [random_string(segment_size) for _ in range(chunk_count)]
         key  = _key_generator.next()
+        segment_number = 5
         archive_large_content(
-            self, avatar_id, key, segment_size, total_size, test_data
+            self, 
+            avatar_id, 
+            key, 
+            segment_number,
+            segment_size, 
+            total_size, 
+            test_data
         )    
 
         expected_content = "".join(test_data)
-        test_content = self._retrieve(avatar_id, key)
+        test_content = self._retrieve(avatar_id, key, segment_number)
         self.assertEqual(test_content, expected_content)
 
 

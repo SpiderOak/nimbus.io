@@ -94,7 +94,7 @@ def _handle_key_insert_timeout(request_id, state):
     log.error("timeout: %s %s %s" % (
         archive_state.avatar_id,
         archive_state.key,
-        archive_state.request_id,
+        request_id,
     ))
 
     # tell the caller that we're not working
@@ -124,7 +124,7 @@ def _handle_key_destroy_timeout(request_id, state):
     log.error("timeout: %s %s %s" % (
         archive_state.avatar_id,
         archive_state.key,
-        archive_state.request_id,
+        request_id,
     ))
 
     # tell the caller that we're not working
@@ -154,7 +154,7 @@ def _handle_archive_timeout(request_id, state):
     log.error("timeout: %s %s %s" % (
         archive_state.avatar_id,
         archive_state.key,
-        archive_state.request_id,
+        request_id,
     ))
 
 def _compute_filename(message_request_id):

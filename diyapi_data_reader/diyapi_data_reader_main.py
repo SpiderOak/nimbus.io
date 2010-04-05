@@ -76,7 +76,7 @@ def _handle_key_lookup_timeout(request_id, state):
     log.error("timeout: %s %s %s" % (
         retrieve_state.avatar_id,
         retrieve_state.key,
-        retrieve_state.request_id,
+        request_id,
     ))
 
     # tell the caller that we're not working
@@ -106,7 +106,7 @@ def _handle_retrieve_timeout(request_id, state):
     log.error("timeout: %s %s %s" % (
         retrieve_state.avatar_id,
         retrieve_state.key,
-        retrieve_state.request_id,
+        request_id,
     ))
 
 

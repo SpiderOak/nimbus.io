@@ -16,7 +16,7 @@ _header_size = struct.calcsize(_header_format)
 class DatabaseListMatch(object):
     """AMQP message to request a (partial) list of keys"""
 
-    routing_key = "database_server.key_lookup"
+    routing_key = "database_server.list_match"
 
     def __init__(
         self, 

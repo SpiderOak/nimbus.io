@@ -77,7 +77,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         return reply
 
-    def _lookup_key(self, avatar_id, key, segment_number):
+    def _lookup_key(self, avatar_id, key, version_number, segment_number):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
         message = DatabaseKeyLookup(
@@ -86,6 +86,7 @@ class TestDatabaseServer(unittest.TestCase):
             exchange,
             _reply_routing_header,
             key,
+            version_number,
             segment_number
         )
         marshalled_message = message.marshall()
@@ -128,7 +129,9 @@ class TestDatabaseServer(unittest.TestCase):
 
         return reply
 
-    def _destroy_key(self, avatar_id, key, segment_number, timestamp):
+    def _destroy_key(
+        self, avatar_id, key, version_number, segment_number, timestamp
+    ):
         request_id = uuid.uuid1().hex
         exchange = "reply-exchange"
         message = DatabaseKeyDestroy(
@@ -136,9 +139,10 @@ class TestDatabaseServer(unittest.TestCase):
             avatar_id,
             exchange,
             _reply_routing_header,
+            timestamp,
             key, 
+            version_number,
             segment_number,
-            timestamp
         )
         marshalled_message = message.marshall()
 
@@ -314,15 +318,19 @@ class TestDatabaseServer(unittest.TestCase):
         """test retrieving data for a valid key"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number = 0
         segment_number = 1
-        content = generate_database_content(segment_number=segment_number)
+        content = generate_database_content(
+            version_number=version_number,
+            segment_number=segment_number
+        )
 
         reply = self._insert_key(avatar_id, key, content)
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.previous_size, 0)
 
-        reply = self._lookup_key(avatar_id, key, segment_number)
+        reply = self._lookup_key(avatar_id, key, version_number, segment_number)
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.database_content, content)
@@ -331,36 +339,47 @@ class TestDatabaseServer(unittest.TestCase):
         """test retrieving data for a duplicate key"""
         avatar_id = 1001
         key  = self._key_generator.next()
-        content1 = generate_database_content(segment_number=1)
+        version_number = 0
+        content1 = generate_database_content(
+            version_number=version_number,
+            segment_number=1
+        )
 
         reply = self._insert_key(avatar_id, key, content1)
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.previous_size, 0)
 
-        content2 = generate_database_content(segment_number=2)
+        content2 = generate_database_content(
+            version_number=version_number,
+            segment_number=2
+        )
 
         reply = self._insert_key(avatar_id, key, content2)
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.previous_size, 0)
 
-        reply = self._lookup_key(avatar_id, key, 2)
-
-        self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.database_content, content2)
-
-        reply = self._lookup_key(avatar_id, key, 1)
+        reply = self._lookup_key(avatar_id, key, version_number, 1)
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.database_content, content1)
+
+        reply = self._lookup_key(avatar_id, key, version_number, 2)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.database_content, content2)
 
     def test_simple_key_list(self):
         """test listing data for a key wiht no duplicagte entries"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number = 0
         segment_number = 1
-        content = generate_database_content(segment_number=segment_number)
+        content = generate_database_content(
+            version_number=version_number,
+            segment_number=segment_number
+        )
 
         reply = self._insert_key(avatar_id, key, content)
 
@@ -377,14 +396,21 @@ class TestDatabaseServer(unittest.TestCase):
         """test listing data for a duplicate key"""
         avatar_id = 1001
         key  = self._key_generator.next()
-        content1 = generate_database_content(segment_number=1)
+        version_number = 0
+        content1 = generate_database_content(
+            version_number=version_number,
+            segment_number=1
+        )
 
         reply = self._insert_key(avatar_id, key, content1)
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.previous_size, 0)
 
-        content2 = generate_database_content(segment_number=2)
+        content2 = generate_database_content(
+            version_number=version_number,
+            segment_number=2
+        )
 
         reply = self._insert_key(avatar_id, key, content2)
 
@@ -402,10 +428,13 @@ class TestDatabaseServer(unittest.TestCase):
         """test destroying a key that does not exist"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number = 0
         segment_number = 4
         timestamp = time.time()
 
-        reply = self._destroy_key(avatar_id, key, segment_number, timestamp)
+        reply = self._destroy_key(
+            avatar_id, key, version_number, segment_number, timestamp
+        )
 
         # we expect the request to succeed by creating a new tombstone
         self.assertEqual(reply.result, 0, reply.error_message)
@@ -415,10 +444,12 @@ class TestDatabaseServer(unittest.TestCase):
         """test destroying a key that exists"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number = 0
         segment_number = 1
         base_timestamp = time.time()
         content = generate_database_content(
             timestamp=base_timestamp,
+            version_number=version_number,
             segment_number=segment_number
         )
 
@@ -431,7 +462,7 @@ class TestDatabaseServer(unittest.TestCase):
         # the database content
         destroy_timestamp = base_timestamp + 1.0
         reply = self._destroy_key(
-            avatar_id, key, segment_number, destroy_timestamp
+            avatar_id, key, version_number, segment_number, destroy_timestamp
         )
 
         self.assertEqual(reply.result, 0, reply.error_message)
@@ -444,10 +475,12 @@ class TestDatabaseServer(unittest.TestCase):
         """
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number = 0
         segment_number = 1
         base_timestamp = time.time()
         content = generate_database_content(
             timestamp=base_timestamp,
+            version_number=version_number,
             segment_number=segment_number
         )
 
@@ -457,7 +490,7 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply.previous_size, 0)
 
         reply = self._destroy_key(
-            avatar_id, key, segment_number+1, base_timestamp+1.0
+            avatar_id, key, version_number, segment_number+1, base_timestamp+1.0
         )
 
         # we expect the request to succeed by creating a new tombstone
@@ -468,10 +501,12 @@ class TestDatabaseServer(unittest.TestCase):
         """test sending a destroy request older than the database content"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number=0
         segment_number = 4
         base_timestamp = time.time()
         content = generate_database_content(
             timestamp=base_timestamp,
+            version_number=version_number,
             segment_number=segment_number
         )
 
@@ -482,7 +517,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         destroy_timestamp = base_timestamp - 1.0
         reply = self._destroy_key(
-            avatar_id, key, segment_number, destroy_timestamp
+            avatar_id, key, version_number, segment_number, destroy_timestamp
         )
 
         self.assertEqual(reply.result, DatabaseKeyDestroyReply.error_too_old)
@@ -495,8 +530,10 @@ class TestDatabaseServer(unittest.TestCase):
         avatar_id = 1001
         key  = self._key_generator.next()
         base_timestamp = time.time()
+        version_number = 0
         content1 = generate_database_content(
             timestamp=base_timestamp,
+            version_number=version_number,
             segment_number=1
         )
 
@@ -507,6 +544,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         content2 = generate_database_content(
             timestamp=base_timestamp - 1.0,
+            version_number=version_number,
             segment_number=2
         )
 
@@ -517,7 +555,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         destroy_timestamp = base_timestamp - 1.0
         reply = self._destroy_key(
-            avatar_id, key, 1, destroy_timestamp
+            avatar_id, key, version_number, 1, destroy_timestamp
         )
 
         self.assertEqual(reply.result, DatabaseKeyDestroyReply.error_too_old)
@@ -526,10 +564,12 @@ class TestDatabaseServer(unittest.TestCase):
         """test destroying a key that was already destroyed"""
         avatar_id = 1001
         key  = self._key_generator.next()
+        version_number = 0
         segment_number = 4
         base_timestamp = time.time()
         content = generate_database_content(
             timestamp=base_timestamp,
+            version_number=version_number,
             segment_number = segment_number
         )
 
@@ -542,7 +582,7 @@ class TestDatabaseServer(unittest.TestCase):
         # the database content
         destroy_timestamp = base_timestamp + 1.0
         reply = self._destroy_key(
-            avatar_id, key, segment_number, destroy_timestamp
+            avatar_id, key, version_number, segment_number, destroy_timestamp
         )
 
         self.assertEqual(reply.result, 0, reply.error_message)
@@ -551,7 +591,7 @@ class TestDatabaseServer(unittest.TestCase):
         # now let's destroy it again
         destroy_timestamp = destroy_timestamp + 1.0
         reply = self._destroy_key(
-            avatar_id, key, segment_number, destroy_timestamp
+            avatar_id, key, version_number, segment_number, destroy_timestamp
         )
 
         self.assertEqual(reply.result, 0, reply.error_message)
@@ -630,3 +670,4 @@ class TestDatabaseServer(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

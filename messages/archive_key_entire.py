@@ -13,6 +13,7 @@ _header_tuple = namedtuple("Header", [
     "request_id", 
     "avatar_id", 
     "timestamp",
+    "version_number",
     "segment_number",
     "adler32",
     "md5"
@@ -21,10 +22,11 @@ _header_tuple = namedtuple("Header", [
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
 # d   - timestamp
+# I   - version_number
 # B   - segment_number
 # l   - adler32
 # 16s - md5
-_header_format = "32sQdBl16s"
+_header_format = "32sQdIBl16s"
 _header_size = struct.calcsize(_header_format)
 
 class ArchiveKeyEntire(object):
@@ -40,8 +42,9 @@ class ArchiveKeyEntire(object):
         avatar_id, 
         reply_exchange,
         reply_routing_header,
-        key, 
         timestamp, 
+        key, 
+        version_number,
         segment_number, 
         adler32, 
         md5, 
@@ -51,8 +54,9 @@ class ArchiveKeyEntire(object):
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
-        self.key = key
         self.timestamp = timestamp
+        self.key = key
+        self.version_number = version_number
         self.segment_number = segment_number
         self.adler32 = adler32
         self.md5 = md5
@@ -75,8 +79,9 @@ class ArchiveKeyEntire(object):
             header.avatar_id, 
             reply_exchange,
             reply_routing_header,
-            key, 
             header.timestamp, 
+            key, 
+            header.version_number, 
             header.segment_number, 
             header.adler32, 
             header.md5, 
@@ -90,6 +95,7 @@ class ArchiveKeyEntire(object):
             self.request_id,
             self.avatar_id,
             self.timestamp,
+            self.version_number,
             self.segment_number,
             self.adler32,
             self.md5

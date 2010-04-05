@@ -54,6 +54,7 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "timeout_function",
     "avatar_id",
     "key",
+    "version_number",
     "segment_number",
     "reply_exchange",
     "reply_routing_header",
@@ -135,6 +136,7 @@ def _handle_retrieve_key_start(state, message_body):
         timeout_function=_handle_key_lookup_timeout,
         avatar_id = message.avatar_id,
         key = message.key,
+        version_number=message.version_number,
         segment_number=message.segment_number,
         reply_exchange = message.reply_exchange,
         reply_routing_header = message.reply_routing_header,
@@ -152,6 +154,7 @@ def _handle_retrieve_key_start(state, message_body):
         local_exchange,
         _routing_header,
         message.key,
+        message.version_number,
         message.segment_number
     )
     return [(local_exchange, database_request.routing_key, database_request, )]
@@ -383,6 +386,7 @@ def _handle_key_lookup_reply(state, message_body):
         RetrieveKeyStartReply.successful,
         message.database_content.timestamp,
         message.database_content.is_tombstone,
+        message.database_content.version_number,
         message.database_content.segment_number,
         message.database_content.segment_count,
         message.database_content.segment_size,

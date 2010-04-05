@@ -69,7 +69,9 @@ def _open_database(state, avatar_id):
 
     return database
 
-def _get_content(database, search_key, search_segment_number):
+def _get_content(
+    database, search_key, search_version_number, search_segment_number
+):
     """
     get a a database entry matching both key and segment number
     return None on failure
@@ -79,12 +81,15 @@ def _get_content(database, search_key, search_segment_number):
         result = cursor.set(search_key)
         if result is None:
             return None
-        _, content = result
-        while database_content.segment_number(content) != search_segment_number:
+        _, packed_content = result
+        (content, _) = database_content.unmarshall(packed_content, 0)
+        while content.version_number != search_version_number \
+        or content.segment_number != search_segment_number:
             result = cursor.next_dup()
             if result is None:
                 return None
-            _, content = result
+            _, packed_content = result
+            (content, _) = database_content.unmarshall(packed_content, 0)
         return content
     finally:
         cursor.close()
@@ -119,8 +124,11 @@ def _handle_key_insert(state, message_body):
 
     try:
         database = _open_database(state, message.avatar_id)
-        packed_existing_entry = _get_content(
-            database, message.key, message.database_content.segment_number
+        existing_entry = _get_content(
+            database, 
+            message.key, 
+            message.database_content.version_number,
+            message.database_content.segment_number
         )
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
@@ -132,12 +140,7 @@ def _handle_key_insert(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )]
         
     previous_size = 0L
-    if packed_existing_entry is not None \
-    and database_content.segment_number(packed_existing_entry) == \
-        message.database_content.segment_number:
-        (existing_entry, _) = database_content.unmarshall(
-            packed_existing_entry, 0
-        )
+    if existing_entry is not None:
 
         # 2020-03-21 dougfort -- IRC conversation with Alan. we don't care
         # if it's a tombstone or not: an earlier timestamp is an error
@@ -205,8 +208,11 @@ def _handle_key_lookup(state, message_body):
 
     try:
         database = _open_database(state, message.avatar_id)
-        packed_existing_entry = _get_content(
-            database, message.key, message.segment_number
+        existing_entry = _get_content(
+            database, 
+            message.key, 
+            message.version_number,
+            message.segment_number
         )
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
@@ -217,9 +223,12 @@ def _handle_key_lookup(state, message_body):
         )
         return [(reply_exchange, reply_routing_key, reply, )]
 
-    if packed_existing_entry is None:
-        error_string = "unknown key: %s, %s %s" % (
-            message.avatar_id, message.key, message.segment_number
+    if existing_entry is None:
+        error_string = "unknown key: %s, %s %s %s" % (
+            message.avatar_id, 
+            message.key, 
+            message.version_number,
+            message.segment_number
         )
         log.warn(error_string)
         reply = DatabaseKeyLookupReply(
@@ -229,11 +238,10 @@ def _handle_key_lookup(state, message_body):
         )
         return [(reply_exchange, reply_routing_key, reply, )]
 
-    (content, _) = database_content.unmarshall(packed_existing_entry, 0)
     reply = DatabaseKeyLookupReply(
         message.request_id,
         DatabaseKeyLookupReply.successful,
-        database_content=content
+        database_content=existing_entry
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
@@ -295,8 +303,11 @@ def _handle_key_destroy(state, message_body):
 
     try:
         database = _open_database(state, message.avatar_id)
-        packed_existing_entry = _get_content(
-            database, message.key, message.segment_number
+        existing_entry = _get_content(
+            database, 
+            message.key, 
+            message.version_number,
+            message.segment_number
         )
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.key, ))
@@ -309,15 +320,14 @@ def _handle_key_destroy(state, message_body):
 
     total_size = 0
     delete_needed = False
-    if packed_existing_entry is None:
+    if existing_entry is None:
         log.warn("%s no such key %s creating tombstone %s" % (
             message.avatar_id, message.key, format_timestamp(message.timestamp),
         ))
-        content = database_content.create_tombstone(message.timestamp)
-    else:
-        (existing_entry, _) = database_content.unmarshall(
-            packed_existing_entry, 0
+        content = database_content.create_tombstone(
+            message.timestamp, message.version_number, message.segment_number
         )
+    else:
         # if the entry is already a tombstone, our mission is accomplished
         # but we want to make sure the tombstone has the newest date
         if existing_entry.is_tombstone:
@@ -330,7 +340,7 @@ def _handle_key_destroy(state, message_body):
                     format_timestamp(content.timestamp),
                     format_timestamp(message.timestamp),
                 ))
-                content._update(timestamp=message.timestamp)
+                content._replace(timestamp=message.timestamp)
             else:
                 log.debug("%s %s keeping existing tombstone %s > %s" % (
                     message.avatar_id, 
@@ -349,7 +359,11 @@ def _handle_key_destroy(state, message_body):
                 existing_entry.total_size
             ))
             total_size = existing_entry.total_size
-            content = database_content.create_tombstone(message.timestamp)
+            content = database_content.create_tombstone(
+                message.timestamp,      
+                message.version_number,
+                message.segment_number
+            )
         # otherwise, we have an entry in the database that is newer than
         # this message, so we should not destroy
         else:

@@ -14,13 +14,14 @@ from diyapi_database_server import database_content
 # B   - result: 0 = success 
 # d   - timestamp
 # ?   - is_tombstone
+# I   - version_number
 # B   - segment_number
-# I   - segment size
 # I   - segment count
+# I   - segment size
 # Q   - total_size
 # L   - adler32
 #16s  - md5 
-_header_format = "!32sBd?BIIQL16s"
+_header_format = "!32sBd?IBIIQL16s"
 _header_size = struct.calcsize(_header_format)
 
 _header_tuple =  namedtuple(
@@ -29,6 +30,7 @@ _header_tuple =  namedtuple(
         "result",
         "timestamp", 
         "is_tombstone", 
+        "version_number", 
         "segment_number", 
         "segment_count",
         "segment_size", 
@@ -56,6 +58,7 @@ class RetrieveKeyStartReply(object):
         result, 
         timestamp = 0.0,
         is_tombstone = False,
+        version_number = 0,
         segment_number = 0,
         segment_count = 0,
         segment_size = 0,
@@ -69,6 +72,7 @@ class RetrieveKeyStartReply(object):
         self.result = result
         self.timestamp = timestamp
         self.is_tombstone = is_tombstone
+        self.version_number = version_number
         self.segment_number = segment_number
         self.segment_count = segment_count
         self.segment_size = segment_size
@@ -97,6 +101,7 @@ class RetrieveKeyStartReply(object):
                 header.result, 
                 header.timestamp,
                 header.is_tombstone,
+                header.version_number,
                 header.segment_number,
                 header.segment_count,
                 header.segment_size,
@@ -120,6 +125,7 @@ class RetrieveKeyStartReply(object):
             self.result, 
             self.timestamp,
             self.is_tombstone,
+            self.version_number,
             self.segment_number,
             self.segment_count,
             self.segment_size,

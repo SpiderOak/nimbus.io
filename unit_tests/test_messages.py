@@ -105,6 +105,7 @@ class TestMessages(unittest.TestCase):
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
+        original_version_number = 0
         original_segment_number = 1
         message = DatabaseKeyLookup(
             original_request_id,
@@ -112,6 +113,7 @@ class TestMessages(unittest.TestCase):
             original_reply_exchange,
             original_reply_routing_header,
             original_key, 
+            original_version_number,
             original_segment_number
         )
         marshalled_message = message.marshall()
@@ -126,6 +128,9 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
         self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
@@ -203,17 +208,19 @@ class TestMessages(unittest.TestCase):
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
-        original_segment_number = 4
         original_timestamp = time.time()
+        original_key  = "abcdefghijk"
+        original_version_number = 0
+        original_segment_number = 4
         message = DatabaseKeyDestroy(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
             original_reply_routing_header,
+            original_timestamp,
             original_key,
+            original_version_number,
             original_segment_number,
-            original_timestamp
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyDestroy.unmarshall(marshalled_message)
@@ -226,12 +233,15 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.reply_exchange, original_reply_exchange
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
-        self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
-        )
         self.assertEqual(
             unmarshalled_message.timestamp, original_timestamp
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
         )
 
     def test_database_key_destroy_reply_ok(self):
@@ -309,8 +319,9 @@ class TestMessages(unittest.TestCase):
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
         original_timestamp = time.time()
+        original_key  = "abcdefghijk"
+        original_version_number = 0
         original_segment_number = 3
         original_adler32 = adler32(original_content)
         original_md5 = md5(original_content).digest()
@@ -319,8 +330,9 @@ class TestMessages(unittest.TestCase):
             original_avatar_id,
             original_reply_exchange,
             original_reply_routing_header,
-            original_key, 
             original_timestamp,
+            original_key, 
+            original_version_number,
             original_segment_number,
             original_adler32,
             original_md5,
@@ -336,8 +348,11 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
         self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
@@ -353,9 +368,10 @@ class TestMessages(unittest.TestCase):
         original_avatar_id = 1001
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
         original_timestamp = time.time()
         original_sequence = 0
+        original_key  = "abcdefghijk"
+        original_version_number = 1
         original_segment_number = 3
 
         message = ArchiveKeyStart(
@@ -363,9 +379,10 @@ class TestMessages(unittest.TestCase):
             original_avatar_id,
             original_reply_exchange,
             original_reply_routing_header,
-            original_key, 
             original_timestamp,
             original_sequence,
+            original_key, 
+            original_version_number,
             original_segment_number,
             original_segment_size,
             original_content
@@ -380,9 +397,12 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
         self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
         self.assertEqual(unmarshalled_message.sequence, original_sequence)
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
@@ -491,6 +511,7 @@ class TestMessages(unittest.TestCase):
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
         original_key  = "abcdefghijk"
+        original_version_number = 0
         original_segment_number = 5
         message = RetrieveKeyStart(
             original_request_id,
@@ -498,6 +519,7 @@ class TestMessages(unittest.TestCase):
             original_reply_exchange,
             original_reply_routing_header,
             original_key,
+            original_version_number,
             original_segment_number
         )
         marshalled_message = message.marshall()
@@ -511,6 +533,9 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_routing_header, original_reply_routing_header
         )
         self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
@@ -526,6 +551,7 @@ class TestMessages(unittest.TestCase):
             original_result,
             original_database_content.timestamp,
             original_database_content.is_tombstone,
+            original_database_content.version_number,
             original_database_content.segment_number,
             original_database_content.segment_count,
             original_database_content.segment_size,
@@ -547,6 +573,10 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.is_tombstone, 
             original_database_content.is_tombstone
+        )
+        self.assertEqual(
+            unmarshalled_message.version_number, 
+            original_database_content.version_number
         )
         self.assertEqual(
             unmarshalled_message.segment_number, 
@@ -648,17 +678,19 @@ class TestMessages(unittest.TestCase):
         original_avatar_id  = 1001
         original_reply_exchange = "reply-exchange"
         original_reply_routing_header = "reply-header"
-        original_key = "test.key"
-        original_segment_number = 6
         original_timestamp = time.time()
+        original_key = "test.key"
+        original_version_number = 0
+        original_segment_number = 6
         message = DestroyKey(
             original_request_id,
             original_avatar_id,
             original_reply_exchange,
             original_reply_routing_header,
+            original_timestamp,
             original_key,
+            original_version_number,
             original_segment_number,
-            original_timestamp
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DestroyKey.unmarshall(marshalled_message)
@@ -671,11 +703,14 @@ class TestMessages(unittest.TestCase):
             unmarshalled_message.reply_routing_header, 
             original_reply_routing_header
         )
+        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
         self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
 
     def test_destroy_key_reply_ok(self):
         """test DestroyKeyReply"""

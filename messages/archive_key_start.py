@@ -14,6 +14,7 @@ _header_tuple = namedtuple("Header", [
     "avatar_id", 
     "timestamp",
     "sequence",
+    "version_number",
     "segment_number",
     "segment_size",
 ])
@@ -22,9 +23,10 @@ _header_tuple = namedtuple("Header", [
 # Q   - avatar_id 
 # d   - timestamp
 # I   - sequence
+# I   - version_number
 # B   - segment_number
 # I   - segment size
-_header_format = "32sQdIBI"
+_header_format = "32sQdIIBI"
 _header_size = struct.calcsize(_header_format)
 
 class ArchiveKeyStart(object):
@@ -38,9 +40,10 @@ class ArchiveKeyStart(object):
         avatar_id, 
         reply_exchange,
         reply_routing_header,
-        key, 
         timestamp, 
         sequence, 
+        key, 
+        version_number, 
         segment_number, 
         segment_size,
         data_content
@@ -49,9 +52,10 @@ class ArchiveKeyStart(object):
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
-        self.key = key
         self.timestamp = timestamp
         self.sequence = sequence
+        self.key = key
+        self.version_number = version_number
         self.segment_number = segment_number
         self.segment_size = segment_size
         self.data_content = data_content
@@ -73,9 +77,10 @@ class ArchiveKeyStart(object):
             header.avatar_id, 
             reply_exchange,
             reply_routing_header,
-            key, 
             header.timestamp,
             header.sequence,
+            key, 
+            header.version_number, 
             header.segment_number, 
             header.segment_size, 
             data_content
@@ -89,6 +94,7 @@ class ArchiveKeyStart(object):
             self.avatar_id,
             self.timestamp,
             self.sequence,
+            self.version_number,
             self.segment_number,
             self.segment_size
         )

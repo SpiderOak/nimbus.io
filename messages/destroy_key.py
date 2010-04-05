@@ -13,15 +13,17 @@ from tools.marshalling import marshall_string, unmarshall_string
 _header_tuple = namedtuple("Header", [ 
     "request_id", 
     "avatar_id", 
-    "segment_number",
     "timestamp",
+    "version_number",
+    "segment_number",
 ])
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 
-# B   - segment number
 # d   - timestamp
-_header_format = "32sQBd"
+# I   - version number
+# B   - segment number
+_header_format = "32sQdIB"
 _header_size = struct.calcsize(_header_format)
 
 class DestroyKey(object):
@@ -36,17 +38,19 @@ class DestroyKey(object):
         avatar_id, 
         reply_exchange,
         reply_routing_header,
+        timestamp,
         key, 
         segment_number,
-        timestamp 
+        version_number
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
-        self.key = key
-        self.segment_number = segment_number
         self.timestamp = timestamp
+        self.key = key
+        self.version_number = version_number
+        self.segment_number = segment_number
 
     @classmethod
     def unmarshall(cls, data):
@@ -64,9 +68,10 @@ class DestroyKey(object):
             header.avatar_id, 
             reply_exchange,
             reply_routing_header,
+            header.timestamp ,
             key, 
+            header.version_number,
             header.segment_number,
-            header.timestamp 
         )
 
     def marshall(self):
@@ -75,8 +80,9 @@ class DestroyKey(object):
             _header_format,
             self.request_id,
             self.avatar_id,
+            self.timestamp,
+            self.version_number,
             self.segment_number,
-            self.timestamp
         )
 
         packed_reply_exchange =  marshall_string(self.reply_exchange)

@@ -34,7 +34,13 @@ from diyapi_data_writer.diyapi_data_writer_main import \
 _reply_routing_header = "test_archive"
 
 def archive_small_content(
-    self, avatar_id, key, segment_number, content, timestamp=time.time()
+    self, 
+    avatar_id, 
+    key, 
+    version_number, 
+    segment_number, 
+    content, 
+    timestamp=time.time()
 ):
     """
     utility function to push content all the way through the archive process
@@ -50,8 +56,9 @@ def archive_small_content(
         avatar_id,
         test_exchange,
         _reply_routing_header,
-        key, 
         timestamp,
+        key, 
+        version_number,
         segment_number,
         adler32,
         md5,
@@ -98,7 +105,8 @@ def archive_small_content(
 def archive_large_content(
     self, 
     avatar_id, 
-    key, 
+    key,
+    version_number,
     segment_number,
     segment_size, 
     total_size, 
@@ -120,10 +128,10 @@ def archive_large_content(
         avatar_id,
         test_exchange,
         _reply_routing_header,
-        key, 
         timestamp,
         sequence,
-
+        key, 
+        version_number,
         segment_number,
         segment_size,
         content_list[0]

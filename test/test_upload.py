@@ -53,6 +53,8 @@ _retrieve_key_final_reply_routing_key = "%s.%s" % (
 _avatar_id = 1001
 _segment_size = 120 * 1024
 
+_version_number = 0
+_segment_number = 4
 
 def _pre_loop_function(halt_event, state):
     log = logging.getLogger("_pre_loop_function")
@@ -76,15 +78,17 @@ def _pre_loop_function(halt_event, state):
 
     state["archive-request-id"] = uuid.uuid1().hex
     local_exchange = amqp_connection.local_exchange_name
+
     message = ArchiveKeyStart(
         state["archive-request-id"],
         _avatar_id,
         local_exchange,
         _reply_routing_header,
-        state["key"], 
         time.time(),
         state["sequence"],
-        42,
+        state["key"], 
+        _version_number,
+        _segment_number,
         _segment_size,
         segment
     )
@@ -111,7 +115,7 @@ def _prepare_archive_message(state):
             state["archive-request-id"],
             state["sequence"],
             state["total-size"],
-            42,
+            32,
             state["archive-md5"].hexdigest(),
             segment
         )
@@ -157,6 +161,8 @@ def _handle_archive_key_final_reply(state, message_body):
         local_exchange,
         _reply_routing_header,
         state["key"], 
+        _version_number,
+        _segment_number
     )
     return [(local_exchange, message.routing_key, message), ]
 

@@ -16,11 +16,12 @@ class TestDatabaseContent(unittest.TestCase):
     def test_marshall_and_unmarshall(self):
         """test that we can unmarshall content we have marshalled"""
         original = database_content.factory(
-            timestamp=time.time(), 
             is_tombstone=False,  
-            segment_number=1,  
-            segment_size=42,  
+            timestamp=time.time(), 
+            version_number=42,
+            segment_number=4,  
             segment_count=1,
+            segment_size=42,  
             total_size=4200,  
             adler32=345, 
             md5="ffffffffffffffff",

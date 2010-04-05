@@ -20,10 +20,11 @@ def generate_key():
         n += 1
         yield "test-key-%06d" % (n, )
 
-def generate_database_content(timestamp=time.time(), segment_number=1):
+def generate_database_content(timestamp=time.time(), version_number=0, segment_number=1):
     return database_content.factory(
         timestamp=timestamp, 
         is_tombstone=False,  
+        version_number=version_number,
         segment_number=segment_number,  
         segment_size=42,  
         segment_count=1,

@@ -73,6 +73,7 @@ _archive_state_tuple = namedtuple("ArchiveState", [
     "avatar_id",
     "key",
     "sequence",
+    "version_number",
     "segment_number",
     "segment_size",
     "file_name",
@@ -209,6 +210,7 @@ def _handle_archive_key_entire(state, message_body):
         avatar_id=message.avatar_id,
         key=message.key,
         sequence=0,
+        version_number=message.version_number,
         segment_number=message.segment_number,
         segment_size=len(message.content),
         file_name=file_name,
@@ -223,6 +225,7 @@ def _handle_archive_key_entire(state, message_body):
         is_tombstone=False,  
         segment_number=message.segment_number,  
         segment_size=len(message.content),  
+        version_number=message.version_number,
         segment_count=1,
         total_size=len(message.content),  
         adler32=message.adler32, 
@@ -286,6 +289,7 @@ def _handle_archive_key_start(state, message_body):
         avatar_id=message.avatar_id,
         key=message.key,
         sequence=message.sequence,
+        version_number=message.version_number,
         segment_number=message.segment_number,
         segment_size=message.segment_size,
         file_name=file_name,
@@ -440,8 +444,9 @@ def _handle_archive_key_final(state, message_body):
     # send an insert request to the database, with the reply
     # coming back to us
     database_entry = database_content.factory(
-        timestamp=archive_state.timestamp, 
         is_tombstone=False,  
+        timestamp=archive_state.timestamp, 
+        version_number=archive_state.version_number,
         segment_number=archive_state.segment_number,  
         segment_size=archive_state.segment_size,  
         segment_count=message.sequence+1,
@@ -494,6 +499,7 @@ def _handle_destroy_key(state, message_body):
         avatar_id=message.avatar_id,
         key=message.key,
         sequence=0,
+        version_number=0,
         segment_number=0,
         segment_size=0,
         file_name=file_name,
@@ -508,9 +514,10 @@ def _handle_destroy_key(state, message_body):
         message.avatar_id,
         local_exchange,
         _routing_header,
+        message.timestamp,
         message.key, 
+        message.version_number,
         message.segment_number,
-        message.timestamp
     )
     return [(local_exchange, database_request.routing_key, database_request, )]
 

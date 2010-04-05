@@ -22,6 +22,7 @@ from tools import amqp_connection
 from tools.standard_logging import format_timestamp
 from tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
 from tools import message_driven_process as process
+from tools.persistent_state import load_state, save_state
 from tools import repository
 
 from diyapi_database_server import database_content
@@ -746,6 +747,9 @@ def _check_message_timeout(state):
 
 def _shutdown(state):
     state["low_traffic_thread"].join()
+    del state["low_traffic_thread"]
+
+    save_state(state, _queue_name)
 
     message = ProcessStatus(
         time.time(),
@@ -760,7 +764,10 @@ def _shutdown(state):
     return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
-    state = {"expecting-message" : dict()}
+    state = load_state(_queue_name)
+    if state is None:
+        state = dict()
+
     sys.exit(
         process.main(
             _log_path, 

@@ -12,4 +12,4 @@ export RABBITMQ_NODE_PORT="6000"
 export DIY_NODE_EXCHANGES="spideroak_diyapi_node-sim-00 spideroak_diyapi_node-sim-01 spideroak_diyapi_node-sim-02 spideroak_diyapi_node-sim-03 spideroak_diyapi_node-sim-04 spideroak_diyapi_node-sim-05 spideroak_diyapi_node-sim-06 spideroak_diyapi_node-sim-07 spideroak_diyapi_node-sim-08 spideroak_diyapi_node-sim-09"
 
 rm /var/log/pandora/test_web_server.log
-${TOOL}/bin/python "${SPIDEROAK_DIY}/test/web_server/test_web_server.py"
+${TOOL}/bin/python "${SPIDEROAK_DIY}/test/web_server/test_web_server.py" "$@"

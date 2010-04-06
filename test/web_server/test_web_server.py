@@ -65,7 +65,8 @@ def _load_unit_tests(path):
 
 if __name__ == "__main__":
     tests = _load_unit_tests('unit_tests/web_server')
-    tests.append(
-        unittest.defaultTestLoader.loadTestsFromTestCase(TestWebServer))
+    if 'end-to-end' in sys.argv[1:]:
+        tests.append(
+            unittest.defaultTestLoader.loadTestsFromTestCase(TestWebServer))
     test_suite = unittest.TestSuite(tests)
     unittest.TextTestRunner(verbosity=2).run(test_suite)

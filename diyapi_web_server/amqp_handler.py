@@ -18,6 +18,7 @@ from diyapi_tools import amqp_connection
 from diyapi_tools.message_driven_process import _create_bindings
 
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
+from messages.database_listmatch_reply import DatabaseListMatchReply
 
 
 _queue_name = 'web_server'
@@ -26,6 +27,7 @@ _key_header = 'web_server.'
 
 MESSAGE_TYPES = {
     _key_header + ArchiveKeyFinalReply.routing_tag: ArchiveKeyFinalReply,
+    _key_header + DatabaseListMatchReply.routing_tag: DatabaseListMatchReply,
 }
 
 

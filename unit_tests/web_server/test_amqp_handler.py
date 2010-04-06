@@ -9,7 +9,7 @@ from cStringIO import StringIO
 
 from unit_tests.util import random_string
 
-from tools import amqp_connection
+from diyapi_tools import amqp_connection
 from diyapi_web_server.amqp_handler import AMQPHandler
 
 

@@ -15,7 +15,7 @@ import logging
 import unittest
 import urllib2
 
-from tools.standard_logging import initialize_logging
+from diyapi_tools.standard_logging import initialize_logging
 from unit_tests.util import random_string, generate_key
 
 _log_path = "/var/log/pandora/test_web_server.log"

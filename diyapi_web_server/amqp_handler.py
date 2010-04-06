@@ -14,8 +14,8 @@ from gevent.queue import Queue
 
 import amqplib.client_0_8 as amqp
 
-from tools import amqp_connection
-from tools.message_driven_process import _create_bindings
+from diyapi_tools import amqp_connection
+from diyapi_tools.message_driven_process import _create_bindings
 
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 

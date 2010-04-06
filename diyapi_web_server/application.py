@@ -4,6 +4,7 @@ application.py
 
 The diyapi wsgi application
 """
+import re
 import os
 import time
 
@@ -20,15 +21,42 @@ MIN_EXCHANGES = NUM_EXCHANGES - 2
 SLICE_SIZE = 1024 * 1024    # 1MB
 
 
+class router(list):
+    def add(self, regex, *methods):
+        if not methods:
+            methods = ('GET', 'HEAD')
+        regex = re.compile(regex)
+        def dec(func):
+            self.append((regex, methods, func.__name__))
+            return func
+        return dec
+
+
 class Application(object):
     def __init__(self, amqp_handler):
         self.amqp_handler = amqp_handler
 
+    routes = router()
+
     @wsgify
     def __call__(self, req):
+        for regex, methods, func_name in self.routes:
+            m = regex.match(req.path)
+            if not m:
+                continue
+            if req.method not in methods:
+                raise exc.HTTPMethodNotAllowed()
+            try:
+                method = getattr(self, func_name)
+            except AttributeError:
+                continue
+            return method(req, *m.groups(), **m.groupdict())
+        raise exc.HTTPNotFound()
+
+    @routes.add(r'/([^/]+)$', 'POST')
+    def archive(self, req, key):
         timestamp = time.time()
         avatar_id = 1001
-        key = req.path.lstrip('/')
         archiver = AMQPArchiver(self.amqp_handler)
         encoder = Encoder(MIN_EXCHANGES, NUM_EXCHANGES)
         segments = encoder.encode(req.body)

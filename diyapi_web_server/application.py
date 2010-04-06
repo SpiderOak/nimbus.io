@@ -66,6 +66,7 @@ class Application(object):
         segments = encoder.encode(req.body)
         # TODO: handle archive failure
         archiver.archive_entire(avatar_id, key, segments, timestamp)
+        # TODO: send space accounting message
         return Response('OK')
 
     @routes.add(r'/listmatch$')
@@ -75,5 +76,6 @@ class Application(object):
         prefix = req.GET['prefix']
         matcher = AMQPListmatcher(self.amqp_handler, EXCHANGES)
         # TODO: handle listmatch failure
+        # TODO: break up large (>1mb) listmatch response
         keys = matcher.listmatch(avatar_id, prefix)
         return Response(repr(keys))

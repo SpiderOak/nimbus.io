@@ -39,8 +39,9 @@ class AMQPArchiver(object):
                 avatar_id,
                 self.amqp_handler.exchange,
                 self.amqp_handler.queue_name,
-                key,
                 timestamp,
+                key,
+                0, # version number
                 segment_number,
                 adler32,
                 md5,

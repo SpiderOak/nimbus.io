@@ -12,6 +12,7 @@ from unit_tests.web_server.test_amqp_archiver import (MockChannel,
                                                       FakeAMQPHandler)
 
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
+from messages.database_listmatch_reply import DatabaseListMatchReply
 
 from diyapi_web_server.application import Application
 
@@ -25,16 +26,25 @@ class TestApplication(unittest.TestCase):
         self.app = TestApp(Application(self.handler))
         self._key_generator = generate_key()
 
-    def test_application(self):
+    def test_archive(self):
         self.handler._reply_to_send = ArchiveKeyFinalReply(
             'request_id (replaced by FakeAMQPHandler)',
             ArchiveKeyFinalReply.successful,
             0)
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        resp = self.app.post('/' + key, content)
-        resp.mustcontain('OK')
+        resp = self.app.post('/archive/' + key, content)
+        self.assertEqual(resp.body, 'OK')
 
+    def test_listmatch(self):
+        prefix = 'a_prefix'
+        key_list = ['%s-%d' % (prefix, i) for i in xrange(10)]
+        self.handler._reply_to_send = DatabaseListMatchReply(
+            'request_id (replaced by FakeAMQPHandler)',
+            DatabaseListMatchReply.successful,
+            key_list=key_list)
+        resp = self.app.get('/listmatch', dict(prefix=prefix))
+        self.assertEqual(resp.body, repr(key_list))
 
 
 if __name__ == "__main__":

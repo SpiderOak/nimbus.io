@@ -14,6 +14,7 @@ from webob import Response
 
 from zfec.easyfec import Encoder
 from diyapi_web_server.amqp_archiver import AMQPArchiver
+from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
@@ -54,7 +55,7 @@ class Application(object):
             return method(req, *m.groups(), **m.groupdict())
         raise exc.HTTPNotFound()
 
-    @routes.add(r'/([^/]+)$', 'POST')
+    @routes.add(r'/archive/([^/]+)$', 'POST')
     def archive(self, req, key):
         timestamp = time.time()
         avatar_id = 1001
@@ -63,3 +64,11 @@ class Application(object):
         segments = encoder.encode(req.body)
         archiver.archive_entire(avatar_id, key, segments, timestamp)
         return Response('OK')
+
+    @routes.add(r'/listmatch$')
+    def listmatch(self, req):
+        avatar_id = 1001
+        prefix = req.GET['prefix']
+        matcher = AMQPListmatcher(self.amqp_handler, EXCHANGES)
+        keys = matcher.listmatch(avatar_id, prefix)
+        return Response(repr(keys))

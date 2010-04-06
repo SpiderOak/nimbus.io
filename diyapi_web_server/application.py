@@ -57,18 +57,23 @@ class Application(object):
 
     @routes.add(r'/archive/([^/]+)$', 'POST')
     def archive(self, req, key):
-        timestamp = time.time()
+        # TODO: stop hard-coding avatar_id
         avatar_id = 1001
+        timestamp = time.time()
+        # TODO: split large files into sequences
         archiver = AMQPArchiver(self.amqp_handler, EXCHANGES)
         encoder = Encoder(MIN_EXCHANGES, NUM_EXCHANGES)
         segments = encoder.encode(req.body)
+        # TODO: handle archive failure
         archiver.archive_entire(avatar_id, key, segments, timestamp)
         return Response('OK')
 
     @routes.add(r'/listmatch$')
     def listmatch(self, req):
         avatar_id = 1001
+        # TODO: handle request with missing arguments
         prefix = req.GET['prefix']
         matcher = AMQPListmatcher(self.amqp_handler, EXCHANGES)
+        # TODO: handle listmatch failure
         keys = matcher.listmatch(avatar_id, prefix)
         return Response(repr(keys))

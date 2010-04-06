@@ -8,27 +8,24 @@ import os
 import hashlib
 import zlib
 import uuid
-import time
 
 import gevent
 
 from messages.archive_key_entire import ArchiveKeyEntire
 
-EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
-REPLY_TIMEOUT = 10 # seconds
-
 
 class AMQPArchiver(object):
     """Sends data segments via AMQP to write processes on nodes."""
 
-    def __init__(self, amqp_handler):
+    def __init__(self, amqp_handler, exchanges):
         self.amqp_handler = amqp_handler
-        self.exchanges = EXCHANGES
+        self.exchanges = exchanges
 
     def _exchanges_for_segment_number(self, segment_number):
         return [self.exchanges[segment_number]]
 
-    def archive_entire(self, avatar_id, key, segments, timestamp=time.time()):
+    def archive_entire(self, avatar_id, key, segments, timestamp,
+                       timeout=None):
         replies = []
         for segment_number, segment in enumerate(segments):
             request_id = uuid.uuid1().hex
@@ -51,7 +48,7 @@ class AMQPArchiver(object):
                 reply_queue = self.amqp_handler.send_message(message, exchange)
                 replies.append((message, gevent.spawn(reply_queue.get)))
         gevent.joinall([reply for (message, reply) in replies],
-                       timeout=REPLY_TIMEOUT)
+                       timeout=timeout)
         # TODO: do handoff when nodes are down
         assert all(reply.ready() for (message, reply) in replies)
         return sum(reply.value.previous_size for (message, reply) in replies)

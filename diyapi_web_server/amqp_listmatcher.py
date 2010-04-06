@@ -33,5 +33,6 @@ class AMQPListmatcher(object):
         )
         reply_queue = self.amqp_handler.send_message(message,
                                                      self._random_exchange())
+        # TODO: select a different node if node is down
         reply = reply_queue.get(timeout=timeout)
         return reply.key_list

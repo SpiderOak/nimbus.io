@@ -20,7 +20,7 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 
 
-NUM_EXCHANGES = len(os.environ['DIY_NODE_EXCHANGES'].split())
+EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 
 
 class FakeAMQPHandler(AMQPHandler):
@@ -40,7 +40,7 @@ class TestAMQPArchiver(unittest.TestCase):
         self._key_generator = generate_key()
 
     def test_archive_entire(self):
-        archiver = AMQPArchiver(self.handler)
+        archiver = AMQPArchiver(self.handler, EXCHANGES)
         self.handler._reply_to_send = ArchiveKeyFinalReply(
             'request_id (replaced by FakeAMQPHandler)',
             ArchiveKeyFinalReply.successful,
@@ -50,7 +50,7 @@ class TestAMQPArchiver(unittest.TestCase):
         timestamp = time.time()
 
         segments = []
-        for segment_number in xrange(NUM_EXCHANGES):
+        for segment_number in xrange(len(EXCHANGES)):
             segment = random_string(64 * 1024)
             adler32 = zlib.adler32(segment)
             md5 = hashlib.md5(segment).digest()
@@ -62,7 +62,7 @@ class TestAMQPArchiver(unittest.TestCase):
                                                 timestamp)
 
         self.assertEqual(previous_size, 0)
-        self.assertEqual(len(self.channel.messages), NUM_EXCHANGES)
+        self.assertEqual(len(self.channel.messages), len(EXCHANGES))
 
         for segment_number, message in enumerate(self.channel.messages):
             ((amqp_message,), message_args) = message

@@ -20,11 +20,11 @@ import os
 import sys
 import time
 
-from tools import amqp_connection
-from tools.LRUCache import LRUCache
-from tools import message_driven_process as process
-from tools import repository
-from tools.standard_logging import format_timestamp 
+from diyapi_tools import amqp_connection
+from diyapi_tools.LRUCache import LRUCache
+from diyapi_tools import message_driven_process as process
+from diyapi_tools import repository
+from diyapi_tools.standard_logging import format_timestamp 
 
 from diyapi_database_server import database_content
 

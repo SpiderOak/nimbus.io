@@ -7,7 +7,7 @@ RetrieveKeyStartReply message
 from collections import namedtuple
 import struct
 
-from tools.marshalling import marshall_string, unmarshall_string
+from diyapi_tools.marshalling import marshall_string, unmarshall_string
 from diyapi_database_server import database_content
 
 # 32s - request-id 32 char hex uuid

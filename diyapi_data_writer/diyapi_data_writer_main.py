@@ -18,12 +18,13 @@ import os
 import sys
 import time
 
-from tools import amqp_connection
-from tools.standard_logging import format_timestamp
-from tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
-from tools import message_driven_process as process
-from tools.persistent_state import load_state, save_state
-from tools import repository
+from diyapi_tools import amqp_connection
+from diyapi_tools.standard_logging import format_timestamp
+from diyapi_tools.low_traffic_thread import LowTrafficThread, \
+        low_traffic_routing_tag
+from diyapi_tools import message_driven_process as process
+from diyapi_tools.persistent_state import load_state, save_state
+from diyapi_tools import repository
 
 from diyapi_database_server import database_content
 

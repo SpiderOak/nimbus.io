@@ -12,7 +12,7 @@ import time
 import unittest
 import uuid
 
-from tools.standard_logging import initialize_logging
+from diyapi_tools.standard_logging import initialize_logging
 from diyapi_database_server import database_content
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply

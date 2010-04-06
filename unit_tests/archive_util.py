@@ -10,7 +10,7 @@ import time
 import uuid
 import zlib
 
-from tools import amqp_connection
+from diyapi_tools import amqp_connection
 
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart

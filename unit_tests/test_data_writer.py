@@ -12,8 +12,8 @@ import time
 import unittest
 import uuid
 
-from tools.standard_logging import initialize_logging
-from tools import amqp_connection
+from diyapi_tools.standard_logging import initialize_logging
+from diyapi_tools import amqp_connection
 
 from unit_tests.util import random_string, generate_key
 

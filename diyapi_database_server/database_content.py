@@ -7,7 +7,7 @@ DatabaseContent, with marshalling and unmarshalling code
 from collections import namedtuple
 import struct
 
-from tools.marshalling import marshall_string, unmarshall_string
+from diyapi_tools.marshalling import marshall_string, unmarshall_string
 
 # ? - is_tombstone
 # d - timestamp

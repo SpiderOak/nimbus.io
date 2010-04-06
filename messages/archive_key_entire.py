@@ -7,7 +7,7 @@ ArchiveKeyEntire message
 from collections import namedtuple
 import struct
 
-from tools.marshalling import marshall_string, unmarshall_string
+from diyapi_tools.marshalling import marshall_string, unmarshall_string
 
 _header_tuple = namedtuple("Header", [ 
     "request_id", 

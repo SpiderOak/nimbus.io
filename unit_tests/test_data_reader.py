@@ -11,8 +11,8 @@ import shutil
 import unittest
 import uuid
 
-from tools.standard_logging import initialize_logging
-from tools import amqp_connection
+from diyapi_tools.standard_logging import initialize_logging
+from diyapi_tools import amqp_connection
 
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply

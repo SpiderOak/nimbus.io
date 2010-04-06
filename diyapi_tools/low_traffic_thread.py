@@ -12,7 +12,7 @@ import time
 
 import amqplib.client_0_8 as amqp
 
-from tools import amqp_connection
+from diyapi_tools import amqp_connection
 
 low_traffic_routing_tag = "low_traffic"
 _timeout_interval = 60.0 

@@ -7,7 +7,7 @@ test tools/amqp_connection.py
 import logging
 import unittest
 
-from tools import amqp_connection
+from diyapi_tools import amqp_connection
 
 class TestAQMPConnection(unittest.TestCase):
     """test tools/amqp_connection.py"""

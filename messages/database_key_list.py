@@ -6,7 +6,7 @@ DatabaseKeyList message
 """
 import struct
 
-from tools.marshalling import marshall_string, unmarshall_string
+from diyapi_tools.marshalling import marshall_string, unmarshall_string
 
 # 32s - request-id 32 char hex uuid
 # Q   - avatar_id 

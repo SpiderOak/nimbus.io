@@ -11,8 +11,8 @@ import sys
 import time
 import uuid
 
-from tools import amqp_connection
-from tools import message_driven_process as process
+from diyapi_tools import amqp_connection
+from diyapi_tools import message_driven_process as process
 
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_start_reply import ArchiveKeyStartReply

@@ -29,7 +29,7 @@ class HintedHandoff(object):
     """
     AMQP message to notify a Hinted Handoff server of a handoff
     """
-    routing_key = "hinted_handoff_server.hinted_handoff"
+    routing_key = "handoff_server.hinted_handoff"
 
     def __init__( 
         self, 

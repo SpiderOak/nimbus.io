@@ -20,7 +20,7 @@ class HintedHandoffReply(object):
     routing_tag = "hinted_handoff_reply"
 
     successful = 0
-    error_invalid_duplicate = 1
+    error_invalid_handoff = 1
     error_exception = 2
 
     def __init__(

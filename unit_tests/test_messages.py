@@ -40,6 +40,8 @@ from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
 from messages.process_status import ProcessStatus
+from messages.hinted_handoff import HintedHandoff
+from messages.hinted_handoff_reply import HintedHandoffReply
 
 from unit_tests.util import random_string
 
@@ -747,5 +749,61 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.routing_header, routing_header)
         self.assertEqual(unmarshalled_message.status, status)
 
+    def test_hinted_handoff(self):
+        """test HintedHandoff"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id  = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_timestamp = time.time()
+        original_key = "test.key"
+        original_version_number = 0
+        original_segment_number = 6
+        message = HintedHandoff(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_timestamp,
+            original_key,
+            original_version_number,
+            original_segment_number,
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = HintedHandoff.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
+        )
+
+    def test_hinted_handoff_reply_ok(self):
+        """test HintedHandoffReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        original_total_size = 43L
+        message = HintedHandoffReply(
+            original_request_id,
+            original_result,
+            original_total_size
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = HintedHandoffReply.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+
 if __name__ == "__main__":
     unittest.main()
+

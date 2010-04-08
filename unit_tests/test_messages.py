@@ -759,6 +759,7 @@ class TestMessages(unittest.TestCase):
         original_key = "test.key"
         original_version_number = 0
         original_segment_number = 6
+        dest_exchange = "dest-exchange"
         message = HintedHandoff(
             original_request_id,
             original_avatar_id,
@@ -768,6 +769,7 @@ class TestMessages(unittest.TestCase):
             original_key,
             original_version_number,
             original_segment_number,
+            dest_exchange
         )
         marshalled_message = message.marshall()
         unmarshalled_message = HintedHandoff.unmarshall(marshalled_message)
@@ -788,6 +790,7 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
+        self.assertEqual(unmarshalled_message.dest_exchange, dest_exchange)
 
     def test_hinted_handoff_reply_ok(self):
         """test HintedHandoffReply"""

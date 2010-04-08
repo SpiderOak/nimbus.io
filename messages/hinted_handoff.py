@@ -40,7 +40,8 @@ class HintedHandoff(object):
         timestamp, 
         key, 
         version_number,
-        segment_number 
+        segment_number, 
+        dest_exchange
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
@@ -50,6 +51,7 @@ class HintedHandoff(object):
         self.key = key
         self.version_number = version_number
         self.segment_number = segment_number
+        self.dest_exchange = dest_exchange
 
     @classmethod
     def unmarshall(cls, data):
@@ -62,6 +64,7 @@ class HintedHandoff(object):
         (reply_exchange, pos) = unmarshall_string(data, pos)
         (reply_routing_header, pos) = unmarshall_string(data, pos)
         (key, pos) = unmarshall_string(data, pos)
+        (dest_exchange, pos) = unmarshall_string(data, pos)
         return HintedHandoff(
             header.request_id, 
             header.avatar_id, 
@@ -71,6 +74,7 @@ class HintedHandoff(object):
             key, 
             header.version_number, 
             header.segment_number, 
+            dest_exchange
         )
 
     def marshall(self):
@@ -87,12 +91,14 @@ class HintedHandoff(object):
         packed_reply_exchange =  marshall_string(self.reply_exchange)
         packed_reply_routing_header = marshall_string(self.reply_routing_header)
         packed_key = marshall_string(self.key)
+        packed_dest_exchange = marshall_string(self.dest_exchange)
         return "".join(
             [
                 header,
                 packed_reply_exchange,
                 packed_reply_routing_header,
                 packed_key,
+                packed_dest_exchange
             ]
         )
 

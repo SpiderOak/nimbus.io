@@ -17,6 +17,8 @@ from messages.process_status import ProcessStatus
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
+from diyapi_handoff_server import handoff_repository
+
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
@@ -39,10 +41,25 @@ def _handle_hinted_handoff(state, message_body):
         [message.reply_routing_header, ".", HintedHandoffReply.routing_tag]
     )
 
-    reply = HintedHandoffReply(
-        message.request_id,
-        HintedHandoffReply.error_invalid_handoff,
-        error_message="unsupported function"
+    try:
+        handoff_repository.store(
+            message.dest_exchange,
+            message.timestamp,
+            message.key,
+            message.version_number,
+            message.segment_number
+        )
+    except Exception, instance:
+        log.exception(str(instance))
+        reply = HintedHandoffReply(
+            message.request_id,
+            HintedHandoffReply.error_exception,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    reply = HintedHandoffReply( 
+        message.request_id, HintedHandoffReply.successful
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 

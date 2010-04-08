@@ -67,16 +67,18 @@ class TestHandoffServer(unittest.TestCase):
         )
 
         request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
+        senders_exchange = "senders-exchange"
+        dest_exchange = "dest-exchange"
         message = HintedHandoff(
             request_id,
             avatar_id,
-            test_exchange,
+            senders_exchange,
             _reply_routing_header,
             timestamp,
             key,
             version_number,
-            segment_number
+            segment_number,
+            dest_exchange
         )
 
         marshalled_message = message.marshall()
@@ -89,10 +91,10 @@ class TestHandoffServer(unittest.TestCase):
         
         # after a successful handoff, the server should send us HintedHandoff
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, test_exchange)
+        self.assertEqual(reply_exchange, senders_exchange)
         self.assertEqual(reply.__class__, HintedHandoffReply)
         self.assertEqual(reply.request_id, request_id)
-        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.result, 0, reply.error_message)
 
     def test_large_handoff(self):
         """

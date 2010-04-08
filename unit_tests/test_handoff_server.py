@@ -24,9 +24,15 @@ os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
+from messages.process_status import ProcessStatus
+
+from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
+        as data_writer_routing_header
 
 from diyapi_handoff_server.diyapi_handoff_server_main import \
-        _handle_hinted_handoff
+        _handle_hinted_handoff, \
+        _handle_process_status
+from diyapi_handoff_server.hint_repository import HintRepository
 
 from unit_tests.archive_util import archive_small_content, \
         archive_large_content
@@ -84,17 +90,40 @@ class TestHandoffServer(unittest.TestCase):
         marshalled_message = message.marshall()
 
         handoff_server_state = dict()
+        handoff_server_state["hint-repository"] = HintRepository()
         replies = _handle_hinted_handoff(
             handoff_server_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
         
-        # after a successful handoff, the server should send us HintedHandoff
+        # after a successful handoff, the server should send us
+        # HintedHandoffReply
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply_exchange, senders_exchange)
         self.assertEqual(reply.__class__, HintedHandoffReply)
         self.assertEqual(reply.request_id, request_id)
         self.assertEqual(reply.result, 0, reply.error_message)
+
+        # now send him a ProcessStatus telling him the data writer at the
+        # dest repository is back online
+        status_timestamp = time.time()
+
+        message = ProcessStatus(
+            status_timestamp, 
+            dest_exchange,
+            data_writer_routing_header,
+            ProcessStatus.status_startup
+        )
+
+        marshalled_message = message.marshall()
+
+        replies = _handle_process_status(
+            handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the handoff server to start retrieving the archive
+        # in order to send it to to the data_writer
 
     def test_large_handoff(self):
         """

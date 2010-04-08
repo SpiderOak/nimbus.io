@@ -17,7 +17,10 @@ from messages.process_status import ProcessStatus
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
-from diyapi_handoff_server import handoff_repository
+from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
+        as data_writer_routing_header
+
+from diyapi_handoff_server.hint_repository import HintRepository
 
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
@@ -42,7 +45,7 @@ def _handle_hinted_handoff(state, message_body):
     )
 
     try:
-        handoff_repository.store(
+        state["hint-repository"].store(
             message.dest_exchange,
             message.timestamp,
             message.key,
@@ -72,14 +75,37 @@ def _handle_process_status(state, message_body):
         message.status,
         format_timestamp(message.timestamp),
     ))
-    return []
+    
+    # we're interested in startup messages from data_writers
+    # for whom we may have handoffs
+    if message.routing_header == data_writer_routing_header \
+       and message.status == ProcessStatus.status_startup:
+        results = _check_for_handoffs(state, message.exchange)
+    else:
+        results = []
+
+    return results
 
 _dispatch_table = {
     HintedHandoff.routing_key       : _handle_hinted_handoff,
     ProcessStatus.routing_key       : _handle_process_status,
 }
 
+def _check_for_handoffs(state, dest_exchange):
+    """
+    initiate the the process of retrieving handoffs and sending them to
+    the data_writer at the destination_exchange
+    """
+    log = logging.getLogger("_start_returning_handoffs")
+    hint = state["hint-repository"].next_hint(dest_exchange)
+    if hint is None:
+        return []
+    log.debug("found hint for exchange = %s" % (dest_exchange, ))
+    return []
+
 def _startup(_halt_event, state):
+    state["hint-repository"] = HintRepository()
+
     message = ProcessStatus(
         time.time(),
         amqp_connection.local_exchange_name,
@@ -93,6 +119,9 @@ def _startup(_halt_event, state):
     return [(exchange, routing_key, message, )]
 
 def _shutdown(state):
+    state["hint-repository"].close()
+    del state["hint-repository"]
+
     message = ProcessStatus(
         time.time(),
         amqp_connection.local_exchange_name,

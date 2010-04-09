@@ -12,7 +12,10 @@ import os.path
 _repository_path = os.environ["PANDORA_REPOSITORY_PATH"]
 
 def _state_path(name):
-    return os.path.join(_repository_path, ".".join([name, "state", ]))
+    state_dir = os.path.join(_repository_path, "state")
+    if not os.path.exists(state_dir):
+        os.mkdir(state_dir)
+    return os.path.join(state_dir, ".".join([name, "state", ]))
 
 def save_state(state, name):
     """save a process's state to disk"""

@@ -58,7 +58,7 @@ class TestDataReader(unittest.TestCase):
         archiver.next()
 
         try:
-            archiver.send(original_content)
+            archiver.send((original_content, True, ))
         except StopIteration:
             pass
 
@@ -108,7 +108,7 @@ class TestDataReader(unittest.TestCase):
             self, avatar_id, key, version_number, segment_number
         )
 
-        for test_chunk, retrieved_chunk in retriever:
+        for test_chunk, retrieved_chunk in zip(test_data, retriever):
             self.assertEqual(test_chunk, retrieved_chunk)
 
     def test_retrieve_large_content_short_last_segment(self):
@@ -151,7 +151,7 @@ class TestDataReader(unittest.TestCase):
             self, avatar_id, key, version_number, segment_number
         )
 
-        for test_chunk, retrieved_chunk in retriever:
+        for test_chunk, retrieved_chunk in zip(test_data, retriever):
             self.assertEqual(test_chunk, retrieved_chunk)
 
     def test_retrieve_large_content_2_segments(self):
@@ -192,8 +192,9 @@ class TestDataReader(unittest.TestCase):
             self, avatar_id, key, version_number, segment_number
         )
 
-        for test_chunk, retrieved_chunk in retriever:
+        for test_chunk, retrieved_chunk in zip(test_data, retriever):
             self.assertEqual(test_chunk, retrieved_chunk)
 
 if __name__ == "__main__":
     unittest.main()
+

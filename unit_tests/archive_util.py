@@ -33,14 +33,16 @@ from diyapi_data_writer.diyapi_data_writer_main import \
 
 _reply_routing_header = "test_archive"
 
-def archive_small_content(
+def _archive_small_content(
     self, 
     avatar_id, 
     key, 
     version_number, 
     segment_number, 
+    segment_size,
+    total_size,
+    timestamp,
     content, 
-    timestamp=time.time()
 ):
     """
     utility function to push content all the way through the archive process
@@ -102,7 +104,7 @@ def archive_small_content(
     self.assertEqual(reply.result, 0)
     self.assertEqual(reply.previous_size, 0)
 
-def archive_large_content(
+def archive_coroutine(
     self, 
     avatar_id, 
     key,
@@ -110,7 +112,6 @@ def archive_large_content(
     segment_number,
     segment_size, 
     total_size, 
-    content_list,
     timestamp=time.time()
 ):
     request_id = uuid.uuid1().hex
@@ -123,6 +124,22 @@ def archive_large_content(
 
     sequence = 0
 
+    content_item, last_item = yield
+
+    if last_item:
+        _archive_small_content(
+            self, 
+            avatar_id, 
+            key,
+            version_number,
+            segment_number,
+            segment_size, 
+            total_size, 
+            timestamp,
+            content_item
+        )
+        return
+
     message = ArchiveKeyStart(
         request_id,
         avatar_id,
@@ -134,7 +151,7 @@ def archive_large_content(
         version_number,
         segment_number,
         segment_size,
-        content_list[0]
+        content_item
     )
     marshalled_message = message.marshall()
 
@@ -150,13 +167,17 @@ def archive_large_content(
     self.assertEqual(reply.result, 0)
 
     # do the interior content
-    for content_list_content in content_list[1:-1]:
+    while True:
         sequence += 1
+
+        content_item, last_item = yield
+        if last_item:
+            break
 
         message = ArchiveKeyNext(
             request_id,
             sequence,
-            content_list_content
+            content_item
         )
         marshalled_message = message.marshall()
 
@@ -171,15 +192,13 @@ def archive_large_content(
         self.assertEqual(reply.result, 0)
 
     # send the last one
-    sequence += 1
-
     message = ArchiveKeyFinal(
         request_id,
         sequence,
         total_size,
         adler32,
         md5,
-        content_list[-1]
+        content_item
     )
     marshalled_message = message.marshall()
 
@@ -217,4 +236,5 @@ def archive_large_content(
     self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
     self.assertEqual(reply.result, 0)
     self.assertEqual(reply.previous_size, 0)
+
 

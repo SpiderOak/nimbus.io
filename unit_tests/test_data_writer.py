@@ -33,8 +33,7 @@ from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_destroy_key, \
         _handle_key_destroy_reply
 
-from unit_tests.archive_util import archive_small_content, \
-        archive_large_content
+from unit_tests.archive_util import archive_coroutine
 
 _reply_routing_header = "test_archive"
 
@@ -53,15 +52,30 @@ class TestDataWriter(unittest.TestCase):
 
     def test_archive_key_entire(self):
         """test archiving all data for a key in a single message"""
-        content = random_string(64 * 1024) 
+        segment_size = 64 * 1024
+        total_size = segment_size
+        content_item = random_string(segment_size) 
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 2
-        archive_small_content(
-            self, avatar_id, key, version_number, segment_number, content
+        archiver = archive_coroutine(
+            self, 
+            avatar_id, 
+            key, 
+            version_number, 
+            segment_number,
+            segment_size,
+            total_size
         )
+
+        archiver.next()
+
+        try:
+            archiver.send((content_item, True, ))
+        except StopIteration:
+            pass
 
     def test_large_archive(self):
         """
@@ -77,7 +91,8 @@ class TestDataWriter(unittest.TestCase):
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
-        archive_large_content(
+
+        archiver = archive_coroutine(
             self, 
             avatar_id, 
             key, 
@@ -85,8 +100,17 @@ class TestDataWriter(unittest.TestCase):
             segment_number, 
             segment_size, 
             total_size, 
-            test_data
-        )    
+        )   
+
+        archiver.next()
+
+        for content_item in test_data[:-1]:
+            archiver.send((content_item, False, ))
+        
+        try:
+            archiver.send((test_data[-1], True, ))
+        except StopIteration:
+            pass
 
     def _destroy(
         self, avatar_id, key, version_number, segment_number, timestamp
@@ -155,22 +179,31 @@ class TestDataWriter(unittest.TestCase):
     def test_simple_destroy(self):
         """test destroying a key that exists, with no complicatons"""
         content_size = 64 * 1024
-        content = random_string(content_size) 
+        content_item = random_string(content_size) 
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
         archive_timestamp = time.time()
-        archive_small_content(
+
+        archiver = archive_coroutine(
             self, 
             avatar_id, 
             key, 
-            version_number,
-            segment_number, 
-            content, 
+            version_number, 
+            segment_number,
+            content_size,
+            content_size,
             archive_timestamp
         )
+
+        archiver.next()
+
+        try:
+            archiver.send((content_item, True, ))
+        except StopIteration:
+            pass
 
         # the normal case is where the destroy mesage comes after the archive
         destroy_timestamp = archive_timestamp + 1.0
@@ -183,22 +216,31 @@ class TestDataWriter(unittest.TestCase):
     def test_destroy_tombstone(self):
         """test destroying a key that has already been destroyed"""
         content_size = 64 * 1024
-        content = random_string(content_size) 
+        content_item = random_string(content_size) 
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
         archive_timestamp = time.time()
-        archive_small_content(
+
+        archiver = archive_coroutine(
             self, 
             avatar_id, 
             key, 
-            version_number,
-            segment_number, 
-            content, 
+            version_number, 
+            segment_number,
+            content_size,
+            content_size,
             archive_timestamp
         )
+
+        archiver.next()
+
+        try:
+            archiver.send((content_item, True, ))
+        except StopIteration:
+            pass
 
         destroy_timestamp1 = archive_timestamp + 1.0
         reply = self._destroy(
@@ -221,22 +263,31 @@ class TestDataWriter(unittest.TestCase):
         message
         """
         content_size = 64 * 1024
-        content = random_string(content_size) 
+        content_item = random_string(content_size) 
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
         archive_timestamp = time.time()
-        archive_small_content(
+
+        archiver = archive_coroutine(
             self, 
             avatar_id, 
             key, 
-            version_number,
-            segment_number, 
-            content, 
+            version_number, 
+            segment_number,
+            content_size,
+            content_size,
             archive_timestamp
         )
+
+        archiver.next()
+
+        try:
+            archiver.send((content_item, True, ))
+        except StopIteration:
+            pass
 
         # the destroy mesage is older than the archive
         destroy_timestamp = archive_timestamp - 1.0

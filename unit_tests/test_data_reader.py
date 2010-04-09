@@ -4,13 +4,17 @@ test_data_reader.py
 
 test the data reader process
 """
-import logging
 import os
 import os.path
 import shutil
 import unittest
+import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
+
+from messages.retrieve_key_start import RetrieveKeyStart
+from messages.retrieve_key_next import RetrieveKeyNext
+from messages.retrieve_key_final import RetrieveKeyFinal
 
 from unit_tests.util import random_string, generate_key
 
@@ -20,9 +24,10 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
 from unit_tests.archive_util import archive_coroutine
-from unit_tests.retrieve_util import retrieve_generator
+from unit_tests.retrieve_util import retrieve_coroutine
 
 _key_generator = generate_key()
+_reply_routing_header = "test_data_reader"
 
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
@@ -62,16 +67,24 @@ class TestDataReader(unittest.TestCase):
         except StopIteration:
             pass
 
-        retriever = retrieve_generator(
-            self, avatar_id, key, version_number, segment_number
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        message = RetrieveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            key,
+            version_number,
+            segment_number
         )
+        
+        retriever = retrieve_coroutine(self, message)
 
-        try:
-            test_content = retriever.next()
-        except StopIteration:
-            pass
+        reply = retriever.next()
+        self.assertEqual(reply.result, 0)
 
-        self.assertEqual(test_content, original_content)
+        self.assertEqual(reply.data_content, original_content)
 
     def test_retrieve_large_content(self):
         """test retrieving content that fits in a multiple messages"""
@@ -104,12 +117,37 @@ class TestDataReader(unittest.TestCase):
         except StopIteration:
             pass
 
-        retriever = retrieve_generator(
-            self, avatar_id, key, version_number, segment_number
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        message = RetrieveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            key,
+            version_number,
+            segment_number
         )
+        
+        retriever = retrieve_coroutine(self, message)
 
-        for test_chunk, retrieved_chunk in zip(test_data, retriever):
-            self.assertEqual(test_chunk, retrieved_chunk)
+        reply = retriever.next()
+        self.assertEqual(reply.result, 0)
+        segment_count = reply.segment_count
+
+        # we have sequence 0, get sequence 1..N-1
+        for sequence in range(1, segment_count-1):
+            message = RetrieveKeyNext(request_id, sequence)
+            reply = retriever.send(message)
+            self.assertEqual(reply.result, 0)
+            self.assertEqual(reply.data_content, test_data[sequence])
+
+        # get the last segment
+        sequence = segment_count - 1
+        message = RetrieveKeyFinal(request_id, sequence)
+        reply = retriever.send(message)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.data_content, test_data[sequence])
 
     def test_retrieve_large_content_short_last_segment(self):
         """
@@ -147,12 +185,37 @@ class TestDataReader(unittest.TestCase):
         except StopIteration:
             pass
 
-        retriever = retrieve_generator(
-            self, avatar_id, key, version_number, segment_number
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        message = RetrieveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            key,
+            version_number,
+            segment_number
         )
+        
+        retriever = retrieve_coroutine(self, message)
 
-        for test_chunk, retrieved_chunk in zip(test_data, retriever):
-            self.assertEqual(test_chunk, retrieved_chunk)
+        reply = retriever.next()
+        self.assertEqual(reply.result, 0)
+        segment_count = reply.segment_count
+
+        # we have sequence 0, get sequence 1..N-1
+        for sequence in range(1, segment_count-1):
+            message = RetrieveKeyNext(request_id, sequence)
+            reply = retriever.send(message)
+            self.assertEqual(reply.result, 0)
+            self.assertEqual(reply.data_content, test_data[sequence])
+
+        # get the last segment
+        sequence = segment_count - 1
+        message = RetrieveKeyFinal(request_id, sequence)
+        reply = retriever.send(message)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.data_content, test_data[sequence])
 
     def test_retrieve_large_content_2_segments(self):
         """
@@ -188,12 +251,37 @@ class TestDataReader(unittest.TestCase):
         except StopIteration:
             pass
 
-        retriever = retrieve_generator(
-            self, avatar_id, key, version_number, segment_number
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        message = RetrieveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            key,
+            version_number,
+            segment_number
         )
+        
+        retriever = retrieve_coroutine(self, message)
 
-        for test_chunk, retrieved_chunk in zip(test_data, retriever):
-            self.assertEqual(test_chunk, retrieved_chunk)
+        reply = retriever.next()
+        self.assertEqual(reply.result, 0)
+        segment_count = reply.segment_count
+
+        # we have sequence 0, get sequence 1..N-1
+        for sequence in range(1, segment_count-1):
+            message = RetrieveKeyNext(request_id, sequence)
+            reply = retriever.send(message)
+            self.assertEqual(reply.result, 0)
+            self.assertEqual(reply.data_content, test_data[sequence])
+
+        # get the last segment
+        sequence = segment_count - 1
+        message = RetrieveKeyFinal(request_id, sequence)
+        reply = retriever.send(message)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.data_content, test_data[sequence])
 
 if __name__ == "__main__":
     unittest.main()

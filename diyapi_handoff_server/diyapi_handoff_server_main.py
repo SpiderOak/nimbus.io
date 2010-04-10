@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 
 from diyapi_tools import amqp_connection
 from diyapi_tools import message_driven_process as process
@@ -17,10 +18,13 @@ from messages.process_status import ProcessStatus
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
+from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+
 from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
         as data_writer_routing_header
 
 from diyapi_handoff_server.hint_repository import HintRepository
+from diyapi_handoff_server.forwarder_coroutine import forwarder_coroutine
 
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
@@ -28,6 +32,9 @@ _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
 _queue_name = "handoff-server-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
 _routing_header = "handoff_server"
 _routing_key_binding = ".".join([_routing_header, "*"])
+_retrieve_key_start_reply_routing_key = ".".join([
+    _routing_header, RetrieveKeyStartReply.routing_tag
+])
 
 def _handle_hinted_handoff(state, message_body):
     log = logging.getLogger("_handle_hinted_handoff")
@@ -48,6 +55,7 @@ def _handle_hinted_handoff(state, message_body):
         state["hint-repository"].store(
             message.dest_exchange,
             message.timestamp,
+            message.avatar_id,
             message.key,
             message.version_number,
             message.segment_number
@@ -86,9 +94,31 @@ def _handle_process_status(state, message_body):
 
     return results
 
+def _handle_retrieve_key_start_reply(state, message_body):
+    log = logging.getLogger("_handle_retrieve_key_start_reply")
+    message = RetrieveKeyStartReply.unmarshall(message_body)
+
+    #TODO: we need to squawk about this somehow
+    if message.result != RetrieveKeyStartReply.successful:
+        log.error("%s failed (%s) %s" % (
+            message.request_id, message.result, message.error_message
+        ))
+        if message.request_id in state:
+            del state[message.request_id]            
+        return []
+
+    if message.request_id not in state:
+        log.error("no state for %s" % (message.request_id, ))
+        return []
+
+    log.debug("%s result = %s" % (message.request_id, message.result, ))
+    
+    return state[message.request_id].send(message)
+
 _dispatch_table = {
-    HintedHandoff.routing_key       : _handle_hinted_handoff,
-    ProcessStatus.routing_key       : _handle_process_status,
+    HintedHandoff.routing_key               : _handle_hinted_handoff,
+    ProcessStatus.routing_key               : _handle_process_status,
+    _retrieve_key_start_reply_routing_key   : _handle_retrieve_key_start_reply,
 }
 
 def _check_for_handoffs(state, dest_exchange):
@@ -100,8 +130,12 @@ def _check_for_handoffs(state, dest_exchange):
     hint = state["hint-repository"].next_hint(dest_exchange)
     if hint is None:
         return []
-    log.debug("found hint for exchange = %s" % (dest_exchange, ))
-    return []
+    request_id = uuid.uuid1().hex
+    log.debug("found hint for exchange = %s assigning request_id %s" % (
+        dest_exchange, request_id,  
+    ))
+    state[request_id] = forwarder_coroutine(request_id, hint, _routing_header) 
+    return state[request_id].next()
 
 def _startup(_halt_event, state):
     state["hint-repository"] = HintRepository()

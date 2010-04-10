@@ -14,6 +14,7 @@ factory =  namedtuple(
     "HandoffHint", [
         "timestamp", 
         "exchange",
+        "avatar_id",
         "key",
         "version_number",
         "segment_number", 
@@ -28,21 +29,25 @@ create table hints (
     id integer primary key autoincrement,
     exchange text not null,
     timestamp timestamp not null, 
+    avatar_id int4 not null,
     key text not null,
     version_number int4 not null,
     segment_number int2 not null
 );
 create unique index hints_idx 
-on hints (exchange, timestamp, key, version_number, segment_number);
+on hints (exchange, timestamp, avatar_id, key, version_number, segment_number);
 """.strip()
 
 _store = """
-insert into hints (exchange, timestamp, key, version_number, segment_number)
-values (?, ?, ?, ?, ?)
+insert into hints (
+    exchange, timestamp, avatar_id, key, version_number, segment_number
+)
+values (?, ?, ?, ?, ?, ?)
 """.strip()
 
 _oldest_row_for_exchange = """
-select exchange, timestamp, key, version_number, segment_number from hints
+select timestamp, exchange, avatar_id, key, version_number, segment_number 
+from hints
 where exchange = ?
 order by timestamp
 limit 1
@@ -52,6 +57,7 @@ _purge = """
 delete from hints 
 where exchange = ? 
 and timestamp = ? 
+and avatar_id = ?,
 and key = ? 
 and version_number = ?
 and segment_number = ?
@@ -61,6 +67,7 @@ def _connect_to_database():
     """connect to the stack garbage database, creating it if neccessary"""
     need_schema = not os.path.exists(_database_path)
     connection = sqlite3.connect(_database_path)
+    connection.text_factory = str # always return bytestrings (not unicode)
     if need_schema:
         connection.executescript(_schema)
     return connection
@@ -76,7 +83,15 @@ class HintRepository(object):
         """close the database"""
         self._connection.close()
 
-    def store(self, exchange, timestamp, key, version_number, segment_number):
+    def store(
+        self, 
+        exchange, 
+        timestamp, 
+        avatar_id, 
+        key, 
+        version_number, 
+        segment_number
+    ):
         """
         store a hint to handoff this archive to dest exchange when its
         data_writer announces its presence.
@@ -84,8 +99,14 @@ class HintRepository(object):
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
-                _store, 
-                (exchange, timestamp, key, version_number, segment_number, )
+                _store, (
+                    exchange, 
+                    timestamp, 
+                    avatar_id, 
+                    key, 
+                    version_number, 
+                    segment_number, 
+                )
             )
             cursor.close()
 
@@ -112,6 +133,7 @@ class HintRepository(object):
                 _purge, (
                     handoff_hint.exchange, 
                     handoff_hint.timestamp, 
+                    handoff_hint.avatar_id,
                     handoff_hint.key, 
                     handoff_hint.version_number, 
                     handoff_hint.segment_number,

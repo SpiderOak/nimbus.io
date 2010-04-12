@@ -7,10 +7,19 @@ test the data reader process
 import os
 import os.path
 import shutil
+import time
 import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
+
+from messages.archive_key_entire import ArchiveKeyEntire
+from messages.archive_key_start import ArchiveKeyStart
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_next_reply import ArchiveKeyNextReply
+from messages.archive_key_final import ArchiveKeyFinal
+from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_next import RetrieveKeyNext
@@ -48,24 +57,37 @@ class TestDataReader(unittest.TestCase):
         version_number = 0
         segment_number = 5
         content_size = 64 * 1024
-        original_content = random_string(content_size) 
+        content_item = random_string(content_size) 
+        archive_request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        message = ArchiveKeyEntire(
+            archive_request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
             key, 
             version_number,
-            segment_number, 
-            content_size,
-            content_size
+            segment_number,
+            adler32,
+            md5,
+            content_item
         )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)
 
-        try:
-            archiver.send((original_content, True, ))
-        except StopIteration:
-            pass
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
@@ -84,7 +106,7 @@ class TestDataReader(unittest.TestCase):
         reply = retriever.next()
         self.assertEqual(reply.result, 0)
 
-        self.assertEqual(reply.data_content, original_content)
+        self.assertEqual(reply.data_content, content_item)
 
     def test_retrieve_large_content(self):
         """test retrieving content that fits in a multiple messages"""
@@ -96,26 +118,63 @@ class TestDataReader(unittest.TestCase):
         key  = _key_generator.next()
         version_number = 0
         segment_number = 5
+        sequence = 0
+        archive_request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        message = ArchiveKeyStart(
+            archive_request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
+            sequence,
             key, 
             version_number,
-            segment_number, 
-            segment_size, 
-            total_size 
+            segment_number,
+            segment_size,
+            test_data[0]
         )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)   
 
-        for content_chunk in test_data[:-1]:
-            archiver.send((content_chunk, False, ))
+        reply = archiver.next()
 
-        try:
-            archiver.send((test_data[-1], True, ))
-        except StopIteration:
-            pass
+        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
+        self.assertEqual(reply.result, 0)
+
+        for content_item in test_data[1:-1]:
+            sequence += 1
+            message = ArchiveKeyNext(
+                archive_request_id,
+                sequence,
+                content_item
+            )
+            reply = archiver.send(message)
+            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
+            self.assertEqual(reply.result, 0)
+        
+        sequence += 1
+        message = ArchiveKeyFinal(
+            archive_request_id,
+            sequence,
+            total_size,
+            adler32,
+            md5,
+            test_data[-1]
+        )
+
+        reply = archiver.send(message)
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
@@ -164,26 +223,63 @@ class TestDataReader(unittest.TestCase):
         key  = _key_generator.next()
         version_number = 0
         segment_number = 5
+        sequence = 0
+        archive_request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        message = ArchiveKeyStart(
+            archive_request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
+            sequence,
             key, 
             version_number,
-            segment_number, 
-            segment_size, 
-            total_size, 
-        )    
+            segment_number,
+            segment_size,
+            test_data[0]
+        )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)   
 
-        for content_chunk in test_data[:-1]:
-            archiver.send((content_chunk, False, ))
+        reply = archiver.next()
 
-        try:
-            archiver.send((test_data[-1], True, ))
-        except StopIteration:
-            pass
+        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
+        self.assertEqual(reply.result, 0)
+
+        for content_item in test_data[1:-1]:
+            sequence += 1
+            message = ArchiveKeyNext(
+                archive_request_id,
+                sequence,
+                content_item
+            )
+            reply = archiver.send(message)
+            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
+            self.assertEqual(reply.result, 0)
+        
+        sequence += 1
+        message = ArchiveKeyFinal(
+            archive_request_id,
+            sequence,
+            total_size,
+            adler32,
+            md5,
+            test_data[-1]
+        )
+
+        reply = archiver.send(message)
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
@@ -230,26 +326,63 @@ class TestDataReader(unittest.TestCase):
         key  = _key_generator.next()
         version_number = 0
         segment_number = 5
+        sequence = 0
+        archive_request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        message = ArchiveKeyStart(
+            archive_request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
+            sequence,
             key, 
             version_number,
-            segment_number, 
-            segment_size, 
-            total_size, 
-        )    
+            segment_number,
+            segment_size,
+            test_data[0]
+        )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)   
 
-        for content_chunk in test_data[:-1]:
-            archiver.send((content_chunk, False, ))
+        reply = archiver.next()
 
-        try:
-            archiver.send((test_data[-1], True, ))
-        except StopIteration:
-            pass
+        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
+        self.assertEqual(reply.result, 0)
+
+        for content_item in test_data[1:-1]:
+            sequence += 1
+            message = ArchiveKeyNext(
+                archive_request_id,
+                sequence,
+                content_item
+            )
+            reply = archiver.send(message)
+            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
+            self.assertEqual(reply.result, 0)
+        
+        sequence += 1
+        message = ArchiveKeyFinal(
+            archive_request_id,
+            sequence,
+            total_size,
+            adler32,
+            md5,
+            test_data[-1]
+        )
+
+        reply = archiver.send(message)
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"

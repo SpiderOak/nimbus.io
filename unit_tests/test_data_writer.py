@@ -22,6 +22,13 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
+from messages.archive_key_entire import ArchiveKeyEntire
+from messages.archive_key_start import ArchiveKeyStart
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_next_reply import ArchiveKeyNextReply
+from messages.archive_key_final import ArchiveKeyFinal
+from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
 from messages.database_key_destroy import DatabaseKeyDestroy
@@ -53,31 +60,45 @@ class TestDataWriter(unittest.TestCase):
     def test_archive_key_entire(self):
         """test archiving all data for a key in a single message"""
         segment_size = 64 * 1024
-        total_size = segment_size
         content_item = random_string(segment_size) 
         request_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 2
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        timestamp = time.time()
+
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        message = ArchiveKeyEntire(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
             key, 
-            version_number, 
+            version_number,
             segment_number,
-            segment_size,
-            total_size
+            adler32,
+            md5,
+            content_item
         )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)
 
-        try:
-            archiver.send((content_item, True, ))
-        except StopIteration:
-            pass
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
     def test_large_archive(self):
+
         """
         test archiving a file that needs more than one message.
         For example, a 10 Mb file: each node would get 10 120kb 
@@ -91,26 +112,63 @@ class TestDataWriter(unittest.TestCase):
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
+        sequence = 0
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+
+        message = ArchiveKeyStart(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
+            sequence,
             key, 
             version_number,
-            segment_number, 
-            segment_size, 
-            total_size, 
-        )   
+            segment_number,
+            segment_size,
+            test_data[0]
+        )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)   
 
-        for content_item in test_data[:-1]:
-            archiver.send((content_item, False, ))
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
+        self.assertEqual(reply.result, 0)
+
+        for content_item in test_data[1:-1]:
+            sequence += 1
+            message = ArchiveKeyNext(
+                request_id,
+                sequence,
+                content_item
+            )
+            reply = archiver.send(message)
+            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
+            self.assertEqual(reply.result, 0)
         
-        try:
-            archiver.send((test_data[-1], True, ))
-        except StopIteration:
-            pass
+        sequence += 1
+        message = ArchiveKeyFinal(
+            request_id,
+            sequence,
+            total_size,
+            adler32,
+            md5,
+            test_data[-1]
+        )
+
+        reply = archiver.send(message)
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
     def _destroy(
         self, avatar_id, key, version_number, segment_number, timestamp
@@ -186,24 +244,34 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 4
         archive_timestamp = time.time()
+        test_exchange = "test-exchange"
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+
+        message = ArchiveKeyEntire(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            archive_timestamp,
             key, 
-            version_number, 
+            version_number,
             segment_number,
-            content_size,
-            content_size,
-            archive_timestamp
+            adler32,
+            md5,
+            content_item
         )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)
 
-        try:
-            archiver.send((content_item, True, ))
-        except StopIteration:
-            pass
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         # the normal case is where the destroy mesage comes after the archive
         destroy_timestamp = archive_timestamp + 1.0
@@ -222,25 +290,34 @@ class TestDataWriter(unittest.TestCase):
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
+        test_exchange = "test-exchange"
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
         archive_timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        message = ArchiveKeyEntire(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            archive_timestamp,
             key, 
-            version_number, 
+            version_number,
             segment_number,
-            content_size,
-            content_size,
-            archive_timestamp
+            adler32,
+            md5,
+            content_item
         )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)
 
-        try:
-            archiver.send((content_item, True, ))
-        except StopIteration:
-            pass
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         destroy_timestamp1 = archive_timestamp + 1.0
         reply = self._destroy(
@@ -269,25 +346,34 @@ class TestDataWriter(unittest.TestCase):
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
+        test_exchange = "test-exchange"
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
         archive_timestamp = time.time()
 
-        archiver = archive_coroutine(
-            self, 
-            avatar_id, 
+        message = ArchiveKeyEntire(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            archive_timestamp,
             key, 
-            version_number, 
+            version_number,
             segment_number,
-            content_size,
-            content_size,
-            archive_timestamp
+            adler32,
+            md5,
+            content_item
         )
 
-        archiver.next()
+        archiver = archive_coroutine(self, message)
 
-        try:
-            archiver.send((content_item, True, ))
-        except StopIteration:
-            pass
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
 
         # the destroy mesage is older than the archive
         destroy_timestamp = archive_timestamp - 1.0

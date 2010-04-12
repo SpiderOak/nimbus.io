@@ -12,6 +12,7 @@ from diyapi_tools import amqp_connection
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_entire import ArchiveKeyEntire
+from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 def forwarder_coroutine(request_id, hint, reply_routing_header):
     """
@@ -74,4 +75,6 @@ def forwarder_coroutine(request_id, hint, reply_routing_header):
     archive_key_start_reply = \
         yield [(hint.exchange, message.routing_key, message, )]
 
+    if archive_key_start_reply.__class__ == ArchiveKeyFinalReply:
+        yield []
     

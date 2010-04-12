@@ -32,6 +32,9 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 
+from messages.database_key_purge import DatabaseKeyPurge
+from messages.database_key_purge_reply import DatabaseKeyPurgeReply
+
 _log_path = "/var/log/pandora/test_handoff_server.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
@@ -40,7 +43,7 @@ _handoff_database_path = os.path.join(_repository_path, "handoff_database")
 _dest_database_path = os.path.join(_repository_path, "dest_database")
 
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache
+        _database_cache, _handle_key_purge
 
 from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
         as data_writer_routing_header
@@ -230,6 +233,32 @@ class TestHandoffServer(unittest.TestCase):
         self.assertEqual(reply.previous_size, 0)
 
         # send the archiver's reply back to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_archive_key_final_reply(
+            handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the handoff server to send a purge message
+        # to its local database server
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, DatabaseKeyPurge)
+
+        # send the message to the database server
+        marshalled_message = reply.marshall()
+        replies = _handle_key_purge(
+            handoff_database_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the database server to send a (successful) reply back 
+        # to the handoff server
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, DatabaseKeyPurgeReply)
+
+        # send the reply back to the handoff server
         marshalled_message = reply.marshall()
         replies = _handle_archive_key_final_reply(
             handoff_server_state, marshalled_message

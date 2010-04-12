@@ -22,6 +22,8 @@ from messages.database_key_list import DatabaseKeyList
 from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_key_purge import DatabaseKeyPurge
+from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.archive_key_entire import ArchiveKeyEntire
@@ -265,6 +267,63 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.total_size, original_total_size
         )
+
+    def test_database_key_purge(self):
+        """test DatabaseKeyPurge"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_timestamp = time.time()
+        original_key  = "abcdefghijk"
+        original_version_number = 0
+        original_segment_number = 4
+        message = DatabaseKeyPurge(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_timestamp,
+            original_key,
+            original_version_number,
+            original_segment_number,
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseKeyPurge.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(
+            unmarshalled_message.timestamp, original_timestamp
+        )
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
+        )
+
+    def test_database_key_purge_reply_ok(self):
+        """test DatabaseKeyPurgeReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = DatabaseKeyPurgeReply(
+            original_request_id,
+            original_result
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = DatabaseKeyPurgeReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
 
     def test_database_listmatch(self):
         """test DatabaseListMatch"""

@@ -38,6 +38,8 @@ from messages.database_key_list import DatabaseKeyList
 from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_key_purge import DatabaseKeyPurge
+from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
 
@@ -411,6 +413,67 @@ def _handle_key_destroy(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
+def _handle_key_purge(state, message_body):
+    log = logging.getLogger("_handle_key_purge")
+    message = DatabaseKeyPurge.unmarshall(message_body)
+    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", DatabaseKeyPurgeReply.routing_tag]
+    )
+
+    try:
+        database = _open_database(state, message.avatar_id)
+        existing_entry = _get_content(
+            database, 
+            message.key, 
+            message.version_number,
+            message.segment_number
+        )
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        reply = DatabaseKeyPurgeReply(
+            message.request_id,
+            DatabaseKeyPurgeReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    if existing_entry is None:
+        error_string = "%s no such key %s %s %s" % (
+            message.avatar_id, 
+            message.key, 
+            message.version_number,
+            message.segment_number
+        )
+        log.error(error_string)
+        reply = DatabaseKeyPurgeReply(
+            message.request_id,
+            DatabaseKeyPurgeReply.error_no_such_key,
+            error_message=error_string
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+    
+    try:
+        database.delete(message.key)
+        database.sync()
+        os.fsync(database.fd())
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        reply = DatabaseKeyPurgeReply(
+            message.request_id,
+            DatabaseKeyPurgeReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    reply = DatabaseKeyPurgeReply(
+        message.request_id,
+        DatabaseKeyPurgeReply.successful
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
 def _handle_listmatch(state, message_body):
     log = logging.getLogger("_handle_listmatch")
     message = DatabaseListMatch.unmarshall(message_body)
@@ -473,6 +536,7 @@ _dispatch_table = {
     DatabaseKeyLookup.routing_key   : _handle_key_lookup,
     DatabaseKeyList.routing_key     : _handle_key_list,
     DatabaseKeyDestroy.routing_key  : _handle_key_destroy,
+    DatabaseKeyPurge.routing_key    : _handle_key_purge,
     DatabaseListMatch.routing_key   : _handle_listmatch,
     ProcessStatus.routing_key       : _handle_process_status,
 }

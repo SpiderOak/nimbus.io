@@ -22,6 +22,8 @@ from messages.database_key_list import DatabaseKeyList
 from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_key_purge import DatabaseKeyPurge
+from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
 
@@ -34,7 +36,8 @@ _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup, \
-        _handle_key_list, _handle_key_destroy, _handle_listmatch
+        _handle_key_list, _handle_key_destroy, _handle_key_purge, \
+        _handle_listmatch
 
 _reply_routing_header = "test_database_server"
 
@@ -154,6 +157,36 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(
             reply_routing_key, 
             "%s.database_key_destroy_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+
+        return reply
+
+    def _purge_key(
+        self, avatar_id, key, version_number, segment_number, timestamp
+    ):
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+        message = DatabaseKeyPurge(
+            request_id,
+            avatar_id,
+            exchange,
+            _reply_routing_header,
+            timestamp,
+            key, 
+            version_number,
+            segment_number,
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_key_purge(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_key_purge_reply" % (_reply_routing_header, )
         )
         self.assertEqual(reply.request_id, request_id)
 
@@ -596,6 +629,76 @@ class TestDatabaseServer(unittest.TestCase):
 
         self.assertEqual(reply.result, 0, reply.error_message)
         self.assertEqual(reply.total_size, 0)
+
+    def test_key_purge_on_nonexistent_key(self):
+        """test purgeing a key that does not exist"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        version_number = 0
+        segment_number = 4
+        timestamp = time.time()
+
+        reply = self._purge_key(
+            avatar_id, key, version_number, segment_number, timestamp
+        )
+
+        # we expect the request to fail
+        self.assertEqual(reply.result, DatabaseKeyPurgeReply.error_no_such_key)
+
+    def test_simple_key_purge(self):
+        """test purgeing a key that exists"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        version_number = 0
+        segment_number = 1
+        base_timestamp = time.time()
+        content = generate_database_content(
+            timestamp=base_timestamp,
+            version_number=version_number,
+            segment_number=segment_number
+        )
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        # simple purge is where the purge request is newer than
+        # the database content
+        purge_timestamp = base_timestamp + 1.0
+        reply = self._purge_key(
+            avatar_id, key, version_number, segment_number, purge_timestamp
+        )
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+
+    def test_key_purge_on_nonexistent_duplicate(self):
+        """
+        test purgeing a key for a segment number that does not exist
+        when the key has another segment number that exists
+        """
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        version_number = 0
+        segment_number = 1
+        base_timestamp = time.time()
+        content = generate_database_content(
+            timestamp=base_timestamp,
+            version_number=version_number,
+            segment_number=segment_number
+        )
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        reply = self._purge_key(
+            avatar_id, key, version_number, segment_number+1, base_timestamp+1.0
+        )
+
+        # we expect the request to fail
+        self.assertEqual(reply.result, DatabaseKeyPurgeReply.error_no_such_key)
 
     def test_listmatch_empty_database(self):
         """test listmach on an empty database"""

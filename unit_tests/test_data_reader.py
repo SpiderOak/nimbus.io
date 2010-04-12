@@ -32,6 +32,9 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
+from diyapi_database_server.diyapi_database_server_main import \
+        _database_cache
+
 from unit_tests.archive_util import archive_coroutine
 from unit_tests.retrieve_util import retrieve_coroutine
 
@@ -61,6 +64,9 @@ class TestDataReader(unittest.TestCase):
         archive_request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         timestamp = time.time()
+        data_writer_state = dict()
+        data_reader_state = dict()
+        database_state = {_database_cache : dict()}
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
@@ -81,7 +87,9 @@ class TestDataReader(unittest.TestCase):
             content_item
         )
 
-        archiver = archive_coroutine(self, message)
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )
 
         reply = archiver.next()
 
@@ -101,7 +109,9 @@ class TestDataReader(unittest.TestCase):
             segment_number
         )
         
-        retriever = retrieve_coroutine(self, message)
+        retriever = retrieve_coroutine(
+            self, data_reader_state, database_state, message
+        )
 
         reply = retriever.next()
         self.assertEqual(reply.result, 0)
@@ -122,6 +132,9 @@ class TestDataReader(unittest.TestCase):
         archive_request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         timestamp = time.time()
+        data_writer_state = dict()
+        data_reader_state = dict()
+        database_state = {_database_cache : dict()}
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
@@ -142,7 +155,9 @@ class TestDataReader(unittest.TestCase):
             test_data[0]
         )
 
-        archiver = archive_coroutine(self, message)   
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )   
 
         reply = archiver.next()
 
@@ -188,7 +203,9 @@ class TestDataReader(unittest.TestCase):
             segment_number
         )
         
-        retriever = retrieve_coroutine(self, message)
+        retriever = retrieve_coroutine(
+            self, data_reader_state, database_state, message
+        )
 
         reply = retriever.next()
         self.assertEqual(reply.result, 0)
@@ -227,6 +244,9 @@ class TestDataReader(unittest.TestCase):
         archive_request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         timestamp = time.time()
+        data_writer_state = dict()
+        data_reader_state = dict()
+        database_state = {_database_cache : dict()}
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
@@ -247,7 +267,9 @@ class TestDataReader(unittest.TestCase):
             test_data[0]
         )
 
-        archiver = archive_coroutine(self, message)   
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )   
 
         reply = archiver.next()
 
@@ -293,7 +315,9 @@ class TestDataReader(unittest.TestCase):
             segment_number
         )
         
-        retriever = retrieve_coroutine(self, message)
+        retriever = retrieve_coroutine(
+            self, data_reader_state, database_state, message
+        )
 
         reply = retriever.next()
         self.assertEqual(reply.result, 0)
@@ -330,6 +354,9 @@ class TestDataReader(unittest.TestCase):
         archive_request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         timestamp = time.time()
+        data_writer_state = dict()
+        data_reader_state = dict()
+        database_state = {_database_cache : dict()}
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
@@ -350,7 +377,9 @@ class TestDataReader(unittest.TestCase):
             test_data[0]
         )
 
-        archiver = archive_coroutine(self, message)   
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )   
 
         reply = archiver.next()
 
@@ -396,7 +425,9 @@ class TestDataReader(unittest.TestCase):
             segment_number
         )
         
-        retriever = retrieve_coroutine(self, message)
+        retriever = retrieve_coroutine(
+            self, data_reader_state, database_state, message
+        )
 
         reply = retriever.next()
         self.assertEqual(reply.result, 0)

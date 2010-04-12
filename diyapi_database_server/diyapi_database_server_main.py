@@ -57,7 +57,10 @@ def _open_database(state, avatar_id):
     if avatar_id in state[_database_cache]:
         database = state[_database_cache][avatar_id]
     else:
-        database_path = repository.content_database_path(avatar_id)
+        # allow tests to specify a database path in state
+        database_path = state.get(
+            "database-path", repository.content_database_path(avatar_id)
+        )
         database = bsddb3.db.DB()
         database.set_flags(bsddb3.db.DB_DUPSORT)
         database.open(

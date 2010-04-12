@@ -39,6 +39,8 @@ from diyapi_database_server.diyapi_database_server_main import \
 from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_destroy_key, \
         _handle_key_destroy_reply
+from diyapi_database_server.diyapi_database_server_main import \
+        _database_cache
 
 from unit_tests.archive_util import archive_coroutine
 
@@ -69,6 +71,8 @@ class TestDataWriter(unittest.TestCase):
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         timestamp = time.time()
+        data_writer_state = dict()
+        database_state = {_database_cache : dict()}
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
@@ -89,7 +93,9 @@ class TestDataWriter(unittest.TestCase):
             content_item
         )
 
-        archiver = archive_coroutine(self, message)
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )
 
         reply = archiver.next()
 
@@ -116,6 +122,8 @@ class TestDataWriter(unittest.TestCase):
         request_id = uuid.uuid1().hex
         test_exchange = "reply-exchange"
         timestamp = time.time()
+        data_writer_state = dict()
+        database_state = {_database_cache : dict()}
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
@@ -136,7 +144,9 @@ class TestDataWriter(unittest.TestCase):
             test_data[0]
         )
 
-        archiver = archive_coroutine(self, message)   
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )   
 
         reply = archiver.next()
 
@@ -249,7 +259,8 @@ class TestDataWriter(unittest.TestCase):
         # data segment. We don't have that so we make something up.
         adler32 = -42
         md5 = "ffffffffffffffff"
-
+        data_writer_state = dict()
+        database_state = {_database_cache : dict()}
 
         message = ArchiveKeyEntire(
             request_id,
@@ -265,7 +276,9 @@ class TestDataWriter(unittest.TestCase):
             content_item
         )
 
-        archiver = archive_coroutine(self, message)
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )
 
         reply = archiver.next()
 
@@ -296,6 +309,8 @@ class TestDataWriter(unittest.TestCase):
         adler32 = -42
         md5 = "ffffffffffffffff"
         archive_timestamp = time.time()
+        data_writer_state = dict()
+        database_state = {_database_cache : dict()}
 
         message = ArchiveKeyEntire(
             request_id,
@@ -311,7 +326,9 @@ class TestDataWriter(unittest.TestCase):
             content_item
         )
 
-        archiver = archive_coroutine(self, message)
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )
 
         reply = archiver.next()
 
@@ -352,6 +369,8 @@ class TestDataWriter(unittest.TestCase):
         adler32 = -42
         md5 = "ffffffffffffffff"
         archive_timestamp = time.time()
+        data_writer_state = dict()
+        database_state = {_database_cache : dict()}
 
         message = ArchiveKeyEntire(
             request_id,
@@ -367,7 +386,9 @@ class TestDataWriter(unittest.TestCase):
             content_item
         )
 
-        archiver = archive_coroutine(self, message)
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )
 
         reply = archiver.next()
 
@@ -387,3 +408,4 @@ class TestDataWriter(unittest.TestCase):
 if __name__ == "__main__":
     initialize_logging(_log_path)
     unittest.main()
+

@@ -18,13 +18,12 @@ from diyapi_data_reader.diyapi_data_reader_main import \
         _handle_retrieve_key_final, \
         _handle_key_lookup_reply
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_lookup
+        _handle_key_lookup
 
-def retrieve_coroutine(self, start_message):
+def retrieve_coroutine(self, data_reader_state, database_state, start_message):
     """retrieve content for a key"""
     marshalled_message = start_message.marshall()
 
-    data_reader_state = dict()
     replies = _handle_retrieve_key_start(
         data_reader_state, marshalled_message
     )
@@ -40,7 +39,6 @@ def retrieve_coroutine(self, start_message):
 
     # hand off the reply to the database server
     marshalled_message = reply.marshall()
-    database_state = {_database_cache : dict()}
     replies = _handle_key_lookup(database_state, marshalled_message)
     self.assertEqual(len(replies), 1)
     [(reply_exchange, reply_routing_key, reply, ), ] = replies

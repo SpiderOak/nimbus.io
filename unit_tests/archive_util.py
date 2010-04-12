@@ -12,7 +12,7 @@ from messages.archive_key_next import ArchiveKeyNext
 from messages.database_key_insert import DatabaseKeyInsert
 
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_insert
+        _handle_key_insert
 from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_archive_key_entire, \
         _handle_key_insert_reply, \
@@ -22,10 +22,8 @@ from diyapi_data_writer.diyapi_data_writer_main import \
 
 _reply_routing_header = "test_archive"
 
-def archive_coroutine(self, start_message):
+def archive_coroutine(self, data_writer_state, database_state, start_message):
     marshalled_message = start_message.marshall()
-
-    data_writer_state = dict()
 
     if start_message.__class__ == ArchiveKeyEntire:
         replies = _handle_archive_key_entire(
@@ -77,7 +75,6 @@ def archive_coroutine(self, start_message):
 
     # hand off the reply to the database server
     marshalled_message = reply.marshall()
-    database_state = {_database_cache : dict()}
     replies = _handle_key_insert(database_state, marshalled_message)
     self.assertEqual(len(replies), 1)
     [(reply_exchange, reply_routing_key, reply, ), ] = replies

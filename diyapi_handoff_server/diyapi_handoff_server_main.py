@@ -19,6 +19,7 @@ from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
         as data_writer_routing_header
@@ -34,6 +35,9 @@ _routing_header = "handoff_server"
 _routing_key_binding = ".".join([_routing_header, "*"])
 _retrieve_key_start_reply_routing_key = ".".join([
     _routing_header, RetrieveKeyStartReply.routing_tag
+])
+_archive_key_final_reply_routing_key = ".".join([
+    _routing_header, ArchiveKeyFinalReply.routing_tag
 ])
 
 def _handle_hinted_handoff(state, message_body):
@@ -115,10 +119,32 @@ def _handle_retrieve_key_start_reply(state, message_body):
     
     return state[message.request_id].send(message)
 
+def _handle_archive_key_final_reply(state, message_body):
+    log = logging.getLogger("_handle_archive_key_final_reply")
+    message = ArchiveKeyFinalReply.unmarshall(message_body)
+
+    #TODO: we need to squawk about this somehow
+    if message.result != ArchiveKeyFinalReply.successful:
+        log.error("%s failed (%s) %s" % (
+            message.request_id, message.result, message.error_message
+        ))
+        if message.request_id in state:
+            del state[message.request_id]            
+        return []
+
+    if message.request_id not in state:
+        log.error("no state for %s" % (message.request_id, ))
+        return []
+
+    log.debug("%s result = %s" % (message.request_id, message.result, ))
+    
+    return state[message.request_id].send(message)
+
 _dispatch_table = {
     HintedHandoff.routing_key               : _handle_hinted_handoff,
     ProcessStatus.routing_key               : _handle_process_status,
     _retrieve_key_start_reply_routing_key   : _handle_retrieve_key_start_reply,
+    _archive_key_final_reply_routing_key    : _handle_archive_key_final_reply,
 }
 
 def _check_for_handoffs(state, dest_exchange):

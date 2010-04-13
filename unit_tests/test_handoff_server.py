@@ -66,6 +66,7 @@ from unit_tests.archive_util import archive_coroutine
 from unit_tests.retrieve_util import retrieve_coroutine
 
 _reply_routing_header = "test_handoff"
+_key_generator = generate_key()
 
 class TestHandoffServer(unittest.TestCase):
     """test message handling in handoff server"""
@@ -74,7 +75,33 @@ class TestHandoffServer(unittest.TestCase):
         logging.root.setLevel(logging.DEBUG)
         self.tearDown()
         os.makedirs(_repository_path)
-        self._key_generator = generate_key()
+
+        self._avatar_id = 1001
+        self._key  = _key_generator.next()
+        self._version_number = 0
+        self._segment_number = 2
+        self._timestamp = time.time()
+
+        self._handoff_node_exchange = "handoff-node-exchange"
+        self._web_node_exchange = "web-node-exchange"
+        self._dest_node_exchange = "dest-node-exchange"
+
+        self._handoff_server_state = dict()
+        self._handoff_server_state["hint-repository"] = HintRepository()
+
+        self._handoff_data_writer_state = dict()
+        self._handoff_data_reader_state = dict()
+        self._handoff_database_state = {
+            _database_cache : dict(),
+            "database-path" : _handoff_database_path
+        }
+
+        self._dest_data_writer_state = dict()
+        self._dest_data_reader_state = dict()
+        self._dest_database_state = {
+            _database_cache : dict(),
+            "database-path" : _dest_database_path
+        }
 
     def tearDown(self):
         if os.path.exists(_test_dir):
@@ -86,46 +113,24 @@ class TestHandoffServer(unittest.TestCase):
         """
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        avatar_id = 1001
-        key  = self._key_generator.next()
-        version_number = 0
-        segment_number = 2
-        timestamp = time.time()
-        handoff_request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
-        timestamp = time.time()
-
-        handoff_server_state = dict()
-        handoff_server_state["hint-repository"] = HintRepository()
-
-        handoff_data_writer_state = dict()
-        handoff_data_reader_state = dict()
-        handoff_database_state = {
-            _database_cache : dict(),
-            "database-path" : _handoff_database_path
-        }
-
-        dest_data_writer_state = dict()
-        dest_data_reader_state = dict()
-        dest_database_state = {
-            _database_cache : dict(),
-            "database-path" : _dest_database_path
-        }
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
         adler32 = -42
         md5 = "ffffffffffffffff"
 
+        handoff_request_id = uuid.uuid1().hex
+        handoff_timestamp = time.time()
+
         message = ArchiveKeyEntire(
             handoff_request_id,
-            avatar_id,
-            test_exchange,
+            self._avatar_id,
+            self._handoff_node_exchange,
             _reply_routing_header,
-            timestamp,
-            key, 
-            version_number,
-            segment_number,
+            handoff_timestamp,
+            self._key, 
+            self._version_number,
+            self._segment_number,
             adler32,
             md5,
             content_item
@@ -134,8 +139,8 @@ class TestHandoffServer(unittest.TestCase):
         # this archiver gets the handoff, as if the dest_archiver is offline
         handoff_archiver = archive_coroutine(
             self, 
-            handoff_data_writer_state,
-            handoff_database_state,
+            self._handoff_data_writer_state,
+            self._handoff_database_state,
             message
         )
 
@@ -145,35 +150,7 @@ class TestHandoffServer(unittest.TestCase):
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
-        request_id = uuid.uuid1().hex
-        senders_exchange = "senders-exchange"
-        dest_exchange = "dest-exchange"
-        message = HintedHandoff(
-            request_id,
-            avatar_id,
-            senders_exchange,
-            _reply_routing_header,
-            timestamp,
-            key,
-            version_number,
-            segment_number,
-            dest_exchange
-        )
-
-        marshalled_message = message.marshall()
-
-        replies = _handle_hinted_handoff(
-            handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-        
-        # after a successful handoff, the server should send us
-        # HintedHandoffReply
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, senders_exchange)
-        self.assertEqual(reply.__class__, HintedHandoffReply)
-        self.assertEqual(reply.request_id, request_id)
-        self.assertEqual(reply.result, 0, reply.error_message)
+        self._handoff(handoff_timestamp)
 
         # now send him a ProcessStatus telling him the data writer at the
         # dest repository is back online
@@ -181,7 +158,7 @@ class TestHandoffServer(unittest.TestCase):
 
         message = ProcessStatus(
             status_timestamp, 
-            dest_exchange,
+            self._dest_node_exchange,
             data_writer_routing_header,
             ProcessStatus.status_startup
         )
@@ -189,7 +166,7 @@ class TestHandoffServer(unittest.TestCase):
         marshalled_message = message.marshall()
 
         replies = _handle_process_status(
-            handoff_server_state, marshalled_message
+            self._handoff_server_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
@@ -202,8 +179,8 @@ class TestHandoffServer(unittest.TestCase):
         # create a retriever to retrieve from the local data_reader
         handoff_retriever = retrieve_coroutine(
             self,
-            handoff_data_reader_state,
-            handoff_database_state,
+            self._handoff_data_reader_state,
+            self._handoff_database_state,
             reply
         )
 
@@ -214,22 +191,22 @@ class TestHandoffServer(unittest.TestCase):
         # pass the reply to the handoff server
         marshalled_message = reply.marshall()
         replies = _handle_retrieve_key_start_reply(
-            handoff_server_state, marshalled_message
+            self._handoff_server_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
         # we expect the handoff server to send the data it retrieves
         # to the archive server for which it was originally intended 
         [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, dest_exchange)
+        self.assertEqual(reply_exchange, self._dest_node_exchange)
         self.assertEqual(reply.__class__, ArchiveKeyEntire)
 
         # this is the archiver that should have received the data in 
         # the first place
         dest_archiver = archive_coroutine(
             self,
-            dest_data_writer_state,
-            dest_database_state,
+            self._dest_data_writer_state,
+            self._dest_database_state,
             reply
         )
 
@@ -242,7 +219,7 @@ class TestHandoffServer(unittest.TestCase):
         # send the archiver's reply back to the handoff server
         marshalled_message = reply.marshall()
         replies = _handle_archive_key_final_reply(
-            handoff_server_state, marshalled_message
+            self._handoff_server_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
@@ -255,7 +232,7 @@ class TestHandoffServer(unittest.TestCase):
         # send the message to the data_writer
         marshalled_message = reply.marshall()
         replies = _handle_purge_key(
-            handoff_data_writer_state, marshalled_message
+            self._handoff_data_writer_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
@@ -268,7 +245,7 @@ class TestHandoffServer(unittest.TestCase):
         # send the message to the database server
         marshalled_message = reply.marshall()
         replies = _handle_key_purge(
-            handoff_database_state, marshalled_message
+            self._handoff_database_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
@@ -281,7 +258,7 @@ class TestHandoffServer(unittest.TestCase):
         # send the reply back to the data_writer
         marshalled_message = reply.marshall()
         replies = _handle_key_purge_reply(
-            handoff_data_writer_state, marshalled_message
+            self._handoff_data_writer_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
 
@@ -294,7 +271,7 @@ class TestHandoffServer(unittest.TestCase):
         # send the reply back to the handoff server
         marshalled_message = reply.marshall()
         replies = _handle_purge_key_reply(
-            handoff_server_state, marshalled_message
+            self._handoff_server_state, marshalled_message
         )
 
         # we expect no reply, because we are all done
@@ -309,56 +286,34 @@ class TestHandoffServer(unittest.TestCase):
         segment_size = 120 * 1024
         chunk_count = 10
         total_size = segment_size * chunk_count
-        avatar_id = 1001
         test_data = [random_string(segment_size) for _ in range(chunk_count)]
-        key  = self._key_generator.next()
-        version_number = 0
-        segment_number = 4
         sequence = 0
         handoff_request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
-        timestamp = time.time()
+        handoff_timestamp = time.time()
 
         # the adler32 and md5 hashes should be of the original pre-zefec
         # data segment. We don't have that so we make something up.
         adler32 = -42
         md5 = "ffffffffffffffff"
 
-        handoff_server_state = dict()
-        handoff_server_state["hint-repository"] = HintRepository()
-
-        handoff_data_writer_state = dict()
-        handoff_data_reader_state = dict()
-        handoff_database_state = {
-            _database_cache : dict(),
-            "database-path" : _handoff_database_path
-        }
-
-        dest_data_writer_state = dict()
-        dest_data_reader_state = dict()
-        dest_database_state = {
-            _database_cache : dict(),
-            "database-path" : _dest_database_path
-        }
-
         message = ArchiveKeyStart(
             handoff_request_id,
-            avatar_id,
-            test_exchange,
+            self._avatar_id,
+            self._handoff_node_exchange,
             _reply_routing_header,
-            timestamp,
+            handoff_timestamp,
             sequence,
-            key, 
-            version_number,
-            segment_number,
+            self._key, 
+            self._version_number,
+            self._segment_number,
             segment_size,
             test_data[0]
         )
 
         handoff_archiver = archive_coroutine(
             self, 
-            handoff_data_reader_state,
-            handoff_database_state,
+            self._handoff_data_reader_state,
+            self._handoff_database_state,
             message
         )   
 
@@ -394,6 +349,40 @@ class TestHandoffServer(unittest.TestCase):
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.previous_size, 0)
 
+        self._handoff(handoff_timestamp)
+
+    def _handoff(self, handoff_timestamp):
+        """send the HintedHandoff message and verify the reply"""
+        request_id = uuid.uuid1().hex
+        message = HintedHandoff(
+            request_id,
+            self._avatar_id,
+            self._web_node_exchange,
+            _reply_routing_header,
+            handoff_timestamp,
+            self._key,
+            self._version_number,
+            self._segment_number,
+            self._dest_node_exchange
+        )
+
+        marshalled_message = message.marshall()
+
+        replies = _handle_hinted_handoff(
+            self._handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+        
+        # after a successful handoff, the server should send us
+        # HintedHandoffReply
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, self._web_node_exchange)
+        self.assertEqual(reply.__class__, HintedHandoffReply)
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0, reply.error_message)
+
+
 if __name__ == "__main__":
     initialize_logging(_log_path)
     unittest.main()
+

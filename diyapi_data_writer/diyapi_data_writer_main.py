@@ -39,11 +39,15 @@ from messages.archive_key_final import ArchiveKeyFinal
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
+from messages.purge_key import PurgeKey
+from messages.purge_key_reply import PurgeKeyReply
 
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.database_key_purge import DatabaseKeyPurge
+from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 
 _log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
@@ -59,12 +63,17 @@ _key_destroy_reply_routing_key = ".".join([
     _routing_header,
     DatabaseKeyDestroyReply.routing_tag,
 ])
+_key_purge_reply_routing_key = ".".join([
+    _routing_header,
+    DatabaseKeyPurgeReply.routing_tag,
+])
 _low_traffic_routing_key = ".".join([
     _routing_header, 
     low_traffic_routing_tag,
 ])
 _key_insert_timeout = 60.0
 _key_destroy_timeout = 60.0
+_key_purge_timeout = 60.0
 _archive_timeout = 30 * 60.0
 
 _archive_state_tuple = namedtuple("ArchiveState", [ 
@@ -138,6 +147,36 @@ def _handle_key_destroy_timeout(request_id, state):
     reply = DestroyKeyReply(
         request_id,
         DestroyKeyReply.error_timeout_waiting_key_destroy,
+        error_message="timeout waiting for database_server"
+    )
+    return [(reply_exchange, reply_routing_key, reply, )] 
+
+def _handle_key_purge_timeout(request_id, state):
+    """called when we wait too long for a reply to a KeyPurge message"""
+    log = logging.getLogger("_handle_key_purge_timeout")
+
+    try:
+        archive_state = state.pop(request_id)
+    except KeyError:
+        log.error("can't find %s in state" % (request_id, ))
+        return []
+
+    log.error("timeout: %s %s %s" % (
+        archive_state.avatar_id,
+        archive_state.key,
+        request_id,
+    ))
+
+    # tell the caller that we're not working
+    reply_exchange = archive_state.reply_exchange
+    reply_routing_key = "".join(
+        [archive_state.reply_routing_header, 
+         ".", 
+         PurgeKeyReply.routing_tag]
+    )
+    reply = PurgeKeyReply(
+        request_id,
+        PurgeKeyReply.error_timeout_waiting_key_purge,
         error_message="timeout waiting for database_server"
     )
     return [(reply_exchange, reply_routing_key, reply, )] 
@@ -522,6 +561,61 @@ def _handle_destroy_key(state, message_body):
     )
     return [(local_exchange, database_request.routing_key, database_request, )]
 
+def _handle_purge_key(state, message_body):
+    log = logging.getLogger("_handle_purge_key")
+    message = PurgeKey.unmarshall(message_body)
+    log.info("avatar_id = %s, key = %s segment = %s" % (
+        message.avatar_id, message.key, message.segment_number
+    ))
+
+    local_exchange = amqp_connection.local_exchange_name
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", PurgeKeyReply.routing_tag]
+    )
+
+    # if we already have a state entry for this request_id, something is wrong
+    if message.request_id in state:
+        error_string = "invalid duplicate request_id in PurgeKey"
+        log.error(error_string)
+        reply = PurgeKeyReply(
+            message.request_id,
+            PurgeKeyReply.error_invalid_duplicate,
+            error_message=error_string
+        )
+        return [(message.reply_exchange, reply_routing_key, reply, )] 
+
+    file_name = _compute_filename(message.request_id)
+
+    # save stuff we need to recall in state
+    state[message.request_id] = _archive_state_tuple(
+        timestamp=message.timestamp,
+        timeout=time.time()+_key_purge_timeout,
+        timeout_function=_handle_key_purge_timeout,
+        avatar_id=message.avatar_id,
+        key=message.key,
+        sequence=0,
+        version_number=0,
+        segment_number=0,
+        segment_size=0,
+        file_name=file_name,
+        reply_exchange=message.reply_exchange,
+        reply_routing_header=message.reply_routing_header
+    )
+
+    # send a purge request to the database, with the reply
+    # coming back to us
+    database_request = DatabaseKeyPurge(
+        message.request_id,
+        message.avatar_id,
+        local_exchange,
+        _routing_header,
+        message.timestamp,
+        message.key, 
+        message.version_number,
+        message.segment_number,
+    )
+    return [(local_exchange, database_request.routing_key, database_request, )]
+
 def _handle_process_status(state, message_body):
     log = logging.getLogger("_handle_process_status")
     message = ProcessStatus.unmarshall(message_body)
@@ -692,6 +786,79 @@ def _handle_key_destroy_reply(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]      
 
+def _handle_key_purge_reply(state, message_body):
+    log = logging.getLogger("_handle_key_purge_reply")
+    message = DatabaseKeyPurgeReply.unmarshall(message_body)
+
+    try:
+        archive_state = state.pop(message.request_id)
+    except KeyError:
+        # if we don't have any state for this message body, there's nobody we 
+        # can complain too
+        log.error("No state for %r" % (message.request_id, ))
+        return []
+
+    reply_exchange = archive_state.reply_exchange
+    reply_routing_key = "".join(
+        [archive_state.reply_routing_header,
+         ".",
+        PurgeKeyReply.routing_tag]
+    )
+
+    # if we got a database error, DON'T heave the data we stored
+    if message.error:
+        log.error("%s %s database error: (%s) %s" % (
+            archive_state.avatar_id,
+            archive_state.key,
+            message.result,
+            message.error_message,
+        ))
+
+        if message.result == DatabaseKeyPurgeReply.error_no_such_key:
+            error_result = PurgeKeyReply.error_no_such_key
+        else:
+            error_result = PurgeKeyReply.error_database_error
+
+        reply = PurgeKeyReply(
+            message.request_id,
+            error_result,
+            error_message = message.error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]      
+
+    content_path = repository.content_path(
+        archive_state.avatar_id, archive_state.file_name
+    ) 
+
+    # now heave the stored data, if it exists
+    if os.path.exists(content_path):
+        try:
+            os.unlink(content_path)
+            dirno = os.open(
+                os.path.dirname(content_path), os.O_RDONLY | os.O_DIRECTORY
+            )
+            try:
+                os.fsync(dirno)
+            finally:
+                os.close(dirno)    
+        except Exception, instance:
+            error_string = "%s %s unlinking %s %s" % (
+                archive_state.avatar_id,
+                archive_state.key,
+                content_path,
+                instance
+            )
+            log.exception(error_string)
+            reply = PurgeKeyReply(
+                message.request_id,
+                PurgeKeyReply.error_exception,
+                error_message = error_string
+            )
+            return [(reply_exchange, reply_routing_key, reply, )]      
+  
+    reply = PurgeKeyReply(message.request_id, PurgeKeyReply.successful)
+    return [(reply_exchange, reply_routing_key, reply, )]      
+
 def _handle_low_traffic(state, message_body):
     log = logging.getLogger("_handle_low_traffic")
     log.debug("ignoring low traffic message")
@@ -703,6 +870,7 @@ _dispatch_table = {
     ArchiveKeyNext.routing_key      : _handle_archive_key_next,
     ArchiveKeyFinal.routing_key     : _handle_archive_key_final,
     DestroyKey.routing_key          : _handle_destroy_key,
+    PurgeKey.routing_key            : _handle_purge_key,
     ProcessStatus.routing_key       : _handle_process_status,
     _key_insert_reply_routing_key   : _handle_key_insert_reply,
     _key_destroy_reply_routing_key  : _handle_key_destroy_reply,

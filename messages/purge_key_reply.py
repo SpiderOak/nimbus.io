@@ -21,6 +21,7 @@ class PurgeKeyReply(object):
     successful = 0
     error_exception = 2
     error_no_such_key = 3
+    error_invalid_duplicate = 4
     error_database_error = 5
     error_timeout_waiting_key_purge = 6
 

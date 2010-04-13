@@ -33,14 +33,18 @@ from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
 from messages.database_key_destroy import DatabaseKeyDestroy
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.purge_key import PurgeKey
+from messages.purge_key_reply import PurgeKeyReply
+from messages.database_key_purge import DatabaseKeyPurge
+from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 
 from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_destroy
+        _database_cache, _handle_key_destroy, _handle_key_purge
 from diyapi_data_writer.diyapi_data_writer_main import \
         _handle_destroy_key, \
-        _handle_key_destroy_reply
-from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache
+        _handle_key_destroy_reply, \
+        _handle_purge_key, \
+        _handle_key_purge_reply
 
 from unit_tests.archive_util import archive_coroutine
 
@@ -231,6 +235,57 @@ class TestDataWriter(unittest.TestCase):
 
         return reply
 
+    def _purge(
+        self, avatar_id, key, version_number, segment_number, timestamp
+    ):
+        request_id = uuid.uuid1().hex
+        test_exchange = "reply-exchange"
+        message = PurgeKey(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            timestamp,
+            key, 
+            version_number,
+            segment_number,
+        )
+        marshalled_message = message.marshall()
+
+        data_writer_state = dict()
+        replies = _handle_purge_key(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # after a successful write, we expect the data writer to send a
+        # database_key_purge to the database server
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply_routing_key, DatabaseKeyPurge.routing_key)
+        self.assertEqual(reply.__class__, DatabaseKeyPurge)
+        self.assertEqual(reply.request_id, request_id)
+
+        # hand off the reply to the database server
+        marshalled_message = reply.marshall()
+        database_state = {_database_cache : dict()}
+        replies = _handle_key_purge(database_state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.request_id, request_id)
+
+        # pass the database server reply back to data_writer
+        # we should get a reply we can send to the web api 
+        marshalled_message = reply.marshall()
+        replies = _handle_key_purge_reply(
+            data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply.__class__, PurgeKeyReply)
+
+        return reply
+
     def test_destroy_nonexistent_key(self):
         """test destroying a key that does not exist, with no complicatons"""
         avatar_id = 1001
@@ -404,6 +459,67 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(
             reply.result, DestroyKeyReply.error_too_old, reply.error_message
         )
+
+    def test_purge_nonexistent_key(self):
+        """test purgeing a key that does not exist, with no complicatons"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        version_number = 0
+        segment_number = 4
+        timestamp = time.time()
+        reply = self._purge(
+            avatar_id, key, version_number, segment_number, timestamp
+        )
+        self.assertEqual(reply.result, PurgeKeyReply.error_no_such_key)
+
+    def test_simple_purge(self):
+        """test purgeing a key that exists, with no complicatons"""
+        content_size = 64 * 1024
+        content_item = random_string(content_size) 
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        version_number = 0
+        segment_number = 4
+        archive_timestamp = time.time()
+        test_exchange = "test-exchange"
+        # the adler32 and md5 hashes should be of the original pre-zefec
+        # data segment. We don't have that so we make something up.
+        adler32 = -42
+        md5 = "ffffffffffffffff"
+        data_writer_state = dict()
+        database_state = {_database_cache : dict()}
+
+        message = ArchiveKeyEntire(
+            request_id,
+            avatar_id,
+            test_exchange,
+            _reply_routing_header,
+            archive_timestamp,
+            key, 
+            version_number,
+            segment_number,
+            adler32,
+            md5,
+            content_item
+        )
+
+        archiver = archive_coroutine(
+            self, data_writer_state, database_state, message
+        )
+
+        reply = archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        # the normal case is where the purge mesage comes after the archive
+        purge_timestamp = archive_timestamp + 1.0
+        reply = self._purge(
+            avatar_id, key, version_number, segment_number, purge_timestamp
+        )
+        self.assertEqual(reply.result, 0, reply.error_message)
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

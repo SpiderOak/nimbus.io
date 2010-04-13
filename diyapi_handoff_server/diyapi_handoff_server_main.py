@@ -20,7 +20,7 @@ from messages.hinted_handoff_reply import HintedHandoffReply
 
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
-from messages.database_key_purge_reply import DatabaseKeyPurgeReply
+from messages.purge_key_reply import PurgeKeyReply
 
 from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
         as data_writer_routing_header
@@ -40,8 +40,8 @@ _retrieve_key_start_reply_routing_key = ".".join([
 _archive_key_final_reply_routing_key = ".".join([
     _routing_header, ArchiveKeyFinalReply.routing_tag
 ])
-_database_key_purge_reply_routing_key = ".".join([
-    _routing_header, DatabaseKeyPurgeReply.routing_tag
+_purge_key_reply_routing_key = ".".join([
+    _routing_header, PurgeKeyReply.routing_tag
 ])
 
 def _handle_hinted_handoff(state, message_body):
@@ -144,12 +144,12 @@ def _handle_archive_key_final_reply(state, message_body):
     
     return state[message.request_id].send(message)
 
-def _handle_database_key_purge_reply(state, message_body):
-    log = logging.getLogger("_handle_database_key_purge_reply")
-    message = DatabaseKeyPurgeReply.unmarshall(message_body)
+def _handle_purge_key_reply(state, message_body):
+    log = logging.getLogger("_handle_purge_key_reply")
+    message = PurgeKeyReply.unmarshall(message_body)
 
     #TODO: we need to squawk about this somehow
-    if message.result != DatabaseKeyPurgeReply.successful:
+    if message.result != PurgeKeyReply.successful:
         log.error("%s failed (%s) %s" % (
             message.request_id, message.result, message.error_message
         ))
@@ -163,8 +163,6 @@ def _handle_database_key_purge_reply(state, message_body):
 
     log.debug("%s result = %s" % (message.request_id, message.result, ))
 
-    # TODO, need to delete filename
-
     # all done
     del state[message.request_id]            
     return []
@@ -174,7 +172,7 @@ _dispatch_table = {
     ProcessStatus.routing_key               : _handle_process_status,
     _retrieve_key_start_reply_routing_key   : _handle_retrieve_key_start_reply,
     _archive_key_final_reply_routing_key    : _handle_archive_key_final_reply,
-    _database_key_purge_reply_routing_key   : _handle_database_key_purge_reply,
+    _purge_key_reply_routing_key            : _handle_purge_key_reply,
 }
 
 def _check_for_handoffs(state, dest_exchange):

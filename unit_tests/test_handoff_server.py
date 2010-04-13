@@ -32,6 +32,9 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 
+from messages.purge_key import PurgeKey
+from messages.purge_key_reply import PurgeKeyReply
+
 from messages.database_key_purge import DatabaseKeyPurge
 from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 
@@ -48,11 +51,15 @@ from diyapi_database_server.diyapi_database_server_main import \
 from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
         as data_writer_routing_header
 
+from diyapi_data_writer.diyapi_data_writer_main import _handle_purge_key, \
+        _handle_key_purge_reply
+
 from diyapi_handoff_server.diyapi_handoff_server_main import \
         _handle_hinted_handoff, \
         _handle_process_status, \
         _handle_retrieve_key_start_reply, \
-        _handle_archive_key_final_reply
+        _handle_archive_key_final_reply, \
+        _handle_purge_key_reply
 from diyapi_handoff_server.hint_repository import HintRepository
 
 from unit_tests.archive_util import archive_coroutine
@@ -240,6 +247,19 @@ class TestHandoffServer(unittest.TestCase):
         self.assertEqual(len(replies), 1)
 
         # we expect the handoff server to send a purge message
+        # to its local data_writer
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, PurgeKey)
+
+        # send the message to the data_writer
+        marshalled_message = reply.marshall()
+        replies = _handle_purge_key(
+            handoff_data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the data_writer to send a purge message
         # to its local database server
         [(reply_exchange, _reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
@@ -253,17 +273,32 @@ class TestHandoffServer(unittest.TestCase):
         self.assertEqual(len(replies), 1)
 
         # we expect the database server to send a (successful) reply back 
-        # to the handoff server
+        # to the data writer
         [(reply_exchange, _reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
         self.assertEqual(reply.__class__, DatabaseKeyPurgeReply)
 
-        # send the reply back to the handoff server
+        # send the reply back to the data_writer
         marshalled_message = reply.marshall()
-        replies = _handle_archive_key_final_reply(
-            handoff_server_state, marshalled_message
+        replies = _handle_key_purge_reply(
+            handoff_data_writer_state, marshalled_message
         )
         self.assertEqual(len(replies), 1)
+
+        # we expect the data_writer to send a (successful) reply back 
+        # to the handoff server
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, PurgeKeyReply)
+
+        # send the reply back to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_purge_key_reply(
+            handoff_server_state, marshalled_message
+        )
+
+        # we expect no reply, because we are all done
+        self.assertEqual(len(replies), 0)
 
     def test_large_handoff(self):
         """

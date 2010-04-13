@@ -13,6 +13,7 @@ from messages.retrieve_key_start import RetrieveKeyStart
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
+from messages.purge_key import PurgeKey
 
 def forwarder_coroutine(request_id, hint, reply_routing_header):
     """
@@ -76,5 +77,17 @@ def forwarder_coroutine(request_id, hint, reply_routing_header):
         yield [(hint.exchange, message.routing_key, message, )]
 
     if archive_key_start_reply.__class__ == ArchiveKeyFinalReply:
-        yield []
+        # tell our local data_writer to purge the key
+        # and then we are done
+        message = PurgeKey(
+            request_id, 
+            hint.avatar_id, 
+            local_exchange,
+            reply_routing_header,
+            hint.timestamp, 
+            hint.key, 
+            hint.version_number,
+            hint.segment_number 
+        )
+        yield [(local_exchange, message.routing_key, message, )]
     

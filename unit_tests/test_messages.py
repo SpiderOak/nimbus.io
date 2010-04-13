@@ -41,6 +41,8 @@ from messages.retrieve_key_final import RetrieveKeyFinal
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
+from messages.purge_key import PurgeKey
+from messages.purge_key_reply import PurgeKeyReply
 from messages.process_status import ProcessStatus
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
@@ -788,6 +790,59 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(unmarshalled_message.total_size, original_total_size)
+
+    def test_purge_key(self):
+        """test PurgeKey"""
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id  = 1001
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        original_timestamp = time.time()
+        original_key = "test.key"
+        original_version_number = 0
+        original_segment_number = 6
+        message = PurgeKey(
+            original_request_id,
+            original_avatar_id,
+            original_reply_exchange,
+            original_reply_routing_header,
+            original_timestamp,
+            original_key,
+            original_version_number,
+            original_segment_number,
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = PurgeKey.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(
+            unmarshalled_message.version_number, original_version_number
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_number, original_segment_number
+        )
+
+    def test_purge_key_reply_ok(self):
+        """test PurgeKeyReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        message = PurgeKeyReply(
+            original_request_id,
+            original_result
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = PurgeKeyReply.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
 
     def test_process_status(self):
         """test ProcessStatus"""

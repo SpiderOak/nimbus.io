@@ -19,6 +19,10 @@ from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+from messages.retrieve_key_next_reply import RetrieveKeyNextReply
+from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.purge_key_reply import PurgeKeyReply
 
@@ -36,6 +40,18 @@ _routing_header = "handoff_server"
 _routing_key_binding = ".".join([_routing_header, "*"])
 _retrieve_key_start_reply_routing_key = ".".join([
     _routing_header, RetrieveKeyStartReply.routing_tag
+])
+_retrieve_key_next_reply_routing_key = ".".join([
+    _routing_header, RetrieveKeyNextReply.routing_tag
+])
+_retrieve_key_final_reply_routing_key = ".".join([
+    _routing_header, RetrieveKeyFinalReply.routing_tag
+])
+_archive_key_start_reply_routing_key = ".".join([
+    _routing_header, ArchiveKeyStartReply.routing_tag
+])
+_archive_key_next_reply_routing_key = ".".join([
+    _routing_header, ArchiveKeyNextReply.routing_tag
 ])
 _archive_key_final_reply_routing_key = ".".join([
     _routing_header, ArchiveKeyFinalReply.routing_tag
@@ -123,6 +139,90 @@ def _handle_retrieve_key_start_reply(state, message_body):
     
     return state[message.request_id].send(message)
 
+def _handle_retrieve_key_next_reply(state, message_body):
+    log = logging.getLogger("_handle_retrieve_key_next_reply")
+    message = RetrieveKeyNextReply.unmarshall(message_body)
+
+    #TODO: we need to squawk about this somehow
+    if message.result != RetrieveKeyNextReply.successful:
+        log.error("%s failed (%s) %s" % (
+            message.request_id, message.result, message.error_message
+        ))
+        if message.request_id in state:
+            del state[message.request_id]            
+        return []
+
+    if message.request_id not in state:
+        log.error("no state for %s" % (message.request_id, ))
+        return []
+
+    log.debug("%s result = %s" % (message.request_id, message.result, ))
+    
+    return state[message.request_id].send(message)
+
+def _handle_retrieve_key_final_reply(state, message_body):
+    log = logging.getLogger("_handle_retrieve_key_final_reply")
+    message = RetrieveKeyFinalReply.unmarshall(message_body)
+
+    #TODO: we need to squawk about this somehow
+    if message.result != RetrieveKeyFinalReply.successful:
+        log.error("%s failed (%s) %s" % (
+            message.request_id, message.result, message.error_message
+        ))
+        if message.request_id in state:
+            del state[message.request_id]            
+        return []
+
+    if message.request_id not in state:
+        log.error("no state for %s" % (message.request_id, ))
+        return []
+
+    log.debug("%s result = %s" % (message.request_id, message.result, ))
+    
+    return state[message.request_id].send(message)
+
+def _handle_archive_key_start_reply(state, message_body):
+    log = logging.getLogger("_handle_archive_key_start_reply")
+    message = ArchiveKeyStartReply.unmarshall(message_body)
+
+    #TODO: we need to squawk about this somehow
+    if message.result != ArchiveKeyStartReply.successful:
+        log.error("%s failed (%s) %s" % (
+            message.request_id, message.result, message.error_message
+        ))
+        if message.request_id in state:
+            del state[message.request_id]            
+        return []
+
+    if message.request_id not in state:
+        log.error("no state for %s" % (message.request_id, ))
+        return []
+
+    log.debug("%s result = %s" % (message.request_id, message.result, ))
+    
+    return state[message.request_id].send(message)
+
+def _handle_archive_key_next_reply(state, message_body):
+    log = logging.getLogger("_handle_archive_key_next_reply")
+    message = ArchiveKeyNextReply.unmarshall(message_body)
+
+    #TODO: we need to squawk about this somehow
+    if message.result != ArchiveKeyNextReply.successful:
+        log.error("%s failed (%s) %s" % (
+            message.request_id, message.result, message.error_message
+        ))
+        if message.request_id in state:
+            del state[message.request_id]            
+        return []
+
+    if message.request_id not in state:
+        log.error("no state for %s" % (message.request_id, ))
+        return []
+
+    log.debug("%s result = %s" % (message.request_id, message.result, ))
+    
+    return state[message.request_id].send(message)
+
 def _handle_archive_key_final_reply(state, message_body):
     log = logging.getLogger("_handle_archive_key_final_reply")
     message = ArchiveKeyFinalReply.unmarshall(message_body)
@@ -171,6 +271,10 @@ _dispatch_table = {
     HintedHandoff.routing_key               : _handle_hinted_handoff,
     ProcessStatus.routing_key               : _handle_process_status,
     _retrieve_key_start_reply_routing_key   : _handle_retrieve_key_start_reply,
+    _retrieve_key_next_reply_routing_key    : _handle_retrieve_key_next_reply,
+    _retrieve_key_final_reply_routing_key   : _handle_retrieve_key_final_reply,
+    _archive_key_start_reply_routing_key    : _handle_archive_key_start_reply,
+    _archive_key_next_reply_routing_key     : _handle_archive_key_next_reply,
     _archive_key_final_reply_routing_key    : _handle_archive_key_final_reply,
     _purge_key_reply_routing_key            : _handle_purge_key_reply,
 }

@@ -31,6 +31,10 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+from messages.retrieve_key_next import RetrieveKeyNext
+from messages.retrieve_key_next_reply import RetrieveKeyNextReply
+from messages.retrieve_key_final import RetrieveKeyFinal
+from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 
 from messages.purge_key import PurgeKey
 from messages.purge_key_reply import PurgeKeyReply
@@ -58,6 +62,10 @@ from diyapi_handoff_server.diyapi_handoff_server_main import \
         _handle_hinted_handoff, \
         _handle_process_status, \
         _handle_retrieve_key_start_reply, \
+        _handle_retrieve_key_next_reply, \
+        _handle_retrieve_key_final_reply, \
+        _handle_archive_key_start_reply, \
+        _handle_archive_key_next_reply, \
         _handle_archive_key_final_reply, \
         _handle_purge_key_reply
 from diyapi_handoff_server.hint_repository import HintRepository
@@ -350,6 +358,208 @@ class TestHandoffServer(unittest.TestCase):
         self.assertEqual(reply.previous_size, 0)
 
         self._handoff(handoff_timestamp)
+
+        # now send him a ProcessStatus telling him the data writer at the
+        # dest repository is back online
+        status_timestamp = time.time()
+
+        message = ProcessStatus(
+            status_timestamp, 
+            self._dest_node_exchange,
+            data_writer_routing_header,
+            ProcessStatus.status_startup
+        )
+
+        marshalled_message = message.marshall()
+
+        replies = _handle_process_status(
+            self._handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the handoff server to start retrieving the archive
+        # in order to send it to to the data_writer
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, RetrieveKeyStart)
+
+        # create a retriever to retrieve from the local data_reader
+        handoff_retriever = retrieve_coroutine(
+            self,
+            self._handoff_data_reader_state,
+            self._handoff_database_state,
+            reply
+        )
+
+        reply = handoff_retriever.next()
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.__class__, RetrieveKeyStartReply)
+
+        sequence = 0
+        segment_count = reply.segment_count
+
+        # pass the reply to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_retrieve_key_start_reply(
+            self._handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the handoff server to send the data it retrieves
+        # to the archive server for which it was originally intended 
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, self._dest_node_exchange)
+        self.assertEqual(reply.__class__, ArchiveKeyStart)
+
+        # this is the archiver that should have received the data in 
+        # the first place
+        dest_archiver = archive_coroutine(
+            self,
+            self._dest_data_writer_state,
+            self._dest_database_state,
+            reply
+        )
+
+        reply = dest_archiver.next()
+
+        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
+        self.assertEqual(reply.result, 0)
+
+        # pass the reply to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_archive_key_start_reply(
+            self._handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        sequence += 1
+
+        # loop for the intermediagte messages
+        while sequence < segment_count-1:
+        
+            [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+            self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+            self.assertEqual(reply.__class__, RetrieveKeyNext)
+            self.assertEqual(reply.sequence, sequence)
+
+            reply = handoff_retriever.send(reply)
+            self.assertEqual(reply.result, 0)
+            self.assertEqual(reply.__class__, RetrieveKeyNextReply)
+
+            # pass the reply to the handoff server
+            marshalled_message = reply.marshall()
+            replies = _handle_retrieve_key_next_reply(
+                self._handoff_server_state, marshalled_message
+            )
+            self.assertEqual(len(replies), 1)
+
+            [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+            self.assertEqual(reply_exchange, self._dest_node_exchange)
+            self.assertEqual(reply.__class__, ArchiveKeyNext)
+            self.assertEqual(reply.sequence, sequence)
+
+            reply = dest_archiver.send(reply)
+
+            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
+            self.assertEqual(reply.result, 0)
+
+            # pass the reply to the handoff server
+            marshalled_message = reply.marshall()
+            replies = _handle_archive_key_next_reply(
+                self._handoff_server_state, marshalled_message
+            )
+            self.assertEqual(len(replies), 1)
+
+            sequence += 1
+
+        # retrieve and archive the final sequence
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, RetrieveKeyFinal)
+        self.assertEqual(reply.sequence, sequence)
+
+        reply = handoff_retriever.send(reply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.__class__, RetrieveKeyFinalReply)
+
+        # pass the reply to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_retrieve_key_final_reply(
+            self._handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, self._dest_node_exchange)
+        self.assertEqual(reply.__class__, ArchiveKeyFinal)
+        self.assertEqual(reply.sequence, sequence)
+
+        reply = dest_archiver.send(reply)
+
+        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.previous_size, 0)
+
+        # pass the reply to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_archive_key_final_reply(
+            self._handoff_server_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the handoff server to send a purge message
+        # to its local data_writer
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, PurgeKey)
+
+        # send the message to the data_writer
+        marshalled_message = reply.marshall()
+        replies = _handle_purge_key(
+            self._handoff_data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the data_writer to send a purge message
+        # to its local database server
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, DatabaseKeyPurge)
+
+        # send the message to the database server
+        marshalled_message = reply.marshall()
+        replies = _handle_key_purge(
+            self._handoff_database_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the database server to send a (successful) reply back 
+        # to the data writer
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, DatabaseKeyPurgeReply)
+
+        # send the reply back to the data_writer
+        marshalled_message = reply.marshall()
+        replies = _handle_key_purge_reply(
+            self._handoff_data_writer_state, marshalled_message
+        )
+        self.assertEqual(len(replies), 1)
+
+        # we expect the data_writer to send a (successful) reply back 
+        # to the handoff server
+        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
+        self.assertEqual(reply.__class__, PurgeKeyReply)
+
+        # send the reply back to the handoff server
+        marshalled_message = reply.marshall()
+        replies = _handle_purge_key_reply(
+            self._handoff_server_state, marshalled_message
+        )
+
+        # we expect no reply, because we are all done
+        self.assertEqual(len(replies), 0)
 
     def _handoff(self, handoff_timestamp):
         """send the HintedHandoff message and verify the reply"""

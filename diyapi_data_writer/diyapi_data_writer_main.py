@@ -18,6 +18,8 @@ import os
 import sys
 import time
 
+import Statgrabber
+
 from diyapi_tools import amqp_connection
 from diyapi_tools.standard_logging import format_timestamp
 from diyapi_tools.low_traffic_thread import LowTrafficThread, \
@@ -226,6 +228,9 @@ def _handle_archive_key_entire(state, message_body):
 
     file_name = _compute_filename(message.request_id)
 
+    Statgrabber.accumulate('diy_write_requests', 1)
+    Statgrabber.accumulate('diy_write_bytes', len(message.content))
+
     # store the message content in a work area
     work_path = repository.content_input_path(message.avatar_id, file_name) 
     try:
@@ -304,6 +309,9 @@ def _handle_archive_key_start(state, message_body):
         return [(message.reply_exchange, reply_routing_key, reply, )] 
 
     file_name = _compute_filename(message.request_id)
+
+    Statgrabber.accumulate('diy_write_requests', 1)
+    Statgrabber.accumulate('diy_write_bytes', len(message.data_content))
 
     # store the message content in a work area
     work_path = repository.content_input_path(message.avatar_id, file_name) 
@@ -389,6 +397,9 @@ def _handle_archive_key_next(state, message_body):
         )
         return [(reply_exchange, reply_routing_key, reply, )] 
 
+    Statgrabber.accumulate('diy_write_requests', 1)
+    Statgrabber.accumulate('diy_write_bytes', len(message.data_content))
+
     try:
         with open(work_path, "a") as content_file:
             content_file.write(message.data_content)
@@ -460,6 +471,9 @@ def _handle_archive_key_final(state, message_body):
             error_message=error_string
         )
         return [(reply_exchange, reply_routing_key, reply, )] 
+
+    Statgrabber.accumulate('diy_write_requests', 1)
+    Statgrabber.accumulate('diy_write_bytes', len(message.data_content))
 
     try:
         with open(work_path, "a") as content_file:

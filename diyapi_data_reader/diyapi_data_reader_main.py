@@ -13,6 +13,8 @@ import os.path
 import sys
 import time
 
+import Statgrabber
+
 from diyapi_tools import amqp_connection
 from diyapi_tools.standard_logging import format_timestamp
 from diyapi_tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
@@ -225,6 +227,9 @@ def _handle_retrieve_key_next(state, message_body):
         sequence=message.sequence
     )
 
+    Statgrabber.accumulate('diy_read_requests', 1)
+    Statgrabber.accumulate('diy_read_bytes', len(data_content))
+
     reply = RetrieveKeyNextReply(
         message.request_id,
         RetrieveKeyNextReply.successful,
@@ -295,6 +300,9 @@ def _handle_retrieve_key_final(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )] 
 
     # we don't save the state, because we are done
+
+    Statgrabber.accumulate('diy_read_requests', 1)
+    Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
     reply = RetrieveKeyFinalReply(
         message.request_id,
@@ -380,6 +388,9 @@ def _handle_key_lookup_reply(state, message_body):
             segment_size=segment_size,
             file_name=message.database_content.file_name
         )
+
+    Statgrabber.accumulate('diy_read_requests', 1)
+    Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
     reply = RetrieveKeyStartReply(
         message.request_id,

@@ -48,6 +48,7 @@ class NodeSim(object):
             ("database_server",     self._start_database_server, ),
             ("data_writer",         self._start_data_writer, ),
             ("data_reader",         self._start_data_reader, ),
+            ("handoff_server",      self._start_handoff_server, ),
         ]
 
         for process_name, start_function in process_specs:
@@ -140,6 +141,23 @@ class NodeSim(object):
         environment["PANDORA_REPOSITORY_PATH"] = self._home_dir
 
         self._log.info("starting data_reader")
+
+        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
+    def _start_handoff_server(self):
+        handoff_server_dir = _identify_program_dir(u"diyapi_handoff_server")
+        handoff_server_path = os.path.join(
+            handoff_server_dir, u"diyapi_handoff_server_main.py"
+        )
+        
+        args = [sys.executable, handoff_server_path, ]
+
+        environment = self._rabbitmq_env()
+        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
+        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
+        environment["PANDORA_REPOSITORY_PATH"] = self._home_dir
+
+        self._log.info("starting handoff_server")
 
         return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 

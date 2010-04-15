@@ -57,7 +57,7 @@ _purge = """
 delete from hints 
 where exchange = ? 
 and timestamp = ? 
-and avatar_id = ?,
+and avatar_id = ?
 and key = ? 
 and version_number = ?
 and segment_number = ?

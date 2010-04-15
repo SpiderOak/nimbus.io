@@ -263,9 +263,16 @@ def _handle_purge_key_reply(state, message_body):
 
     log.debug("%s result = %s" % (message.request_id, message.result, ))
 
+    # the last thing the coroutine wants to give us is our hint
+    hint = state[message.request_id].next()
+    try:
+        state["hint-repository"].purge_hint(hint)
+    except Exception, instance:
+        log.exception(instance)
+
     # all done
     del state[message.request_id]            
-    return []
+    return _check_for_handoffs(state, hint.exchange)
 
 _dispatch_table = {
     HintedHandoff.routing_key               : _handle_hinted_handoff,

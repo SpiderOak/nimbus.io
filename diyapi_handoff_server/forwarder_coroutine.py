@@ -101,6 +101,7 @@ def forwarder_coroutine(request_id, hint, reply_routing_header):
             hint.segment_number 
         )
         yield [(local_exchange, message.routing_key, message, )]
+        yield hint
         return 
 
     assert archive_key_start_reply.__class__ == ArchiveKeyStartReply
@@ -148,7 +149,6 @@ def forwarder_coroutine(request_id, hint, reply_routing_header):
     assert archive_reply.result == 0
 
     # tell our local data_writer to purge the key
-    # and then we are done
     message = PurgeKey(
         request_id, 
         hint.avatar_id, 
@@ -160,4 +160,7 @@ def forwarder_coroutine(request_id, hint, reply_routing_header):
         hint.segment_number 
     )
     yield [(local_exchange, message.routing_key, message, )]
+
+    # now we are done, give back our hint so it can be removed
+    yield hint
 

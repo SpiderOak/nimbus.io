@@ -283,7 +283,7 @@ class TestHandoffServer(unittest.TestCase):
         )
 
         # we expect no reply, because we are all done
-        self.assertEqual(len(replies), 0)
+        self.assertEqual(len(replies), 0, replies)
 
     def test_large_handoff(self):
         """
@@ -559,7 +559,7 @@ class TestHandoffServer(unittest.TestCase):
         )
 
         # we expect no reply, because we are all done
-        self.assertEqual(len(replies), 0)
+        self.assertEqual(len(replies), 0, replies)
 
     def _handoff(self, handoff_timestamp):
         """send the HintedHandoff message and verify the reply"""

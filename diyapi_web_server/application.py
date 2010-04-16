@@ -24,12 +24,14 @@ SLICE_SIZE = 1024 * 1024    # 1MB
 
 
 class router(list):
-    def add(self, regex, *methods):
+    def add(self, regex, *methods, **query_args):
         if not methods:
             methods = ('GET', 'HEAD')
         regex = re.compile(regex)
+        for k in query_args:
+            query_args[k] = re.compile(query_args[k])
         def dec(func):
-            self.append((regex, methods, func.__name__))
+            self.append((regex, query_args, methods, func.__name__))
             return func
         return dec
 
@@ -43,9 +45,20 @@ class Application(object):
     @wsgify
     def __call__(self, req):
         url_matched = False
-        for regex, methods, func_name in self.routes:
-            m = regex.match(req.path)
-            if not m:
+        for regex, query_args, methods, func_name in self.routes:
+            url_match = regex.match(req.path)
+            if not url_match:
+                continue
+            args_matched = False
+            for arg, arg_regex in query_args.iteritems():
+                if arg not in req.GET:
+                    break
+                arg_match = arg_regex.match(req.GET[arg])
+                if not arg_match:
+                    break
+            else:
+                args_matched = True
+            if not args_matched:
                 continue
             url_matched = True
             if req.method not in methods:
@@ -54,12 +67,31 @@ class Application(object):
                 method = getattr(self, func_name)
             except AttributeError:
                 continue
-            return method(req, *m.groups(), **m.groupdict())
+            return method(req, *url_match.groups(), **url_match.groupdict())
         if url_matched:
             raise exc.HTTPMethodNotAllowed()
         raise exc.HTTPNotFound()
 
-    @routes.add(r'/([^/]+)$', 'POST')
+    @routes.add(r'/data/(.+)$', action='listmatch')
+    def listmatch(self, req, prefix):
+        delimiter = req.GET.get('delimiter', '/')
+        avatar_id = 1001
+        matcher = AMQPListmatcher(self.amqp_handler, EXCHANGES)
+        # TODO: handle listmatch failure
+        # TODO: break up large (>1mb) listmatch response
+        keys = matcher.listmatch(avatar_id, prefix)
+        return Response(repr(keys))
+
+    @routes.add(r'/data/(.+)$', 'DELETE')
+    @routes.add(r'/data/(.+)$', 'POST', action='delete')
+    def destroy(self, req, key):
+        pass
+
+    @routes.add(r'/data/(.+)$')
+    def retrieve(self, req, key):
+        pass
+
+    @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
         # TODO: stop hard-coding avatar_id
         avatar_id = 1001
@@ -72,23 +104,3 @@ class Application(object):
         archiver.archive_entire(avatar_id, key, segments, timestamp)
         # TODO: send space accounting message
         return Response('OK')
-
-    @routes.add(r'/$')
-    def listmatch(self, req):
-        avatar_id = 1001
-        # TODO: handle request with missing arguments
-        prefix = req.GET['prefix']
-        matcher = AMQPListmatcher(self.amqp_handler, EXCHANGES)
-        # TODO: handle listmatch failure
-        # TODO: break up large (>1mb) listmatch response
-        keys = matcher.listmatch(avatar_id, prefix)
-        return Response(repr(keys))
-
-    @routes.add(r'/([^/]+)$')
-    def retrieve(self, req, key):
-        pass
-
-    @routes.add(r'/([^/]+)$', 'DELETE')
-    @routes.add(r'/([^/]+)/delete$', 'POST')
-    def destroy(self, req, key):
-        pass

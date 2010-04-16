@@ -43,16 +43,16 @@ class TestWebServer(unittest.TestCase):
     def test_upload_small(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        result = urllib2.urlopen('http://127.0.0.1:8088/' + key,
+        result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
                                  content).read()
         self.assertEqual(result, 'OK')
 
     def test_upload_small_and_listmatch(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        result = urllib2.urlopen('http://127.0.0.1:8088/' + key,
+        result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
                                  content).read()
-        result = urllib2.urlopen('http://127.0.0.1:8088/?prefix=test-key').read()
+        result = urllib2.urlopen('http://127.0.0.1:8088/data/test-key?action=listmatch').read()
         self.assertEqual(result, repr([key]))
 
 

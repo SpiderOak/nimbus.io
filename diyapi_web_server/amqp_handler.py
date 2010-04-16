@@ -46,10 +46,11 @@ class AMQPHandler(object):
             exchange = self.exchange
 
         try:
-            assert message.request_id not in self.reply_queues
-            reply_queue = self.reply_queues[message.request_id] = Queue()
+            reply_queue = self.reply_queues[message.request_id]
         except AttributeError:
             reply_queue = None
+        except KeyError:
+            reply_queue = self.reply_queues[message.request_id] = Queue()
 
         self.channel.basic_publish(
             amqp.Message(message.marshall()),

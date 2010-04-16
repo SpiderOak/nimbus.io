@@ -7,8 +7,6 @@ A class that performs a listmatch query on a random node.
 import uuid
 import random
 
-import gevent
-
 from messages.database_listmatch import DatabaseListMatch
 
 

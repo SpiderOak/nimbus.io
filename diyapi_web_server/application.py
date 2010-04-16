@@ -42,20 +42,24 @@ class Application(object):
 
     @wsgify
     def __call__(self, req):
+        url_matched = False
         for regex, methods, func_name in self.routes:
             m = regex.match(req.path)
             if not m:
                 continue
+            url_matched = True
             if req.method not in methods:
-                raise exc.HTTPMethodNotAllowed()
+                continue
             try:
                 method = getattr(self, func_name)
             except AttributeError:
                 continue
             return method(req, *m.groups(), **m.groupdict())
+        if url_matched:
+            raise exc.HTTPMethodNotAllowed()
         raise exc.HTTPNotFound()
 
-    @routes.add(r'/archive/([^/]+)$', 'POST')
+    @routes.add(r'/([^/]+)$', 'POST')
     def archive(self, req, key):
         # TODO: stop hard-coding avatar_id
         avatar_id = 1001
@@ -69,7 +73,7 @@ class Application(object):
         # TODO: send space accounting message
         return Response('OK')
 
-    @routes.add(r'/listmatch$')
+    @routes.add(r'/$')
     def listmatch(self, req):
         avatar_id = 1001
         # TODO: handle request with missing arguments
@@ -79,3 +83,12 @@ class Application(object):
         # TODO: break up large (>1mb) listmatch response
         keys = matcher.listmatch(avatar_id, prefix)
         return Response(repr(keys))
+
+    @routes.add(r'/([^/]+)$')
+    def retrieve(self, req, key):
+        pass
+
+    @routes.add(r'/([^/]+)$', 'DELETE')
+    @routes.add(r'/([^/]+)/delete$', 'POST')
+    def destroy(self, req, key):
+        pass

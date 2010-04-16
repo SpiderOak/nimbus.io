@@ -33,7 +33,7 @@ class TestApplication(unittest.TestCase):
             0)
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        resp = self.app.post('/archive/' + key, content)
+        resp = self.app.post('/' + key, content)
         self.assertEqual(resp.body, 'OK')
 
     def test_listmatch(self):
@@ -43,7 +43,7 @@ class TestApplication(unittest.TestCase):
             'request_id (replaced by FakeAMQPHandler)',
             DatabaseListMatchReply.successful,
             key_list=key_list)
-        resp = self.app.get('/listmatch', dict(prefix=prefix))
+        resp = self.app.get('/', dict(prefix=prefix))
         self.assertEqual(resp.body, repr(key_list))
 
 

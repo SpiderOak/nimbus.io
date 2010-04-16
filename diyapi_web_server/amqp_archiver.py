@@ -17,12 +17,9 @@ from messages.archive_key_entire import ArchiveKeyEntire
 class AMQPArchiver(object):
     """Sends data segments via AMQP to write processes on nodes."""
 
-    def __init__(self, amqp_handler, exchanges):
+    def __init__(self, amqp_handler, exchange_manager):
         self.amqp_handler = amqp_handler
-        self.exchanges = exchanges
-
-    def _exchanges_for_segment_number(self, segment_number):
-        return [self.exchanges[segment_number]]
+        self.exchange_manager = exchange_manager
 
     def archive_entire(self, avatar_id, key, segments, timestamp,
                        timeout=None):
@@ -44,7 +41,7 @@ class AMQPArchiver(object):
                 md5,
                 segment
             )
-            for exchange in self._exchanges_for_segment_number(segment_number):
+            for exchange in self.exchange_manager[segment_number]:
                 reply_queue = self.amqp_handler.send_message(message, exchange)
                 replies.append((message, gevent.spawn(reply_queue.get)))
         gevent.joinall([reply for (message, reply) in replies],

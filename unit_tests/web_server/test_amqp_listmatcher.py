@@ -9,9 +9,11 @@ import unittest
 
 from unit_tests.web_server.test_amqp_archiver import (MockChannel,
                                                       FakeAMQPHandler)
+from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.database_listmatch_reply import DatabaseListMatchReply
 
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
+
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 
@@ -19,6 +21,8 @@ EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 class TestAMQPListmatcher(unittest.TestCase):
     """test diyapi_web_server/amqp_listmatcher.py"""
     def setUp(self):
+        self.exchange_manager = AMQPExchangeManager(
+            EXCHANGES, len(EXCHANGES) - 2)
         self.channel = MockChannel()
         self.handler = FakeAMQPHandler()
         self.handler.channel = self.channel
@@ -32,7 +36,7 @@ class TestAMQPListmatcher(unittest.TestCase):
             DatabaseListMatchReply.successful,
             key_list=key_list)
 
-        matcher = AMQPListmatcher(self.handler, EXCHANGES)
+        matcher = AMQPListmatcher(self.handler, self.exchange_manager)
         keys = matcher.listmatch(avatar_id, prefix, 0.1)
         self.assertEqual(keys, key_list)
 

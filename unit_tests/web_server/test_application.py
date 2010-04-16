@@ -4,26 +4,32 @@ test_application.py
 
 test diyapi_web_server/application.py
 """
+import os
 import unittest
 from webtest import TestApp
 
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server.test_amqp_archiver import (MockChannel,
                                                       FakeAMQPHandler)
-
+from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
 
 from diyapi_web_server.application import Application
 
 
+EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
+
+
 class TestApplication(unittest.TestCase):
     """test diyapi_web_server/application.py"""
     def setUp(self):
+        self.exchange_manager = AMQPExchangeManager(
+            EXCHANGES, len(EXCHANGES) - 2)
         self.channel = MockChannel()
         self.handler = FakeAMQPHandler()
         self.handler.channel = self.channel
-        self.app = TestApp(Application(self.handler))
+        self.app = TestApp(Application(self.handler, self.exchange_manager))
         self._key_generator = generate_key()
 
     def test_archive(self):

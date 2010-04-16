@@ -8,6 +8,7 @@ import gevent
 from gevent import monkey
 monkey.patch_all()
 
+import os
 import sys
 
 from gevent import wsgi
@@ -15,12 +16,19 @@ from gevent.event import Event
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
+from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+
+
+EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
+MAX_DOWN_EXCHANGES = 2
 
 
 class WebServer(object):
     def __init__(self):
         self.amqp_handler = AMQPHandler()
-        self.application = Application(self.amqp_handler)
+        exchange_manager = AMQPExchangeManager(
+            EXCHANGES, len(EXCHANGES) - MAX_DOWN_EXCHANGES)
+        self.application = Application(self.amqp_handler, exchange_manager)
         self.wsgi_server = wsgi.WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
 

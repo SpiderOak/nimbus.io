@@ -17,9 +17,6 @@ from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 
 
-EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
-NUM_EXCHANGES = len(EXCHANGES)
-MIN_EXCHANGES = NUM_EXCHANGES - 2
 SLICE_SIZE = 1024 * 1024    # 1MB
 
 
@@ -37,8 +34,9 @@ class router(list):
 
 
 class Application(object):
-    def __init__(self, amqp_handler):
+    def __init__(self, amqp_handler, exchange_manager):
         self.amqp_handler = amqp_handler
+        self.exchange_manager = exchange_manager
 
     routes = router()
 
@@ -76,7 +74,7 @@ class Application(object):
     def listmatch(self, req, prefix):
         delimiter = req.GET.get('delimiter', '/')
         avatar_id = 1001
-        matcher = AMQPListmatcher(self.amqp_handler, EXCHANGES)
+        matcher = AMQPListmatcher(self.amqp_handler, self.exchange_manager)
         # TODO: handle listmatch failure
         # TODO: break up large (>1mb) listmatch response
         keys = matcher.listmatch(avatar_id, prefix)
@@ -97,8 +95,9 @@ class Application(object):
         avatar_id = 1001
         timestamp = time.time()
         # TODO: split large files into sequences
-        archiver = AMQPArchiver(self.amqp_handler, EXCHANGES)
-        encoder = Encoder(MIN_EXCHANGES, NUM_EXCHANGES)
+        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
+        encoder = Encoder(self.exchange_manager.min_exchanges,
+                          self.exchange_manager.num_exchanges)
         segments = encoder.encode(req.body)
         # TODO: handle archive failure
         archiver.archive_entire(avatar_id, key, segments, timestamp)

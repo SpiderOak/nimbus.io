@@ -11,8 +11,8 @@ import hashlib
 import zlib
 
 from unit_tests.util import random_string, generate_key
-
 from unit_tests.web_server.test_amqp_handler import MockChannel
+from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from diyapi_web_server.amqp_handler import AMQPHandler
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
@@ -34,13 +34,15 @@ class FakeAMQPHandler(AMQPHandler):
 class TestAMQPArchiver(unittest.TestCase):
     """test diyapi_web_server/amqp_archiver.py"""
     def setUp(self):
+        self.exchange_manager = AMQPExchangeManager(
+            EXCHANGES, len(EXCHANGES) - 2)
         self.channel = MockChannel()
         self.handler = FakeAMQPHandler()
         self.handler.channel = self.channel
         self._key_generator = generate_key()
 
     def test_archive_entire(self):
-        archiver = AMQPArchiver(self.handler, EXCHANGES)
+        archiver = AMQPArchiver(self.handler, self.exchange_manager)
         self.handler._reply_to_send = ArchiveKeyFinalReply(
             'request_id (replaced by FakeAMQPHandler)',
             ArchiveKeyFinalReply.successful,
@@ -50,7 +52,7 @@ class TestAMQPArchiver(unittest.TestCase):
         timestamp = time.time()
 
         segments = []
-        for segment_number in xrange(len(EXCHANGES)):
+        for segment_number in xrange(self.exchange_manager.num_exchanges):
             segment = random_string(64 * 1024)
             adler32 = zlib.adler32(segment)
             md5 = hashlib.md5(segment).digest()
@@ -62,14 +64,14 @@ class TestAMQPArchiver(unittest.TestCase):
                                                 timestamp)
 
         self.assertEqual(previous_size, 0)
-        self.assertEqual(len(self.channel.messages), len(EXCHANGES))
+        self.assertEqual(len(self.channel.messages),
+                         self.exchange_manager.num_exchanges)
 
         for segment_number, message in enumerate(self.channel.messages):
             ((amqp_message,), message_args) = message
             segment, adler32, md5 = segments[segment_number]
             self.assertEqual(message_args, dict(
-                exchange=archiver._exchanges_for_segment_number(
-                    segment_number)[0],
+                exchange=self.exchange_manager[segment_number][0],
                 routing_key=ArchiveKeyEntire.routing_key,
                 mandatory=True))
             message = ArchiveKeyEntire.unmarshall(amqp_message.body)

@@ -13,10 +13,9 @@ from messages.retrieve_key_start import RetrieveKeyStart
 class AMQPRetriever(object):
     """Retrieves data from the nodes."""
 
-    def __init__(self, amqp_handler, exchanges, min_segments):
+    def __init__(self, amqp_handler, exchange_manager):
         self.amqp_handler = amqp_handler
-        self.exchanges = exchanges
-        self.min_segments = min_segments
+        self.exchange_manager = exchange_manager
 
     def _retrieve(self, avatar_id, key):
         key_lists = self._get_key_lists(avatar_id, key)
@@ -25,7 +24,7 @@ class AMQPRetriever(object):
 
     def _get_key_lists(self, avatar_id, key):
         reply_queues = {}
-        for exchange in self.exchanges:
+        for exchange in self.exchange_manager:
             request_id = uuid.uuid1().hex
             message = DatabaseKeyList(
                 request_id,
@@ -44,7 +43,7 @@ class AMQPRetriever(object):
                 reply_contents[content.segment_number] = exchange, content
             # TODO: handle large files with multiple slices
 
-        if len(reply_contents) < self.min_segments:
+        if len(reply_contents) < self.exchange_manager.min_exchanges:
             # TODO: handle not enough segments
             raise RuntimeError()
 

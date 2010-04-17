@@ -75,7 +75,7 @@ class AMQPRetriever(object):
             reply_contents[reply.segment_number] = segment
             # TODO: handle large files with multiple slices
 
-        return [reply_contents[k] for k in sorted(reply_contents)]
+        return reply_contents
 
     def retrieve(self, avatar_id, key, timeout=None):
         task = gevent.spawn(self._retrieve, avatar_id, key)

@@ -39,7 +39,6 @@ class TestAMQPRetriever(unittest.TestCase):
         uuid.uuid1 = self._real_uuid1
 
     def test_retrieve(self):
-        # TODO: make this test fail
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
@@ -90,7 +89,8 @@ class TestAMQPRetriever(unittest.TestCase):
 
         retriever = AMQPRetriever(self.handler, self.exchange_manager)
         self.assertEqual(retriever.retrieve(avatar_id, key, 0.1),
-                         [segment for segment, database_content in segments])
+                         dict((database_content.segment_number, segment)
+                              for segment, database_content in segments))
 
 
 if __name__ == "__main__":

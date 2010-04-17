@@ -12,9 +12,10 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from zfec.easyfec import Encoder
+from zfec.easyfec import Encoder, Decoder
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
+from diyapi_web_server.amqp_retriever import AMQPRetriever
 
 
 SLICE_SIZE = 1024 * 1024    # 1MB
@@ -87,7 +88,17 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
-        pass
+        avatar_id = 1001
+        retriever = AMQPRetriever(self.amqp_handler, self.exchange_manager)
+        segments = retriever.retrieve(avatar_id, key)
+        while len(segments) > self.exchange_manager.min_exchanges:
+            segments.popitem()
+        decoder = Decoder(self.exchange_manager.min_exchanges,
+                          self.exchange_manager.num_exchanges)
+        data = decoder.decode(segments.values(),
+                              segments.keys(),
+                              0)
+        return Response(data)
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):

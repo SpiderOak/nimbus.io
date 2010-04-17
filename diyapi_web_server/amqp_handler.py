@@ -19,6 +19,8 @@ from diyapi_tools.message_driven_process import _create_bindings
 
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
+from messages.database_key_list_reply import DatabaseKeyListReply
+from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 
 
 _queue_name = 'web_server'
@@ -28,6 +30,8 @@ _key_header = 'web_server.'
 MESSAGE_TYPES = {
     _key_header + ArchiveKeyFinalReply.routing_tag: ArchiveKeyFinalReply,
     _key_header + DatabaseListMatchReply.routing_tag: DatabaseListMatchReply,
+    _key_header + DatabaseKeyListReply.routing_tag: DatabaseKeyListReply,
+    _key_header + RetrieveKeyStartReply.routing_tag: RetrieveKeyStartReply,
 }
 
 

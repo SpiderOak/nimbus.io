@@ -22,6 +22,7 @@ SLICE_SIZE = 1024 * 1024    # 1MB
 
 
 class router(list):
+    # TODO: document and test this
     def add(self, regex, *methods, **query_args):
         if not methods:
             methods = ('GET', 'HEAD')
@@ -43,6 +44,7 @@ class Application(object):
 
     @wsgify
     def __call__(self, req):
+        # TODO: test this
         url_matched = False
         for regex, query_args, methods, func_name in self.routes:
             url_match = regex.match(req.path)
@@ -74,6 +76,7 @@ class Application(object):
     @routes.add(r'/data/(.+)$', action='listmatch')
     def listmatch(self, req, prefix):
         delimiter = req.GET.get('delimiter', '/')
+        # TODO: do something with delimiter
         avatar_id = 1001
         matcher = AMQPListmatcher(self.amqp_handler, self.exchange_manager)
         # TODO: handle listmatch failure
@@ -84,6 +87,7 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
+        # TODO: implement destroy
         pass
 
     @routes.add(r'/data/(.+)$')
@@ -91,8 +95,13 @@ class Application(object):
         avatar_id = 1001
         retriever = AMQPRetriever(self.amqp_handler, self.exchange_manager)
         segments = retriever.retrieve(avatar_id, key)
+        # TODO: handle retrieve failure
+        # TODO: instead of discarding too many segments here,
+        # fix it in Retriever
         while len(segments) > self.exchange_manager.min_exchanges:
             segments.popitem()
+        # TODO: handle multiple slices
+        # TODO: check data integrity
         decoder = Decoder(self.exchange_manager.min_exchanges,
                           self.exchange_manager.num_exchanges)
         data = decoder.decode(segments.values(),
@@ -105,7 +114,7 @@ class Application(object):
         # TODO: stop hard-coding avatar_id
         avatar_id = 1001
         timestamp = time.time()
-        # TODO: split large files into sequences
+        # TODO: split large files into slices
         archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
         encoder = Encoder(self.exchange_manager.min_exchanges,
                           self.exchange_manager.num_exchanges)

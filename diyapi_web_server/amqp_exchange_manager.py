@@ -14,6 +14,10 @@ HANDOFF_NUM = 2
 class AMQPExchangeManager(object):
     def __init__(self, exchanges, min_exchanges):
         self.exchanges = list(exchanges)
+        # TODO: this probably isn't a good place for min_exchanges, as we
+        # really care about min_segments - we could potentially get enough
+        # segments to decode data with fewer than min_segments nodes up (hinted
+        # handoff)
         self.num_exchanges = len(self.exchanges)
         self.min_exchanges = min_exchanges
         self._down = set()
@@ -35,6 +39,7 @@ class AMQPExchangeManager(object):
         self._down.add(sequence_number)
 
     def mark_up(self, sequence_number):
+        # TODO: add a broadcast-channel listener for node-up messages
         try:
             self._down.remove(sequence_number)
         except KeyError:

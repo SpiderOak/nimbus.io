@@ -44,6 +44,7 @@ class TestAMQPArchiver(unittest.TestCase):
         key = self._key_generator.next()
         timestamp = time.time()
 
+        # TODO: extract helper methods
         segments = []
         for segment_number in xrange(self.exchange_manager.num_exchanges):
             segment = random_string(64 * 1024)

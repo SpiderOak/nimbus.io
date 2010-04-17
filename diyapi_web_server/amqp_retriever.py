@@ -38,8 +38,11 @@ class AMQPRetriever(object):
             reply_queues[exchange] = self.amqp_handler.send_message(
                 message, exchange)
 
+        # TODO: handle timeouts and notify exchange_manager
+        # TODO: move on once we have enough segments
         reply_contents = {}
         for exchange, reply_queue in reply_queues.iteritems():
+            # TODO: see amqp_archiver for how to do async get()
             reply = reply_queue.get()
             for content in reply.content_list:
                 reply_contents[content.segment_number] = exchange, content
@@ -68,12 +71,18 @@ class AMQPRetriever(object):
                           request_id)] = self.amqp_handler.send_message(
                               message, exchange)
 
+        # TODO: move on once we have enough segments
         reply_contents = {}
         for (exchange, request_id), reply_queue in reply_queues.iteritems():
+            # TODO: see amqp_archiver for how to do async get()
             reply = reply_queue.get()
             segment = reply.data_content
             reply_contents[reply.segment_number] = segment
             # TODO: handle large files with multiple slices
+
+        if len(reply_contents) < self.exchange_manager.min_exchanges:
+            # TODO: handle not enough segments
+            raise RuntimeError(len(reply_contents))
 
         return reply_contents
 

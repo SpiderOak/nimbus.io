@@ -15,7 +15,7 @@ from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 
 from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-from diyapi_database_server.database_content import factory as content_factory
+from diyapi_database_server import database_content
 
 from diyapi_web_server.amqp_retriever import AMQPRetriever
 
@@ -46,7 +46,8 @@ class TestAMQPRetriever(unittest.TestCase):
         segments = []
         for segment_number in xrange(self.exchange_manager.num_exchanges):
             segment = random_string(64 * 1024)
-            database_content = content_factory(
+            content = database_content.create_content(
+                database_content._current_format_version,
                 False,
                 timestamp,
                 0,
@@ -56,41 +57,44 @@ class TestAMQPRetriever(unittest.TestCase):
                 123450,
                 -42,
                 'ffffffffff',
+                0,
+                0,
+                0,
                 key
             )
-            segments.append((segment, database_content))
+            segments.append((segment, content))
             request_id = uuid.UUID(int=segment_number).hex
             self.handler.replies_to_send[request_id] = [
                 DatabaseKeyListReply(
                     request_id,
                     DatabaseKeyListReply.successful,
-                    [database_content]
+                    [content]
                 )
             ]
 
-        for i, (segment, database_content) in enumerate(segments):
+        for i, (segment, content) in enumerate(segments):
             request_id = uuid.UUID(int=segment_number + i + 1).hex
             self.handler.replies_to_send[request_id] = [
                 RetrieveKeyStartReply(
                     request_id,
                     RetrieveKeyStartReply.successful,
-                    database_content.timestamp,
-                    database_content.is_tombstone,
-                    database_content.version_number,
-                    database_content.segment_number,
-                    database_content.segment_count,
-                    database_content.segment_size,
-                    database_content.total_size,
-                    database_content.adler32,
-                    database_content.md5,
+                    content.timestamp,
+                    content.is_tombstone,
+                    content.version_number,
+                    content.segment_number,
+                    content.segment_count,
+                    content.segment_size,
+                    content.total_size,
+                    content.adler32,
+                    content.md5,
                     segment
                 )
             ]
 
         retriever = AMQPRetriever(self.handler, self.exchange_manager)
         self.assertEqual(retriever.retrieve(avatar_id, key, 0.1),
-                         dict((database_content.segment_number, segment)
-                              for segment, database_content in segments))
+                         dict((content.segment_number, segment)
+                              for segment, content in segments))
 
 
 if __name__ == "__main__":

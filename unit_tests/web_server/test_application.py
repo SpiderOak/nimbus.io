@@ -22,7 +22,7 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-from diyapi_database_server.database_content import factory as content_factory
+from diyapi_database_server import database_content
 
 from diyapi_web_server.application import Application
 
@@ -78,58 +78,62 @@ class TestApplication(unittest.TestCase):
     def test_retrieve(self):
         key = self._key_generator.next()
         timestamp = time.time()
-        content = random_string(64 * 1024)
-        adler32 = zlib.adler32(content)
-        md5 = hashlib.md5(content).digest()
+        data_content = random_string(64 * 1024)
+        adler32 = zlib.adler32(data_content)
+        md5 = hashlib.md5(data_content).digest()
 
         encoder = Encoder(self.exchange_manager.min_exchanges,
                           self.exchange_manager.num_exchanges)
-        segments = encoder.encode(content)
+        segments = encoder.encode(data_content)
 
         for segment_number, segment in enumerate(segments):
-            database_content = content_factory(
+            content = database_content.create_content(
+                database_content._current_format_version,
                 False,
                 timestamp,
                 0,
                 segment_number,
                 self.exchange_manager.num_exchanges,
                 len(segment),
-                len(content),
+                len(data_content),
                 adler32,
                 md5,
+                0,
+                0,
+                0,
                 key
             )
-            segments[segment_number] = (segment, database_content)
+            segments[segment_number] = (segment, content)
             request_id = uuid.UUID(int=segment_number).hex
             self.handler.replies_to_send[request_id] = [
                 DatabaseKeyListReply(
                     request_id,
                     DatabaseKeyListReply.successful,
-                    [database_content]
+                    [content]
                 )
             ]
 
-        for i, (segment, database_content) in enumerate(segments):
+        for i, (segment, content) in enumerate(segments):
             request_id = uuid.UUID(int=segment_number + i + 1).hex
             self.handler.replies_to_send[request_id] = [
                 RetrieveKeyStartReply(
                     request_id,
                     RetrieveKeyStartReply.successful,
-                    database_content.timestamp,
-                    database_content.is_tombstone,
-                    database_content.version_number,
-                    database_content.segment_number,
-                    database_content.segment_count,
-                    database_content.segment_size,
-                    database_content.total_size,
-                    database_content.adler32,
-                    database_content.md5,
+                    content.timestamp,
+                    content.is_tombstone,
+                    content.version_number,
+                    content.segment_number,
+                    content.segment_count,
+                    content.segment_size,
+                    content.total_size,
+                    content.adler32,
+                    content.md5,
                     segment
                 )
             ]
 
         resp = self.app.get('/data/%s' % (key,))
-        self.assertEqual(resp.body, content)
+        self.assertEqual(resp.body, data_content)
 
 
 if __name__ == "__main__":

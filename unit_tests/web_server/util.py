@@ -26,10 +26,14 @@ class MockChannel(object):
 
 class FakeAMQPHandler(AMQPHandler):
     """An AMQPHandler that sends replies itself."""
+    def __init__(self):
+        super(FakeAMQPHandler, self).__init__()
+        self.replies_to_send = {}
+
     def send_message(self, message, exchange=None):
         replies = super(FakeAMQPHandler, self).send_message(message, exchange)
-        self._reply_to_send.request_id = message.request_id
-        replies.put(self._reply_to_send)
+        for reply in self.replies_to_send.get(message.request_id, ()):
+            replies.put(reply)
         return replies
 
 

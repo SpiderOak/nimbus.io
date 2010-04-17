@@ -6,12 +6,13 @@ test diyapi_web_server/amqp_archiver.py
 """
 import os
 import unittest
+import uuid
 import time
 import hashlib
 import zlib
 
 from unit_tests.util import random_string, generate_key
-from unit_tests.web_server.util import FakeAMQPHandler, MockChannel
+from unit_tests.web_server import util
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
@@ -27,17 +28,14 @@ class TestAMQPArchiver(unittest.TestCase):
     def setUp(self):
         self.exchange_manager = AMQPExchangeManager(
             EXCHANGES, len(EXCHANGES) - 2)
-        self.channel = MockChannel()
-        self.handler = FakeAMQPHandler()
+        self.channel = util.MockChannel()
+        self.handler = util.FakeAMQPHandler()
         self.handler.channel = self.channel
         self._key_generator = generate_key()
+        uuid.uuid1 = util.fake_uuid_gen().next
 
     def test_archive_entire(self):
         archiver = AMQPArchiver(self.handler, self.exchange_manager)
-        self.handler._reply_to_send = ArchiveKeyFinalReply(
-            'request_id (replaced by FakeAMQPHandler)',
-            ArchiveKeyFinalReply.successful,
-            0)
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
@@ -48,6 +46,14 @@ class TestAMQPArchiver(unittest.TestCase):
             adler32 = zlib.adler32(segment)
             md5 = hashlib.md5(segment).digest()
             segments.append((segment, adler32, md5))
+            request_id = uuid.UUID(int=segment_number).hex
+            self.handler.replies_to_send[request_id] = [
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                )
+            ]
 
         previous_size = archiver.archive_entire(avatar_id,
                                                 key,

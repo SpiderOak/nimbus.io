@@ -16,6 +16,7 @@ from zfec.easyfec import Encoder, Decoder
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
+from diyapi_web_server.amqp_destroyer import AMQPDestroyer
 
 
 SLICE_SIZE = 1024 * 1024    # 1MB
@@ -87,8 +88,12 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
-        # TODO: implement destroy
-        pass
+        avatar_id = 1001
+        timestamp = time.time()
+        destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
+        size_deleted = destroyer.destroy(avatar_id, key, timestamp)
+        # TODO: send space accounting message
+        return Response('OK')
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):

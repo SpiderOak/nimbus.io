@@ -23,6 +23,7 @@ from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from diyapi_database_server import database_content
+from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 
 from diyapi_web_server.application import Application
 
@@ -86,6 +87,7 @@ class TestApplication(unittest.TestCase):
                           self.exchange_manager.num_exchanges)
         segments = encoder.encode(data_content)
 
+        # TODO: extract helper methods
         for segment_number, segment in enumerate(segments):
             content = database_content.create_content(
                 database_content._current_format_version,
@@ -134,6 +136,25 @@ class TestApplication(unittest.TestCase):
 
         resp = self.app.get('/data/%s' % (key,))
         self.assertEqual(resp.body, data_content)
+
+    def test_destroy(self):
+        key = self._key_generator.next()
+        base_size = 12345
+        # TODO: how are we supposed to handle timestamp here?
+        timestamp = time.time()
+        for i, exchange in enumerate(self.exchange_manager):
+            request_id = uuid.UUID(int=i).hex
+            self.handler.replies_to_send[request_id] = [
+                DatabaseKeyDestroyReply(
+                    request_id,
+                    DatabaseKeyDestroyReply.successful,
+                    base_size + i
+                )
+            ]
+
+        resp = self.app.delete('/data/%s' % (key,))
+        self.assertEqual(resp.body, 'OK')
+        # TODO: check for space accounting message
 
 
 if __name__ == "__main__":

@@ -32,7 +32,11 @@ class TestAMQPArchiver(unittest.TestCase):
         self.handler = util.FakeAMQPHandler()
         self.handler.channel = self.channel
         self._key_generator = generate_key()
+        self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
+
+    def tearDown(self):
+        uuid.uuid1 = self._real_uuid1
 
     def test_archive_entire(self):
         archiver = AMQPArchiver(self.handler, self.exchange_manager)

@@ -31,7 +31,11 @@ class TestApplication(unittest.TestCase):
         self.handler.channel = self.channel
         self.app = TestApp(Application(self.handler, self.exchange_manager))
         self._key_generator = generate_key()
+        self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
+
+    def tearDown(self):
+        uuid.uuid1 = self._real_uuid1
 
     def test_archive(self):
         for i in xrange(self.exchange_manager.num_exchanges):

@@ -25,7 +25,11 @@ class TestAMQPRetriever(unittest.TestCase):
         self.channel = util.MockChannel()
         self.handler = util.FakeAMQPHandler()
         self.handler.channel = self.channel
+        self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
+
+    def tearDown(self):
+        uuid.uuid1 = self._real_uuid1
 
     def test_retrieve(self):
         # TODO: make this test fail

@@ -6,6 +6,8 @@ A class that retrieves data from the nodes.
 """
 import uuid
 
+import gevent
+
 from messages.database_key_list import DatabaseKeyList
 from messages.retrieve_key_start import RetrieveKeyStart
 
@@ -45,16 +47,38 @@ class AMQPRetriever(object):
 
         if len(reply_contents) < self.exchange_manager.min_exchanges:
             # TODO: handle not enough segments
-            raise RuntimeError()
+            raise RuntimeError(len(reply_contents))
 
-        return reply_contents
+        return reply_contents.values()
 
     def _get_segment_data(self, avatar_id, key, key_lists):
-        # TODO: retrieve segments
-        return []
+        reply_queues = {}
+        for exchange, content in key_lists:
+            request_id = uuid.uuid1().hex
+            message = RetrieveKeyStart(
+                request_id,
+                avatar_id,
+                self.amqp_handler.exchange,
+                self.amqp_handler.queue_name,
+                key,
+                content.version_number,
+                content.segment_number
+            )
+            reply_queues[(exchange,
+                          request_id)] = self.amqp_handler.send_message(
+                              message, exchange)
+
+        reply_contents = {}
+        for (exchange, request_id), reply_queue in reply_queues.iteritems():
+            reply = reply_queue.get()
+            segment = reply.data_content
+            reply_contents[reply.segment_number] = segment
+            # TODO: handle large files with multiple slices
+
+        return [reply_contents[k] for k in sorted(reply_contents)]
 
     def retrieve(self, avatar_id, key, timeout=None):
-        task = gevent.spawn(self._retrieve(avatar_id, key))
+        task = gevent.spawn(self._retrieve, avatar_id, key)
         task.join(timeout=timeout)
         if not task.successful():
             task.kill()

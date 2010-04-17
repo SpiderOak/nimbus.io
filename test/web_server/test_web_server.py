@@ -55,6 +55,14 @@ class TestWebServer(unittest.TestCase):
         result = urllib2.urlopen('http://127.0.0.1:8088/data/test-key?action=listmatch').read()
         self.assertEqual(result, repr([key]))
 
+    #def test_upload_small_and_retrieve(self):
+    #    content = random_string(64 * 1024)
+    #    key = self._key_generator.next()
+    #    result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
+    #                             content).read()
+    #    result = urllib2.urlopen('http://127.0.0.1:8088/data/test-key').read()
+    #    self.assertEqual(result, content)
+
 
 def _load_unit_tests(path):
     dotted_path = '.'.join(path.split('/'))

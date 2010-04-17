@@ -11,9 +11,8 @@ import hashlib
 import zlib
 
 from unit_tests.util import random_string, generate_key
-from unit_tests.web_server.test_amqp_handler import MockChannel
+from unit_tests.web_server.util import FakeAMQPHandler, MockChannel
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
-from diyapi_web_server.amqp_handler import AMQPHandler
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
@@ -21,14 +20,6 @@ from diyapi_web_server.amqp_archiver import AMQPArchiver
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
-
-
-class FakeAMQPHandler(AMQPHandler):
-    def send_message(self, message, exchange=None):
-        replies = super(FakeAMQPHandler, self).send_message(message, exchange)
-        self._reply_to_send.request_id = message.request_id
-        replies.put(self._reply_to_send)
-        return replies
 
 
 class TestAMQPArchiver(unittest.TestCase):

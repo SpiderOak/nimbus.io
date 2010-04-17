@@ -8,28 +8,10 @@ import unittest
 from cStringIO import StringIO
 
 from unit_tests.util import random_string
+from unit_tests.web_server.util import MockChannel, FakeMessage
 
 from diyapi_tools import amqp_connection
 from diyapi_web_server.amqp_handler import AMQPHandler
-
-
-class FakeMessage(object):
-    def __init__(self, routing_key, body, request_id=None):
-        self.routing_key = routing_key
-        self.body = body
-        if request_id is not None:
-            self.request_id = request_id
-
-    def marshall(self):
-        return self.body
-
-
-class MockChannel(object):
-    def __init__(self):
-        self.messages = []
-
-    def basic_publish(self, *args, **kwargs):
-        self.messages.append((args, kwargs))
 
 
 class TestAMQPHandler(unittest.TestCase):

@@ -7,8 +7,7 @@ test diyapi_web_server/amqp_listmatcher.py
 import os
 import unittest
 
-from unit_tests.web_server.test_amqp_archiver import (MockChannel,
-                                                      FakeAMQPHandler)
+from unit_tests.web_server.util import MockChannel, FakeAMQPHandler
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.database_listmatch_reply import DatabaseListMatchReply
 

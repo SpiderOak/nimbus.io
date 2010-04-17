@@ -9,8 +9,7 @@ import unittest
 from webtest import TestApp
 
 from unit_tests.util import random_string, generate_key
-from unit_tests.web_server.test_amqp_archiver import (MockChannel,
-                                                      FakeAMQPHandler)
+from unit_tests.web_server.util import MockChannel, FakeAMQPHandler
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply

@@ -19,9 +19,11 @@ from diyapi_database_server import database_content
 # I   - segment count
 # I   - segment size
 # Q   - total_size
-# L   - adler32
-#16s  - md5 
-_header_format = "!32sBd?IBIIQL16s"
+# l   - file_adler32
+#16s  - file_md5 
+# s   - segment_adler32
+#16s  - segment_md5 
+_header_format = "!32sBd?IBIIQl16sl16s"
 _header_size = struct.calcsize(_header_format)
 
 _header_tuple =  namedtuple(
@@ -35,8 +37,10 @@ _header_tuple =  namedtuple(
         "segment_count",
         "segment_size", 
         "total_size", 
-        "adler32",
-        "md5"
+        "file_adler32",
+        "file_md5",
+        "segment_adler32",
+        "segment_md5"
     ]
 )
 
@@ -63,8 +67,10 @@ class RetrieveKeyStartReply(object):
         segment_count = 0,
         segment_size = 0,
         total_size = 0,
-        adler32 = 0,
-        md5 = "",
+        file_adler32 = 0,
+        file_md5 = "",
+        segment_adler32 = 0,
+        segment_md5 = "",
         data_content="",
         error_message=""
     ):
@@ -77,8 +83,10 @@ class RetrieveKeyStartReply(object):
         self.segment_count = segment_count
         self.segment_size = segment_size
         self.total_size = total_size
-        self.adler32 = adler32
-        self.md5 = md5
+        self.file_adler32 = file_adler32
+        self.file_md5 = file_md5
+        self.segment_adler32 = segment_adler32
+        self.segment_md5 = segment_md5
         self.data_content = data_content
         self.error_message = error_message
 
@@ -106,8 +114,10 @@ class RetrieveKeyStartReply(object):
                 header.segment_count,
                 header.segment_size,
                 header.total_size,
-                header.adler32,
-                header.md5,
+                header.file_adler32,
+                header.file_md5,
+                header.segment_adler32,
+                header.segment_md5,
                 data_content=data[pos:]
             )
 
@@ -130,8 +140,10 @@ class RetrieveKeyStartReply(object):
             self.segment_count,
             self.segment_size,
             self.total_size,
-            self.adler32,
-            self.md5
+            self.file_adler32,
+            self.file_md5,
+            self.segment_adler32,
+            self.segment_md5
         )
 
         if self.result == 0:

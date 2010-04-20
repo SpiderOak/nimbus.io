@@ -17,14 +17,18 @@ from diyapi_tools.marshalling import marshall_string, unmarshall_string
 # I - segment size
 # I - segment count
 # Q - total_size
-# L - adler32
-#16s- md5 
+# l - file_adler32
+#16s- file_md5 
+# l - segment_adler32
+#16s- segment_md5 
 # H - userid
 # H - groupid
 # H - permissions
-_content_template = "I?dIBIIQL16sHHH"
+_content_template = "I?dIBIIQl16sl16sHHH"
 _content_template_size = struct.calcsize(_content_template)
-_current_format_version = 1
+
+# content version 2 adler32 and md5 for both file and segment
+_current_format_version = 2
 
 create_content =  namedtuple(
     "DatabaseContent", [
@@ -36,8 +40,10 @@ create_content =  namedtuple(
         "segment_count",
         "segment_size", 
         "total_size", 
-        "adler32",
-        "md5",
+        "file_adler32",
+        "file_md5",
+        "segment_adler32",
+        "segment_md5",
         "userid",
         "groupid",
         "permissions",
@@ -55,8 +61,10 @@ def factory(**kwdargs):
         segment_count = kwdargs["segment_count"],
         segment_size = kwdargs["segment_size"],
         total_size = kwdargs["total_size"], 
-        adler32 = kwdargs["adler32"],
-        md5 = kwdargs["md5"],
+        file_adler32 = kwdargs["file_adler32"],
+        file_md5 = kwdargs["file_md5"],
+        segment_adler32 = kwdargs["segment_adler32"],
+        segment_md5 = kwdargs["segment_md5"],
         file_name = kwdargs["file_name"],
         userid = 0,
         groupid = 0,
@@ -74,8 +82,10 @@ def create_tombstone(timestamp, version_number, segment_number):
         segment_count = 0,
         segment_size = 0 ,
         total_size = 0, 
-        adler32 = 0,
-        md5 = "",
+        file_adler32 = 0,
+        file_md5 = "",
+        segment_adler32 = 0,
+        segment_md5 = "",
         file_name = "",
         userid = 0,
         groupid = 0,
@@ -97,8 +107,10 @@ def marshall(content):
         content.segment_count & 0xFFFFFFFF,
         content.segment_size & 0xFFFFFFFF, 
         content.total_size, 
-        content.adler32 & 0xFFFFFFFF,
-        content.md5,
+        content.file_adler32,
+        content.file_md5,
+        content.segment_adler32,
+        content.segment_md5,
         content.userid & 0xFFFF,
         content.groupid & 0xFFFF,
         content.permissions & 0xFFFF

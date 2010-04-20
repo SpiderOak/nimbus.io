@@ -386,8 +386,10 @@ class TestMessages(unittest.TestCase):
         original_key  = "abcdefghijk"
         original_version_number = 0
         original_segment_number = 3
-        original_adler32 = adler32(original_content)
-        original_md5 = md5(original_content).digest()
+        original_file_adler32 = adler32(original_content)
+        original_file_md5 = md5(original_content).digest()
+        original_segment_adler32 = 42
+        original_segment_md5 = "ffffffffffffffff"
         message = ArchiveKeyEntire(
             original_request_id,
             original_avatar_id,
@@ -397,8 +399,10 @@ class TestMessages(unittest.TestCase):
             original_key, 
             original_version_number,
             original_segment_number,
-            original_adler32,
-            original_md5,
+            original_file_adler32,
+            original_file_md5,
+            original_segment_adler32,
+            original_segment_md5,
             original_content
         )
         marshalled_message = message.marshall()
@@ -419,8 +423,18 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(
             unmarshalled_message.segment_number, original_segment_number
         )
-        self.assertEqual(unmarshalled_message.adler32, original_adler32)
-        self.assertEqual(unmarshalled_message.md5, original_md5)
+        self.assertEqual(
+            unmarshalled_message.file_adler32, original_file_adler32
+        )
+        self.assertEqual(
+            unmarshalled_message.file_md5, original_file_md5
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_adler32, original_segment_adler32
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_md5, original_segment_md5
+        )
         self.assertEqual(unmarshalled_message.content, original_content)
 
     def test_archive_key_start(self):
@@ -528,14 +542,18 @@ class TestMessages(unittest.TestCase):
         original_request_id = uuid.uuid1().hex
         original_sequence = 3
         original_total_size = 42L
-        original_adler32 = -10
-        original_md5 = "ffffffffffffffff"
+        original_file_adler32 = 10
+        original_file_md5 = "ffffffffffffffff"
+        original_segment_adler32 = 100
+        original_segment_md5 = "1111111111111111"
         message = ArchiveKeyFinal(
             original_request_id,
             original_sequence,
             original_total_size,
-            original_adler32,
-            original_md5,
+            original_file_adler32,
+            original_file_md5,
+            original_segment_adler32,
+            original_segment_md5,
             original_content
         )
         marshalled_message = message.marshall()
@@ -543,8 +561,18 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.sequence, original_sequence)
         self.assertEqual(unmarshalled_message.total_size, original_total_size)
-        self.assertEqual(unmarshalled_message.adler32, original_adler32)
-        self.assertEqual(unmarshalled_message.md5, original_md5)
+        self.assertEqual(
+            unmarshalled_message.file_adler32, original_file_adler32
+        )
+        self.assertEqual(
+            unmarshalled_message.file_md5, original_file_md5
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_adler32, original_segment_adler32
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_md5, original_segment_md5
+        )
         self.assertEqual(unmarshalled_message.data_content, original_content)
 
     def test_archive_key_final_reply_ok(self):
@@ -619,8 +647,10 @@ class TestMessages(unittest.TestCase):
             original_database_content.segment_count,
             original_database_content.segment_size,
             original_database_content.total_size,
-            original_database_content.adler32,
-            original_database_content.md5,
+            original_database_content.file_adler32,
+            original_database_content.file_md5,
+            original_database_content.segment_adler32,
+            original_database_content.segment_md5,
             original_data_content
         )
         marshaled_message = message.marshall()
@@ -658,12 +688,20 @@ class TestMessages(unittest.TestCase):
             original_database_content.total_size
         )
         self.assertEqual(
-            unmarshalled_message.adler32, 
-            original_database_content.adler32
+            unmarshalled_message.file_adler32, 
+            original_database_content.file_adler32
         )
         self.assertEqual(
-            unmarshalled_message.md5, 
-            original_database_content.md5
+            unmarshalled_message.file_md5, 
+            original_database_content.file_md5
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_adler32, 
+            original_database_content.segment_adler32
+        )
+        self.assertEqual(
+            unmarshalled_message.segment_md5, 
+            original_database_content.segment_md5
         )
         self.assertEqual(
             unmarshalled_message.data_content, original_data_content

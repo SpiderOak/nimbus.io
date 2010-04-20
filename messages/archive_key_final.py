@@ -11,16 +11,20 @@ _header_tuple = namedtuple("Header", [
     "request_id", 
     "sequence",
     "total_size",
-    "adler32",
-    "md5"
+    "file_adler32",
+    "file_md5",
+    "segment_adler32",
+    "segment_md5"
 ])
 
 # 32s - request-id 32 char hex uuid
 # I   - sequence
 # Q   - total_size
-# l   - adler32
-# 16s - md5
-_header_format = "32sIQl16s"
+# l   - file_adler32
+# 16s - file_md5
+# l   - segment_adler32
+# 16s - segment_md5
+_header_format = "32sIQl16sl16s"
 _header_size = struct.calcsize(_header_format)
 
 class ArchiveKeyFinal(object):
@@ -29,13 +33,23 @@ class ArchiveKeyFinal(object):
     routing_key = "data_writer.archive_key_final"
 
     def __init__(
-        self, request_id, sequence, total_size, adler32, md5, content
+        self, 
+        request_id, 
+        sequence, 
+        total_size, 
+        file_adler32, 
+        file_md5, 
+        segment_adler32, 
+        segment_md5, 
+        content
     ):
         self.request_id = request_id
         self.sequence = sequence
         self.total_size = total_size
-        self.adler32 = adler32
-        self.md5 = md5
+        self.file_adler32 = file_adler32
+        self.file_md5 = file_md5
+        self.segment_adler32 = segment_adler32
+        self.segment_md5 = segment_md5
         self.data_content = content
 
     @classmethod
@@ -51,8 +65,10 @@ class ArchiveKeyFinal(object):
             header.request_id, 
             header.sequence, 
             header.total_size,
-            header.adler32, 
-            header.md5, 
+            header.file_adler32, 
+            header.file_md5, 
+            header.segment_adler32, 
+            header.segment_md5, 
             data_content
         )
 
@@ -63,8 +79,10 @@ class ArchiveKeyFinal(object):
             self.request_id,
             self.sequence,
             self.total_size,
-            self.adler32,
-            self.md5
+            self.file_adler32,
+            self.file_md5,
+            self.segment_adler32,
+            self.segment_md5
         )
         return "".join([ header, self.data_content ])
 

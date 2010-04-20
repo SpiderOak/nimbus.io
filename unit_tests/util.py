@@ -29,8 +29,10 @@ def generate_database_content(timestamp=time.time(), version_number=0, segment_n
         segment_size=42,  
         segment_count=1,
         total_size=4200,  
-        adler32=345, 
-        md5="ffffffffffffffff",
+        file_adler32=345, 
+        file_md5="ffffffffffffffff",
+        segment_adler32=123, 
+        segment_md5="1111111111111111",
         file_name="aaa"
     )
 

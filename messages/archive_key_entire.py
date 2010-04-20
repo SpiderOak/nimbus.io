@@ -15,8 +15,10 @@ _header_tuple = namedtuple("Header", [
     "timestamp",
     "version_number",
     "segment_number",
-    "adler32",
-    "md5"
+    "file_adler32",
+    "file_md5",
+    "segment_adler32",
+    "segment_md5"
 ])
 
 # 32s - request-id 32 char hex uuid
@@ -26,7 +28,9 @@ _header_tuple = namedtuple("Header", [
 # B   - segment_number
 # l   - adler32
 # 16s - md5
-_header_format = "32sQdIBl16s"
+# l   - adler32
+# 16s - md5
+_header_format = "32sQdIBl16sl16s"
 _header_size = struct.calcsize(_header_format)
 
 class ArchiveKeyEntire(object):
@@ -46,8 +50,10 @@ class ArchiveKeyEntire(object):
         key, 
         version_number,
         segment_number, 
-        adler32, 
-        md5, 
+        file_adler32, 
+        file_md5, 
+        segment_adler32, 
+        segment_md5, 
         content
     ):
         self.request_id = request_id
@@ -58,8 +64,10 @@ class ArchiveKeyEntire(object):
         self.key = key
         self.version_number = version_number
         self.segment_number = segment_number
-        self.adler32 = adler32
-        self.md5 = md5
+        self.file_adler32 = file_adler32
+        self.file_md5 = file_md5
+        self.segment_adler32 = segment_adler32
+        self.segment_md5 = segment_md5
         self.content = content
 
     @classmethod
@@ -83,8 +91,10 @@ class ArchiveKeyEntire(object):
             key, 
             header.version_number, 
             header.segment_number, 
-            header.adler32, 
-            header.md5, 
+            header.file_adler32, 
+            header.file_md5, 
+            header.segment_adler32, 
+            header.segment_md5, 
             content
         )
 
@@ -97,8 +107,10 @@ class ArchiveKeyEntire(object):
             self.timestamp,
             self.version_number,
             self.segment_number,
-            self.adler32,
-            self.md5
+            self.file_adler32,
+            self.file_md5,
+            self.segment_adler32,
+            self.segment_md5
         )
 
         packed_reply_exchange =  marshall_string(self.reply_exchange)

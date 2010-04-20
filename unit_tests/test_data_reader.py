@@ -68,10 +68,10 @@ class TestDataReader(unittest.TestCase):
         data_reader_state = dict()
         database_state = {_database_cache : dict()}
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyEntire(
             archive_request_id,
@@ -82,8 +82,10 @@ class TestDataReader(unittest.TestCase):
             key, 
             version_number,
             segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 
@@ -136,10 +138,10 @@ class TestDataReader(unittest.TestCase):
         data_reader_state = dict()
         database_state = {_database_cache : dict()}
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyStart(
             archive_request_id,
@@ -180,8 +182,10 @@ class TestDataReader(unittest.TestCase):
             archive_request_id,
             sequence,
             total_size,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             test_data[-1]
         )
 
@@ -248,10 +252,10 @@ class TestDataReader(unittest.TestCase):
         data_reader_state = dict()
         database_state = {_database_cache : dict()}
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyStart(
             archive_request_id,
@@ -292,8 +296,10 @@ class TestDataReader(unittest.TestCase):
             archive_request_id,
             sequence,
             total_size,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             test_data[-1]
         )
 
@@ -358,10 +364,10 @@ class TestDataReader(unittest.TestCase):
         data_reader_state = dict()
         database_state = {_database_cache : dict()}
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyStart(
             archive_request_id,
@@ -402,8 +408,10 @@ class TestDataReader(unittest.TestCase):
             archive_request_id,
             sequence,
             total_size,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             test_data[-1]
         )
 

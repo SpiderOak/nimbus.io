@@ -402,8 +402,10 @@ def _handle_key_lookup_reply(state, message_body):
         message.database_content.segment_count,
         message.database_content.segment_size,
         message.database_content.total_size,
-        message.database_content.adler32,
-        message.database_content.md5,
+        message.database_content.file_adler32,
+        message.database_content.file_md5,
+        message.database_content.segment_adler32,
+        message.database_content.segment_md5,
         data_content = data_content
     )
 

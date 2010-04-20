@@ -78,10 +78,10 @@ class TestDataWriter(unittest.TestCase):
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyEntire(
             request_id,
@@ -92,8 +92,10 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 
@@ -129,10 +131,10 @@ class TestDataWriter(unittest.TestCase):
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyStart(
             request_id,
@@ -173,8 +175,10 @@ class TestDataWriter(unittest.TestCase):
             request_id,
             sequence,
             total_size,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             test_data[-1]
         )
 
@@ -310,10 +314,12 @@ class TestDataWriter(unittest.TestCase):
         segment_number = 4
         archive_timestamp = time.time()
         test_exchange = "test-exchange"
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
+
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
 
@@ -326,8 +332,10 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 
@@ -359,10 +367,12 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 4
         test_exchange = "test-exchange"
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
+
         archive_timestamp = time.time()
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
@@ -376,8 +386,10 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 
@@ -419,10 +431,12 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 4
         test_exchange = "test-exchange"
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
+
         archive_timestamp = time.time()
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
@@ -436,8 +450,10 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 
@@ -483,10 +499,12 @@ class TestDataWriter(unittest.TestCase):
         segment_number = 4
         archive_timestamp = time.time()
         test_exchange = "test-exchange"
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
+
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
 
@@ -499,8 +517,10 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 

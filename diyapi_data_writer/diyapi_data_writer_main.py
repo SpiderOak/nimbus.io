@@ -273,8 +273,10 @@ def _handle_archive_key_entire(state, message_body):
         version_number=message.version_number,
         segment_count=1,
         total_size=len(message.content),  
-        adler32=message.adler32, 
-        md5=message.md5 ,
+        file_adler32=message.file_adler32, 
+        file_md5=message.file_md5 ,
+        segment_adler32=message.segment_adler32, 
+        segment_md5=message.segment_md5,
         file_name=file_name
     )
     local_exchange = amqp_connection.local_exchange_name
@@ -505,8 +507,10 @@ def _handle_archive_key_final(state, message_body):
         segment_size=archive_state.segment_size,  
         segment_count=message.sequence+1,
         total_size=message.total_size,  
-        adler32=message.adler32, 
-        md5=message.md5,
+        file_adler32=message.file_adler32, 
+        file_md5=message.file_md5,
+        segment_adler32=message.segment_adler32, 
+        segment_md5=message.segment_md5,
         file_name=archive_state.file_name
     )
     local_exchange = amqp_connection.local_exchange_name

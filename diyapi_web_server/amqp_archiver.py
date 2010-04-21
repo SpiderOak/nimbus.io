@@ -25,6 +25,7 @@ class AMQPArchiver(object):
                        timeout=None):
         replies = []
         for segment_number, segment in enumerate(segments):
+            segment_number += 1
             request_id = uuid.uuid1().hex
             file_adler32 = 0
             file_md5 = ""
@@ -45,7 +46,7 @@ class AMQPArchiver(object):
                 segment_md5,
                 segment
             )
-            for exchange in self.exchange_manager[segment_number]:
+            for exchange in self.exchange_manager[segment_number - 1]:
                 reply_queue = self.amqp_handler.send_message(message, exchange)
                 replies.append((message, gevent.spawn(reply_queue.get)))
         gevent.joinall([reply for (message, reply) in replies],

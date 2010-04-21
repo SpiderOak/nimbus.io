@@ -19,8 +19,9 @@ class AMQPRetriever(object):
         self.exchange_manager = exchange_manager
 
     def retrieve(self, avatar_id, key, timeout=None):
+        num_segments = self.exchange_manager.num_exchanges
         replies = []
-        for segment_number in xrange(self.exchange_manager.num_exchanges):
+        for segment_number in xrange(1, num_segments + 1):
             request_id = uuid.uuid1().hex
             message = RetrieveKeyStart(
                 request_id,
@@ -31,7 +32,7 @@ class AMQPRetriever(object):
                 0, # version_number
                 segment_number
             )
-            for exchange in self.exchange_manager[segment_number]:
+            for exchange in self.exchange_manager[segment_number - 1]:
                 reply_queue = self.amqp_handler.send_message(message, exchange)
                 replies.append((message, gevent.spawn(reply_queue.get)))
 

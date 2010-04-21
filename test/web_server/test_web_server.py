@@ -61,6 +61,7 @@ class TestWebServer(unittest.TestCase):
         result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
                                  content).read()
         result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key).read()
+        self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
     #def test_upload_small_then_delete_and_listmatch(self):

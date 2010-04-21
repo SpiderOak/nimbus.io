@@ -77,18 +77,20 @@ class TestApplication(unittest.TestCase):
     def test_retrieve(self):
         key = self._key_generator.next()
         timestamp = time.time()
-        data_content = random_string(64 * 1024)
+        file_size = 64 * 1024
+        data_content = random_string(file_size)
         file_adler32 = zlib.adler32(data_content)
         file_md5 = hashlib.md5(data_content).digest()
-        segment_adler32 = zlib.adler32(data_content)
-        segment_md5 = hashlib.md5(data_content).digest()
 
         encoder = Encoder(self.exchange_manager.min_exchanges,
                           self.exchange_manager.num_exchanges)
         segments = encoder.encode(data_content)
 
         for segment_number, segment in enumerate(segments):
-            request_id = uuid.UUID(int=segment_number).hex
+            segment_number += 1
+            segment_adler32 = zlib.adler32(segment)
+            segment_md5 = hashlib.md5(segment).digest()
+            request_id = uuid.UUID(int=segment_number - 1).hex
             self.handler.replies_to_send[request_id] = [
                 RetrieveKeyStartReply(
                     request_id,
@@ -97,18 +99,19 @@ class TestApplication(unittest.TestCase):
                     False,
                     0,
                     segment_number,
-                    self.exchange_manager.num_exchanges,
-                    12345,
-                    123450,
-                    -42,
-                    'ffffffffff',
-                    32,
-                    '1111111111111111',
+                    len(segments),
+                    len(segment),
+                    file_size,
+                    file_adler32,
+                    file_md5,
+                    segment_adler32,
+                    segment_md5,
                     segment
                 )
             ]
 
         resp = self.app.get('/data/%s' % (key,))
+        self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
 
     def test_destroy(self):

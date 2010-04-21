@@ -40,11 +40,13 @@ class TestAMQPRetriever(unittest.TestCase):
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
+        expected_size = 123450
 
-        segments = []
-        for segment_number in xrange(self.exchange_manager.num_exchanges):
+        num_segments = self.exchange_manager.num_exchanges
+        segments = {}
+        for segment_number in xrange(1, num_segments + 1):
             segment = random_string(64 * 1024)
-            request_id = uuid.UUID(int=segment_number).hex
+            request_id = uuid.UUID(int=segment_number - 1).hex
             self.handler.replies_to_send[request_id] = [
                 RetrieveKeyStartReply(
                     request_id,
@@ -55,7 +57,7 @@ class TestAMQPRetriever(unittest.TestCase):
                     segment_number,
                     self.exchange_manager.num_exchanges,
                     12345,
-                    123450,
+                    expected_size,
                     -42,
                     'ffffffffff',
                     32,
@@ -63,11 +65,11 @@ class TestAMQPRetriever(unittest.TestCase):
                     segment
                 )
             ]
-            segments.append(segment)
+            segments[segment_number] = segment
 
         retriever = AMQPRetriever(self.handler, self.exchange_manager)
-        self.assertEqual(retriever.retrieve(avatar_id, key, 0.1),
-                         dict(enumerate(segments)))
+        retrieved = retriever.retrieve(avatar_id, key, 0.1)
+        self.assertEqual(retrieved, segments)
 
 
 if __name__ == "__main__":

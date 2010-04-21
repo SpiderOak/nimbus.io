@@ -109,9 +109,9 @@ class Application(object):
         # TODO: check data integrity
         decoder = Decoder(self.exchange_manager.min_exchanges,
                           self.exchange_manager.num_exchanges)
-        data = decoder.decode(segments.values(),
-                              segments.keys(),
-                              0)
+        segment_nums = map(lambda i: i - 1, segments.keys())
+        segment_data = segments.values()
+        data = decoder.decode(segment_data, segment_nums, 0)
         return Response(data)
 
     @routes.add(r'/data/(.+)$', 'POST')

@@ -20,9 +20,7 @@ from unit_tests.web_server import util
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
-from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-from diyapi_database_server import database_content
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 
 from diyapi_web_server.application import Application
@@ -89,53 +87,23 @@ class TestApplication(unittest.TestCase):
                           self.exchange_manager.num_exchanges)
         segments = encoder.encode(data_content)
 
-        # TODO: extract helper methods
         for segment_number, segment in enumerate(segments):
-            content = database_content.create_content(
-                database_content._current_format_version,
-                False,
-                timestamp,
-                0,
-                segment_number,
-                self.exchange_manager.num_exchanges,
-                len(segment),
-                len(data_content),
-                file_adler32,
-                file_md5,
-                segment_adler32,
-                segment_md5,
-                0,
-                0,
-                0,
-                key
-            )
-            segments[segment_number] = (segment, content)
             request_id = uuid.UUID(int=segment_number).hex
-            self.handler.replies_to_send[request_id] = [
-                DatabaseKeyListReply(
-                    request_id,
-                    DatabaseKeyListReply.successful,
-                    [content]
-                )
-            ]
-
-        for i, (segment, content) in enumerate(segments):
-            request_id = uuid.UUID(int=segment_number + i + 1).hex
             self.handler.replies_to_send[request_id] = [
                 RetrieveKeyStartReply(
                     request_id,
                     RetrieveKeyStartReply.successful,
-                    content.timestamp,
-                    content.is_tombstone,
-                    content.version_number,
-                    content.segment_number,
-                    content.segment_count,
-                    content.segment_size,
-                    content.total_size,
-                    content.file_adler32,
-                    content.file_md5,
-                    content.segment_adler32,
-                    content.segment_md5,
+                    timestamp,
+                    False,
+                    0,
+                    segment_number,
+                    self.exchange_manager.num_exchanges,
+                    12345,
+                    123450,
+                    -42,
+                    'ffffffffff',
+                    32,
+                    '1111111111111111',
                     segment
                 )
             ]

@@ -122,10 +122,10 @@ class TestHandoffServer(unittest.TestCase):
         content_size = 64 * 1024
         content_item = random_string(content_size) 
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         handoff_request_id = uuid.uuid1().hex
         handoff_timestamp = time.time()
@@ -139,8 +139,10 @@ class TestHandoffServer(unittest.TestCase):
             self._key, 
             self._version_number,
             self._segment_number,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             content_item
         )
 
@@ -299,10 +301,10 @@ class TestHandoffServer(unittest.TestCase):
         handoff_request_id = uuid.uuid1().hex
         handoff_timestamp = time.time()
 
-        # the adler32 and md5 hashes should be of the original pre-zefec
-        # data segment. We don't have that so we make something up.
-        adler32 = -42
-        md5 = "ffffffffffffffff"
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
 
         message = ArchiveKeyStart(
             handoff_request_id,
@@ -346,8 +348,10 @@ class TestHandoffServer(unittest.TestCase):
             handoff_request_id,
             sequence,
             total_size,
-            adler32,
-            md5,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
             test_data[-1]
         )
 

@@ -58,6 +58,8 @@ class TestAMQPRetriever(unittest.TestCase):
                 123450,
                 -42,
                 'ffffffffff',
+                32,
+                '1111111111111111',
                 0,
                 0,
                 0,
@@ -86,8 +88,10 @@ class TestAMQPRetriever(unittest.TestCase):
                     content.segment_count,
                     content.segment_size,
                     content.total_size,
-                    content.adler32,
-                    content.md5,
+                    content.file_adler32,
+                    content.file_md5,
+                    content.segment_adler32,
+                    content.segment_md5,
                     segment
                 )
             ]

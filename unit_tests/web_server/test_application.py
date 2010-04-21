@@ -80,8 +80,10 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         timestamp = time.time()
         data_content = random_string(64 * 1024)
-        adler32 = zlib.adler32(data_content)
-        md5 = hashlib.md5(data_content).digest()
+        file_adler32 = zlib.adler32(data_content)
+        file_md5 = hashlib.md5(data_content).digest()
+        segment_adler32 = zlib.adler32(data_content)
+        segment_md5 = hashlib.md5(data_content).digest()
 
         encoder = Encoder(self.exchange_manager.min_exchanges,
                           self.exchange_manager.num_exchanges)
@@ -98,8 +100,10 @@ class TestApplication(unittest.TestCase):
                 self.exchange_manager.num_exchanges,
                 len(segment),
                 len(data_content),
-                adler32,
-                md5,
+                file_adler32,
+                file_md5,
+                segment_adler32,
+                segment_md5,
                 0,
                 0,
                 0,
@@ -128,8 +132,10 @@ class TestApplication(unittest.TestCase):
                     content.segment_count,
                     content.segment_size,
                     content.total_size,
-                    content.adler32,
-                    content.md5,
+                    content.file_adler32,
+                    content.file_md5,
+                    content.segment_adler32,
+                    content.segment_md5,
                     segment
                 )
             ]

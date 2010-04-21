@@ -26,8 +26,10 @@ class AMQPArchiver(object):
         replies = []
         for segment_number, segment in enumerate(segments):
             request_id = uuid.uuid1().hex
-            adler32 = zlib.adler32(segment)
-            md5 = hashlib.md5(segment).digest()
+            file_adler32 = 0
+            file_md5 = ""
+            segment_adler32 = zlib.adler32(segment)
+            segment_md5 = hashlib.md5(segment).digest()
             message = ArchiveKeyEntire(
                 request_id,
                 avatar_id,
@@ -37,8 +39,10 @@ class AMQPArchiver(object):
                 key,
                 0, # version number
                 segment_number,
-                adler32,
-                md5,
+                file_adler32,
+                file_md5,
+                segment_adler32,
+                segment_md5,
                 segment
             )
             for exchange in self.exchange_manager[segment_number]:

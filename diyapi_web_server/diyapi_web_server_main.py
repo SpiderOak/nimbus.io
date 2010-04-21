@@ -14,10 +14,14 @@ import sys
 from gevent import wsgi
 from gevent.event import Event
 
+from diyapi_tools.standard_logging import initialize_logging
+
 from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 
+
+_log_path = "/var/log/pandora/diyapi_web_server.log"
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 MAX_DOWN_EXCHANGES = 2
@@ -48,9 +52,10 @@ class WebServer(object):
 
 
 def main():
+    initialize_logging(_log_path)
     WebServer().serve_forever()
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main(*sys.argv))
+    sys.exit(main(*sys.argv[1:]))

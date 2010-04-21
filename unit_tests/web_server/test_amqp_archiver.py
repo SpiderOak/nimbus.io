@@ -48,9 +48,9 @@ class TestAMQPArchiver(unittest.TestCase):
         segments = []
         for segment_number in xrange(self.exchange_manager.num_exchanges):
             segment = random_string(64 * 1024)
-            adler32 = zlib.adler32(segment)
-            md5 = hashlib.md5(segment).digest()
-            segments.append((segment, adler32, md5))
+            segment_adler32 = zlib.adler32(segment)
+            segment_md5 = hashlib.md5(segment).digest()
+            segments.append((segment, segment_adler32, segment_md5))
             request_id = uuid.UUID(int=segment_number).hex
             self.handler.replies_to_send[request_id] = [
                 ArchiveKeyFinalReply(
@@ -71,7 +71,7 @@ class TestAMQPArchiver(unittest.TestCase):
 
         for segment_number, message in enumerate(self.channel.messages):
             ((amqp_message,), message_args) = message
-            segment, adler32, md5 = segments[segment_number]
+            segment, segment_adler32, segment_md5 = segments[segment_number]
             self.assertEqual(message_args, dict(
                 exchange=self.exchange_manager[segment_number][0],
                 routing_key=ArchiveKeyEntire.routing_key,
@@ -81,8 +81,8 @@ class TestAMQPArchiver(unittest.TestCase):
             self.assertEqual(message.key, key)
             self.assertEqual(message.timestamp, timestamp)
             self.assertEqual(message.segment_number, segment_number)
-            self.assertEqual(message.adler32, adler32)
-            self.assertEqual(message.md5, md5)
+            self.assertEqual(message.segment_adler32, segment_adler32)
+            self.assertEqual(message.segment_md5, segment_md5)
             self.assertEqual(message.content, segment)
 
 

@@ -39,15 +39,15 @@ class TestAMQPDestroyer(unittest.TestCase):
         avatar_id = 1001
         key = self._key_generator.next()
         base_size = 12345
-        # TODO: how are we supposed to handle timestamp here?
         timestamp = time.time()
-        for i, exchange in enumerate(self.exchange_manager):
-            request_id = uuid.UUID(int=i).hex
+        num_segments = self.exchange_manager.num_exchanges
+        for segment_number in xrange(1, num_segments - 1):
+            request_id = uuid.UUID(int=segment_number - 1).hex
             self.handler.replies_to_send[request_id] = [
                 DatabaseKeyDestroyReply(
                     request_id,
                     DatabaseKeyDestroyReply.successful,
-                    base_size + i
+                    base_size + segment_number - 1
                 )
             ]
 

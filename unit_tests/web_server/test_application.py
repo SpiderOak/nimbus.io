@@ -117,7 +117,6 @@ class TestApplication(unittest.TestCase):
     def test_destroy(self):
         key = self._key_generator.next()
         base_size = 12345
-        # TODO: how are we supposed to handle timestamp here?
         timestamp = time.time()
         for i, exchange in enumerate(self.exchange_manager):
             request_id = uuid.UUID(int=i).hex

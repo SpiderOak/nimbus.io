@@ -20,7 +20,8 @@ class AMQPDestroyer(object):
 
     def destroy(self, avatar_id, key, timestamp, timeout=None):
         replies = []
-        for exchange in self.exchange_manager:
+        num_segments = self.exchange_manager.num_exchanges
+        for segment_number in xrange(1, num_segments - 1):
             request_id = uuid.uuid1().hex
             message = DatabaseKeyDestroy(
                 request_id,
@@ -30,10 +31,11 @@ class AMQPDestroyer(object):
                 timestamp,
                 key,
                 0,
-                0 # TODO: segment number?
+                segment_number
             )
-            reply_queue = self.amqp_handler.send_message(message, exchange)
-            replies.append((message, gevent.spawn(reply_queue.get)))
+            for exchange in self.exchange_manager[segment_number - 1]:
+                reply_queue = self.amqp_handler.send_message(message, exchange)
+                replies.append((message, gevent.spawn(reply_queue.get)))
         gevent.joinall([reply for (message, reply) in replies],
                        timeout=timeout)
         # TODO: do something when nodes are down

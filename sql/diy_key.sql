@@ -6,9 +6,11 @@ create table diy_key (
     key text not null
 );
 
+
 grant select on diy_key to diyapi;
 
--- key for unit tests
-insert into diy_key (key_id, key) values (9999, 'deadbeef');
+
+-- for unit tests
+insert into diy_key (key_id, key) values (0, 'deadbeef');
 
 commit;

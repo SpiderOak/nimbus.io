@@ -45,8 +45,16 @@ class Application(object):
     routes = router()
 
     def check_authorization(self, req):
-        # TODO: compare HTTP_HOST and key_id
-        return True
+        # TODO: test this and fix the gratuitous violation of authenticator
+        host = req.host.split(':', 1)[0]
+        if host.endswith('.diy.spideroak.com'):
+            username = host.split('.', 1)[0]
+        else:
+            username = 'test'
+        key_id = self.authenticator._get_key_id(username)
+        if key_id is None:
+            return False
+        return req.remote_user == key_id
 
     @wsgify
     def __call__(self, req):

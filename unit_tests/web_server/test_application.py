@@ -34,7 +34,7 @@ class TestApplication(unittest.TestCase):
     def setUp(self):
         self.exchange_manager = AMQPExchangeManager(
             EXCHANGES, len(EXCHANGES) - 2)
-        self.authenticator = util.FakeAuthenticator(1001)
+        self.authenticator = util.FakeAuthenticator(0)
         self.channel = util.MockChannel()
         self.handler = util.FakeAMQPHandler()
         self.handler.channel = self.channel

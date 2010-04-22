@@ -73,8 +73,12 @@ class FakeAuthenticator(object):
     def __init__(self, remote_user):
         self.remote_user = remote_user
 
+    def _get_key_id(self, username):
+        # TODO: remove this when application is fixed
+        return 0
+
     def authenticate(self, req):
-        if self.remote_user:
+        if self.remote_user is not None:
             req.remote_user = self.remote_user
             return True
         return False

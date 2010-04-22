@@ -19,6 +19,18 @@ class SqlAuthenticator(object):
             req.headers['x-diyapi-timestamp'],
         ))
 
+    def _get_key_id(self, username):
+        # TODO: test this
+        cur = self.connection.cursor()
+        cur.execute('select key_id '
+                    'from diy_user '
+                    'join diy_user_key using (user_id) '
+                    'where username=%s',
+                    [username])
+        row = cur.fetchone()
+        if row:
+            return row[0]
+
     def _get_key(self, key_id):
         cur = self.connection.cursor()
         cur.execute('select key from diy_key where key_id=%s',

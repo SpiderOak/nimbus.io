@@ -26,7 +26,8 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
-_test_key_id = 9999
+_test_username = 'test'
+_test_key_id = 0
 _test_key = 'deadbeef'
 
 

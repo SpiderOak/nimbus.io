@@ -4,6 +4,8 @@ source ${TOOL}/bin/env.sh
 export SPIDEROAK_DIY="${HOME}/spideroak_diyapi"
 export PYTHONPATH="${SPIDEROAK_DIY}"
 
+export PANDORA_DATABASE_HOST="localhost"
+
 export SPIDEROAK_MULTI_NODE_NAME="node-sim-00"
 export RABBITMQ_NODENAME="${SPIDEROAK_MULTI_NODE_NAME}"
 export RABBITMQ_NODE_IP_ADDRESS="127.0.0.1"

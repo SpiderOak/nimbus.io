@@ -14,6 +14,9 @@ import shutil
 import logging
 import unittest
 import urllib2
+import hmac
+import hashlib
+import time
 
 from diyapi_tools.standard_logging import initialize_logging
 from unit_tests.util import random_string, generate_key
@@ -22,6 +25,9 @@ _log_path = "/var/log/pandora/test_web_server.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
+
+_test_key_id = 9999
+_test_key = 'deadbeef'
 
 
 class TestWebServer(unittest.TestCase):
@@ -40,27 +46,65 @@ class TestWebServer(unittest.TestCase):
     def tearDown(self):
         self.server.stop()
 
+    def _auth_headers(self, method, key=None):
+        if key is None:
+            key = _test_key
+        timestamp = str(int(time.time()))
+        string_to_sign = '\n'.join((
+            method,
+            timestamp,
+        ))
+        signature = hmac.new(key, string_to_sign, hashlib.sha256).hexdigest()
+        return {
+            'Authorization': 'DIYAPI %d:%s' % (_test_key_id, signature),
+            'X-DIYAPI-Timestamp': timestamp,
+        }
+
+    def _make_request(self, url, data=None, key=None):
+        request = urllib2.Request(url, data, self._auth_headers('GET' if data is None else 'POST', key))
+        return urllib2.urlopen(request).read()
+
+    def test_unauthorized_when_auth_header_missing(self):
+        try:
+            resp = urllib2.urlopen(
+                'http://127.0.0.1:8088/data/test-key?action=listmatch')
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 401)
+        else:
+            raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
+
+    def test_unauthorized_with_bad_credentials(self):
+        try:
+            resp = self._make_request(
+                'http://127.0.0.1:8088/data/test-key?action=listmatch', key='cafeface')
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 401)
+        else:
+            raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
+
     def test_upload_small(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
-                                 content).read()
+        result = self._make_request(
+            'http://127.0.0.1:8088/data/' + key, content)
         self.assertEqual(result, 'OK')
 
     def test_upload_small_and_listmatch(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
-                                 content).read()
-        result = urllib2.urlopen('http://127.0.0.1:8088/data/test-key?action=listmatch').read()
+        result = self._make_request(
+            'http://127.0.0.1:8088/data/' + key, content)
+        result = self._make_request(
+            'http://127.0.0.1:8088/data/test-key?action=listmatch')
         self.assertEqual(result, repr([key]))
 
     def test_upload_small_and_retrieve(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
-        result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
-                                 content).read()
-        result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key).read()
+        result = self._make_request(
+            'http://127.0.0.1:8088/data/' + key, content)
+        result = self._make_request(
+            'http://127.0.0.1:8088/data/' + key)
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 

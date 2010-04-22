@@ -14,14 +14,21 @@ import sys
 from gevent import wsgi
 from gevent.event import Event
 
+import psycopg2
+
 from diyapi_tools.standard_logging import initialize_logging
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.sql_authenticator import SqlAuthenticator
 
 
 _log_path = "/var/log/pandora/diyapi_web_server.log"
+
+DB_HOST = os.environ['PANDORA_DATABASE_HOST']
+DB_NAME = 'pandora'
+DB_USER = 'diyapi'
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 MAX_DOWN_EXCHANGES = 2
@@ -32,7 +39,13 @@ class WebServer(object):
         self.amqp_handler = AMQPHandler()
         exchange_manager = AMQPExchangeManager(
             EXCHANGES, len(EXCHANGES) - MAX_DOWN_EXCHANGES)
-        self.application = Application(self.amqp_handler, exchange_manager)
+        db_connection = psycopg2.connect(
+            database=DB_NAME,
+            user=DB_USER,
+            host=DB_HOST
+        )
+        authenticator = SqlAuthenticator(db_connection)
+        self.application = Application(self.amqp_handler, exchange_manager, authenticator)
         self.wsgi_server = wsgi.WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
 

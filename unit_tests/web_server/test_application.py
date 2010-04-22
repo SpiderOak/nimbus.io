@@ -34,16 +34,29 @@ class TestApplication(unittest.TestCase):
     def setUp(self):
         self.exchange_manager = AMQPExchangeManager(
             EXCHANGES, len(EXCHANGES) - 2)
+        self.authenticator = util.FakeAuthenticator(1001)
         self.channel = util.MockChannel()
         self.handler = util.FakeAMQPHandler()
         self.handler.channel = self.channel
-        self.app = TestApp(Application(self.handler, self.exchange_manager))
+        self.app = TestApp(Application(
+            self.handler,
+            self.exchange_manager,
+            self.authenticator
+        ))
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
+
+    def test_unauthorized(self):
+        self.app.app.authenticator = util.FakeAuthenticator(None)
+        self.app.get(
+            '/data/some-key',
+            dict(action='listmatch'),
+            status=401
+        )
 
     def test_archive(self):
         for i in xrange(self.exchange_manager.num_exchanges):

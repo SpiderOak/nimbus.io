@@ -37,15 +37,23 @@ class router(list):
 
 
 class Application(object):
-    def __init__(self, amqp_handler, exchange_manager):
+    def __init__(self, amqp_handler, exchange_manager, authenticator):
         self.amqp_handler = amqp_handler
         self.exchange_manager = exchange_manager
+        self.authenticator = authenticator
 
     routes = router()
+
+    def check_authorization(self, req):
+        # TODO: compare HTTP_HOST and key_id
+        return True
 
     @wsgify
     def __call__(self, req):
         # TODO: test this
+        if not (self.authenticator.authenticate(req)
+                and self.check_authorization(req)):
+            raise exc.HTTPUnauthorized()
         url_matched = False
         for regex, query_args, methods, func_name in self.routes:
             url_match = regex.match(req.path)

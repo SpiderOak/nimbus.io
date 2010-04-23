@@ -52,6 +52,7 @@ class TestWebServer(unittest.TestCase):
             key = _test_key
         timestamp = str(int(time.time()))
         string_to_sign = '\n'.join((
+            _test_username,
             method,
             timestamp,
         ))

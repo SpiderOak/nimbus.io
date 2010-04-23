@@ -15,12 +15,12 @@ class SqlAuthenticator(object):
 
     def _string_to_sign(self, req):
         return '\n'.join((
+            req.diy_username,
             req.method,
             req.headers['x-diyapi-timestamp'],
         ))
 
     def _get_key_id(self, username):
-        # TODO: test this
         cur = self.connection.cursor()
         cur.execute('select key_id '
                     'from diy_user '
@@ -53,6 +53,8 @@ class SqlAuthenticator(object):
         try:
             key_id = int(key_id)
         except (TypeError, ValueError):
+            return False
+        if key_id != self._get_key_id(req.diy_username):
             return False
         key = self._get_key(key_id)
         if not key:

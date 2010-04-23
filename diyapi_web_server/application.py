@@ -13,6 +13,7 @@ from webob import exc
 from webob import Response
 
 from zfec.easyfec import Encoder, Decoder
+from diyapi_web_server import util
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
@@ -44,23 +45,11 @@ class Application(object):
 
     routes = router()
 
-    def check_authorization(self, req):
-        # TODO: test this and fix the gratuitous violation of authenticator
-        host = req.host.split(':', 1)[0]
-        if host.endswith('.diy.spideroak.com'):
-            username = host.split('.', 1)[0]
-        else:
-            username = 'test'
-        key_id = self.authenticator._get_key_id(username)
-        if key_id is None:
-            return False
-        return req.remote_user == key_id
-
     @wsgify
     def __call__(self, req):
         # TODO: test this
-        if not (self.authenticator.authenticate(req)
-                and self.check_authorization(req)):
+        req.diy_username = util.get_username_from_req(req) or 'test'
+        if not self.authenticator.authenticate(req):
             raise exc.HTTPUnauthorized()
         url_matched = False
         for regex, query_args, methods, func_name in self.routes:

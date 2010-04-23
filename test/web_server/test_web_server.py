@@ -26,6 +26,9 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
+_prod_base_url = 'https://test.diy.spideroak.com'
+_local_base_url = 'http://127.0.0.1:8088'
+
 _test_username = 'test'
 _test_key_id = 0
 _test_key = 'deadbeef'
@@ -69,7 +72,7 @@ class TestWebServer(unittest.TestCase):
     def test_unauthorized_when_auth_header_missing(self):
         try:
             resp = urllib2.urlopen(
-                'http://127.0.0.1:8088/data/test-key?action=listmatch')
+                '%s/data/test-key?action=listmatch' % (_base_url,))
         except urllib2.HTTPError, err:
             self.assertEqual(err.code, 401)
         else:
@@ -78,7 +81,7 @@ class TestWebServer(unittest.TestCase):
     def test_unauthorized_with_bad_credentials(self):
         try:
             resp = self._make_request(
-                'http://127.0.0.1:8088/data/test-key?action=listmatch', key='cafeface')
+                '%s/data/test-key?action=listmatch' % (_base_url,), key='cafeface')
         except urllib2.HTTPError, err:
             self.assertEqual(err.code, 401)
         else:
@@ -88,36 +91,36 @@ class TestWebServer(unittest.TestCase):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = self._make_request(
-            'http://127.0.0.1:8088/data/' + key, content)
+            '%s/data/' % (_base_url,) + key, content)
         self.assertEqual(result, 'OK')
 
     def test_upload_small_and_listmatch(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = self._make_request(
-            'http://127.0.0.1:8088/data/' + key, content)
+            '%s/data/' % (_base_url,) + key, content)
         result = self._make_request(
-            'http://127.0.0.1:8088/data/test-key?action=listmatch')
+            '%s/data/test-key?action=listmatch' % (_base_url,))
         self.assertEqual(result, repr([key]))
 
     def test_upload_small_and_retrieve(self):
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = self._make_request(
-            'http://127.0.0.1:8088/data/' + key, content)
+            '%s/data/' % (_base_url,) + key, content)
         result = self._make_request(
-            'http://127.0.0.1:8088/data/' + key)
+            '%s/data/' % (_base_url,) + key)
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
     #def test_upload_small_then_delete_and_listmatch(self):
     #    content = random_string(64 * 1024)
     #    key = self._key_generator.next()
-    #    result = urllib2.urlopen('http://127.0.0.1:8088/data/' + key,
+    #    result = urllib2.urlopen('%s/data/' % (_base_url,) + key,
     #                             content).read()
-    #    result = urllib2.urlopen('http://127.0.0.1:8088/data/%s?action=delete' % (key,), {}).read()
+    #    result = urllib2.urlopen('%s/data/%s?action=delete' % (_base_url,) % (key,), {}).read()
     #    self.assertEqual(result, 'OK')
-    #    result = urllib2.urlopen('http://127.0.0.1:8088/data/test-key?action=listmatch').read()
+    #    result = urllib2.urlopen('%s/data/test-key?action=listmatch' % (_base_url,)).read()
     #    self.assertEqual(result, repr([]))
 
 
@@ -141,5 +144,9 @@ if __name__ == "__main__":
     if 'end-to-end' in sys.argv[1:]:
         tests.append(
             unittest.defaultTestLoader.loadTestsFromTestCase(TestWebServer))
+    if 'prod' in sys.argv[1:]:
+        _base_url = _prod_base_url
+    else:
+        _base_url = _local_base_url
     test_suite = unittest.TestSuite(tests)
     unittest.TextTestRunner(verbosity=2).run(test_suite)

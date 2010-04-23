@@ -50,6 +50,10 @@ class SqlAuthenticator(object):
             key_id, signature = auth_string.split(':', 1)
         except TypeError:
             return False
+        try:
+            key_id = int(key_id)
+        except (TypeError, ValueError):
+            return False
         key = self._get_key(key_id)
         if not key:
             return False

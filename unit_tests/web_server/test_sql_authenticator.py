@@ -39,7 +39,9 @@ class TestSqlAuthenticator(unittest.TestCase):
         key_id = 1001
         key = 'deadbeef'
         timestamp = int(util.fake_time())
-        self.connection.cursor().rows.append((key,))
+        self.connection.cursor().rows[
+            ('select key from diy_key where key_id=%s', (key_id,))
+        ] = [(key,)]
         self.req.headers['x-diyapi-timestamp'] = str(timestamp)
         string_to_sign = '\n'.join((
             self.req.method,
@@ -67,7 +69,9 @@ class TestSqlAuthenticator(unittest.TestCase):
         key_id = 1001
         key = 'deadbeef'
         timestamp = int(util.fake_time()) + 10 * 60
-        self.connection.cursor().rows.append((key,))
+        self.connection.cursor().rows[
+            ('select key from diy_key where key_id=%s', (key_id,))
+        ] = [(key,)]
         self.req.headers['x-diyapi-timestamp'] = str(timestamp)
         string_to_sign = '\n'.join((
             self.req.method,
@@ -82,7 +86,9 @@ class TestSqlAuthenticator(unittest.TestCase):
         key_id = 1001
         key = 'deadbeef'
         timestamp = int(util.fake_time())
-        self.connection.cursor().rows.append((key,))
+        self.connection.cursor().rows[
+            ('select key from diy_key where key_id=%s', (key_id,))
+        ] = [(key,)]
         string_to_sign = '\n'.join((
             self.req.method,
             str(timestamp),
@@ -95,7 +101,9 @@ class TestSqlAuthenticator(unittest.TestCase):
         key_id = 1001
         key = 'deadbeef'
         timestamp = int(util.fake_time()) + 10 * 60 + 1
-        self.connection.cursor().rows.append((key,))
+        self.connection.cursor().rows[
+            ('select key from diy_key where key_id=%s', (key_id,))
+        ] = [(key,)]
         self.req.headers['x-diyapi-timestamp'] = str(timestamp)
         string_to_sign = '\n'.join((
             self.req.method,
@@ -109,7 +117,9 @@ class TestSqlAuthenticator(unittest.TestCase):
         key_id = 1001
         key = 'deadbeef'
         timestamp = int(util.fake_time())
-        self.connection.cursor().rows.append((key,))
+        self.connection.cursor().rows[
+            ('select key from diy_key where key_id=%s', (key_id,))
+        ] = [(key,)]
         self.req.headers['x-diyapi-timestamp'] = str(timestamp)
         signature = 'bogussignature'
         self.req.authorization = 'DIYAPI %d:%s' % (key_id, signature)

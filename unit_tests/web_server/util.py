@@ -44,17 +44,24 @@ def fake_uuid_gen():
 
 class MockSqlCursor(object):
     def __init__(self):
-        self.rows = []
+        self.rows = {}
         self.queries = []
+        self.results = None
 
     def execute(self, query, args=()):
         self.queries.append((query, args))
+        try:
+            self.results = list(self.rows[(query, tuple(args))])
+        except KeyError:
+            self.results = None
 
     def fetchone(self):
-        try:
-            return self.rows[0]
-        except IndexError:
-            return None
+        if self.results:
+            return self.results[0]
+        return None
+
+    def fetchall(self):
+        return self.results
 
 
 class MockSqlConnection(object):

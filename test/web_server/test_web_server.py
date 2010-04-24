@@ -26,7 +26,7 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
 
-_prod_base_url = 'https://diy.spideroak.com' # test.diy.spideroak.com
+_prod_base_url = 'https://test.diy.spideroak.com' # test.diy.spideroak.com
 _local_base_url = 'http://127.0.0.1:8088'
 
 _test_username = 'test'

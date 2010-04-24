@@ -6,7 +6,7 @@ Receives HTTP requests and distributes data to backend processes over amqp.
 """
 import gevent
 from gevent import monkey
-monkey.patch_all()
+monkey.patch_all(dns=False)
 
 import os
 import sys

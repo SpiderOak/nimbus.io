@@ -15,6 +15,7 @@ from webob import Response
 from zfec.easyfec import Encoder, Decoder
 from diyapi_web_server import util
 from diyapi_web_server.amqp_archiver import AMQPArchiver
+from diyapi_web_server.amqp_handoff_sender import AMQPHandoffSender
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
 from diyapi_web_server.amqp_destroyer import AMQPDestroyer
@@ -108,11 +109,11 @@ class Application(object):
         # TODO: handle retrieve failure
         # TODO: instead of discarding too many segments here,
         # fix it in Retriever
-        while len(segments) > self.exchange_manager.min_exchanges:
+        while len(segments) > 8: # TODO: min_segments
             segments.popitem()
         # TODO: handle multiple slices
         # TODO: check data integrity
-        decoder = Decoder(self.exchange_manager.min_exchanges,
+        decoder = Decoder(8, # TODO: min_segments
                           self.exchange_manager.num_exchanges)
         segment_nums = map(lambda i: i - 1, segments.keys())
         segment_data = segments.values()
@@ -125,11 +126,14 @@ class Application(object):
         avatar_id = 1001
         timestamp = time.time()
         # TODO: split large files into slices
-        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
-        encoder = Encoder(self.exchange_manager.min_exchanges,
-                          self.exchange_manager.num_exchanges)
+        encoder = Encoder(
+            8, # TODO: min_segments
+            self.exchange_manager.num_exchanges)
         segments = encoder.encode(req.body)
+        sender = AMQPHandoffSender(self.amqp_handler, self.exchange_manager)
+        archiver = AMQPArchiver(sender)
         # TODO: handle archive failure
-        archiver.archive_entire(avatar_id, key, segments, timestamp)
+        previous_size = archiver.archive_entire(
+            avatar_id, key, segments, timestamp)
         # TODO: send space accounting message
         return Response('OK')

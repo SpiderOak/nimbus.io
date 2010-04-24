@@ -49,8 +49,4 @@ class AMQPRetriever(object):
             reply_contents[reply.segment_number] = segment
             # TODO: handle large files with multiple slices
 
-        if len(reply_contents) < self.exchange_manager.min_exchanges:
-            # TODO: handle not enough segments
-            raise RuntimeError(len(reply_contents))
-
         return reply_contents

@@ -32,12 +32,9 @@ EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 class TestApplication(unittest.TestCase):
     """test diyapi_web_server/application.py"""
     def setUp(self):
-        self.exchange_manager = AMQPExchangeManager(
-            EXCHANGES, len(EXCHANGES) - 2)
+        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self.authenticator = util.FakeAuthenticator(0)
-        self.channel = util.MockChannel()
         self.handler = util.FakeAMQPHandler()
-        self.handler.channel = self.channel
         self.app = TestApp(Application(
             self.handler,
             self.exchange_manager,
@@ -95,7 +92,7 @@ class TestApplication(unittest.TestCase):
         file_adler32 = zlib.adler32(data_content)
         file_md5 = hashlib.md5(data_content).digest()
 
-        encoder = Encoder(self.exchange_manager.min_exchanges,
+        encoder = Encoder(8, # TODO: min_segments
                           self.exchange_manager.num_exchanges)
         segments = encoder.encode(data_content)
 

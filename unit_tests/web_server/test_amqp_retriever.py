@@ -24,8 +24,7 @@ EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 class TestAMQPRetriever(unittest.TestCase):
     """test diyapi_web_server/amqp_retriever.py"""
     def setUp(self):
-        self.exchange_manager = AMQPExchangeManager(
-            EXCHANGES, len(EXCHANGES) - 2)
+        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self.channel = util.MockChannel()
         self.handler = util.FakeAMQPHandler()
         self.handler.channel = self.channel

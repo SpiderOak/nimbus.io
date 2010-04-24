@@ -4,7 +4,6 @@ amqp_archiver.py
 
 A class that sends data segments via AMQP to write processes on nodes.
 """
-import os
 import hashlib
 import zlib
 import uuid
@@ -17,15 +16,12 @@ from messages.archive_key_entire import ArchiveKeyEntire
 class AMQPArchiver(object):
     """Sends data segments via AMQP to write processes on nodes."""
 
-    def __init__(self, amqp_handler, exchange_manager):
-        self.amqp_handler = amqp_handler
-        self.exchange_manager = exchange_manager
+    def __init__(self, sender):
+        self.sender = sender
 
-    def archive_entire(self, avatar_id, key, segments, timestamp,
-                       timeout=None):
+    def archive_entire(self, avatar_id, key, segments, timestamp):
         replies = []
-        for segment_number, segment in enumerate(segments):
-            segment_number += 1
+        for i, segment in enumerate(segments):
             request_id = uuid.uuid1().hex
             file_adler32 = 0
             file_md5 = ""
@@ -34,23 +30,19 @@ class AMQPArchiver(object):
             message = ArchiveKeyEntire(
                 request_id,
                 avatar_id,
-                self.amqp_handler.exchange,
-                self.amqp_handler.queue_name,
+                self.sender.reply_exchange,
+                self.sender.reply_queue,
                 timestamp,
                 key,
                 0, # version number
-                segment_number,
+                i + 1, # segment number
                 file_adler32,
                 file_md5,
                 segment_adler32,
                 segment_md5,
                 segment
             )
-            for exchange in self.exchange_manager[segment_number - 1]:
-                reply_queue = self.amqp_handler.send_message(message, exchange)
-                replies.append((message, gevent.spawn(reply_queue.get)))
-        gevent.joinall([reply for (message, reply) in replies],
-                       timeout=timeout)
-        # TODO: do handoff when nodes are down
-        assert all(reply.ready() for (message, reply) in replies)
-        return sum(reply.value.previous_size for (message, reply) in replies)
+            reply_queue = self.sender.send_to_exchange(i, message)
+            replies.append(gevent.spawn(reply_queue.get))
+        gevent.joinall(replies, raise_error=True)
+        return sum(reply.value.previous_size for reply in replies)

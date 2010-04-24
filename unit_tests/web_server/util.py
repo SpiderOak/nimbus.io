@@ -1,7 +1,7 @@
 import uuid
 import itertools
 
-from diyapi_web_server.amqp_handler import AMQPHandler
+from gevent.queue import Queue
 
 
 class FakeMessage(object):
@@ -24,14 +24,22 @@ class MockChannel(object):
         self.messages.append((args, kwargs))
 
 
-class FakeAMQPHandler(AMQPHandler):
+class FakeAMQPHandler(object):
     """An AMQPHandler that sends replies itself."""
+    exchange = 'test_exchange'
+    queue_name = 'test_queue'
+    routing_key_binding = 'test_queue.*'
+
     def __init__(self):
-        super(FakeAMQPHandler, self).__init__()
+        self.messages = []
         self.replies_to_send = {}
+        self.replies_to_send_by_exchange = {}
 
     def send_message(self, message, exchange=None):
-        replies = super(FakeAMQPHandler, self).send_message(message, exchange)
+        self.messages.append((message, exchange))
+        replies = Queue()
+        for reply in self.replies_to_send_by_exchange.get((message.request_id, exchange), ()):
+            replies.put(reply)
         for reply in self.replies_to_send.get(message.request_id, ()):
             replies.put(reply)
         return replies
@@ -89,3 +97,23 @@ class FakeAuthenticator(object):
             req.remote_user = self.remote_user
             return True
         return False
+
+
+class FakeSender(object):
+    def __init__(self, reply_exchange, reply_queue):
+        self.replies = {}
+        self.messages = []
+        self.reply_exchange = reply_exchange
+        self.reply_queue = reply_queue
+
+    def send_to_exchange(self, exchange, message):
+        self.messages.append((exchange, message))
+        q = Queue()
+        for reply in self.replies.get(message.request_id, ()):
+            q.put(reply)
+        return q
+
+
+def fake_sample(population, k):
+    """deterministic replacement for random.sample"""
+    return list(population)[:k]

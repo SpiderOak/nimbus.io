@@ -37,8 +37,7 @@ MAX_DOWN_EXCHANGES = 2
 class WebServer(object):
     def __init__(self):
         self.amqp_handler = AMQPHandler()
-        exchange_manager = AMQPExchangeManager(
-            EXCHANGES, len(EXCHANGES) - MAX_DOWN_EXCHANGES)
+        exchange_manager = AMQPExchangeManager(EXCHANGES)
         db_connection = psycopg2.connect(
             database=DB_NAME,
             user=DB_USER,

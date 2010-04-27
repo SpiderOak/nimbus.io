@@ -5,7 +5,7 @@ test_web_server.py
 test diyapi_web_server/diyapi_web_server_main.py
 """
 # importing this monkey-patches socket, putting us in geventland
-from diyapi_web_server import WebServer
+from diyapi_web_server.diyapi_web_server_main import WebServer
 
 import os
 import re

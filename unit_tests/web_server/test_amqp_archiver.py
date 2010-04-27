@@ -4,6 +4,7 @@ test_amqp_archiver.py
 
 test diyapi_web_server/amqp_archiver.py
 """
+import os
 import unittest
 import uuid
 import time
@@ -12,18 +13,23 @@ import zlib
 
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
+
+from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 
 
+EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 NUM_SEGMENTS = 10
 
 
 class TestAMQPArchiver(unittest.TestCase):
     """test diyapi_web_server/amqp_archiver.py"""
     def setUp(self):
-        self.sender = util.FakeSender('reply exchange', 'reply queue')
+        self.amqp_handler = util.FakeAMQPHandler()
+        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
@@ -31,54 +37,64 @@ class TestAMQPArchiver(unittest.TestCase):
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
 
-    def _make_segments_and_replies(self):
+    def _make_messages_and_replies(self, avatar_id, timestamp, key):
         for segment_number in xrange(1, NUM_SEGMENTS + 1):
             segment = random_string(64 * 1024)
             segment_adler32 = zlib.adler32(segment)
             segment_md5 = hashlib.md5(segment).digest()
             request_id = uuid.UUID(int=segment_number - 1).hex
-            self.sender.replies[request_id] = [
+            message = ArchiveKeyEntire(
+                request_id,
+                avatar_id,
+                self.amqp_handler.exchange,
+                self.amqp_handler.queue_name,
+                timestamp,
+                key,
+                0, # version number
+                segment_number,
+                -42,
+                'ffffffff',
+                segment_adler32,
+                segment_md5,
+                segment
+            )
+            self.amqp_handler.replies_to_send[request_id] = [
                 ArchiveKeyFinalReply(
                     request_id,
                     ArchiveKeyFinalReply.successful,
                     0
                 )
             ]
-            yield segment_number, (segment, segment_adler32, segment_md5)
+            yield message
 
     def test_archive_entire(self):
-        archiver = AMQPArchiver(self.sender)
+        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
         avatar_id = 1001
-        key = self._key_generator.next()
         timestamp = time.time()
-        segments = dict(self._make_segments_and_replies())
+        key = self._key_generator.next()
+        messages = list(self._make_messages_and_replies(
+            avatar_id, timestamp, key))
 
         previous_size = archiver.archive_entire(
             avatar_id,
             key,
-            [s[0] for s in segments.values()],
+            messages[0].file_adler32,
+            messages[0].file_md5,
+            [message.content for message in messages],
             timestamp
         )
 
         self.assertEqual(previous_size, 0)
-        self.assertEqual(len(self.sender.messages), NUM_SEGMENTS)
 
-        unseen_segment_numbers = set(segments.keys())
-        for exchange, message in self.sender.messages:
-            (segment, segment_adler32, segment_md5
-                ) = segments[message.segment_number]
-            self.assertEqual(message.reply_exchange,
-                             self.sender.reply_exchange)
-            self.assertEqual(message.reply_routing_header,
-                             self.sender.reply_queue)
-            self.assertEqual(message.avatar_id, avatar_id)
-            self.assertEqual(message.key, key)
-            self.assertEqual(message.timestamp, timestamp)
-            self.assertEqual(message.segment_adler32, segment_adler32)
-            self.assertEqual(message.segment_md5, segment_md5)
-            self.assertEqual(message.content, segment)
-            unseen_segment_numbers.remove(message.segment_number)
-        self.assertEqual(unseen_segment_numbers, set())
+        expected = [(
+            message.marshall(),
+            self.exchange_manager[message.segment_number - 1][0]
+        ) for message in messages]
+        actual = [(
+            message.marshall(),
+            exchange
+        ) for message, exchange in self.amqp_handler.messages]
+        self.assertEqual(actual, expected)
 
 
 if __name__ == "__main__":

@@ -7,6 +7,8 @@ The diyapi wsgi application
 import re
 import os
 import time
+import zlib
+import hashlib
 
 from webob.dec import wsgify
 from webob import exc
@@ -15,7 +17,6 @@ from webob import Response
 from zfec.easyfec import Encoder, Decoder
 from diyapi_web_server import util
 from diyapi_web_server.amqp_archiver import AMQPArchiver
-from diyapi_web_server.amqp_handoff_sender import AMQPHandoffSender
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
 from diyapi_web_server.amqp_destroyer import AMQPDestroyer
@@ -130,10 +131,11 @@ class Application(object):
             8, # TODO: min_segments
             self.exchange_manager.num_exchanges)
         segments = encoder.encode(req.body)
-        sender = AMQPHandoffSender(self.amqp_handler, self.exchange_manager)
-        archiver = AMQPArchiver(sender)
+        file_adler32 = zlib.adler32(req.body)
+        file_md5 = hashlib.md5(req.body).digest()
+        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
         # TODO: handle archive failure
         previous_size = archiver.archive_entire(
-            avatar_id, key, segments, timestamp)
+            avatar_id, key, file_adler32, file_md5, segments, timestamp)
         # TODO: send space accounting message
         return Response('OK')

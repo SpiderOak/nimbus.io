@@ -99,21 +99,6 @@ class FakeAuthenticator(object):
         return False
 
 
-class FakeSender(object):
-    def __init__(self, reply_exchange, reply_queue):
-        self.replies = {}
-        self.messages = []
-        self.reply_exchange = reply_exchange
-        self.reply_queue = reply_queue
-
-    def send_to_exchange(self, exchange, message):
-        self.messages.append((exchange, message))
-        q = Queue()
-        for reply in self.replies.get(message.request_id, ()):
-            q.put(reply)
-        return q
-
-
 def fake_sample(population, k):
     """deterministic replacement for random.sample"""
     return list(population)[:k]

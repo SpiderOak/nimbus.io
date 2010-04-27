@@ -16,22 +16,23 @@ from messages.archive_key_entire import ArchiveKeyEntire
 class AMQPArchiver(object):
     """Sends data segments via AMQP to write processes on nodes."""
 
-    def __init__(self, sender):
-        self.sender = sender
+    def __init__(self, amqp_handler, exchange_manager):
+        self.amqp_handler = amqp_handler
+        self.exchange_manager = exchange_manager
 
-    def archive_entire(self, avatar_id, key, segments, timestamp):
+    def archive_entire(self, avatar_id, key,
+                       file_adler32, file_md5,
+                       segments, timestamp):
         replies = []
         for i, segment in enumerate(segments):
             request_id = uuid.uuid1().hex
-            file_adler32 = 0
-            file_md5 = ""
             segment_adler32 = zlib.adler32(segment)
             segment_md5 = hashlib.md5(segment).digest()
             message = ArchiveKeyEntire(
                 request_id,
                 avatar_id,
-                self.sender.reply_exchange,
-                self.sender.reply_queue,
+                self.amqp_handler.exchange,
+                self.amqp_handler.queue_name,
                 timestamp,
                 key,
                 0, # version number
@@ -42,7 +43,11 @@ class AMQPArchiver(object):
                 segment_md5,
                 segment
             )
-            reply_queue = self.sender.send_to_exchange(i, message)
-            replies.append(gevent.spawn(reply_queue.get))
+            for exchange in self.exchange_manager[i]:
+                reply_queue = self.amqp_handler.send_message(message, exchange)
+                replies.append(gevent.spawn(reply_queue.get))
         gevent.joinall(replies, raise_error=True)
+        if not all(reply.ready() for reply in replies):
+            # TODO: raise a specific error
+            raise RuntimeError()
         return sum(reply.value.previous_size for reply in replies)

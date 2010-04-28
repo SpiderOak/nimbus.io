@@ -19,9 +19,11 @@ from diyapi_web_server.sql_authenticator import SqlAuthenticator
 _bad_key_id = 1000
 _test_username = 'test_username'
 _test_key_id = 1001
+_test_avatar_id = 2001
 _test_key = 'deadbeef'
 _test_username_2 = 'test_username2'
 _test_key_id_2 = 1002
+_test_avatar_id_2 = 2002
 _test_key_2 = 'cafefeed'
 
 
@@ -35,18 +37,22 @@ class TestSqlAuthenticator(unittest.TestCase):
             ('select key '
              'from diy_key '
              'where key_id=%s', (_test_key_id,)): [(_test_key,)],
-            ('select key_id '
+            ('select key_id, avatar_id '
              'from diy_user '
              'join diy_user_key using (user_id) '
-             'where username=%s', (_test_username,)): [(_test_key_id,)],
+             'where username=%s', (_test_username,)): [
+                 (_test_key_id, _test_avatar_id)
+             ],
 
             ('select key '
              'from diy_key '
              'where key_id=%s', (_test_key_id_2,)): [(_test_key_2,)],
-            ('select key_id '
+            ('select key_id, avatar_id '
              'from diy_user '
              'join diy_user_key using (user_id) '
-             'where username=%s', (_test_username_2,)): [(_test_key_id_2,)],
+             'where username=%s', (_test_username_2,)): [
+                 (_test_key_id_2, _test_avatar_id_2)
+             ],
         }
         self.authenticator = SqlAuthenticator(self.connection)
         self._real_time = time.time
@@ -77,7 +83,8 @@ class TestSqlAuthenticator(unittest.TestCase):
         ).hexdigest()
         self.req.authorization = 'DIYAPI %d:%s' % (_test_key_id, signature)
         self.assertTrue(self.authenticator.authenticate(self.req))
-        self.assertEqual(self.req.remote_user, _test_key_id)
+        self.assertEqual(self.req.remote_user, _test_avatar_id)
+        self.assertEqual(self.req.key_id, _test_key_id)
 
     def test_fails_for_nonexistent_username(self):
         timestamp = int(util.fake_time())
@@ -144,7 +151,8 @@ class TestSqlAuthenticator(unittest.TestCase):
         ).hexdigest()
         self.req.authorization = 'DIYAPI %d:%s' % (_test_key_id, signature)
         self.assertTrue(self.authenticator.authenticate(self.req))
-        self.assertEqual(self.req.remote_user, _test_key_id)
+        self.assertEqual(self.req.remote_user, _test_avatar_id)
+        self.assertEqual(self.req.key_id, _test_key_id)
 
     def test_fails_if_missing_timestamp(self):
         timestamp = int(util.fake_time())

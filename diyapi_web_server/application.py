@@ -86,7 +86,7 @@ class Application(object):
     def listmatch(self, req, prefix):
         delimiter = req.GET.get('delimiter', '/')
         # TODO: do something with delimiter
-        avatar_id = 1001
+        avatar_id = req.remote_user
         matcher = AMQPListmatcher(self.amqp_handler, self.exchange_manager)
         # TODO: handle listmatch failure
         # TODO: break up large (>1mb) listmatch response
@@ -96,7 +96,7 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
-        avatar_id = 1001
+        avatar_id = req.remote_user
         timestamp = time.time()
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
         size_deleted = destroyer.destroy(avatar_id, key, timestamp)
@@ -105,7 +105,7 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
-        avatar_id = 1001
+        avatar_id = req.remote_user
         retriever = AMQPRetriever(self.amqp_handler, self.exchange_manager)
         segments = retriever.retrieve(avatar_id, key)
         # TODO: handle retrieve failure
@@ -124,8 +124,7 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
-        # TODO: stop hard-coding avatar_id
-        avatar_id = 1001
+        avatar_id = req.remote_user
         timestamp = time.time()
         # TODO: split large files into slices
         encoder = Encoder(

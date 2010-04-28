@@ -14,9 +14,14 @@ from messages.retrieve_key_start import RetrieveKeyStart
 class AMQPRetriever(object):
     """Retrieves data from the nodes."""
 
-    def __init__(self, amqp_handler, exchange_manager):
+    def __init__(self, amqp_handler, exchange_manager,
+                 avatar_id, key, num_segments):
         self.amqp_handler = amqp_handler
         self.exchange_manager = exchange_manager
+        self.avatar_id = avatar_id
+        self.key = key
+        self.version_number = 0
+        self.num_segments = num_segments
         self.pending = {}
         self.result = None
 
@@ -35,21 +40,19 @@ class AMQPRetriever(object):
     def cancel(self):
         gevent.killall(self.pending.values(), block=True)
 
-    def retrieve(self, avatar_id, key, num_segments, timeout=None):
+    def retrieve(self, timeout=None):
         if self.pending:
-            # TODO: raise a specific error
-            raise RuntimeError()
+            raise AlreadyInProgress()
         self.result = {}
-        self.num_segments = num_segments
-        for segment_number in xrange(1, num_segments + 1):
+        for segment_number in xrange(1, self.num_segments + 1):
             request_id = uuid.uuid1().hex
             message = RetrieveKeyStart(
                 request_id,
-                avatar_id,
+                self.avatar_id,
                 self.amqp_handler.exchange,
                 self.amqp_handler.queue_name,
-                key,
-                0, # version_number
+                self.key,
+                self.version_number,
                 segment_number
             )
             for exchange in self.exchange_manager[segment_number - 1]:
@@ -60,9 +63,9 @@ class AMQPRetriever(object):
         if self.pending:
             self.cancel()
             if len(self.result) < self.num_segments:
-                # TODO: raise a specific error
-                raise RuntimeError()
-        assert not self.pending, self.pending
+                raise RetrieveFailedError(
+                    'expected %d segments, only got %d' % (
+                        self.num_segments, len(self.result)))
         # TODO: can this happen? think of a test to check
         while len(self.result) > self.num_segments:
             self.result.popitem()

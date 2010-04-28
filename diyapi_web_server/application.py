@@ -106,8 +106,14 @@ class Application(object):
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
         avatar_id = req.remote_user
-        retriever = AMQPRetriever(self.amqp_handler, self.exchange_manager)
-        segments = retriever.retrieve(avatar_id, key, 8) # TODO: min_segments
+        retriever = AMQPRetriever(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            8 # TODO: min_segments
+        )
+        segments = retriever.retrieve()
         # TODO: handle retrieve failure
         # TODO: handle multiple slices
         # TODO: check data integrity
@@ -123,22 +129,22 @@ class Application(object):
         avatar_id = req.remote_user
         timestamp = time.time()
         # TODO: split large files into slices
-        encoder = Encoder(
-            8, # TODO: min_segments
-            self.exchange_manager.num_exchanges)
-        segments = encoder.encode(req.body)
         file_adler32 = zlib.adler32(req.body)
         file_md5 = hashlib.md5(req.body).digest()
-        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
-        # TODO: handle archive failure
-        previous_size = archiver.archive_entire(
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
             avatar_id,
             key,
             file_adler32,
             file_md5,
-            segments,
-            timestamp,
-            EXCHANGE_TIMEOUT
+            timestamp
         )
+        encoder = Encoder(
+            8, # TODO: min_segments
+            self.exchange_manager.num_exchanges)
+        segments = encoder.encode(req.body)
+        # TODO: handle archive failure
+        previous_size = archiver.archive_entire(segments, EXCHANGE_TIMEOUT)
         # TODO: send space accounting message
         return Response('OK')

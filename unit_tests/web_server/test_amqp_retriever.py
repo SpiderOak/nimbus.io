@@ -66,8 +66,14 @@ class TestAMQPRetriever(unittest.TestCase):
             ]
             segments[segment_number] = segment
 
-        retriever = AMQPRetriever(self.handler, self.exchange_manager)
-        retrieved = retriever.retrieve(avatar_id, key, num_segments, 0)
+        retriever = AMQPRetriever(
+            self.handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            num_segments
+        )
+        retrieved = retriever.retrieve(0)
         self.assertEqual(retrieved, segments)
 
     # TODO: test when nodes are down

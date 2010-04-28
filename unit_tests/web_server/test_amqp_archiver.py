@@ -74,20 +74,23 @@ class TestAMQPArchiver(unittest.TestCase):
             yield message
 
     def test_archive_entire(self):
-        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
         avatar_id = 1001
         timestamp = time.time()
         key = self._key_generator.next()
         messages = list(self._make_messages_and_replies(
             avatar_id, timestamp, key))
 
-        previous_size = archiver.archive_entire(
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
             avatar_id,
             key,
             messages[0].file_adler32,
             messages[0].file_md5,
-            [message.content for message in messages],
             timestamp
+        )
+        previous_size = archiver.archive_entire(
+            [message.content for message in messages]
         )
 
         self.assertEqual(previous_size, 0)
@@ -103,7 +106,6 @@ class TestAMQPArchiver(unittest.TestCase):
         self.assertEqual(actual, expected)
 
     def test_archive_entire_with_handoff(self):
-        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
         avatar_id = 1001
         timestamp = time.time()
         key = self._key_generator.next()
@@ -112,18 +114,23 @@ class TestAMQPArchiver(unittest.TestCase):
             avatar_id, timestamp, key))
         self.exchange_manager.mark_up(0)
 
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            messages[0].file_adler32,
+            messages[0].file_md5,
+            timestamp
+        )
+
         expected = [(
             message.marshall(),
             self.exchange_manager[message.segment_number - 1][0]
         ) for message in messages]
 
         previous_size = archiver.archive_entire(
-            avatar_id,
-            key,
-            messages[0].file_adler32,
-            messages[0].file_md5,
             [message.content for message in messages],
-            timestamp,
             0
         )
 

@@ -38,6 +38,7 @@ class WebServer(object):
     def __init__(self):
         self.amqp_handler = AMQPHandler()
         exchange_manager = AMQPExchangeManager(EXCHANGES)
+        # TODO: keep a connection pool or something
         db_connection = psycopg2.connect(
             database=DB_NAME,
             user=DB_USER,

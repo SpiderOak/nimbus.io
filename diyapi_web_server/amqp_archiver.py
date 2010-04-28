@@ -12,6 +12,8 @@ import gevent
 
 from messages.archive_key_entire import ArchiveKeyEntire
 
+from diyapi_web_server.exceptions import *
+
 
 class StartHandoff(Exception):
     pass
@@ -19,10 +21,16 @@ class StartHandoff(Exception):
 
 class AMQPArchiver(object):
     """Sends data segments via AMQP to write processes on nodes."""
-
-    def __init__(self, amqp_handler, exchange_manager):
+    def __init__(self, amqp_handler, exchange_manager,
+                 avatar_id, key, file_adler32, file_md5, timestamp):
         self.amqp_handler = amqp_handler
         self.exchange_manager = exchange_manager
+        self.avatar_id = avatar_id
+        self.key = key
+        self.version_number = 0
+        self.file_adler32 = file_adler32
+        self.file_md5 = file_md5
+        self.timestamp = timestamp
         self.pending = {}
         self.result = None
 
@@ -44,12 +52,9 @@ class AMQPArchiver(object):
             self.result += self._do_handoff(message, exchange)
         del self.pending[message.segment_number]
 
-    def archive_entire(self, avatar_id, key,
-                       file_adler32, file_md5,
-                       segments, timestamp, timeout=None):
+    def archive_entire(self, segments, timeout=None):
         if self.pending:
-            # TODO: raise a specific error
-            raise RuntimeError()
+            raise AlreadyInProgress()
         self.result = 0
         for i, segment in enumerate(segments):
             request_id = uuid.uuid1().hex
@@ -57,15 +62,15 @@ class AMQPArchiver(object):
             segment_md5 = hashlib.md5(segment).digest()
             message = ArchiveKeyEntire(
                 request_id,
-                avatar_id,
+                self.avatar_id,
                 self.amqp_handler.exchange,
                 self.amqp_handler.queue_name,
-                timestamp,
-                key,
-                0, # version number
+                self.timestamp,
+                self.key,
+                self.version_number,
                 i + 1, # segment number
-                file_adler32,
-                file_md5,
+                self.file_adler32,
+                self.file_md5,
                 segment_adler32,
                 segment_md5,
                 segment
@@ -77,5 +82,6 @@ class AMQPArchiver(object):
         gevent.joinall(self.pending.values(), timeout, True)
         if self.pending:
             gevent.killall(self.pending.values(), StartHandoff, True, timeout)
-        assert not self.pending, self.pending
+        if self.pending:
+            raise HandoffFailedError()
         return self.result

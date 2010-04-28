@@ -41,7 +41,6 @@ class TestWebServer(unittest.TestCase):
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
         os.makedirs(_repository_path)
-        initialize_logging(_log_path)
         self._key_generator = generate_key()
 
         self.server = WebServer()
@@ -140,6 +139,7 @@ def _load_unit_tests(path):
 
 
 if __name__ == "__main__":
+    initialize_logging(_log_path)
     if 'prod' in sys.argv[1:]:
         _base_url = _prod_base_url
         tests = [unittest.defaultTestLoader.loadTestsFromTestCase(TestWebServer)]

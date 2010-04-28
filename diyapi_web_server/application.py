@@ -107,12 +107,8 @@ class Application(object):
     def retrieve(self, req, key):
         avatar_id = req.remote_user
         retriever = AMQPRetriever(self.amqp_handler, self.exchange_manager)
-        segments = retriever.retrieve(avatar_id, key)
+        segments = retriever.retrieve(avatar_id, key, 8) # TODO: min_segments
         # TODO: handle retrieve failure
-        # TODO: instead of discarding too many segments here,
-        # fix it in Retriever
-        while len(segments) > 8: # TODO: min_segments
-            segments.popitem()
         # TODO: handle multiple slices
         # TODO: check data integrity
         decoder = Decoder(8, # TODO: min_segments

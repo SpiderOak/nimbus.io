@@ -40,7 +40,7 @@ class TestAMQPRetriever(unittest.TestCase):
         key = self._key_generator.next()
         timestamp = time.time()
         expected_size = 123450
-
+        # TODO: extract helper methods
         num_segments = self.exchange_manager.num_exchanges
         segments = {}
         for segment_number in xrange(1, num_segments + 1):
@@ -67,8 +67,10 @@ class TestAMQPRetriever(unittest.TestCase):
             segments[segment_number] = segment
 
         retriever = AMQPRetriever(self.handler, self.exchange_manager)
-        retrieved = retriever.retrieve(avatar_id, key, 0.1)
+        retrieved = retriever.retrieve(avatar_id, key, num_segments, 0)
         self.assertEqual(retrieved, segments)
+
+    # TODO: test when nodes are down
 
 
 if __name__ == "__main__":

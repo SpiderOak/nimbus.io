@@ -7,6 +7,7 @@ test diyapi_web_server/amqp_archiver.py
 import os
 import unittest
 import uuid
+import random
 import time
 import hashlib
 import zlib
@@ -33,9 +34,12 @@ class TestAMQPArchiver(unittest.TestCase):
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
+        self._real_sample = random.sample
+        random.sample = util.fake_sample
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
+        random.sample = self._real_sample
 
     def _make_messages_and_replies(self, avatar_id, timestamp, key):
         for segment_number in xrange(1, NUM_SEGMENTS + 1):
@@ -58,13 +62,15 @@ class TestAMQPArchiver(unittest.TestCase):
                 segment_md5,
                 segment
             )
-            self.amqp_handler.replies_to_send[request_id] = [
-                ArchiveKeyFinalReply(
-                    request_id,
-                    ArchiveKeyFinalReply.successful,
-                    0
-                )
-            ]
+            reply = ArchiveKeyFinalReply(
+                request_id,
+                ArchiveKeyFinalReply.successful,
+                0
+            )
+            for exchange in self.exchange_manager[segment_number - 1]:
+                self.amqp_handler.replies_to_send_by_exchange[(
+                    request_id, exchange
+                )] = [reply]
             yield message
 
     def test_archive_entire(self):
@@ -90,6 +96,45 @@ class TestAMQPArchiver(unittest.TestCase):
             message.marshall(),
             self.exchange_manager[message.segment_number - 1][0]
         ) for message in messages]
+        actual = [(
+            message.marshall(),
+            exchange
+        ) for message, exchange in self.amqp_handler.messages]
+        self.assertEqual(actual, expected)
+
+    def test_archive_entire_with_handoff(self):
+        archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        self.exchange_manager.mark_down(0)
+        messages = list(self._make_messages_and_replies(
+            avatar_id, timestamp, key))
+        self.exchange_manager.mark_up(0)
+
+        expected = [(
+            message.marshall(),
+            self.exchange_manager[message.segment_number - 1][0]
+        ) for message in messages]
+
+        previous_size = archiver.archive_entire(
+            avatar_id,
+            key,
+            messages[0].file_adler32,
+            messages[0].file_md5,
+            [message.content for message in messages],
+            timestamp,
+            0
+        )
+
+        self.assertEqual(previous_size, 0)
+
+        self.assertTrue(self.exchange_manager.is_down(0))
+        expected += [(
+            messages[0].marshall(),
+            exchange
+        ) for exchange in self.exchange_manager[0]]
+        self.exchange_manager.mark_up(0)
         actual = [(
             message.marshall(),
             exchange

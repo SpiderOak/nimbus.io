@@ -22,6 +22,7 @@ from diyapi_web_server.amqp_retriever import AMQPRetriever
 from diyapi_web_server.amqp_destroyer import AMQPDestroyer
 
 
+EXCHANGE_TIMEOUT = 5        # sec
 SLICE_SIZE = 1024 * 1024    # 1MB
 
 
@@ -136,6 +137,13 @@ class Application(object):
         archiver = AMQPArchiver(self.amqp_handler, self.exchange_manager)
         # TODO: handle archive failure
         previous_size = archiver.archive_entire(
-            avatar_id, key, file_adler32, file_md5, segments, timestamp)
+            avatar_id,
+            key,
+            file_adler32,
+            file_md5,
+            segments,
+            timestamp,
+            EXCHANGE_TIMEOUT
+        )
         # TODO: send space accounting message
         return Response('OK')

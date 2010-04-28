@@ -7,6 +7,7 @@ test diyapi_web_server/application.py
 import os
 import unittest
 import uuid
+import random
 import time
 import zlib
 import hashlib
@@ -23,6 +24,7 @@ from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
 
+from diyapi_web_server import application
 from diyapi_web_server.application import Application
 
 
@@ -43,9 +45,15 @@ class TestApplication(unittest.TestCase):
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
+        self._real_sample = random.sample
+        random.sample = util.fake_sample
+        self._real_timeout = application.EXCHANGE_TIMEOUT
+        application.EXCHANGE_TIMEOUT = 0
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
+        random.sample = self._real_sample
+        application.EXCHANGE_TIMEOUT = self._real_timeout
 
     def test_unauthorized(self):
         self.app.app.authenticator = util.FakeAuthenticator(None)
@@ -65,6 +73,25 @@ class TestApplication(unittest.TestCase):
                     0
                 )
             ]
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        resp = self.app.post('/data/' + key, content)
+        self.assertEqual(resp.body, 'OK')
+
+    def test_archive_with_handoff(self):
+        self.exchange_manager.mark_down(0)
+        for i in xrange(self.exchange_manager.num_exchanges):
+            request_id = uuid.UUID(int=i).hex
+            message = ArchiveKeyFinalReply(
+                request_id,
+                ArchiveKeyFinalReply.successful,
+                0
+            )
+            for exchange in self.exchange_manager[i]:
+                self.handler.replies_to_send_by_exchange[(
+                    request_id, exchange
+                )] = [message]
+        self.exchange_manager.mark_up(0)
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)

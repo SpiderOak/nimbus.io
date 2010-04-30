@@ -104,7 +104,7 @@ class NodeSim(object):
         environment = self._rabbitmq_env()
         environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
         environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["PANDORA_REPOSITORY_PATH"] = self._home_dir
+        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
 
         self._log.info("starting database_server")
 
@@ -121,7 +121,7 @@ class NodeSim(object):
         environment = self._rabbitmq_env()
         environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
         environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["PANDORA_REPOSITORY_PATH"] = self._home_dir
+        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
 
         self._log.info("starting data_writer")
 
@@ -138,7 +138,7 @@ class NodeSim(object):
         environment = self._rabbitmq_env()
         environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
         environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["PANDORA_REPOSITORY_PATH"] = self._home_dir
+        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
 
         self._log.info("starting data_reader")
 
@@ -155,7 +155,7 @@ class NodeSim(object):
         environment = self._rabbitmq_env()
         environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
         environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["PANDORA_REPOSITORY_PATH"] = self._home_dir
+        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
 
         self._log.info("starting handoff_server")
 

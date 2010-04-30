@@ -21,7 +21,7 @@ factory =  namedtuple(
     ]
 )
 
-_repository_path = os.environ["PANDORA_REPOSITORY_PATH"]
+_repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
 _database_name = "handoff_hints.dat"
 _database_path = os.path.join(_repository_path, _database_name)
 _schema = """

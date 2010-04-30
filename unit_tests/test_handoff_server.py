@@ -45,7 +45,7 @@ from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 _log_path = "/var/log/pandora/test_handoff_server.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
-os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
+os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
 _handoff_database_path = os.path.join(_repository_path, "handoff_database")
 _dest_database_path = os.path.join(_repository_path, "dest_database")
 

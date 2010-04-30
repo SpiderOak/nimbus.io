@@ -33,7 +33,7 @@ _log_path = "/var/log/pandora/test_database_server.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 
-os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
+os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup, \
         _handle_key_list, _handle_key_destroy, _handle_key_purge, \

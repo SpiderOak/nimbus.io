@@ -7,11 +7,11 @@ common code for accessing the storage repository
 import os
 import os.path
 
-_repository_path = os.environ["PANDORA_REPOSITORY_PATH"]
+_repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
 
 def _diyapi_dir(avatar_id):
-    """return the base siyapi path, and assure that it exists"""
-    path = os.path.join(_repository_path, str(avatar_id), "diyapi")
+    """return the base diyapi path, and assure that it exists"""
+    path = os.path.join(_repository_path, str(avatar_id))
     if not os.path.exists(path):
         os.makedirs(path)
     return path

@@ -30,7 +30,7 @@ from unit_tests.util import random_string, generate_key
 _log_path = "/var/log/pandora/test_data_reader.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
-os.environ["PANDORA_REPOSITORY_PATH"] = _repository_path
+os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
 
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache

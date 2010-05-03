@@ -27,13 +27,15 @@ def _create_signal_handler(halt_event, channel, amqp_tag):
         halt_event.set()
     return cb_handler
 
-def _create_bindings(channel, queue_name, routing_key_binding):
+def _create_bindings(
+    channel, queue_name, queue_durable, queue_auto_delete, routing_key_binding
+):
     channel.queue_declare(
         queue=queue_name,
         passive=False,
-        durable=True,
-        exclusive=False,
-        auto_delete=False
+        durable=queue_durable,
+        exclusive=True,
+        auto_delete=queue_auto_delete
     )
 
     channel.queue_bind(
@@ -106,6 +108,8 @@ def _run_until_halt(
     routing_key_bindings, 
     dispatch_table, 
     state,
+    queue_durable,
+    queue_auto_delete,
     pre_loop_function,
     in_loop_function,
     post_loop_function
@@ -117,7 +121,13 @@ def _run_until_halt(
     connection = amqp_connection.open_connection()
     channel = connection.channel()
     amqp_connection.create_exchange(channel)
-    _create_bindings(channel, queue_name, routing_key_bindings)
+    _create_bindings(
+        channel, 
+        queue_name, 
+        queue_durable, 
+        queue_auto_delete, 
+        routing_key_bindings
+    )
 
     outgoing_queue = deque()
 
@@ -177,6 +187,8 @@ def main(
     routing_key_binding, 
     dispatch_table, 
     state,
+    queue_durable=True,
+    queue_auto_delete=False,
     pre_loop_function=None,
     in_loop_function=None,
     post_loop_function=None
@@ -192,6 +204,8 @@ def main(
             routing_key_binding, 
             dispatch_table, 
             state,
+            queue_durable,
+            queue_auto_delete,
             pre_loop_function,
             in_loop_function,
             post_loop_function

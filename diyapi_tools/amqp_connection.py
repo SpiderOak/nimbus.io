@@ -17,8 +17,9 @@ _amqp_port = int(os.environ.get("SPIDEROAK_AMQP_PORT", "5672"))
 _socket_connect_timeout = float(
     os.environ.get("SPIDEROAK_AMQP_CONNECT_TIMEOUT", "1.0")
 )
+exchange_template = "%s-exchange"
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-local_exchange_name = "%s-exchange" % (_local_node_name, )
+local_exchange_name = exchange_template % (_local_node_name, )
 broadcast_exchange_name = "spideroak_diyapi_broadcast"
 
 def open_connection():

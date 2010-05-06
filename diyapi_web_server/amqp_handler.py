@@ -4,6 +4,7 @@ amqp_handler.py
 
 A class that facilitates sending AMQP messages and receiving replies.
 """
+import os
 import errno
 import logging
 from weakref import WeakValueDictionary
@@ -23,16 +24,18 @@ from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 
 
-_queue_name = 'web_server'
-_routing_key_binding = 'web_server.*'
-_key_header = 'web_server.'
+_local_node_name = os.environ['SPIDEROAK_MULTI_NODE_NAME']
+_queue_name = 'web_server_%s' % (_local_node_name,)
 
-MESSAGE_TYPES = {
-    _key_header + ArchiveKeyFinalReply.routing_tag: ArchiveKeyFinalReply,
-    _key_header + DatabaseListMatchReply.routing_tag: DatabaseListMatchReply,
-    _key_header + DatabaseKeyListReply.routing_tag: DatabaseKeyListReply,
-    _key_header + RetrieveKeyStartReply.routing_tag: RetrieveKeyStartReply,
-}
+MESSAGE_TYPES = dict(
+    ('%s.%s' % (_queue_name, message_type.routing_tag), message_type)
+    for message_type in [
+        ArchiveKeyFinalReply,
+        DatabaseListMatchReply,
+        DatabaseKeyListReply,
+        RetrieveKeyStartReply,
+    ]
+)
 
 
 class AMQPHandler(object):
@@ -42,7 +45,7 @@ class AMQPHandler(object):
 
         self.queue_name = _queue_name
         self.exchange = amqp_connection.local_exchange_name
-        self.routing_key_binding = _routing_key_binding
+        self.routing_key_binding = '%s.*' % (self.queue_name,)
         self.reply_queues = WeakValueDictionary()
 
     def send_message(self, message, exchange=None):
@@ -110,11 +113,13 @@ class AMQPHandler(object):
         self.connection = amqp_connection.open_connection()
         self.channel = self.connection.channel()
         amqp_connection.create_exchange(self.channel)
+        self.log.debug('binding: queue_name=%r, routing_key_binding=%r' % (
+            self.queue_name, self.routing_key_binding))
         _create_bindings(
             self.channel,
             self.queue_name,
-            True,   # queue_durable
-            False,  # queue_auto_delete
+            False,  # queue_durable
+            True,   # queue_auto_delete
             self.routing_key_binding
         )
 

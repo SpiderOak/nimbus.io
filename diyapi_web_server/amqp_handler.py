@@ -25,7 +25,7 @@ from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 
 
 _local_node_name = os.environ['SPIDEROAK_MULTI_NODE_NAME']
-_queue_name = 'web_server_%s' % (_local_node_name,)
+_queue_name = 'web-server-%s' % (_local_node_name,)
 
 MESSAGE_TYPES = dict(
     ('%s.%s' % (_queue_name, message_type.routing_tag), message_type)
@@ -118,8 +118,8 @@ class AMQPHandler(object):
         _create_bindings(
             self.channel,
             self.queue_name,
-            False,  # queue_durable
-            True,   # queue_auto_delete
+            True,   # queue_durable
+            False,  # queue_auto_delete
             self.routing_key_binding
         )
 

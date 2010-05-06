@@ -110,8 +110,13 @@ class AMQPHandler(object):
         self.connection = amqp_connection.open_connection()
         self.channel = self.connection.channel()
         amqp_connection.create_exchange(self.channel)
-        _create_bindings(self.channel, self.queue_name,
-                         self.routing_key_binding)
+        _create_bindings(
+            self.channel,
+            self.queue_name,
+            True,   # queue_durable
+            False,  # queue_auto_delete
+            self.routing_key_binding
+        )
 
         # Let AMQP know to send us messages
         self.amqp_tag = self.channel.basic_consume(

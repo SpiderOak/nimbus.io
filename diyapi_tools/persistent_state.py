@@ -9,7 +9,9 @@ import cPickle
 import os
 import os.path
 
-_repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
+_repository_path = os.environ.get(
+    "DIYAPI_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
+)
 
 def _state_path(name):
     state_dir = os.path.join(_repository_path, "state")

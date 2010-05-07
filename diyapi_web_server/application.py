@@ -136,8 +136,6 @@ class Application(object):
             self.exchange_manager,
             avatar_id,
             key,
-            file_adler32,
-            file_md5,
             timestamp
         )
         encoder = Encoder(
@@ -145,6 +143,11 @@ class Application(object):
             self.exchange_manager.num_exchanges)
         segments = encoder.encode(req.body)
         # TODO: handle archive failure
-        previous_size = archiver.archive_entire(segments, EXCHANGE_TIMEOUT)
+        previous_size = archiver.archive_entire(
+            file_adler32,
+            file_md5,
+            segments,
+            EXCHANGE_TIMEOUT
+        )
         # TODO: send space accounting message
         return Response('OK')

@@ -85,11 +85,11 @@ class TestAMQPArchiver(unittest.TestCase):
             self.exchange_manager,
             avatar_id,
             key,
-            messages[0].file_adler32,
-            messages[0].file_md5,
             timestamp
         )
         previous_size = archiver.archive_entire(
+            messages[0].file_adler32,
+            messages[0].file_md5,
             [message.content for message in messages]
         )
 
@@ -119,8 +119,6 @@ class TestAMQPArchiver(unittest.TestCase):
             self.exchange_manager,
             avatar_id,
             key,
-            messages[0].file_adler32,
-            messages[0].file_md5,
             timestamp
         )
 
@@ -130,6 +128,8 @@ class TestAMQPArchiver(unittest.TestCase):
         ) for message in messages]
 
         previous_size = archiver.archive_entire(
+            messages[0].file_adler32,
+            messages[0].file_md5,
             [message.content for message in messages],
             0
         )

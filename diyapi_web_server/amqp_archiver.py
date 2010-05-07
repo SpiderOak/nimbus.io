@@ -23,7 +23,7 @@ class StartHandoff(Exception):
 class AMQPArchiver(object):
     """Sends data segments via AMQP to write processes on nodes."""
     def __init__(self, amqp_handler, exchange_manager,
-                 avatar_id, key, file_adler32, file_md5, timestamp):
+                 avatar_id, key, timestamp):
         self.log = logging.getLogger(
             'AMQPArchiver(avatar_id=%d, key=%r)' % (
                 avatar_id, key))
@@ -32,8 +32,6 @@ class AMQPArchiver(object):
         self.avatar_id = avatar_id
         self.key = key
         self.version_number = 0
-        self.file_adler32 = file_adler32
-        self.file_md5 = file_md5
         self.timestamp = timestamp
         self.pending = {}
         self.result = None
@@ -75,7 +73,7 @@ class AMQPArchiver(object):
         self.log.info('starting handoff')
         gevent.killall(self.pending.values(), StartHandoff, True, timeout)
 
-    def archive_entire(self, segments, timeout=None):
+    def archive_entire(self, file_adler32, file_md5, segments, timeout=None):
         if self.pending:
             raise AlreadyInProgress()
         self.log.info('archive_entire')
@@ -93,8 +91,8 @@ class AMQPArchiver(object):
                 self.key,
                 self.version_number,
                 i + 1, # segment number
-                self.file_adler32,
-                self.file_md5,
+                file_adler32,
+                file_md5,
                 segment_adler32,
                 segment_md5,
                 segment

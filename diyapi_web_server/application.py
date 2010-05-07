@@ -20,6 +20,7 @@ from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
 from diyapi_web_server.amqp_destroyer import AMQPDestroyer
+from diyapi_web_server.data_slicer import DataSlicer
 
 
 EXCHANGE_TIMEOUT = 5        # sec
@@ -128,9 +129,6 @@ class Application(object):
     def archive(self, req, key):
         avatar_id = req.remote_user
         timestamp = time.time()
-        # TODO: split large files into slices
-        file_adler32 = zlib.adler32(req.body)
-        file_md5 = hashlib.md5(req.body).digest()
         archiver = AMQPArchiver(
             self.amqp_handler,
             self.exchange_manager,
@@ -141,13 +139,37 @@ class Application(object):
         encoder = Encoder(
             8, # TODO: min_segments
             self.exchange_manager.num_exchanges)
-        segments = encoder.encode(req.body)
-        # TODO: handle archive failure
-        previous_size = archiver.archive_entire(
-            file_adler32,
-            file_md5,
-            segments,
-            EXCHANGE_TIMEOUT
-        )
+        file_adler32 = zlib.adler32('')
+        file_md5 = hashlib.md5()
+        if req.content_length > SLICE_SIZE:
+            remaining = req.content_length
+            for slice in DataSlicer(req.body_file, SLICE_SIZE, remaining):
+                remaining -= len(slice)
+                file_adler32 = zlib.adler32(slice, file_adler32)
+                file_md5.update(slice)
+                segments = encoder.encode(slice)
+                #if remaining:
+                #    previous_size = archiver.archive_slice(
+                #        segments,
+                #        EXCHANGE_TIMEOUT
+                #    )
+                #else:
+                #    previous_size = archiver.archive_final(
+                #        file_adler32,
+                #        file_md5.digest(),
+                #        segments,
+                #        EXCHANGE_TIMEOUT
+                #    )
+        else:
+            file_adler32 = zlib.adler32(req.body)
+            file_md5.update(req.body)
+            segments = encoder.encode(req.body)
+            # TODO: handle archive failure
+            previous_size = archiver.archive_final(
+                file_adler32,
+                file_md5.digest(),
+                segments,
+                EXCHANGE_TIMEOUT
+            )
         # TODO: send space accounting message
         return Response('OK')

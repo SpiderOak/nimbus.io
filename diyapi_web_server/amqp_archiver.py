@@ -73,7 +73,7 @@ class AMQPArchiver(object):
         self.log.info('starting handoff')
         gevent.killall(self.pending.values(), StartHandoff, True, timeout)
 
-    def archive_entire(self, file_adler32, file_md5, segments, timeout=None):
+    def archive_final(self, file_adler32, file_md5, segments, timeout=None):
         if self.pending:
             raise AlreadyInProgress()
         self.log.info('archive_entire')

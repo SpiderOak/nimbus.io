@@ -63,7 +63,7 @@ class TestApplication(unittest.TestCase):
             status=401
         )
 
-    def test_archive(self):
+    def test_archive_small(self):
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
             self.handler.replies_to_send[request_id] = [
@@ -78,7 +78,7 @@ class TestApplication(unittest.TestCase):
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
 
-    def test_archive_with_handoff(self):
+    def test_archive_small_with_handoff(self):
         self.exchange_manager.mark_down(0)
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
@@ -96,6 +96,30 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
+
+    def test_archive_large(self):
+        for i in xrange(self.exchange_manager.num_exchanges):
+            request_id = uuid.UUID(int=i).hex
+            self.handler.replies_to_send[request_id] = [
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                )
+            ]
+        key = self._key_generator.next()
+        with open('/dev/urandom', 'rb') as f:
+            resp = self.app.request(
+                '/data/' + key,
+                method='POST',
+                headers={
+                    'content-length': str(1024 * 1024 * 2), # 2mb
+                },
+                body_file=f,
+            )
+        self.assertEqual(resp.body, 'OK')
+
+    # TODO: test archive without content-length header
 
     def test_listmatch(self):
         prefix = 'a_prefix'

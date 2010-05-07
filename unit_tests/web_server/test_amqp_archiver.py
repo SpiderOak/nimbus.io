@@ -41,7 +41,7 @@ class TestAMQPArchiver(unittest.TestCase):
         uuid.uuid1 = self._real_uuid1
         random.sample = self._real_sample
 
-    def _make_messages_and_replies(self, avatar_id, timestamp, key):
+    def _make_small_data(self, avatar_id, timestamp, key):
         for segment_number in xrange(1, NUM_SEGMENTS + 1):
             segment = random_string(64 * 1024)
             segment_adler32 = zlib.adler32(segment)
@@ -73,11 +73,11 @@ class TestAMQPArchiver(unittest.TestCase):
                 )] = [reply]
             yield message
 
-    def test_archive_entire(self):
+    def test_archive_small(self):
         avatar_id = 1001
         timestamp = time.time()
         key = self._key_generator.next()
-        messages = list(self._make_messages_and_replies(
+        messages = list(self._make_small_data(
             avatar_id, timestamp, key))
 
         archiver = AMQPArchiver(
@@ -87,7 +87,7 @@ class TestAMQPArchiver(unittest.TestCase):
             key,
             timestamp
         )
-        previous_size = archiver.archive_entire(
+        previous_size = archiver.archive_final(
             messages[0].file_adler32,
             messages[0].file_md5,
             [message.content for message in messages]
@@ -105,12 +105,12 @@ class TestAMQPArchiver(unittest.TestCase):
         ) for message, exchange in self.amqp_handler.messages]
         self.assertEqual(actual, expected)
 
-    def test_archive_entire_with_handoff(self):
+    def test_archive_small_with_handoff(self):
         avatar_id = 1001
         timestamp = time.time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
-        messages = list(self._make_messages_and_replies(
+        messages = list(self._make_small_data(
             avatar_id, timestamp, key))
         self.exchange_manager.mark_up(0)
 
@@ -127,7 +127,7 @@ class TestAMQPArchiver(unittest.TestCase):
             self.exchange_manager[message.segment_number - 1][0]
         ) for message in messages]
 
-        previous_size = archiver.archive_entire(
+        previous_size = archiver.archive_final(
             messages[0].file_adler32,
             messages[0].file_md5,
             [message.content for message in messages],

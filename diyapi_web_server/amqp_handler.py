@@ -18,6 +18,8 @@ import amqplib.client_0_8 as amqp
 from diyapi_tools import amqp_connection
 from diyapi_tools.message_driven_process import _create_bindings
 
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.database_key_list_reply import DatabaseKeyListReply
@@ -30,6 +32,8 @@ _queue_name = 'web-server-%s' % (_local_node_name,)
 MESSAGE_TYPES = dict(
     ('%s.%s' % (_queue_name, message_type.routing_tag), message_type)
     for message_type in [
+        ArchiveKeyStartReply,
+        ArchiveKeyNextReply,
         ArchiveKeyFinalReply,
         DatabaseListMatchReply,
         DatabaseKeyListReply,

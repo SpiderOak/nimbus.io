@@ -12,11 +12,18 @@ from unit_tests.util import random_string
 from diyapi_web_server.data_slicer import DataSlicer
 
 
-SLICE_SIZE = 1024 * 1024
+SLICE_SIZE = 1024
 
 
 class TestDataSlicer(unittest.TestCase):
     """test diyapi_web_server/data_slicer.py"""
+
+    def test_slicer_with_less_data(self):
+        data = [random_string(SLICE_SIZE - 50)]
+        f = StringIO(''.join(data))
+        slicer = DataSlicer(f, SLICE_SIZE, SLICE_SIZE - 50)
+        yielded_data = list(slicer)
+        self.assertEqual(yielded_data, data)
 
     def test_slicer_with_exact_amount(self):
         data = [random_string(SLICE_SIZE),

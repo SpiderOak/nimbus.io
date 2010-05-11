@@ -17,6 +17,11 @@ from unit_tests.web_server import util
 
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.archive_key_entire import ArchiveKeyEntire
+from messages.archive_key_start import ArchiveKeyStart
+from messages.archive_key_next import ArchiveKeyNext
+from messages.archive_key_final import ArchiveKeyFinal
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 from diyapi_web_server.amqp_archiver import AMQPArchiver
@@ -42,8 +47,15 @@ class TestAMQPArchiver(unittest.TestCase):
         random.sample = self._real_sample
 
     def _make_small_data(self, avatar_id, timestamp, key):
+        file_size = 1024 * NUM_SEGMENTS
+        file_adler32 = -42
+        file_md5 = 'ffffff'
+        messages = []
+        messages_to_append = []
+        segments = []
         for segment_number in xrange(1, NUM_SEGMENTS + 1):
-            segment = random_string(64 * 1024)
+            segment = random_string(1024)
+            segments.append(segment)
             segment_adler32 = zlib.adler32(segment)
             segment_md5 = hashlib.md5(segment).digest()
             request_id = uuid.UUID(int=segment_number - 1).hex
@@ -56,8 +68,8 @@ class TestAMQPArchiver(unittest.TestCase):
                 key,
                 0, # version number
                 segment_number,
-                -42,
-                'ffffffff',
+                file_adler32,
+                file_md5,
                 segment_adler32,
                 segment_md5,
                 segment
@@ -67,18 +79,36 @@ class TestAMQPArchiver(unittest.TestCase):
                 ArchiveKeyFinalReply.successful,
                 0
             )
-            for exchange in self.exchange_manager[segment_number - 1]:
-                self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, exchange
-                )] = [reply]
-            yield message
+            if self.exchange_manager.is_down(segment_number - 1):
+                self.exchange_manager.mark_up(segment_number - 1)
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    messages.append((message, exchange))
+                self.exchange_manager.mark_down(segment_number - 1)
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].append(reply)
+                    messages_to_append.append((message, exchange))
+            else:
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].append(reply)
+                    messages.append((message, exchange))
+        messages.extend(messages_to_append)
+        return segments, messages, file_size, file_adler32, file_md5
 
     def test_archive_small(self):
         avatar_id = 1001
         timestamp = time.time()
         key = self._key_generator.next()
-        messages = list(self._make_small_data(
-            avatar_id, timestamp, key))
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(avatar_id, timestamp, key)
 
         archiver = AMQPArchiver(
             self.amqp_handler,
@@ -88,30 +118,37 @@ class TestAMQPArchiver(unittest.TestCase):
             timestamp
         )
         previous_size = archiver.archive_final(
-            messages[0].file_adler32,
-            messages[0].file_md5,
-            [message.content for message in messages]
+            file_size,
+            file_adler32,
+            file_md5,
+            segments
         )
 
         self.assertEqual(previous_size, 0)
 
-        expected = [(
-            message.marshall(),
-            self.exchange_manager[message.segment_number - 1][0]
-        ) for message in messages]
-        actual = [(
-            message.marshall(),
-            exchange
-        ) for message, exchange in self.amqp_handler.messages]
-        self.assertEqual(actual, expected)
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected, 'archiver did not send expected messages')
 
     def test_archive_small_with_handoff(self):
         avatar_id = 1001
         timestamp = time.time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
-        messages = list(self._make_small_data(
-            avatar_id, timestamp, key))
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(avatar_id, timestamp, key)
         self.exchange_manager.mark_up(0)
 
         archiver = AMQPArchiver(
@@ -122,31 +159,207 @@ class TestAMQPArchiver(unittest.TestCase):
             timestamp
         )
 
-        expected = [(
-            message.marshall(),
-            self.exchange_manager[message.segment_number - 1][0]
-        ) for message in messages]
-
         previous_size = archiver.archive_final(
-            messages[0].file_adler32,
-            messages[0].file_md5,
-            [message.content for message in messages],
+            file_size,
+            file_adler32,
+            file_md5,
+            segments,
             0
         )
 
         self.assertEqual(previous_size, 0)
-
         self.assertTrue(self.exchange_manager.is_down(0))
-        expected += [(
-            messages[0].marshall(),
-            exchange
-        ) for exchange in self.exchange_manager[0]]
-        self.exchange_manager.mark_up(0)
-        actual = [(
-            message.marshall(),
-            exchange
-        ) for message, exchange in self.amqp_handler.messages]
-        self.assertEqual(actual, expected)
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected, 'archiver did not send expected messages')
+
+    def _make_large_data(self, avatar_id, timestamp, key, n_slices):
+        file_size = NUM_SEGMENTS * n_slices
+        file_adler32 = -42
+        file_md5 = 'ffffff'
+        messages = []
+        messages_to_append = []
+        slices = []
+        segment_adler32s = {}
+        segment_md5s = {}
+
+        slices.append([])
+        sequence_number = 0
+        for segment_number in xrange(1, NUM_SEGMENTS + 1):
+            segment = random_string(1)
+            slices[sequence_number].append(segment)
+            segment_adler32s[segment_number] = zlib.adler32(segment)
+            segment_md5s[segment_number] = hashlib.md5(segment)
+            request_id = uuid.UUID(int=segment_number - 1).hex
+            message = ArchiveKeyStart(
+                request_id,
+                avatar_id,
+                self.amqp_handler.exchange,
+                self.amqp_handler.queue_name,
+                timestamp,
+                sequence_number,
+                key,
+                0, # version number
+                segment_number,
+                len(segment),
+                segment
+            )
+            reply = ArchiveKeyStartReply(
+                request_id,
+                ArchiveKeyStartReply.successful,
+                0
+            )
+            if self.exchange_manager.is_down(segment_number - 1):
+                self.exchange_manager.mark_up(segment_number - 1)
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    messages.append((message, exchange))
+                self.exchange_manager.mark_down(segment_number - 1)
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].append(reply)
+                    messages_to_append.append((message, exchange))
+            else:
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].append(reply)
+                    messages.append((message, exchange))
+
+        for _ in xrange(n_slices - 2):
+            slices.append([])
+            sequence_number += 1
+            for segment_number in xrange(1, NUM_SEGMENTS + 1):
+                segment = random_string(1)
+                slices[sequence_number].append(segment)
+                segment_adler32s[segment_number] = zlib.adler32(
+                    segment,
+                    segment_adler32s[segment_number]
+                )
+                segment_md5s[segment_number].update(segment)
+                request_id = uuid.UUID(int=segment_number - 1).hex
+                message = ArchiveKeyNext(
+                    request_id,
+                    sequence_number,
+                    segment
+                )
+                reply = ArchiveKeyNextReply(
+                    request_id,
+                    ArchiveKeyNextReply.successful,
+                    0
+                )
+                if self.exchange_manager.is_down(segment_number - 1):
+                    self.exchange_manager.mark_up(segment_number - 1)
+                    for exchange in self.exchange_manager[segment_number - 1]:
+                        messages.append((message, exchange))
+                    self.exchange_manager.mark_down(segment_number - 1)
+                    for exchange in self.exchange_manager[segment_number - 1]:
+                        self.amqp_handler.replies_to_send_by_exchange[(
+                            request_id, exchange
+                        )].append(reply)
+                        messages_to_append.append((message, exchange))
+                else:
+                    for exchange in self.exchange_manager[segment_number - 1]:
+                        self.amqp_handler.replies_to_send_by_exchange[(
+                            request_id, exchange
+                        )].append(reply)
+                        messages.append((message, exchange))
+
+        slices.append([])
+        sequence_number += 1
+        for segment_number in xrange(1, NUM_SEGMENTS + 1):
+            segment = random_string(1)
+            slices[sequence_number].append(segment)
+            segment_adler32s[segment_number] = zlib.adler32(
+                segment,
+                segment_adler32s[segment_number]
+            )
+            segment_md5s[segment_number].update(segment)
+            request_id = uuid.UUID(int=segment_number - 1).hex
+            message = ArchiveKeyFinal(
+                request_id,
+                sequence_number,
+                file_size,
+                file_adler32,
+                file_md5,
+                segment_adler32s[segment_number],
+                segment_md5s[segment_number].digest(),
+                segment
+            )
+            reply = ArchiveKeyFinalReply(
+                request_id,
+                ArchiveKeyFinalReply.successful,
+                0
+            )
+            if self.exchange_manager.is_down(segment_number - 1):
+                self.exchange_manager.mark_up(segment_number - 1)
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    messages.append((message, exchange))
+                self.exchange_manager.mark_down(segment_number - 1)
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].append(reply)
+                    messages_to_append.append((message, exchange))
+            else:
+                for exchange in self.exchange_manager[segment_number - 1]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].append(reply)
+                    messages.append((message, exchange))
+
+        return slices, messages, file_size, file_adler32, file_md5
+
+    def test_archive_large(self):
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        (
+            slices,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_large_data(avatar_id, timestamp, key, 4)
+
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        for segments in slices[:-1]:
+            archiver.archive_slice(segments)
+
+        previous_size = archiver.archive_final(
+            file_size,
+            file_adler32,
+            file_md5,
+            slices[-1]
+        )
+
+        self.assertEqual(previous_size, 0)
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected, 'archiver did not send expected messages')
 
 
 if __name__ == "__main__":

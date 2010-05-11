@@ -141,35 +141,25 @@ class Application(object):
             self.exchange_manager.num_exchanges)
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
-        if req.content_length > SLICE_SIZE:
-            remaining = req.content_length
-            for slice in DataSlicer(req.body_file, SLICE_SIZE, remaining):
-                remaining -= len(slice)
-                file_adler32 = zlib.adler32(slice, file_adler32)
-                file_md5.update(slice)
-                segments = encoder.encode(slice)
-                #if remaining:
-                #    previous_size = archiver.archive_slice(
-                #        segments,
-                #        EXCHANGE_TIMEOUT
-                #    )
-                #else:
-                #    previous_size = archiver.archive_final(
-                #        file_adler32,
-                #        file_md5.digest(),
-                #        segments,
-                #        EXCHANGE_TIMEOUT
-                #    )
-        else:
-            file_adler32 = zlib.adler32(req.body)
-            file_md5.update(req.body)
-            segments = encoder.encode(req.body)
+        remaining = req.content_length
+        for slice in DataSlicer(req.body_file, SLICE_SIZE, remaining):
+            remaining -= len(slice)
+            file_adler32 = zlib.adler32(slice, file_adler32)
+            file_md5.update(slice)
+            segments = encoder.encode(slice)
             # TODO: handle archive failure
-            previous_size = archiver.archive_final(
-                file_adler32,
-                file_md5.digest(),
-                segments,
-                EXCHANGE_TIMEOUT
-            )
+            if remaining:
+                archiver.archive_slice(
+                    segments,
+                    EXCHANGE_TIMEOUT
+                )
+            else:
+                previous_size = archiver.archive_final(
+                    req.content_length,
+                    file_adler32,
+                    file_md5.digest(),
+                    segments,
+                    EXCHANGE_TIMEOUT
+                )
         # TODO: send space accounting message
         return Response('OK')

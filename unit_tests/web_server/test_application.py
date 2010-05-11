@@ -19,6 +19,8 @@ from zfec.easyfec import Encoder
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from messages.archive_key_start_reply import ArchiveKeyStartReply
+from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
@@ -101,6 +103,16 @@ class TestApplication(unittest.TestCase):
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
             self.handler.replies_to_send[request_id] = [
+                ArchiveKeyStartReply(
+                    request_id,
+                    ArchiveKeyStartReply.successful,
+                    0
+                ),
+                ArchiveKeyNextReply(
+                    request_id,
+                    ArchiveKeyNextReply.successful,
+                    0
+                ),
                 ArchiveKeyFinalReply(
                     request_id,
                     ArchiveKeyFinalReply.successful,
@@ -113,7 +125,7 @@ class TestApplication(unittest.TestCase):
                 '/data/' + key,
                 method='POST',
                 headers={
-                    'content-length': str(1024 * 1024 * 2), # 2mb
+                    'content-length': str(1024 * 1024 * 3), # 3mb
                 },
                 body_file=f,
             )

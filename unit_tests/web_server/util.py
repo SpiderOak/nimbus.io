@@ -1,5 +1,6 @@
 import uuid
 import itertools
+from collections import defaultdict
 
 from gevent.queue import Queue
 
@@ -32,8 +33,8 @@ class FakeAMQPHandler(object):
 
     def __init__(self):
         self.messages = []
-        self.replies_to_send = {}
-        self.replies_to_send_by_exchange = {}
+        self.replies_to_send = defaultdict(list)
+        self.replies_to_send_by_exchange = defaultdict(list)
 
     def send_message(self, message, exchange=None):
         self.messages.append((message, exchange))

@@ -14,8 +14,8 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from zfec.easyfec import Encoder, Decoder
 from diyapi_web_server import util
+from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
@@ -91,7 +91,7 @@ class Application(object):
         matcher = AMQPListmatcher(self.amqp_handler, self.exchange_manager)
         # TODO: handle listmatch failure
         # TODO: break up large (>1mb) listmatch response
-        keys = matcher.listmatch(avatar_id, prefix)
+        keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
         return Response(repr(keys))
 
     @routes.add(r'/data/(.+)$', 'DELETE')
@@ -100,7 +100,8 @@ class Application(object):
         avatar_id = req.remote_user
         timestamp = time.time()
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
-        size_deleted = destroyer.destroy(avatar_id, key, timestamp)
+        size_deleted = destroyer.destroy(
+            avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
         # TODO: send space accounting message
         return Response('OK')
 
@@ -112,18 +113,18 @@ class Application(object):
             self.exchange_manager,
             avatar_id,
             key,
+            self.exchange_manager.num_exchanges,
             8 # TODO: min_segments
         )
-        segments = retriever.retrieve()
-        # TODO: handle retrieve failure
-        # TODO: handle multiple slices
-        # TODO: check data integrity
-        decoder = Decoder(8, # TODO: min_segments
-                          self.exchange_manager.num_exchanges)
-        segment_nums = map(lambda i: i - 1, segments.keys())
-        segment_data = segments.values()
-        data = decoder.decode(segment_data, segment_nums, 0)
-        return Response(data)
+        def response_iter():
+            for segments in retriever.retrieve(EXCHANGE_TIMEOUT):
+                # TODO: handle retrieve failure
+                # TODO: check data integrity
+                segmenter = ZfecSegmenter(
+                    8, # TODO: min_segments
+                    self.exchange_manager.num_exchanges)
+                yield segmenter.decode(segments.values())
+        return Response(app_iter=response_iter())
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
@@ -136,7 +137,7 @@ class Application(object):
             key,
             timestamp
         )
-        encoder = Encoder(
+        segmenter = ZfecSegmenter(
             8, # TODO: min_segments
             self.exchange_manager.num_exchanges)
         file_adler32 = zlib.adler32('')
@@ -146,7 +147,7 @@ class Application(object):
             remaining -= len(slice)
             file_adler32 = zlib.adler32(slice, file_adler32)
             file_md5.update(slice)
-            segments = encoder.encode(slice)
+            segments = segmenter.encode(slice)
             # TODO: handle archive failure
             if remaining:
                 archiver.archive_slice(

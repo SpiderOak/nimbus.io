@@ -6,3 +6,6 @@ class ArchiveFailedError(Exception):
 
 class HandoffFailedError(ArchiveFailedError):
     pass
+
+class RetrieveFailedError(Exception):
+    pass

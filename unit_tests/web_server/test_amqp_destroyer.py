@@ -42,13 +42,13 @@ class TestAMQPDestroyer(unittest.TestCase):
         num_segments = self.exchange_manager.num_exchanges
         for segment_number in xrange(1, num_segments - 1):
             request_id = uuid.UUID(int=segment_number - 1).hex
-            self.handler.replies_to_send[request_id] = [
+            self.handler.replies_to_send[request_id].put(
                 DatabaseKeyDestroyReply(
                     request_id,
                     DatabaseKeyDestroyReply.successful,
                     base_size + segment_number - 1
                 )
-            ]
+            )
 
         destroyer = AMQPDestroyer(self.handler, self.exchange_manager)
         size_deleted = destroyer.destroy(avatar_id, key, timestamp, 0.1)

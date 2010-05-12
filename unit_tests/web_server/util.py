@@ -33,17 +33,16 @@ class FakeAMQPHandler(object):
 
     def __init__(self):
         self.messages = []
-        self.replies_to_send = defaultdict(list)
-        self.replies_to_send_by_exchange = defaultdict(list)
+        self.replies_to_send = defaultdict(Queue)
+        self.replies_to_send_by_exchange = defaultdict(Queue)
 
     def send_message(self, message, exchange=None):
         self.messages.append((message, exchange))
-        replies = Queue()
-        for reply in self.replies_to_send_by_exchange.get((message.request_id, exchange), ()):
-            replies.put(reply)
-        for reply in self.replies_to_send.get(message.request_id, ()):
-            replies.put(reply)
-        return replies
+        if (message.request_id, exchange) in self.replies_to_send_by_exchange:
+            return self.replies_to_send_by_exchange[message.request_id, exchange]
+        if message.request_id in self.replies_to_send:
+            return self.replies_to_send[message.request_id]
+        return Queue()
 
 
 def fake_uuid_gen():

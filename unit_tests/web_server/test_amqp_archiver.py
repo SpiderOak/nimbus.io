@@ -87,13 +87,13 @@ class TestAMQPArchiver(unittest.TestCase):
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
-                    )].append(reply)
+                    )].put(reply)
                     messages_to_append.append((message, exchange))
             else:
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
-                    )].append(reply)
+                    )].put(reply)
                     messages.append((message, exchange))
         messages.extend(messages_to_append)
         return segments, messages, file_size, file_adler32, file_md5
@@ -225,13 +225,13 @@ class TestAMQPArchiver(unittest.TestCase):
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
-                    )].append(reply)
+                    )].put(reply)
                     messages_to_append.append((message, exchange))
             else:
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
-                    )].append(reply)
+                    )].put(reply)
                     messages.append((message, exchange))
 
         for _ in xrange(n_slices - 2):
@@ -264,13 +264,13 @@ class TestAMQPArchiver(unittest.TestCase):
                     for exchange in self.exchange_manager[segment_number - 1]:
                         self.amqp_handler.replies_to_send_by_exchange[(
                             request_id, exchange
-                        )].append(reply)
+                        )].put(reply)
                         messages_to_append.append((message, exchange))
                 else:
                     for exchange in self.exchange_manager[segment_number - 1]:
                         self.amqp_handler.replies_to_send_by_exchange[(
                             request_id, exchange
-                        )].append(reply)
+                        )].put(reply)
                         messages.append((message, exchange))
 
         slices.append([])
@@ -307,13 +307,13 @@ class TestAMQPArchiver(unittest.TestCase):
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
-                    )].append(reply)
+                    )].put(reply)
                     messages_to_append.append((message, exchange))
             else:
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
-                    )].append(reply)
+                    )].put(reply)
                     messages.append((message, exchange))
 
         return slices, messages, file_size, file_adler32, file_md5

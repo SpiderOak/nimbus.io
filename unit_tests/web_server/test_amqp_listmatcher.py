@@ -36,13 +36,13 @@ class TestAMQPListmatcher(unittest.TestCase):
         prefix = 'a_prefix'
         key_list = ['%s-%d' % (prefix, i) for i in xrange(10)]
         request_id = uuid.UUID(int=0).hex
-        self.handler.replies_to_send[request_id] = [
+        self.handler.replies_to_send[request_id].put(
             DatabaseListMatchReply(
                 request_id,
                 DatabaseListMatchReply.successful,
                 key_list=key_list
             )
-        ]
+        )
 
         matcher = AMQPListmatcher(self.handler, self.exchange_manager)
         keys = matcher.listmatch(avatar_id, prefix, 0.1)

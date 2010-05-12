@@ -119,6 +119,16 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/' + key, content)
         self.assertEqual(result, 'OK')
 
+    def test_upload_large_and_retrieve(self):
+        content = random_string(1024 * 1024 * 3)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        result = self._make_request(
+            _base_url + '/data/' + key)
+        self.assertEqual(len(result), len(content))
+        self.assertEqual(result, content)
+
     #def test_upload_small_then_delete_and_listmatch(self):
     #    content = random_string(64 * 1024)
     #    key = self._key_generator.next()

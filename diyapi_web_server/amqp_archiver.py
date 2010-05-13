@@ -70,9 +70,10 @@ class AMQPArchiver(object):
             try:
                 result = reply.previous_size
                 self.log.debug(
-                    'reply from %r: '
+                    '%s from %r: '
                     'segment_number = %d: '
                     'previous_size = %r' % (
+                        reply.__class__.__name__,
                         exchange,
                         segment_number,
                         result,
@@ -80,8 +81,9 @@ class AMQPArchiver(object):
                 self.result += result
             except AttributeError:
                 self.log.debug(
-                    'reply from %r: '
+                    '%s from %r: '
                     'segment_number = %d' % (
+                        reply.__class__.__name__,
                         exchange,
                         segment_number,
                     ))
@@ -94,7 +96,6 @@ class AMQPArchiver(object):
     def archive_slice(self, segments, timeout=None):
         if self.pending:
             raise AlreadyInProgress()
-        self.log.info('archive_slice')
         for i, segment in enumerate(segments):
             segment_number = i + 1
             self._segment_adler32s[segment_number] = zlib.adler32(
@@ -128,8 +129,9 @@ class AMQPArchiver(object):
             # message back
             for exchange in self.exchange_manager[i]:
                 self.log.debug(
-                    'archive_slice to %r'
+                    '%s to %r '
                     'segment_number = %d' % (
+                        message.__class__.__name__,
                         exchange,
                         segment_number,
                     ))
@@ -146,7 +148,6 @@ class AMQPArchiver(object):
                       segments, timeout=None):
         if self.pending:
             raise AlreadyInProgress()
-        self.log.info('archive_final')
         self.result = 0
         for i, segment in enumerate(segments):
             segment_number = i + 1
@@ -188,8 +189,9 @@ class AMQPArchiver(object):
             # message back
             for exchange in self.exchange_manager[i]:
                 self.log.debug(
-                    'archive_final to %r: '
+                    '%s to %r '
                     'segment_number = %d' % (
+                        message.__class__.__name__,
                         exchange,
                         segment_number,
                     ))

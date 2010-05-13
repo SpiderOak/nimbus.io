@@ -69,6 +69,8 @@ class TestWebServer(unittest.TestCase):
         return urllib2.urlopen(request).read()
 
     def test_unauthorized_when_auth_header_missing(self):
+        log = logging.getLogger('test_unauthorized_when_auth_header_missing')
+        log.info('start')
         try:
             resp = urllib2.urlopen(
                 _base_url + '/data/test-key?action=listmatch')
@@ -78,6 +80,8 @@ class TestWebServer(unittest.TestCase):
             raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
 
     def test_unauthorized_with_bad_credentials(self):
+        log = logging.getLogger('test_unauthorized_with_bad_credentials')
+        log.info('start')
         try:
             resp = self._make_request(
                 _base_url + '/data/test-key?action=listmatch', key='cafeface')
@@ -87,6 +91,8 @@ class TestWebServer(unittest.TestCase):
             raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
 
     def test_upload_small(self):
+        log = logging.getLogger('test_upload_small')
+        log.info('start')
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = self._make_request(
@@ -94,25 +100,33 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(result, 'OK')
 
     def test_upload_small_and_listmatch(self):
+        log = logging.getLogger('test_upload_small_and_listmatch')
+        log.info('start')
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
+        log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
         self.assertEqual(result, repr([key]))
 
     def test_upload_small_and_retrieve(self):
+        log = logging.getLogger('test_upload_small_and_retrieve')
+        log.info('start')
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
+        log.info('retrieve')
         result = self._make_request(
             _base_url + '/data/' + key)
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
     def test_upload_large(self):
+        log = logging.getLogger('test_upload_large')
+        log.info('start')
         content = random_string(1024 * 1024 * 3)
         key = self._key_generator.next()
         result = self._make_request(
@@ -120,13 +134,25 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(result, 'OK')
 
     def test_upload_large_and_retrieve(self):
+        log = logging.getLogger('test_upload_large_and_retrieve')
+        log.info('start')
         content = random_string(1024 * 1024 * 3)
         key = self._key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
+        log.info('retrieve')
         result = self._make_request(
             _base_url + '/data/' + key)
         self.assertEqual(len(result), len(content))
+        if result != content:
+            diffs = filter(lambda (i, (r, c)): r != c, enumerate(zip(result, content)))
+            raise AssertionError(
+                'result differs from expected: '
+                'start=%d, end=%d' % (
+                    diffs[0][0],
+                    diffs[-1][0]
+                )
+            )
         self.assertEqual(result, content)
 
     #def test_upload_small_then_delete_and_listmatch(self):

@@ -129,6 +129,7 @@ class TestAMQPRetriever(unittest.TestCase):
             actual, expected)
 
     # TODO: test when nodes are down
+    # TODO: test when receiving replies out of order
 
     def _make_large_data(self, avatar_id, timestamp, key, n_slices):
         file_size = NUM_SEGMENTS * n_slices

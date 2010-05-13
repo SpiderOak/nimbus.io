@@ -724,9 +724,11 @@ class TestMessages(unittest.TestCase):
         """test RetrieveKeyNextReply"""
         original_data_content = random_string(64 * 1024) 
         original_request_id = uuid.uuid1().hex
+        original_sequence = 42
         original_result = 0
         message = RetrieveKeyNextReply(
             original_request_id,
+            original_sequence,
             original_result,
             original_data_content
         )
@@ -735,6 +737,7 @@ class TestMessages(unittest.TestCase):
             marshaled_message
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
         self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(
             unmarshalled_message.data_content, original_data_content
@@ -757,9 +760,11 @@ class TestMessages(unittest.TestCase):
         """test RetrieveKeyFinalReply"""
         original_data_content = random_string(64 * 1024) 
         original_request_id = uuid.uuid1().hex
+        original_sequence = 452
         original_result = 0
         message = RetrieveKeyFinalReply(
             original_request_id,
+            original_sequence,
             original_result,
             original_data_content
         )
@@ -768,6 +773,7 @@ class TestMessages(unittest.TestCase):
             marshaled_message
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.sequence, original_sequence)
         self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(
             unmarshalled_message.data_content, original_data_content

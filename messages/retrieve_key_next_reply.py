@@ -10,8 +10,9 @@ from diyapi_tools.marshalling import marshall_string, unmarshall_string
 from diyapi_database_server import database_content
 
 # 32s - request-id 32 char hex uuid
+# I   - sequence
 # B   - result: 0 = success 
-_header_format = "!32sB"
+_header_format = "!32sIB"
 _header_size = struct.calcsize(_header_format)
 
 class RetrieveKeyNextReply(object):
@@ -29,11 +30,13 @@ class RetrieveKeyNextReply(object):
     def __init__(
         self, 
         request_id, 
+        sequence,
         result,
         data_content="",
         error_message=""
     ):
         self.request_id = request_id
+        self.sequence = sequence
         self.result = result
         self.data_content = data_content
         self.error_message = error_message
@@ -46,7 +49,7 @@ class RetrieveKeyNextReply(object):
     def unmarshall(cls, data):
         """return a RetrieveKeyNextReply message"""
         pos = 0
-        request_id, result = struct.unpack(
+        request_id, sequence, result = struct.unpack(
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
@@ -54,6 +57,7 @@ class RetrieveKeyNextReply(object):
         if result == 0:
             return RetrieveKeyNextReply(                
                 request_id, 
+                sequence,
                 result, 
                 data_content=data[pos:]
             )
@@ -68,7 +72,8 @@ class RetrieveKeyNextReply(object):
         """return a data string suitable for transmission"""
         header = struct.pack(
             _header_format, 
-            self.request_id, 
+            self.request_id,
+            self.sequence,
             self.result, 
         )
 

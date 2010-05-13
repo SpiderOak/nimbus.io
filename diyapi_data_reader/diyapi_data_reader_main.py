@@ -194,6 +194,7 @@ def _handle_retrieve_key_next(state, message_body):
         log.error(error_string)
         reply = RetrieveKeyNextReply(
             message.request_id,
+            message.sequence,
             RetrieveKeyNextReply.error_out_of_sequence,
             error_message=error_string
         )
@@ -217,6 +218,7 @@ def _handle_retrieve_key_next(state, message_body):
         ))
         reply = RetrieveKeyNextReply(
             message.request_id,
+            message.sequence,
             RetrieveKeyNextReply.error_exception,
             error_message = str(instance)
         )
@@ -232,6 +234,7 @@ def _handle_retrieve_key_next(state, message_body):
 
     reply = RetrieveKeyNextReply(
         message.request_id,
+        message.sequence,
         RetrieveKeyNextReply.successful,
         data_content = data_content
     )
@@ -271,7 +274,8 @@ def _handle_retrieve_key_final(state, message_body):
         log.error(error_string)
         reply = RetrieveKeyFinalReply(
             message.request_id,
-            RetrieveKeyNextReply.error_out_of_sequence,
+            message.sequence,
+            RetrieveKeyFinalReply.error_out_of_sequence,
             error_message=error_string
         )
         return [(reply_exchange, reply_routing_key, reply, )] 
@@ -294,7 +298,8 @@ def _handle_retrieve_key_final(state, message_body):
         ))
         reply = RetrieveKeyFinalReply(
             message.request_id,
-            RetrieveKeyNextReply.error_exception,
+            message.sequence,
+            RetrieveKeyFinalReply.error_exception,
             error_message = str(instance)
         )
         return [(reply_exchange, reply_routing_key, reply, )] 
@@ -306,6 +311,7 @@ def _handle_retrieve_key_final(state, message_body):
 
     reply = RetrieveKeyFinalReply(
         message.request_id,
+        message.sequence,
         RetrieveKeyFinalReply.successful,
         data_content = data_content
     )

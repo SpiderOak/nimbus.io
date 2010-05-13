@@ -198,6 +198,7 @@ class TestAMQPRetriever(unittest.TestCase):
                 )
                 reply = RetrieveKeyNextReply(
                     request_id,
+                    sequence_number,
                     RetrieveKeyNextReply.successful,
                     segment
                 )
@@ -224,6 +225,7 @@ class TestAMQPRetriever(unittest.TestCase):
             )
             reply = RetrieveKeyFinalReply(
                 request_id,
+                sequence_number,
                 RetrieveKeyFinalReply.successful,
                 segment
             )

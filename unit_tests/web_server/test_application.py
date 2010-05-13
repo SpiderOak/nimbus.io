@@ -238,6 +238,7 @@ class TestApplication(unittest.TestCase):
                     self.amqp_handler.replies_to_send[request_id].put(
                         RetrieveKeyFinalReply(
                             request_id,
+                            sequence_number,
                             RetrieveKeyFinalReply.successful,
                             segment
                         )
@@ -246,6 +247,7 @@ class TestApplication(unittest.TestCase):
                     self.amqp_handler.replies_to_send[request_id].put(
                         RetrieveKeyNextReply(
                             request_id,
+                            sequence_number,
                             RetrieveKeyNextReply.successful,
                             segment
                         )

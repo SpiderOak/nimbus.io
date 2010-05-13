@@ -12,6 +12,7 @@ import gevent
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_next import RetrieveKeyNext
 from messages.retrieve_key_final import RetrieveKeyFinal
+from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 
 from diyapi_web_server.exceptions import *
 
@@ -38,7 +39,18 @@ class AMQPRetriever(object):
 
     def _wait_for_reply(self, segment_number, reply_queue):
         try:
-            reply = reply_queue.get()
+            while True:
+                reply = reply_queue.get()
+                if getattr(reply, 'sequence', 0) == self.sequence_number:
+                    break
+                self.log.debug(
+                    '%s: segment_number = %d '
+                    'out of sequence (was %d, expecting %d)' % (
+                        reply.__class__.__name__,
+                        segment_number,
+                        getattr(reply, 'sequence', 0),
+                        self.sequence_number,
+                    ))
         except gevent.GreenletExit:
             return
         else:
@@ -47,14 +59,9 @@ class AMQPRetriever(object):
                     reply.__class__.__name__,
                     segment_number,
                 ))
-            try:
+            if isinstance(reply, RetrieveKeyStartReply):
                 self.n_slices = reply.segment_count
-            except AttributeError:
-                pass
-            try:
                 self.slice_size = reply.segment_size
-            except AttributeError:
-                pass
             if len(self.result) < self.segments_needed:
                 self.result[segment_number] = reply.data_content
         finally:

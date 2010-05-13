@@ -25,7 +25,7 @@ from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
-from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.destroy_key_reply import DestroyKeyReply
 
 from diyapi_web_server import application
 from diyapi_web_server.application import Application
@@ -296,8 +296,6 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
 
-
-
     def test_destroy(self):
         key = self._key_generator.next()
         base_size = 12345
@@ -305,9 +303,9 @@ class TestApplication(unittest.TestCase):
         for i, exchange in enumerate(self.exchange_manager):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
-                DatabaseKeyDestroyReply(
+                DestroyKeyReply(
                     request_id,
-                    DatabaseKeyDestroyReply.successful,
+                    DestroyKeyReply.successful,
                     base_size + i
                 )
             )

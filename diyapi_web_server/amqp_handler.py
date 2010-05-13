@@ -26,6 +26,7 @@ from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
+from messages.destroy_key_reply import DestroyKeyReply
 
 
 _local_node_name = os.environ['SPIDEROAK_MULTI_NODE_NAME']
@@ -42,6 +43,7 @@ MESSAGE_TYPES = dict(
         RetrieveKeyStartReply,
         RetrieveKeyNextReply,
         RetrieveKeyFinalReply,
+        DestroyKeyReply,
     ]
 )
 

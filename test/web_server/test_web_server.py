@@ -155,15 +155,20 @@ class TestWebServer(unittest.TestCase):
             )
         self.assertEqual(result, content)
 
-    #def test_upload_small_then_delete_and_listmatch(self):
-    #    content = random_string(64 * 1024)
-    #    key = self._key_generator.next()
-    #    result = urllib2.urlopen(_base_url + '/data/' + key,
-    #                             content).read()
-    #    result = urllib2.urlopen(_base_url + '/data/%s?action=delete' % (key,), {}).read()
-    #    self.assertEqual(result, 'OK')
-    #    result = urllib2.urlopen('/data/test-key?action=listmatch').read()
-    #    self.assertEqual(result, repr([]))
+    def test_upload_small_then_delete_and_listmatch(self):
+        log = logging.getLogger('test_upload_small_then_delete_and_listmatch')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('delete')
+        result = self._make_request(
+            _base_url + '/data/%s?action=delete' % (key,), '')
+        log.info('listmatch')
+        result = self._make_request(
+            _base_url + '/data/test-key?action=listmatch')
+        self.assertEqual(result, repr([]))
 
 
 def _load_unit_tests(path):

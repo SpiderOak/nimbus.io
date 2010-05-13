@@ -8,7 +8,7 @@ import uuid
 
 import gevent
 
-from messages.database_key_destroy import DatabaseKeyDestroy
+from messages.destroy_key import DestroyKey
 
 
 class AMQPDestroyer(object):
@@ -23,7 +23,7 @@ class AMQPDestroyer(object):
         num_segments = self.exchange_manager.num_exchanges
         for segment_number in xrange(1, num_segments - 1):
             request_id = uuid.uuid1().hex
-            message = DatabaseKeyDestroy(
+            message = DestroyKey(
                 request_id,
                 avatar_id,
                 self.amqp_handler.exchange,

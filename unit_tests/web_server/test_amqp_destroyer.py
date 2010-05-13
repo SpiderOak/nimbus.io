@@ -12,7 +12,7 @@ import time
 from unit_tests.util import generate_key
 from unit_tests.web_server import util
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
-from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
+from messages.destroy_key_reply import DestroyKeyReply
 
 from diyapi_web_server.amqp_destroyer import AMQPDestroyer
 
@@ -43,15 +43,15 @@ class TestAMQPDestroyer(unittest.TestCase):
         for segment_number in xrange(1, num_segments - 1):
             request_id = uuid.UUID(int=segment_number - 1).hex
             self.handler.replies_to_send[request_id].put(
-                DatabaseKeyDestroyReply(
+                DestroyKeyReply(
                     request_id,
-                    DatabaseKeyDestroyReply.successful,
+                    DestroyKeyReply.successful,
                     base_size + segment_number - 1
                 )
             )
 
         destroyer = AMQPDestroyer(self.handler, self.exchange_manager)
-        size_deleted = destroyer.destroy(avatar_id, key, timestamp, 0.1)
+        size_deleted = destroyer.destroy(avatar_id, key, timestamp, 0)
         self.assertEqual(size_deleted, base_size)
 
 

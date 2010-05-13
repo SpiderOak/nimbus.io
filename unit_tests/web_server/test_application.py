@@ -136,6 +136,45 @@ class TestApplication(unittest.TestCase):
             )
         self.assertEqual(resp.body, 'OK')
 
+    def test_archive_large_with_handoff(self):
+        self.exchange_manager.mark_down(0)
+        for i in xrange(self.exchange_manager.num_exchanges):
+            request_id = uuid.UUID(int=i).hex
+            for message in [
+                ArchiveKeyStartReply(
+                    request_id,
+                    ArchiveKeyStartReply.successful,
+                    0
+                ),
+                ArchiveKeyNextReply(
+                    request_id,
+                    ArchiveKeyNextReply.successful,
+                    0
+                ),
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                ),
+            ]:
+                for exchange in self.exchange_manager[i]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].put(message)
+        self.exchange_manager.mark_up(0)
+        key = self._key_generator.next()
+        with open('/dev/urandom', 'rb') as f:
+            resp = self.app.request(
+                '/data/' + key,
+                method='POST',
+                headers={
+                    'content-length': str(1024 * 1024 * 3), # 3mb
+                },
+                body_file=f,
+            )
+        self.assertEqual(resp.body, 'OK')
+
+
     # TODO: test archive without content-length header
 
     def test_listmatch(self):

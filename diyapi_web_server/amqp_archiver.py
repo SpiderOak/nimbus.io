@@ -51,21 +51,23 @@ class AMQPArchiver(object):
         replies = []
         for exchange in self.exchange_manager[exchange_num]:
             self.log.debug(
-                'handoff to %r: '
-                'segment_number = %d' % (
+                '%s to %r '
+                'segment_number = %d (handoff)' % (
+                    message.__class__.__name__,
                     exchange,
                     segment_number,
                 ))
             reply_queue = self.amqp_handler.send_message(message, exchange)
             replies.append(gevent.spawn(reply_queue.get))
         gevent.joinall(replies)
-        return sum(reply.value.previous_size for reply in replies)
+        if isinstance(message, (ArchiveKeyEntire, ArchiveKeyFinal)):
+            self.result += sum(reply.value.previous_size for reply in replies)
 
     def _wait_for_reply(self, segment_number, message, exchange, reply_queue):
         try:
             reply = reply_queue.get()
         except StartHandoff:
-            self.result += self._do_handoff(segment_number, message, exchange)
+            self._do_handoff(segment_number, message, exchange)
         else:
             try:
                 result = reply.previous_size
@@ -87,7 +89,7 @@ class AMQPArchiver(object):
                         exchange,
                         segment_number,
                     ))
-        del self.pending[segment_number]
+        del self.pending[segment_number, exchange]
 
     def start_handoff(self, timeout=None):
         self.log.info('starting handoff')
@@ -136,13 +138,18 @@ class AMQPArchiver(object):
                         segment_number,
                     ))
                 reply_queue = self.amqp_handler.send_message(message, exchange)
-                self.pending[segment_number] = gevent.spawn(
+                self.pending[segment_number, exchange] = gevent.spawn(
                     self._wait_for_reply, segment_number,
                     message, exchange, reply_queue)
-        self.sequence_number += 1
         gevent.joinall(self.pending.values(), timeout, True)
-        if self.pending:
+        if self.sequence_number == 0:
+            if self.pending:
+                self.start_handoff(timeout)
+            if self.pending:
+                raise HandoffFailedError()
+        elif self.pending:
             raise ArchiveFailedError()
+        self.sequence_number += 1
 
     def archive_final(self, file_size, file_adler32, file_md5,
                       segments, timeout=None):
@@ -196,12 +203,15 @@ class AMQPArchiver(object):
                         segment_number,
                     ))
                 reply_queue = self.amqp_handler.send_message(message, exchange)
-                self.pending[segment_number] = gevent.spawn(
+                self.pending[segment_number, exchange] = gevent.spawn(
                     self._wait_for_reply, segment_number,
                     message, exchange, reply_queue)
         gevent.joinall(self.pending.values(), timeout, True)
-        if self.pending:
-            self.start_handoff(timeout)
-        if self.pending:
-            raise HandoffFailedError()
+        if self.sequence_number == 0:
+            if self.pending:
+                self.start_handoff(timeout)
+            if self.pending:
+                raise HandoffFailedError()
+        elif self.pending:
+            raise ArchiveFailedError()
         return self.result

@@ -22,7 +22,7 @@ _header_size = struct.calcsize(_header_format)
 class DatabaseKeyPurge(object):
     """AMQP message to insert a key in the database"""
 
-    routing_key = "database_server.key_destroy"
+    routing_key = "database_server.key_purge"
 
     def __init__(
         self, 

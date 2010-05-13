@@ -43,7 +43,8 @@ class AMQPRetriever(object):
             return
         else:
             self.log.debug(
-                'reply: segment_number = %d' % (
+                '%s: segment_number = %d' % (
+                    reply.__class__.__name__,
                     segment_number,
                 ))
             try:
@@ -77,13 +78,13 @@ class AMQPRetriever(object):
                 self.version_number,
                 segment_number
             )
-        elif self.sequence_number == self.n_slices - 1:
-            return RetrieveKeyFinal(
+        elif self.sequence_number < self.n_slices - 1:
+            return RetrieveKeyNext(
                 self._segment_request_ids[segment_number],
                 self.sequence_number
             )
         else:
-            return RetrieveKeyNext(
+            return RetrieveKeyFinal(
                 self._segment_request_ids[segment_number],
                 self.sequence_number
             )
@@ -91,15 +92,15 @@ class AMQPRetriever(object):
     def retrieve(self, timeout=None):
         if self.pending:
             raise AlreadyInProgress()
-        self.log.info('retrieve')
         while self.sequence_number < self.n_slices:
             self.result = {}
             for segment_number in xrange(1, self.num_segments + 1):
                 message = self._make_request(segment_number)
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.log.debug(
-                        'retrieve from %r: '
+                        '%s to %r: '
                         'segment_number = %d' % (
+                            message.__class__.__name__,
                             exchange,
                             segment_number,
                         ))

@@ -124,7 +124,7 @@ class RetrieveKeyStartReply(object):
         (error_message, pos) = unmarshall_string(data, pos)
 
         return RetrieveKeyStartReply(
-            request_id, result, error_message
+            header.request_id, header.result, error_message
         )
 
     def marshall(self):

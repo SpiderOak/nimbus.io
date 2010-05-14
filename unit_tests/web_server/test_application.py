@@ -99,6 +99,7 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
+        self.assertTrue(self.exchange_manager.is_down(0))
 
     def test_archive_large(self):
         for i in xrange(self.exchange_manager.num_exchanges):
@@ -173,6 +174,7 @@ class TestApplication(unittest.TestCase):
                 body_file=f,
             )
         self.assertEqual(resp.body, 'OK')
+        self.assertTrue(self.exchange_manager.is_down(0))
 
 
     # TODO: test archive without content-length header

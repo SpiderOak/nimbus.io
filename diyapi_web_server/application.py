@@ -9,12 +9,14 @@ import os
 import time
 import zlib
 import hashlib
+from itertools import chain
 
 from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
 from diyapi_web_server import util
+from diyapi_web_server.exceptions import *
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.amqp_archiver import AMQPArchiver
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
@@ -108,6 +110,9 @@ class Application(object):
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
         avatar_id = req.remote_user
+        segmenter = ZfecSegmenter(
+            8, # TODO: min_segments
+            self.exchange_manager.num_exchanges)
         retriever = AMQPRetriever(
             self.amqp_handler,
             self.exchange_manager,
@@ -116,15 +121,14 @@ class Application(object):
             self.exchange_manager.num_exchanges,
             8 # TODO: min_segments
         )
-        def response_iter():
-            for segments in retriever.retrieve(EXCHANGE_TIMEOUT):
-                # TODO: handle retrieve failure
-                # TODO: check data integrity
-                segmenter = ZfecSegmenter(
-                    8, # TODO: min_segments
-                    self.exchange_manager.num_exchanges)
-                yield segmenter.decode(segments.values())
-        return Response(app_iter=response_iter())
+        retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)
+        try:
+            segments = retrieved.next()
+        except RetrieveFailedError:
+            return exc.HTTPNotFound()
+        app_iter = (segmenter.decode(segments.values())
+                    for segments in chain([segments], retrieved))
+        return Response(app_iter=app_iter)
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):

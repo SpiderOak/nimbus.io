@@ -14,6 +14,7 @@ import hashlib
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.exceptions import *
 
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_next import RetrieveKeyNext
@@ -27,6 +28,7 @@ from diyapi_web_server.amqp_retriever import AMQPRetriever
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 NUM_SEGMENTS = 10
+SEGMENTS_NEEDED = 8
 
 
 class TestAMQPRetriever(unittest.TestCase):
@@ -99,21 +101,19 @@ class TestAMQPRetriever(unittest.TestCase):
             file_md5,
         ) = self._make_small_data(avatar_id, timestamp, key)
 
-        num_segments = 8
-
         retriever = AMQPRetriever(
             self.amqp_handler,
             self.exchange_manager,
             avatar_id,
             key,
             NUM_SEGMENTS,
-            num_segments
+            SEGMENTS_NEEDED
         )
         retrieved = list(retriever.retrieve(0))
 
         expected = [
             dict((i + 1, segment)
-                 for i, segment in enumerate(segments[:num_segments]))
+                 for i, segment in enumerate(segments[:SEGMENTS_NEEDED]))
         ]
         self.assertEqual(retrieved, expected)
 
@@ -249,21 +249,19 @@ class TestAMQPRetriever(unittest.TestCase):
             file_md5,
         ) = self._make_large_data(avatar_id, timestamp, key, 4)
 
-        num_segments = 8
-
         retriever = AMQPRetriever(
             self.amqp_handler,
             self.exchange_manager,
             avatar_id,
             key,
             NUM_SEGMENTS,
-            num_segments
+            SEGMENTS_NEEDED
         )
         retrieved = list(retriever.retrieve(0))
 
         expected = [
             dict((i + 1, segment)
-                 for i, segment in enumerate(segments[:num_segments]))
+                 for i, segment in enumerate(segments[:SEGMENTS_NEEDED]))
             for segments in slices
         ]
         self.assertEqual(retrieved, expected)
@@ -278,6 +276,34 @@ class TestAMQPRetriever(unittest.TestCase):
         ]
         self.assertEqual(
             actual, expected, 'retriever did not send expected messages')
+
+    def test_retrieve_nonexistent(self):
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+
+        for segment_number in xrange(1, NUM_SEGMENTS + 1):
+            request_id = uuid.UUID(int=segment_number - 1).hex
+            reply = RetrieveKeyStartReply(
+                request_id,
+                RetrieveKeyStartReply.error_key_not_found,
+                error_message='key not found',
+            )
+            for exchange in self.exchange_manager[segment_number - 1]:
+                self.amqp_handler.replies_to_send_by_exchange[(
+                    request_id, exchange
+                )].put(reply)
+
+        retriever = AMQPRetriever(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            NUM_SEGMENTS,
+            SEGMENTS_NEEDED
+        )
+
+        self.assertRaises(RetrieveFailedError, list, retriever.retrieve(0))
 
 
 if __name__ == "__main__":

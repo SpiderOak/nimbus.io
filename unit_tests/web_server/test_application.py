@@ -193,6 +193,24 @@ class TestApplication(unittest.TestCase):
         resp = self.app.get('/data/%s' % (prefix,), dict(action='listmatch'))
         self.assertEqual(resp.body, repr(key_list))
 
+    def test_retrieve_nonexistent(self):
+        key = self._key_generator.next()
+        timestamp = time.time()
+
+        for segment_number in xrange(
+            1, self.exchange_manager.num_exchanges + 1):
+                request_id = uuid.UUID(int=segment_number - 1).hex
+                self.amqp_handler.replies_to_send[request_id].put(
+                    RetrieveKeyStartReply(
+                        request_id,
+                        RetrieveKeyStartReply.error_key_not_found,
+                        error_message='key not found',
+                    )
+                )
+
+        resp = self.app.get('/data/%s' % (key,),
+                            status=404)
+
     def test_retrieve_small(self):
         key = self._key_generator.next()
         timestamp = time.time()

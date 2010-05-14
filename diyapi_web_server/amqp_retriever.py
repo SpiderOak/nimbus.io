@@ -55,10 +55,13 @@ class AMQPRetriever(object):
             return
         else:
             self.log.debug(
-                '%s: segment_number = %d' % (
+                '%s: segment_number = %d, result = %d' % (
                     reply.__class__.__name__,
                     segment_number,
+                    reply.result,
                 ))
+            if reply.result != reply.successful:
+                return
             if isinstance(reply, RetrieveKeyStartReply):
                 self.n_slices = reply.segment_count
                 self.slice_size = reply.segment_size
@@ -118,6 +121,7 @@ class AMQPRetriever(object):
             gevent.joinall(self.pending.values(), timeout, True)
             if self.pending:
                 self.cancel()
+            if len(self.result) < self.segments_needed:
                 raise RetrieveFailedError(
                     'expected %d segments, only got %d (sequence = %d)' % (
                         self.segments_needed,

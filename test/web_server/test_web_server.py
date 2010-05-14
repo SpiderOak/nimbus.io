@@ -124,6 +124,21 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
+    def test_retrieve_nonexistent_key(self):
+        log = logging.getLogger('test_retrieve_nonexistent_key')
+        log.info('start')
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/%s?action=delete' % (key,), '')
+        log.info('retrieve')
+        try:
+            result = self._make_request(
+                _base_url + '/data/' + key)
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 404)
+        else:
+            raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
+
     def test_upload_large(self):
         log = logging.getLogger('test_upload_large')
         log.info('start')
@@ -169,6 +184,25 @@ class TestWebServer(unittest.TestCase):
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
         self.assertEqual(result, repr([]))
+
+    def test_upload_small_then_delete_and_retrieve(self):
+        log = logging.getLogger('test_upload_small_then_delete_and_retrieve')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('delete')
+        result = self._make_request(
+            _base_url + '/data/%s?action=delete' % (key,), '')
+        log.info('retrieve')
+        try:
+            result = self._make_request(
+                _base_url + '/data/' + key)
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 404)
+        else:
+            raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
 
 
 def _load_unit_tests(path):

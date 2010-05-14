@@ -287,7 +287,8 @@ def _handle_key_list(state, message_body):
     content_list = []
     for packed_entry in packed_content_list:
         (content, _) = database_content.unmarshall(packed_entry, 0)
-        content_list.append(content)
+        if not content.is_tombstone:
+            content_list.append(content)
 
     reply = DatabaseKeyListReply(
         message.request_id,

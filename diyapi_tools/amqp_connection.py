@@ -21,6 +21,7 @@ exchange_template = "%s-exchange"
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 local_exchange_name = exchange_template % (_local_node_name, )
 broadcast_exchange_name = "spideroak_diyapi_broadcast"
+space_accounting_exchange_name = "spideroak_diyapi_space_accounting"
 
 def open_connection():
     """

@@ -46,6 +46,7 @@ from messages.purge_key_reply import PurgeKeyReply
 from messages.process_status import ProcessStatus
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
+from messages.space_accounting_detail import SpaceAccountingDetail
 
 from unit_tests.util import random_string
 
@@ -964,6 +965,28 @@ class TestMessages(unittest.TestCase):
         unmarshalled_message = HintedHandoffReply.unmarshall(marshalled_message)
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
         self.assertEqual(unmarshalled_message.result, original_result)
+
+    def test_space_accounting_detail(self):
+        """test SpaceAccountingDetail"""
+        avatar_id = 1001
+        timestamp = time.time()
+        event = SpaceAccountingDetail.bytes_added
+        value = 42
+
+        message = SpaceAccountingDetail(
+            avatar_id,
+            timestamp,
+            event,
+            value
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = SpaceAccountingDetail.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.event, event)
+        self.assertEqual(unmarshalled_message.value, value)
 
 if __name__ == "__main__":
     unittest.main()

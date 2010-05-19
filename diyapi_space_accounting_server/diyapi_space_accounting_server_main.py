@@ -41,6 +41,21 @@ _low_traffic_routing_key = ".".join([
     low_traffic_routing_tag,
 ])
 
+def _create_state():
+    return {"data" : dict()}
+
+def _floor_hour(raw_datetime):
+    """return a datetime rounded to the floor hour"""
+    return datetime.datetime(
+        year = raw_datetime.year,
+        month = raw_datetime.month,
+        day = raw_datetime.day,
+        hour = raw_datetime.hour,
+        minute = 0,
+        second = 0,
+        microsecond = 0
+    )
+
 def _next_dump_interval():
     """five minutes past the hour"""
     current_time = datetime.datetime.now()
@@ -65,11 +80,14 @@ def _handle_low_traffic(_state, _message_body):
 def _handle_detail(state, message_body):
     log = logging.getLogger("_handle_detail")
     message = SpaceAccountingDetail.unmarshall(message_body)
-    log.info("avatar_id = %s, event = %s, value = %s" % (
-        message.avatar_id, message.event, message.value
+    message_datetime = datetime.datetime.fromtimestamp(message.timestamp)
+    message_hour = _floor_hour(message_datetime)
+    log.info("hour = %s avatar_id = %s, event = %s, value = %s" % (
+        message_hour, message.avatar_id, message.event, message.value
     ))
 
-    avatar_entry = state.setdefault(message.avatar_id, dict())
+    hour_entry = state["data"].setdefault(message_hour, dict())
+    avatar_entry = hour_entry.setdefault(message.avatar_id, dict())
     avatar_entry[message.event] = \
         avatar_entry.setdefault(message.event, 0) + message.value
 
@@ -108,7 +126,7 @@ def _shutdown(state):
     return []
 
 if __name__ == "__main__":
-    state = dict()
+    state = _create_state()
     sys.exit(
         process.main(
             _log_path, 

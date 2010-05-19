@@ -72,4 +72,11 @@ def create_exchange(channel):
         durable=True,
         auto_delete=False
     )
+    channel.exchange_declare(
+        exchange=space_accounting_exchange_name, 
+        type="topic",
+        passive=False,
+        durable=True,
+        auto_delete=False
+    )
 

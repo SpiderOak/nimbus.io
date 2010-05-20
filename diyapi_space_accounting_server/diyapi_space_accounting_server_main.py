@@ -131,12 +131,11 @@ def _check_dump_time(state):
         return []
 
     log.info("storing data for %s" % (prev_hour, ))
-    timestamp = time.mktime(prev_hour.timetuple())
     space_accounting_database = SpaceAccountingDatabase()
     for avatar_id, events in state["data"] [prev_hour]:
         space_accounting_database.store_avatar_stats(
             avatar_id,
-            timestamp,
+            prev_hour,
             events.get(SpaceAccountingDetail.bytes_added, 0),
             events.get(SpaceAccountingDetail.bytes_retrieved, 0),
             events.get(SpaceAccountingDetail.bytes_removed, 0)

@@ -44,10 +44,12 @@ class router(list):
 
 
 class Application(object):
-    def __init__(self, amqp_handler, exchange_manager, authenticator):
+    def __init__(self, amqp_handler,
+                 exchange_manager, authenticator, accounter):
         self.amqp_handler = amqp_handler
         self.exchange_manager = exchange_manager
         self.authenticator = authenticator
+        self.accounter = accounter
 
     routes = router()
 
@@ -166,5 +168,9 @@ class Application(object):
                     segments,
                     EXCHANGE_TIMEOUT
                 )
-        # TODO: send space accounting message
+        self.accounter.added(
+            avatar_id,
+            timestamp,
+            req.content_length
+        )
         return Response('OK')

@@ -38,10 +38,13 @@ class FakeAMQPHandler(object):
 
     def send_message(self, message, exchange=None):
         self.messages.append((message, exchange))
-        if (message.request_id, exchange) in self.replies_to_send_by_exchange:
-            return self.replies_to_send_by_exchange[message.request_id, exchange]
-        if message.request_id in self.replies_to_send:
-            return self.replies_to_send[message.request_id]
+        try:
+            if (message.request_id, exchange) in self.replies_to_send_by_exchange:
+                return self.replies_to_send_by_exchange[message.request_id, exchange]
+            if message.request_id in self.replies_to_send:
+                return self.replies_to_send[message.request_id]
+        except AttributeError:
+            return None
         return Queue()
 
 
@@ -88,10 +91,6 @@ class FakeAuthenticator(object):
     def __init__(self, remote_user):
         self.remote_user = remote_user
 
-    def _get_key_id(self, username):
-        # TODO: remove this when application is fixed
-        return 0
-
     def authenticate(self, req):
         if self.remote_user is not None:
             req.remote_user = self.remote_user
@@ -102,3 +101,19 @@ class FakeAuthenticator(object):
 def fake_sample(population, k):
     """deterministic replacement for random.sample"""
     return list(population)[:k]
+
+
+class FakeAccounter(object):
+    def __init__(self):
+        self._added = defaultdict(int)
+        self._retrieved = defaultdict(int)
+        self._removed = defaultdict(int)
+
+    def added(self, avatar_id, timestamp, bytes):
+        self._added[avatar_id, timestamp] += bytes
+
+    def retrieved(self, avatar_id, timestamp, bytes):
+        self._retrieved[avatar_id, timestamp] += bytes
+
+    def removed(self, avatar_id, timestamp, bytes):
+        self._removed[avatar_id, timestamp] += bytes

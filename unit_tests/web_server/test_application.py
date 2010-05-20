@@ -40,10 +40,12 @@ class TestApplication(unittest.TestCase):
         self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self.authenticator = util.FakeAuthenticator(0)
         self.amqp_handler = util.FakeAMQPHandler()
+        self.accounter = util.FakeAccounter()
         self.app = TestApp(Application(
             self.amqp_handler,
             self.exchange_manager,
-            self.authenticator
+            self.authenticator,
+            self.accounter
         ))
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
@@ -52,10 +54,13 @@ class TestApplication(unittest.TestCase):
         random.sample = util.fake_sample
         self._real_timeout = application.EXCHANGE_TIMEOUT
         application.EXCHANGE_TIMEOUT = 0
+        self._real_time = time.time
+        time.time = util.fake_time
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
         random.sample = self._real_sample
+        time.time = self._real_time
         application.EXCHANGE_TIMEOUT = self._real_timeout
 
     def test_unauthorized(self):
@@ -67,6 +72,7 @@ class TestApplication(unittest.TestCase):
         )
 
     def test_archive_small(self):
+        timestamp = time.time()
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
@@ -76,12 +82,26 @@ class TestApplication(unittest.TestCase):
                     0
                 )
             )
+        avatar_id = self.authenticator.remote_user
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            len(content)
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_archive_small_with_handoff(self):
+        timestamp = time.time()
         self.exchange_manager.mark_down(0)
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
@@ -95,13 +115,29 @@ class TestApplication(unittest.TestCase):
                     request_id, exchange
                 )].put(message)
         self.exchange_manager.mark_up(0)
+        avatar_id = self.authenticator.remote_user
         content = random_string(64 * 1024)
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
         self.assertTrue(self.exchange_manager.is_down(0))
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            len(content)
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_archive_large(self):
+        timestamp = time.time()
+        avatar_id = self.authenticator.remote_user
+        content_length = 1024 * 1024 * 3
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
@@ -131,13 +167,28 @@ class TestApplication(unittest.TestCase):
                 '/data/' + key,
                 method='POST',
                 headers={
-                    'content-length': str(1024 * 1024 * 3), # 3mb
+                    'content-length': str(content_length),
                 },
                 body_file=f,
             )
         self.assertEqual(resp.body, 'OK')
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            content_length
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_archive_large_with_handoff(self):
+        timestamp = time.time()
+        avatar_id = self.authenticator.remote_user
+        content_length = 1024 * 1024 * 3
         self.exchange_manager.mark_down(0)
         for i in xrange(self.exchange_manager.num_exchanges):
             request_id = uuid.UUID(int=i).hex
@@ -169,13 +220,24 @@ class TestApplication(unittest.TestCase):
                 '/data/' + key,
                 method='POST',
                 headers={
-                    'content-length': str(1024 * 1024 * 3), # 3mb
+                    'content-length': str(content_length),
                 },
                 body_file=f,
             )
         self.assertEqual(resp.body, 'OK')
         self.assertTrue(self.exchange_manager.is_down(0))
-
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            content_length
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     # TODO: test archive without content-length header
 

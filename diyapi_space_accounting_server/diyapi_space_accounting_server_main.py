@@ -28,6 +28,9 @@ from diyapi_tools.low_traffic_thread import LowTrafficThread, \
 
 from messages.space_accounting_detail import SpaceAccountingDetail
 
+from diyapi_space_accounting_server.space_accounting_database import \
+        SpaceAccountingDatabase
+
 _log_path = u"/var/log/pandora/diyapi_space_accounting_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
 )
@@ -113,10 +116,37 @@ def _check_dump_time(state):
 
     state["low_traffic_thread"].reset()
 
-    if time.time() < ["next_dump_interval"]:
+    if time.time() < state["next_dump_interval"]:
         return []
 
     state["next_dump_interval"] = _next_dump_interval()
+
+    # we want to dump everything for the previous hour
+    current_time = datetime.datetime.now()
+    current_hour = _floor_hour(current_time)
+    prev_hour = current_hour -  datetime.timedelta(hours=1)
+
+    if prev_hour not in state["data"]:
+        log.warn("no data for %s" % (prev_hour, ))
+        return []
+
+    log.info("storing data for %s" % (prev_hour, ))
+    timestamp = time.mktime(prev_hour.timetuple())
+    space_accounting_database = SpaceAccountingDatabase()
+    for avatar_id, events in state["data"] [prev_hour]:
+        space_accounting_database.store_avatar_stats(
+            avatar_id,
+            timestamp,
+            events.get(SpaceAccountingDetail.bytes_added, 0),
+            events.get(SpaceAccountingDetail.bytes_retrieved, 0),
+            events.get(SpaceAccountingDetail.bytes_removed, 0)
+        )
+    space_accounting_database.commit()
+
+    # clear out everything except the current hour
+    for key in state["data"].keys():
+        if key != current_hour:
+            del state["data"][key]
 
     return []
 

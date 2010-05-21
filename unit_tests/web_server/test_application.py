@@ -256,6 +256,7 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(resp.body, repr(key_list))
 
     def test_retrieve_nonexistent(self):
+        avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
         timestamp = time.time()
 
@@ -272,8 +273,21 @@ class TestApplication(unittest.TestCase):
 
         resp = self.app.get('/data/%s' % (key,),
                             status=404)
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_retrieve_small(self):
+        avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
         timestamp = time.time()
         file_size = 1024
@@ -313,8 +327,21 @@ class TestApplication(unittest.TestCase):
         resp = self.app.get('/data/%s' % (key,))
         self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            file_size
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_retrieve_large(self):
+        avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
         timestamp = time.time()
         n_slices = 3
@@ -377,8 +404,21 @@ class TestApplication(unittest.TestCase):
         resp = self.app.get('/data/%s' % (key,))
         self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            file_size
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_destroy(self):
+        avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
         base_size = 12345
         timestamp = time.time()
@@ -394,7 +434,18 @@ class TestApplication(unittest.TestCase):
 
         resp = self.app.delete('/data/%s' % (key,))
         self.assertEqual(resp.body, 'OK')
-        # TODO: check for space accounting message
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            base_size
+        )
 
 
 if __name__ == "__main__":

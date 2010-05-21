@@ -16,11 +16,13 @@ from gevent.event import Event
 
 import psycopg2
 
+from diyapi_tools.amqp_connection import space_accounting_exchange_name
 from diyapi_tools.standard_logging import initialize_logging
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.amqp_space_accounter import AMQPSpaceAccounter
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
 
 
@@ -45,7 +47,13 @@ class WebServer(object):
             host=DB_HOST
         )
         authenticator = SqlAuthenticator(db_connection)
-        self.application = Application(self.amqp_handler, exchange_manager, authenticator)
+        accounter = AMQPSpaceAccounter(self.amqp_handler, space_accounting_exchange_name)
+        self.application = Application(
+            self.amqp_handler,
+            exchange_manager,
+            authenticator,
+            accounter
+        )
         self.wsgi_server = wsgi.WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
 

@@ -106,12 +106,17 @@ class Application(object):
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
         size_deleted = destroyer.destroy(
             avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
-        # TODO: send space accounting message
+        self.accounter.removed(
+            avatar_id,
+            timestamp,
+            size_deleted
+        )
         return Response('OK')
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
         avatar_id = req.remote_user
+        timestamp = time.time()
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
             self.exchange_manager.num_exchanges)
@@ -125,12 +130,21 @@ class Application(object):
         )
         retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)
         try:
-            segments = retrieved.next()
+            first_segments = retrieved.next()
         except RetrieveFailedError:
             return exc.HTTPNotFound()
-        app_iter = (segmenter.decode(segments.values())
-                    for segments in chain([segments], retrieved))
-        return Response(app_iter=app_iter)
+        def app_iter():
+            sent = 0
+            for segments in chain([first_segments], retrieved):
+                data = segmenter.decode(segments.values())
+                sent += len(data)
+                yield data
+            self.accounter.retrieved(
+                avatar_id,
+                timestamp,
+                sent
+            )
+        return Response(app_iter=app_iter())
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):

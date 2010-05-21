@@ -10,7 +10,9 @@ create table diy_user (
 );
 
 
+create sequence diy_user_key_id_seq;
 create table diy_user_key (
+    id int4 primary key not null default nextval('diy_user_key_id_seq'),
     user_id int4 not null references diy_user (user_id),
     key_id int4 not null references diy_key (key_id),
     unique (user_id, key_id)
@@ -32,5 +34,20 @@ commit;
 begin;
 alter table diy_user add column avatar_id int4 not null default 77970;
 alter table diy_user alter avatar_id drop default;
+commit;
+*/
+
+/* -- add id field to diy_user_key to make django happy
+begin;
+create sequence diy_user_key_id_seq;
+alter table diy_user_key add column id int4 primary key not null default nextval('diy_user_key_id_seq');
+
+create sequence diy_user_user_id_seq;
+create sequence diy_key_key_id_seq;
+alter table diy_user alter user_id set default nextval('diy_user_user_id_seq');
+alter table diy_key alter key_id set default nextval('diy_key_key_id_seq');
+grant select, update on diy_user_user_id_seq to pandora_web;
+grant select, update on diy_key_key_id_seq to pandora_web;
+grant select, update on diy_user_key_id_seq to pandora_web;
 commit;
 */

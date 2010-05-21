@@ -1,8 +1,8 @@
 begin;
 
-create sequence diy_key_key_id;
+create sequence diy_key_key_id_seq;
 create table diy_key (
-    key_id int4 primary key not null default nextval('diy_key_key_id'),
+    key_id int4 primary key not null default nextval('diy_key_key_id_seq'),
     key text not null
 );
 

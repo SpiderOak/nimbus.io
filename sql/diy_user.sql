@@ -1,8 +1,8 @@
 begin;
 
-create sequence diy_user_user_id;
+create sequence diy_user_user_id_seq;
 create table diy_user (
-    user_id int4 primary key not null default nextval('diy_user_user_id'),
+    user_id int4 primary key not null default nextval('diy_user_user_id_seq'),
     username varchar(50) not null unique check (
         username ~ '^[a-z0-9][a-z0-9-]*[a-z0-9]$'
         and username !~ '--'),

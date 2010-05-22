@@ -23,6 +23,7 @@ import sys
 import time
 
 from diyapi_tools import message_driven_process as process
+from diyapi_tools import amqp_connection
 from diyapi_tools.low_traffic_thread import LowTrafficThread, \
         low_traffic_routing_tag
 
@@ -165,7 +166,8 @@ if __name__ == "__main__":
             state,
             pre_loop_function=_startup,
             in_loop_function=_check_dump_time,
-            post_loop_function=_shutdown
+            post_loop_function=_shutdown,
+            exchange_name=amqp_connection.space_accounting_exchange_name 
         )
     )
 

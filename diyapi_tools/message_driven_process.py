@@ -28,7 +28,12 @@ def _create_signal_handler(halt_event, channel, amqp_tag):
     return cb_handler
 
 def _create_bindings(
-    channel, queue_name, queue_durable, queue_auto_delete, routing_key_binding
+    channel, 
+    queue_name, 
+    queue_durable, 
+    queue_auto_delete,
+    exchange_name,
+    routing_key_binding
 ):
     channel.queue_declare(
         queue=queue_name,
@@ -40,7 +45,7 @@ def _create_bindings(
 
     channel.queue_bind(
         queue=queue_name,
-        exchange=amqp_connection.local_exchange_name,
+        exchange=exchange_name,
         routing_key=routing_key_binding 
     )
 
@@ -112,7 +117,8 @@ def _run_until_halt(
     queue_auto_delete,
     pre_loop_function,
     in_loop_function,
-    post_loop_function
+    post_loop_function,
+    exchange_name
 ):
     log = logging.getLogger("_run_until_halt")
 
@@ -126,6 +132,7 @@ def _run_until_halt(
         queue_name, 
         queue_durable, 
         queue_auto_delete, 
+        exchange_name,
         routing_key_bindings
     )
 
@@ -191,7 +198,8 @@ def main(
     queue_auto_delete=False,
     pre_loop_function=None,
     in_loop_function=None,
-    post_loop_function=None
+    post_loop_function=None,
+    exchange_name=amqp_connection.local_exchange_name,
 ):
     """main processing entry point"""
     initialize_logging(log_path)
@@ -208,7 +216,8 @@ def main(
             queue_auto_delete,
             pre_loop_function,
             in_loop_function,
-            post_loop_function
+            post_loop_function,
+            exchange_name
         )
     except Exception, instance:
         log.exception(instance)

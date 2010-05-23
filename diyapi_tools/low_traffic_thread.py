@@ -19,12 +19,18 @@ _timeout_interval = 60.0
 
 class LowTrafficThread(Thread):
     """A thread which sends a 'low_traffic' message if it doesn't get reset."""
-    def __init__(self, halt_event, routing_header):
+    def __init__(
+        self, 
+        halt_event, 
+        routing_header, 
+        exchange_name=amqp_connection.local_exchange_name
+    ):
         Thread.__init__(self)
 
         self._halt_event = halt_event
         self._log = logging.getLogger("LowTrafficThread")
         self._routing_key = ".".join([routing_header, low_traffic_routing_tag])
+        self._exchange_name = exchange_name
         self._timeout = None
         self.reset()
 
@@ -50,7 +56,7 @@ class LowTrafficThread(Thread):
             amqp_message = amqp.Message("low traffic")
             channel.basic_publish( 
                 amqp_message, 
-                exchange=amqp_connection.local_exchange_name, 
+                exchange=self._exchange_name, 
                 routing_key=self._routing_key,
                 mandatory = True
             )

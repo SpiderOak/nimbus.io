@@ -62,6 +62,7 @@ def _floor_hour(raw_datetime):
 
 def _next_dump_interval():
     """five minutes past the hour"""
+    log = logging.getLogger("_next_dump_interval")
     current_time = datetime.datetime.now()
     next_time = datetime.datetime(
         year = current_time.year,
@@ -74,6 +75,7 @@ def _next_dump_interval():
     )
     if current_time.minute >= 5:
         next_time += datetime.timedelta(hours=1)
+    log.info("next dump time = %s", (next_time, ))
     return time.mktime(next_time.timetuple())
 
 def _handle_low_traffic(_state, _message_body):
@@ -104,7 +106,9 @@ _dispatch_table = {
 
 def _startup(halt_event, state):
     state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, _routing_header
+        halt_event, 
+        _routing_header,
+        exchange_name=amqp_connection.space_accounting_exchange_name
     )
     state["low_traffic_thread"].start()
     state["next_dump_interval"] = _next_dump_interval()

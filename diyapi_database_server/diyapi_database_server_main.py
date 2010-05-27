@@ -495,14 +495,16 @@ def _handle_listmatch(state, message_body):
         cursor = database.cursor()
         result = cursor.set_range(message.prefix)
         while result is not None:
-            (key, _, ) = result
+            (key, packed_entry, ) = result
             if not key.startswith(message.prefix):
                 break
-            key_message_size += len(key)
-            if key_message_size >  _max_listmatch_size:
-                is_complete = False
-                break
-            keys.append(key)
+            (content, _) = database_content.unmarshall(packed_entry, 0)
+            if not content.is_tombstone:
+                key_message_size += len(key)
+                if key_message_size >  _max_listmatch_size:
+                    is_complete = False
+                    break
+                keys.append(key)
             result = cursor.next()
     except Exception, instance:
         log.exception("%s, %s" % (message.avatar_id, message.prefix, ))

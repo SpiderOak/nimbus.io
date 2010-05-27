@@ -130,6 +130,7 @@ class AMQPHandler(object):
             self.queue_name,
             True,   # queue_durable
             False,  # queue_auto_delete
+            amqp_connection.local_exchange_name,
             self.routing_key_binding
         )
 

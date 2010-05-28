@@ -63,9 +63,14 @@ class DatabaseKeyLookupReply(object):
             self.request_id, 
             self.result 
         )
-        packed_error_message = marshall_string(self.error_message)
 
-        db_content = database_content.marshall(self.database_content)
+        if self.result == 0:
+            db_content = database_content.marshall(self.database_content)
+            packed_error_message = ""
+        else:
+            db_content = ""
+            packed_error_message = marshall_string(self.error_message)
+
         return "".join(
             [header, db_content, packed_error_message, ]
         )

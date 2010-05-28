@@ -17,7 +17,8 @@ import Statgrabber
 
 from diyapi_tools import amqp_connection
 from diyapi_tools.standard_logging import format_timestamp
-from diyapi_tools.low_traffic_thread import LowTrafficThread, low_traffic_routing_tag
+from diyapi_tools.low_traffic_thread import LowTrafficThread, \
+    low_traffic_routing_tag
 from diyapi_tools import message_driven_process as process
 from diyapi_tools.persistent_state import load_state, save_state
 from diyapi_tools import repository
@@ -318,7 +319,7 @@ def _handle_retrieve_key_final(state, message_body):
 
     return [(reply_exchange, reply_routing_key, reply, )]      
 
-def _handle_process_status(state, message_body):
+def _handle_process_status(_state, message_body):
     log = logging.getLogger("_handle_process_status")
     message = ProcessStatus.unmarshall(message_body)
     log.debug("%s %s %s %s" % (
@@ -360,6 +361,19 @@ def _handle_key_lookup_reply(state, message_body):
             message.request_id,
             RetrieveKeyStartReply.error_database,
             error_message = message.error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]      
+
+    # if this key is a tombstone, treat as an error
+    if message.database_content.is_tombstone:
+        log.error("%s %s this record is a tombstone" % (
+            retrieve_state.avatar_id,
+            retrieve_state.key,
+        ))
+        reply = RetrieveKeyStartReply(
+            message.request_id,
+            RetrieveKeyStartReply.error_key_not_found,
+            error_message = "is tombstone"
         )
         return [(reply_exchange, reply_routing_key, reply, )]      
 
@@ -417,7 +431,7 @@ def _handle_key_lookup_reply(state, message_body):
 
     return [(reply_exchange, reply_routing_key, reply, )]      
 
-def _handle_low_traffic(state, message_body):
+def _handle_low_traffic(_state, _message_body):
     log = logging.getLogger("_handle_low_traffic")
     log.debug("ignoring low traffic message")
     return None

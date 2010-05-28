@@ -137,7 +137,7 @@ def _check_dump_time(state):
 
     log.info("storing data for %s" % (prev_hour, ))
     space_accounting_database = SpaceAccountingDatabase()
-    for avatar_id, events in state["data"] [prev_hour]:
+    for avatar_id, events in state["data"][prev_hour]:
         space_accounting_database.store_avatar_stats(
             avatar_id,
             prev_hour,

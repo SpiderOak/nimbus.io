@@ -199,6 +199,10 @@ def _handle_archive_timeout(request_id, state):
         request_id,
     ))
 
+    # we can't send a reply to the caller here because they're the ones who
+    # timed out
+    return []
+
 def _compute_filename(message_request_id):
     """
     compute a unique filename from message attributes

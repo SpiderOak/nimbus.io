@@ -87,7 +87,7 @@ class Application(object):
             raise exc.HTTPMethodNotAllowed()
         raise exc.HTTPNotFound()
 
-    @routes.add(r'/data/(.+)$', action='listmatch')
+    @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):
         delimiter = req.GET.get('delimiter', '/')
         # TODO: do something with delimiter

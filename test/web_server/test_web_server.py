@@ -43,11 +43,13 @@ class TestWebServer(unittest.TestCase):
         os.makedirs(_repository_path)
         self._key_generator = generate_key()
 
-        self.server = WebServer()
-        self.server.start()
+        if 'prod' not in sys.argv[1:]:
+            self.server = WebServer()
+            self.server.start()
 
     def tearDown(self):
-        self.server.stop()
+        if 'prod' not in sys.argv[1:]:
+            self.server.stop()
 
     def _auth_headers(self, method, key=None):
         if key is None:

@@ -168,20 +168,22 @@ class Application(object):
             file_adler32 = zlib.adler32(slice, file_adler32)
             file_md5.update(slice)
             segments = segmenter.encode(slice)
-            # TODO: handle archive failure
-            if remaining:
-                archiver.archive_slice(
-                    segments,
-                    EXCHANGE_TIMEOUT
-                )
-            else:
-                previous_size = archiver.archive_final(
-                    req.content_length,
-                    file_adler32,
-                    file_md5.digest(),
-                    segments,
-                    EXCHANGE_TIMEOUT
-                )
+            try:
+                if remaining:
+                    archiver.archive_slice(
+                        segments,
+                        EXCHANGE_TIMEOUT
+                    )
+                else:
+                    previous_size = archiver.archive_final(
+                        req.content_length,
+                        file_adler32,
+                        file_md5.digest(),
+                        segments,
+                        EXCHANGE_TIMEOUT
+                    )
+            except (HandoffFailedError, ArchiveFailedError):
+                raise exc.HTTPGatewayTimeout()
         self.accounter.added(
             avatar_id,
             timestamp,

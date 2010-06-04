@@ -93,7 +93,10 @@ class AMQPArchiver(object):
 
     def start_handoff(self, timeout=None):
         self.log.info('starting handoff')
-        gevent.killall(self.pending.values(), StartHandoff, True, timeout)
+        try:
+            gevent.killall(self.pending.values(), StartHandoff, True, timeout)
+        except gevent.Timeout:
+            pass
 
     def archive_slice(self, segments, timeout=None):
         if self.pending:
@@ -126,9 +129,6 @@ class AMQPArchiver(object):
                     self.sequence_number,
                     segment
                 )
-            # TODO: handle starting up in handoff mode better
-            # _wait_for_reply will remove from pending when we get the first
-            # message back
             for exchange in self.exchange_manager[i]:
                 self.log.debug(
                     '%s to %r '
@@ -191,9 +191,6 @@ class AMQPArchiver(object):
                     self._segment_md5s[segment_number].digest(),
                     segment
                 )
-            # TODO: handle starting up in handoff mode better
-            # _wait_for_reply will remove from pending when we get the first
-            # message back
             for exchange in self.exchange_manager[i]:
                 self.log.debug(
                     '%s to %r '

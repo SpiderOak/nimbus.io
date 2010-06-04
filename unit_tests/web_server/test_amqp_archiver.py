@@ -46,7 +46,8 @@ class TestAMQPArchiver(unittest.TestCase):
         uuid.uuid1 = self._real_uuid1
         random.sample = self._real_sample
 
-    def _make_small_data(self, avatar_id, timestamp, key):
+    def _make_small_data(self, avatar_id, timestamp, key,
+                         start_in_handoff=False):
         file_size = 1024 * NUM_SEGMENTS
         file_adler32 = -42
         file_md5 = 'ffffff'
@@ -80,15 +81,19 @@ class TestAMQPArchiver(unittest.TestCase):
                 0
             )
             if self.exchange_manager.is_down(segment_number - 1):
-                self.exchange_manager.mark_up(segment_number - 1)
-                for exchange in self.exchange_manager[segment_number - 1]:
-                    messages.append((message, exchange))
-                self.exchange_manager.mark_down(segment_number - 1)
+                if not start_in_handoff:
+                    self.exchange_manager.mark_up(segment_number - 1)
+                    for exchange in self.exchange_manager[segment_number - 1]:
+                        messages.append((message, exchange))
+                    self.exchange_manager.mark_down(segment_number - 1)
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
                     )].put(reply)
-                    messages_to_append.append((message, exchange))
+                    if start_in_handoff:
+                        messages.append((message, exchange))
+                    else:
+                        messages_to_append.append((message, exchange))
             else:
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
@@ -181,7 +186,51 @@ class TestAMQPArchiver(unittest.TestCase):
         self.assertEqual(
             actual, expected, 'archiver did not send expected messages')
 
-    def _make_large_data(self, avatar_id, timestamp, key, n_slices):
+    def test_archive_small_starting_in_handoff(self):
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        self.exchange_manager.mark_down(0)
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(avatar_id, timestamp, key, True)
+
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        previous_size = archiver.archive_final(
+            file_size,
+            file_adler32,
+            file_md5,
+            segments,
+            0
+        )
+
+        self.assertEqual(previous_size, 0)
+        self.assertTrue(self.exchange_manager.is_down(0))
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected, 'archiver did not send expected messages')
+
+    def _make_large_data(self, avatar_id, timestamp, key, n_slices,
+                         start_in_handoff=False):
         file_size = NUM_SEGMENTS * n_slices
         file_adler32 = -42
         file_md5 = 'ffffff'
@@ -218,15 +267,19 @@ class TestAMQPArchiver(unittest.TestCase):
                 0
             )
             if self.exchange_manager.is_down(segment_number - 1):
-                self.exchange_manager.mark_up(segment_number - 1)
-                for exchange in self.exchange_manager[segment_number - 1]:
-                    messages.append((message, exchange))
-                self.exchange_manager.mark_down(segment_number - 1)
+                if not start_in_handoff:
+                    self.exchange_manager.mark_up(segment_number - 1)
+                    for exchange in self.exchange_manager[segment_number - 1]:
+                        messages.append((message, exchange))
+                    self.exchange_manager.mark_down(segment_number - 1)
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
                     )].put(reply)
-                    messages_to_append.append((message, exchange))
+                    if start_in_handoff:
+                        messages.append((message, exchange))
+                    else:
+                        messages_to_append.append((message, exchange))
             else:
                 for exchange in self.exchange_manager[segment_number - 1]:
                     self.amqp_handler.replies_to_send_by_exchange[(
@@ -354,6 +407,51 @@ class TestAMQPArchiver(unittest.TestCase):
             file_md5,
         ) = self._make_large_data(avatar_id, timestamp, key, 4)
         self.exchange_manager.mark_up(0)
+
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        for segments in slices[:-1]:
+            archiver.archive_slice(segments, 0)
+
+        previous_size = archiver.archive_final(
+            file_size,
+            file_adler32,
+            file_md5,
+            slices[-1],
+            0
+        )
+
+        self.assertEqual(previous_size, 0)
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected, 'archiver did not send expected messages')
+
+    def test_archive_large_starting_in_handoff(self):
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        self.exchange_manager.mark_down(0)
+        (
+            slices,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_large_data(avatar_id, timestamp, key, 4, True)
 
         archiver = AMQPArchiver(
             self.amqp_handler,

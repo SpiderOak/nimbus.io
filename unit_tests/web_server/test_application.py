@@ -134,6 +134,39 @@ class TestApplication(unittest.TestCase):
             0
         )
 
+    def test_archive_small_with_handoff_failure(self):
+        timestamp = time.time()
+        self.exchange_manager.mark_down(0)
+        for i in xrange(self.exchange_manager.num_exchanges):
+            request_id = uuid.UUID(int=i).hex
+            message = ArchiveKeyFinalReply(
+                request_id,
+                ArchiveKeyFinalReply.successful,
+                0
+            )
+            for j, exchange in enumerate(self.exchange_manager[i]):
+                if j == 0:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].put(message)
+        self.exchange_manager.mark_up(0)
+        avatar_id = self.authenticator.remote_user
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        resp = self.app.post('/data/' + key, content, status=504)
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
+
     def test_archive_large(self):
         timestamp = time.time()
         avatar_id = self.authenticator.remote_user
@@ -229,6 +262,61 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             content_length
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
+
+    def test_archive_large_with_archive_failure(self):
+        timestamp = time.time()
+        avatar_id = self.authenticator.remote_user
+        content_length = 1024 * 1024 * 3
+        self.exchange_manager.mark_down(0)
+        for i in xrange(self.exchange_manager.num_exchanges):
+            request_id = uuid.UUID(int=i).hex
+            for j, message in enumerate([
+                ArchiveKeyStartReply(
+                    request_id,
+                    ArchiveKeyStartReply.successful,
+                    0
+                ),
+                ArchiveKeyNextReply(
+                    request_id,
+                    ArchiveKeyNextReply.successful,
+                    0
+                ),
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                ),
+            ]):
+                for k, exchange in enumerate(self.exchange_manager[i]):
+                    if not (j >=1 and k == 0):
+                        self.amqp_handler.replies_to_send_by_exchange[(
+                            request_id, exchange
+                        )].put(message)
+        self.exchange_manager.mark_up(0)
+        key = self._key_generator.next()
+        with open('/dev/urandom', 'rb') as f:
+            resp = self.app.request(
+                '/data/' + key,
+                method='POST',
+                headers={
+                    'content-length': str(content_length),
+                },
+                body_file=f,
+                status=504
+            )
+        self.assertTrue(self.exchange_manager.is_down(0))
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
         )
         self.assertEqual(
             self.accounter._retrieved[avatar_id, timestamp],

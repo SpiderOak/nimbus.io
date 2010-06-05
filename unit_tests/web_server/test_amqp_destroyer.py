@@ -39,14 +39,13 @@ class TestAMQPDestroyer(unittest.TestCase):
         key = self._key_generator.next()
         base_size = 12345
         timestamp = time.time()
-        num_segments = self.exchange_manager.num_exchanges
-        for segment_number in xrange(1, num_segments - 1):
-            request_id = uuid.UUID(int=segment_number - 1).hex
+        for i in xrange(len(self.exchange_manager)):
+            request_id = uuid.UUID(int=i).hex
             self.handler.replies_to_send[request_id].put(
                 DestroyKeyReply(
                     request_id,
                     DestroyKeyReply.successful,
-                    base_size + segment_number - 1
+                    base_size + i
                 )
             )
 

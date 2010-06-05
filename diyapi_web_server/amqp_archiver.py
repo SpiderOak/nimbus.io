@@ -43,13 +43,15 @@ class AMQPArchiver(object):
         self._segment_md5s = defaultdict(hashlib.md5)
         self.sequence_number = 0
         self.result = None
+        self._handoff_exchanges = {}
 
     def _do_handoff(self, segment_number, message, exchange):
-        # TODO: fix this code smell
-        exchange_num = self.exchange_manager.exchanges.index(exchange)
+        exchange_num = self.exchange_manager.index(exchange)
         self.exchange_manager.mark_down(exchange_num)
         replies = []
-        for exchange in self.exchange_manager[exchange_num]:
+        self._handoff_exchanges[segment_number] = \
+            self.exchange_manager.handoff_exchanges(exchange_num)
+        for exchange in self._handoff_exchanges[segment_number]:
             self.log.debug(
                 '%s to %r '
                 'segment_number = %d (handoff)' % (
@@ -98,6 +100,24 @@ class AMQPArchiver(object):
         except gevent.Timeout:
             pass
 
+    def _send_message(self, message, segment_number):
+        if segment_number in self._handoff_exchanges:
+            exchanges = self._handoff_exchanges[segment_number]
+        else:
+            exchanges = [self.exchange_manager[segment_number - 1]]
+        for exchange in exchanges:
+            self.log.debug(
+                '%s to %r '
+                'segment_number = %d' % (
+                    message.__class__.__name__,
+                    exchange,
+                    segment_number,
+                ))
+            reply_queue = self.amqp_handler.send_message(message, exchange)
+            self.pending[segment_number, exchange] = gevent.spawn(
+                self._wait_for_reply, segment_number,
+                message, exchange, reply_queue)
+
     def archive_slice(self, segments, timeout=None):
         if self.pending:
             raise AlreadyInProgress()
@@ -129,18 +149,7 @@ class AMQPArchiver(object):
                     self.sequence_number,
                     segment
                 )
-            for exchange in self.exchange_manager[i]:
-                self.log.debug(
-                    '%s to %r '
-                    'segment_number = %d' % (
-                        message.__class__.__name__,
-                        exchange,
-                        segment_number,
-                    ))
-                reply_queue = self.amqp_handler.send_message(message, exchange)
-                self.pending[segment_number, exchange] = gevent.spawn(
-                    self._wait_for_reply, segment_number,
-                    message, exchange, reply_queue)
+            self._send_message(message, segment_number)
         gevent.joinall(self.pending.values(), timeout, True)
         if self.sequence_number == 0:
             if self.pending:
@@ -191,18 +200,7 @@ class AMQPArchiver(object):
                     self._segment_md5s[segment_number].digest(),
                     segment
                 )
-            for exchange in self.exchange_manager[i]:
-                self.log.debug(
-                    '%s to %r '
-                    'segment_number = %d' % (
-                        message.__class__.__name__,
-                        exchange,
-                        segment_number,
-                    ))
-                reply_queue = self.amqp_handler.send_message(message, exchange)
-                self.pending[segment_number, exchange] = gevent.spawn(
-                    self._wait_for_reply, segment_number,
-                    message, exchange, reply_queue)
+            self._send_message(message, segment_number)
         gevent.joinall(self.pending.values(), timeout, True)
         if self.sequence_number == 0:
             if self.pending:

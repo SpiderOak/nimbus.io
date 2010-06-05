@@ -119,13 +119,13 @@ class Application(object):
         timestamp = time.time()
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            self.exchange_manager.num_exchanges)
+            len(self.exchange_manager))
         retriever = AMQPRetriever(
             self.amqp_handler,
             self.exchange_manager,
             avatar_id,
             key,
-            self.exchange_manager.num_exchanges,
+            len(self.exchange_manager),
             8 # TODO: min_segments
         )
         retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)
@@ -159,7 +159,7 @@ class Application(object):
         )
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            self.exchange_manager.num_exchanges)
+            len(self.exchange_manager))
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         remaining = req.content_length

@@ -10,27 +10,17 @@ import random
 HANDOFF_NUM = 2
 
 
-class AMQPExchangeManager(object):
+class AMQPExchangeManager(list):
     def __init__(self, exchanges):
-        self.exchanges = list(exchanges)
+        super(AMQPExchangeManager, self).__init__(exchanges)
         self._down = set()
 
-    @property
-    def num_exchanges(self):
-        return len(self.exchanges)
-
-    def __len__(self):
-        return len(self.exchanges) - len(self._down)
-
-    def __iter__(self):
-        for i, exchange in enumerate(self.exchanges):
-            if i not in self._down:
-                yield exchange
-
-    def __getitem__(self, exchange_num):
-        if exchange_num not in self._down:
-            return [self.exchanges[exchange_num]]
-        return random.sample(self, HANDOFF_NUM)
+    def up(self):
+        return [
+            exchange
+            for i, exchange in enumerate(self)
+            if not self.is_down(i)
+        ]
 
     def is_down(self, exchange_num):
         return exchange_num in self._down
@@ -44,3 +34,6 @@ class AMQPExchangeManager(object):
             self._down.remove(exchange_num)
         except KeyError:
             pass
+
+    def handoff_exchanges(self, exchange_num):
+        return random.sample(self.up(), HANDOFF_NUM)

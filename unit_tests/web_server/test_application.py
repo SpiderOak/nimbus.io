@@ -73,7 +73,7 @@ class TestApplication(unittest.TestCase):
 
     def test_archive_small(self):
         timestamp = time.time()
-        for i in xrange(self.exchange_manager.num_exchanges):
+        for i in xrange(len(self.exchange_manager)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyFinalReply(
@@ -103,16 +103,21 @@ class TestApplication(unittest.TestCase):
     def test_archive_small_with_handoff(self):
         timestamp = time.time()
         self.exchange_manager.mark_down(0)
-        for i in xrange(self.exchange_manager.num_exchanges):
+        for i in xrange(len(self.exchange_manager)):
             request_id = uuid.UUID(int=i).hex
             message = ArchiveKeyFinalReply(
                 request_id,
                 ArchiveKeyFinalReply.successful,
                 0
             )
-            for exchange in self.exchange_manager[i]:
+            if self.exchange_manager.is_down(i):
+                for exchange in self.exchange_manager.handoff_exchanges(i):
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].put(message)
+            else:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, exchange
+                    request_id, self.exchange_manager[i]
                 )].put(message)
         self.exchange_manager.mark_up(0)
         avatar_id = self.authenticator.remote_user
@@ -137,18 +142,24 @@ class TestApplication(unittest.TestCase):
     def test_archive_small_with_handoff_failure(self):
         timestamp = time.time()
         self.exchange_manager.mark_down(0)
-        for i in xrange(self.exchange_manager.num_exchanges):
+        for i in xrange(len(self.exchange_manager)):
             request_id = uuid.UUID(int=i).hex
             message = ArchiveKeyFinalReply(
                 request_id,
                 ArchiveKeyFinalReply.successful,
                 0
             )
-            for j, exchange in enumerate(self.exchange_manager[i]):
-                if j == 0:
-                    self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
-                    )].put(message)
+            if self.exchange_manager.is_down(i):
+                for j, exchange in enumerate(
+                    self.exchange_manager.handoff_exchanges(i)):
+                        if j != 0:
+                            self.amqp_handler.replies_to_send_by_exchange[(
+                                request_id, exchange
+                            )].put(message)
+            else:
+                self.amqp_handler.replies_to_send_by_exchange[(
+                    request_id, self.exchange_manager[i]
+                )].put(message)
         self.exchange_manager.mark_up(0)
         avatar_id = self.authenticator.remote_user
         content = random_string(64 * 1024)
@@ -171,7 +182,7 @@ class TestApplication(unittest.TestCase):
         timestamp = time.time()
         avatar_id = self.authenticator.remote_user
         content_length = 1024 * 1024 * 3
-        for i in xrange(self.exchange_manager.num_exchanges):
+        for i in xrange(len(self.exchange_manager)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyStartReply(
@@ -223,7 +234,7 @@ class TestApplication(unittest.TestCase):
         avatar_id = self.authenticator.remote_user
         content_length = 1024 * 1024 * 3
         self.exchange_manager.mark_down(0)
-        for i in xrange(self.exchange_manager.num_exchanges):
+        for i in xrange(len(self.exchange_manager)):
             request_id = uuid.UUID(int=i).hex
             for message in [
                 ArchiveKeyStartReply(
@@ -242,9 +253,14 @@ class TestApplication(unittest.TestCase):
                     0
                 ),
             ]:
-                for exchange in self.exchange_manager[i]:
+                if self.exchange_manager.is_down(i):
+                    for exchange in self.exchange_manager.handoff_exchanges(i):
+                        self.amqp_handler.replies_to_send_by_exchange[(
+                            request_id, exchange
+                        )].put(message)
+                else:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
+                        request_id, self.exchange_manager[i]
                     )].put(message)
         self.exchange_manager.mark_up(0)
         key = self._key_generator.next()
@@ -277,7 +293,7 @@ class TestApplication(unittest.TestCase):
         avatar_id = self.authenticator.remote_user
         content_length = 1024 * 1024 * 3
         self.exchange_manager.mark_down(0)
-        for i in xrange(self.exchange_manager.num_exchanges):
+        for i in xrange(len(self.exchange_manager)):
             request_id = uuid.UUID(int=i).hex
             for j, message in enumerate([
                 ArchiveKeyStartReply(
@@ -296,11 +312,17 @@ class TestApplication(unittest.TestCase):
                     0
                 ),
             ]):
-                for k, exchange in enumerate(self.exchange_manager[i]):
-                    if not (j >=1 and k == 0):
-                        self.amqp_handler.replies_to_send_by_exchange[(
-                            request_id, exchange
-                        )].put(message)
+                if self.exchange_manager.is_down(i):
+                    for k, exchange in enumerate(
+                        self.exchange_manager.handoff_exchanges(i)):
+                            if not (j >=1 and k == 0):
+                                self.amqp_handler.replies_to_send_by_exchange[(
+                                    request_id, exchange
+                                )].put(message)
+                else:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, self.exchange_manager[i]
+                    )].put(message)
         self.exchange_manager.mark_up(0)
         key = self._key_generator.next()
         with open('/dev/urandom', 'rb') as f:
@@ -348,16 +370,15 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         timestamp = time.time()
 
-        for segment_number in xrange(
-            1, self.exchange_manager.num_exchanges + 1):
-                request_id = uuid.UUID(int=segment_number - 1).hex
-                self.amqp_handler.replies_to_send[request_id].put(
-                    RetrieveKeyStartReply(
-                        request_id,
-                        RetrieveKeyStartReply.error_key_not_found,
-                        error_message='key not found',
-                    )
+        for i in xrange(len(self.exchange_manager)):
+            request_id = uuid.UUID(int=i).hex
+            self.amqp_handler.replies_to_send[request_id].put(
+                RetrieveKeyStartReply(
+                    request_id,
+                    RetrieveKeyStartReply.error_key_not_found,
+                    error_message='key not found',
                 )
+            )
 
         resp = self.app.get('/data/%s' % (key,),
                             status=404)
@@ -385,7 +406,7 @@ class TestApplication(unittest.TestCase):
 
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            self.exchange_manager.num_exchanges)
+            len(self.exchange_manager))
         segments = segmenter.encode(data_content)
 
         for segment_number, segment in enumerate(segments):
@@ -428,6 +449,63 @@ class TestApplication(unittest.TestCase):
             0
         )
 
+    def test_retrieve_small_when_exchange_is_down(self):
+        avatar_id = self.authenticator.remote_user
+        key = self._key_generator.next()
+        timestamp = time.time()
+        file_size = 1024
+        data_content = random_string(file_size)
+        file_adler32 = zlib.adler32(data_content)
+        file_md5 = hashlib.md5(data_content).digest()
+
+        segmenter = ZfecSegmenter(
+            8, # TODO: min_segments
+            len(self.exchange_manager))
+        segments = segmenter.encode(data_content)
+
+        self.exchange_manager.mark_down(0)
+        for i, segment in enumerate(segments):
+            segment_adler32 = zlib.adler32(segment)
+            segment_md5 = hashlib.md5(segment).digest()
+            request_id = uuid.UUID(int=i).hex
+            if not self.exchange_manager.is_down(i):
+                self.amqp_handler.replies_to_send_by_exchange[(
+                    request_id, self.exchange_manager[i]
+                )].put(
+                    RetrieveKeyStartReply(
+                        request_id,
+                        RetrieveKeyStartReply.successful,
+                        timestamp,
+                        False,
+                        0,      # version number
+                        i + 1,  # segment number
+                        1,      # num slices
+                        len(data_content),
+                        file_size,
+                        file_adler32,
+                        file_md5,
+                        segment_adler32,
+                        segment_md5,
+                        segment
+                    )
+                )
+
+        resp = self.app.get('/data/%s' % (key,))
+        self.assertEqual(len(resp.body), file_size)
+        self.assertEqual(resp.body, data_content)
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            file_size
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
+
     def test_retrieve_large(self):
         avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
@@ -444,7 +522,7 @@ class TestApplication(unittest.TestCase):
         for sequence_number, slice in enumerate(data_list):
             segmenter = ZfecSegmenter(
                 8, # TODO: min_segments
-                self.exchange_manager.num_exchanges)
+                len(self.exchange_manager))
             segments = segmenter.encode(slice)
             for segment_number, segment in enumerate(segments):
                 segment_number += 1

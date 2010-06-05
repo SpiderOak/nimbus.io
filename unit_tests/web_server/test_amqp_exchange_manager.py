@@ -29,37 +29,32 @@ class TestAMQPExchangeManager(unittest.TestCase):
 
     def test_initially_full(self):
         self.assertEqual(list(self.manager), EXCHANGES)
-        self.assertEqual(self.manager.num_exchanges, len(EXCHANGES))
+        for i in xrange(len(self.manager)):
+            self.assertFalse(self.manager.is_down(i), i)
 
     def test_mark_down(self):
         self.manager.mark_down(3)
-        self.assertEqual(len(self.manager), len(EXCHANGES) - 1)
-        expected = EXCHANGES[:3] + EXCHANGES[4:]
-        self.assertEqual(list(self.manager), expected)
+        self.assertTrue(self.manager.is_down(3))
+        for i in xrange(len(self.manager)):
+            if i == 3:
+                continue
+            self.assertFalse(self.manager.is_down(i), i)
 
     def test_mark_up(self):
         self.manager.mark_down(3)
         self.manager.mark_up(3)
-        self.assertEqual(len(self.manager), len(EXCHANGES))
-        self.assertEqual(list(self.manager), EXCHANGES)
+        for i in xrange(len(self.manager)):
+            self.assertFalse(self.manager.is_down(i), i)
 
-    def test_getitem_when_up(self):
-        exchange_num = 3
-        self.assertEqual(self.manager[exchange_num],
-                         [EXCHANGES[exchange_num]])
+    def test_up(self):
+        self.manager.mark_down(3)
+        self.assertEqual(self.manager.up(),
+                         self.manager[:3] + self.manager[4:])
 
-    def test_getitem_when_down(self):
-        exchange_num = 3
-        self.manager.mark_down(exchange_num)
-        expected = util.fake_sample(self.manager, HANDOFF_NUM)
-        self.assertEqual(self.manager[exchange_num], expected)
-
-    def test_is_down(self):
-        for i in xrange(self.manager.num_exchanges):
-            self.assertFalse(self.manager.is_down(i))
-        self.manager.mark_down(2)
-        self.assertTrue(self.manager.is_down(2))
-        self.assertFalse(self.manager.is_down(1))
+    def test_handoff_exchanges(self):
+        self.manager.mark_down(3)
+        self.assertEqual(self.manager.handoff_exchanges(3),
+                         random.sample(self.manager.up(), HANDOFF_NUM))
 
 
 if __name__ == "__main__":

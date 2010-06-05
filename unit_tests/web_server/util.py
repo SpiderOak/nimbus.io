@@ -103,6 +103,11 @@ def fake_sample(population, k):
     return list(population)[:k]
 
 
+def fake_choice(population):
+    """deterministic replacement for random.choice"""
+    return list(population)[0]
+
+
 class FakeAccounter(object):
     def __init__(self):
         self._added = defaultdict(int)

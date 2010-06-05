@@ -18,7 +18,7 @@ class AMQPListmatcher(object):
         self.exchange_manager = exchange_manager
 
     def _random_exchange(self):
-        return random.choice(self.exchange_manager)[0]
+        return random.choice(self.exchange_manager.up())
 
     def listmatch(self, avatar_id, prefix, timeout=None):
         request_id = uuid.uuid1().hex

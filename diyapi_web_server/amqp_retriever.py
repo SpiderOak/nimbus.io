@@ -106,18 +106,18 @@ class AMQPRetriever(object):
             self.result = {}
             for segment_number in xrange(1, self.num_segments + 1):
                 message = self._make_request(segment_number)
-                for exchange in self.exchange_manager[segment_number - 1]:
-                    self.log.debug(
-                        '%s to %r: '
-                        'segment_number = %d' % (
-                            message.__class__.__name__,
-                            exchange,
-                            segment_number,
-                        ))
-                    reply_queue = self.amqp_handler.send_message(
-                        message, exchange)
-                    self.pending[segment_number] = gevent.spawn(
-                        self._wait_for_reply, segment_number, reply_queue)
+                exchange = self.exchange_manager[segment_number - 1]
+                self.log.debug(
+                    '%s to %r: '
+                    'segment_number = %d' % (
+                        message.__class__.__name__,
+                        exchange,
+                        segment_number,
+                    ))
+                reply_queue = self.amqp_handler.send_message(
+                    message, exchange)
+                self.pending[segment_number] = gevent.spawn(
+                    self._wait_for_reply, segment_number, reply_queue)
             gevent.joinall(self.pending.values(), timeout, True)
             if self.pending:
                 self.cancel()

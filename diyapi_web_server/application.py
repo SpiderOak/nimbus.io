@@ -104,8 +104,11 @@ class Application(object):
         avatar_id = req.remote_user
         timestamp = time.time()
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
-        size_deleted = destroyer.destroy(
-            avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
+        try:
+            size_deleted = destroyer.destroy(
+                avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
+        except HandoffFailedError:
+            raise exc.HTTPGatewayTimeout()
         self.accounter.removed(
             avatar_id,
             timestamp,

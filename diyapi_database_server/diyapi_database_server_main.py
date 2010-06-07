@@ -15,6 +15,7 @@ adler32 of the segment,
 and the md5 of the segment.
 """
 import bsddb3.db
+import hashlib
 import logging
 import os
 import sys
@@ -30,6 +31,9 @@ from diyapi_database_server import database_content
 
 from messages.process_status import ProcessStatus
 
+from messages.database_consistency_check import DatabaseConsistencyCheck
+from messages.database_consistency_check_reply import \
+    DatabaseConsistencyCheckReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
@@ -523,7 +527,55 @@ def _handle_listmatch(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]\
 
-def _handle_process_status(state, message_body):
+def _handle_consistency_check(state, message_body):
+    log = logging.getLogger("_handle_consistency_check")
+    message = DatabaseConsistencyCheck.unmarshall(message_body)
+    log.info("avatar_id = %s" % (message.avatar_id, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = ".".join([
+        message.reply_routing_header, DatabaseConsistencyCheckReply.routing_tag
+    ])
+
+    result_list = list()
+    try:
+        database = _open_database(state, message.avatar_id)
+        cursor = database.cursor()
+        result = cursor.first()
+        while result is not None:
+            key, packed_content = result
+            (content, _) = database_content.unmarshall(packed_content, 0)
+            if content.timestamp < message.timestamp:
+                if content.is_tombstone:
+                    content_md5 = "tombstone"
+                else:
+                    content_md5 = content.file_md5
+                result_list.append((key, content.timestamp, content_md5, ))
+            result = cursor.next_dup()
+    except Exception, instance:
+        log.exception("%s" % (message.avatar_id, ))
+        reply = DatabaseConsistencyCheckReply(
+            message.request_id,
+            DatabaseConsistencyCheckReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+        
+    result_list.sort()
+    md5 = hashlib.md5()
+    for key, timestamp, content_md5 in result_list:
+        md5.update(key)
+        md5.update(str(timestamp))
+        md5.update(content_md5)
+
+    reply = DatabaseConsistencyCheckReply(
+        message.request_id,
+        DatabaseConsistencyCheckReply.successful,
+        md5.hexdigest()
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
+def _handle_process_status(_state, message_body):
     log = logging.getLogger("_handle_process_status")
     message = ProcessStatus.unmarshall(message_body)
     log.debug("%s %s %s %s" % (
@@ -535,16 +587,17 @@ def _handle_process_status(state, message_body):
     return []
 
 _dispatch_table = {
-    DatabaseKeyInsert.routing_key   : _handle_key_insert,
-    DatabaseKeyLookup.routing_key   : _handle_key_lookup,
-    DatabaseKeyList.routing_key     : _handle_key_list,
-    DatabaseKeyDestroy.routing_key  : _handle_key_destroy,
-    DatabaseKeyPurge.routing_key    : _handle_key_purge,
-    DatabaseListMatch.routing_key   : _handle_listmatch,
-    ProcessStatus.routing_key       : _handle_process_status,
+    DatabaseKeyInsert.routing_key           : _handle_key_insert,
+    DatabaseKeyLookup.routing_key           : _handle_key_lookup,
+    DatabaseKeyList.routing_key             : _handle_key_list,
+    DatabaseKeyDestroy.routing_key          : _handle_key_destroy,
+    DatabaseKeyPurge.routing_key            : _handle_key_purge,
+    DatabaseListMatch.routing_key           : _handle_listmatch,
+    DatabaseConsistencyCheck.routing_key    : _handle_consistency_check,
+    ProcessStatus.routing_key               : _handle_process_status,
 }
 
-def _startup(halt_event, state):
+def _startup(_halt_event, _state):
     message = ProcessStatus(
         time.time(),
         amqp_connection.local_exchange_name,
@@ -557,7 +610,7 @@ def _startup(halt_event, state):
 
     return [(exchange, routing_key, message, )]
 
-def _shutdown(state):
+def _shutdown(_state):
     message = ProcessStatus(
         time.time(),
         amqp_connection.local_exchange_name,

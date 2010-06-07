@@ -14,6 +14,9 @@ from zlib import adler32
 from unit_tests.util import generate_database_content
 
 from diyapi_database_server import database_content
+from messages.database_consistency_check import DatabaseConsistencyCheck
+from messages.database_consistency_check_reply import \
+    DatabaseConsistencyCheckReply
 from messages.database_key_insert import DatabaseKeyInsert
 from messages.database_key_insert_reply import DatabaseKeyInsertReply
 from messages.database_key_lookup import DatabaseKeyLookup
@@ -52,6 +55,52 @@ from unit_tests.util import random_string
 
 class TestMessages(unittest.TestCase):
     """test AMQP Messages"""
+
+    def test_database_consistency_check(self):
+        """test DatabaseConsistencyCheck"""
+        original_content = generate_database_content()
+        original_request_id = uuid.uuid1().hex
+        original_avatar_id = 1001
+        original_timestamp = time.time()
+        original_reply_exchange = "reply-exchange"
+        original_reply_routing_header = "reply-header"
+        message = DatabaseConsistencyCheck(
+            original_request_id,
+            original_avatar_id,
+            original_timestamp,
+            original_reply_exchange,
+            original_reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseConsistencyCheck.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            original_reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, original_reply_exchange
+        )
+
+    def test_database_consistency_check_reply_ok(self):
+        """test DatabaseConsistencyCheckReply"""
+        original_request_id = uuid.uuid1().hex
+        original_result = 0
+        original_hash = md5("test").digest()
+        message = DatabaseConsistencyCheckReply(
+            original_request_id,
+            original_result,
+            original_hash
+        )
+        marshaled_message = message.marshall()
+        unmarshalled_message = DatabaseConsistencyCheckReply.unmarshall(
+            marshaled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.hash, original_hash)
 
     def test_database_key_insert(self):
         """test DatabaseKeyInsert"""

@@ -87,10 +87,12 @@ class TestMessages(unittest.TestCase):
     def test_database_consistency_check_reply_ok(self):
         """test DatabaseConsistencyCheckReply"""
         original_request_id = uuid.uuid1().hex
+        original_node_name = "node01"
         original_result = 0
         original_hash = md5("test").digest()
         message = DatabaseConsistencyCheckReply(
             original_request_id,
+            original_node_name,
             original_result,
             original_hash
         )
@@ -99,6 +101,7 @@ class TestMessages(unittest.TestCase):
             marshaled_message
         )
         self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.node_name, original_node_name)
         self.assertEqual(unmarshalled_message.result, original_result)
         self.assertEqual(unmarshalled_message.hash, original_hash)
 

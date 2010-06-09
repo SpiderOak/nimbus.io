@@ -34,8 +34,10 @@ import logging
 import os
 import sys
 import time
+import uuid
 
 from diyapi_tools import message_driven_process as process
+from diyapi_tools.amqp_connection import local_exchange_name 
 from diyapi_tools.low_traffic_thread import LowTrafficThread, \
         low_traffic_routing_tag
 
@@ -62,12 +64,39 @@ _low_traffic_routing_key = ".".join([
 _polling_interval = float(os.environ.get(
     "DIYAPI_ANTI_ENTROPY_POLLING_INTERVAL", "600.0")
 )
+_exchanges = os.environ["DIY_NODE_EXCHANGES"].split()
+_error_hash = "*** error ***"
 
 def _create_state():
     return dict()
 
 def _next_poll_interval():
     return time.time() + _polling_interval
+
+def _start_consistency_check(state, avatar_id):
+    log = logging.getLogger("_start_consistency_check")
+    log.info("start consistency check on %s" % (avatar_id, ))
+
+    request_id = uuid.uuid1().hex
+    timestamp = time.time()
+
+    state[request_id] = dict()
+    state[request_id]["avatar_id"] = avatar_id
+    state[request_id]["timestamp"] = timestamp
+    state[request_id]["replies"] = dict() 
+
+    message = DatabaseConsistencyCheck(
+        request_id,
+        avatar_id,
+        timestamp,
+        local_exchange_name,
+        _routing_header
+    )
+    # send the DatabaseConsistencyCheck to every node
+    return [
+        (dest_exchange, message.routing_key, message) \
+        for dest_exchange in _exchanges
+    ]
 
 def _handle_low_traffic(_state, _message_body):
     log = logging.getLogger("_handle_low_traffic")
@@ -77,6 +106,68 @@ def _handle_low_traffic(_state, _message_body):
 def _handle_database_consistency_check_reply(state, message_body):
     log = logging.getLogger("_handle_database_consistency_check_reply")
     message = DatabaseConsistencyCheckReply.unmarshall(message_body)
+
+    if not message.request_id in state:
+        log.warn("Unknown request_id %s from %s" % (
+            message.request_id, message.node_name
+        ))
+        return []
+
+    request_id = message.request_id
+    if message.error:
+        log.error("%s (%s) %s from %s %s" % (
+            state[request_id]["avatar_id"], 
+            message.result,
+            message.error_message,
+            message.node_name,
+            message.request_id
+        ))
+        hash_value = _error_hash
+    else:
+        hash_value = message.hash
+        
+    if message.node_name in state[request_id]["replies"]:
+        log.error("duplicate reply from %s %s %s" % (
+            message.node_name,
+            state[request_id]["avatar_id"], 
+            message.request_id
+        ))
+        return []
+
+    state[request_id]["replies"][message.node_name] = hash_value
+
+    if len(state[request_id]["replies"]) < len(_exchanges):
+        return []
+
+    # at this point we should have a reply from every node. Are they all the
+    # same?
+    hash_list = list(set(state[request_id]["replies"].values()))
+    
+    # ok - all have the same hash
+    if len(hash_list) == 1 and hash_list[0] != _error_hash:
+        log.info("avatar %s compares ok" % (state[request_id]["avatar_id"], ))
+        del state[request_id]
+        return []
+
+    # we have error(s), but the non-errors compare ok
+    if len(hash_list) == 2 and _error_hash in hash_list:
+        error_count = 0
+        for value in state[request_id]["replies"].values():
+            if value == _error_hash:
+                error_count += 1
+        log.warn("avatar %s compares ok with %s nodes reporting errors" % (
+            state[request_id]["avatar_id"], 
+            error_count
+        ))
+        del state[request_id]
+        return []
+
+    # if we make it here, we have some form of mismatch, possibly mixed with
+    # errors
+    log.error("avatar %s hash mismatch" % (state[request_id]["avatar_id"], ))
+    for node_name, value in state[request_id]["replies"].items():
+        log.error("    node %s vlaue %s" % (node_name, value, ))
+    del state[request_id]["avatar_id"]
 
     return []
 

@@ -116,7 +116,9 @@ def _timeout_request(request_id, state):
     log.error("timeout %s. will retry in %s seconds" % (
         request_state.avatar_id, _retry_interval,
     ))
-    state["retry-list"].append((_retry_time(), request_state.avatar_id, ))
+    state["retry-list"].append(
+        (_retry_time(), request_state.avatar_id, request_state.retry_count, )
+    )
 
 def _start_consistency_check(state, avatar_id, retry_count=0):
     log = logging.getLogger("_start_consistency_check")
@@ -216,9 +218,12 @@ def _handle_database_consistency_check_reply(state, message_body):
                 request_state.avatar_id, 
                 error_count
             ))
-            state["retry-list"].append(
-                (_retry_time(), request_state.avatar_id, )
+            retry_entry = (
+                _retry_time(), 
+                request_state.avatar_id, 
+                request_state.retry_count, 
             )
+            state["retry-list"].append(retry_entry)
         return []
 
     # if we make it here, we have some form of mismatch, possibly mixed with
@@ -230,7 +235,12 @@ def _handle_database_consistency_check_reply(state, message_body):
         log.error("%s too many retries" % (request_state.avatar_id, ))
         # TODO: need to do something here
     else:
-        state["retry-list"].append((_retry_time(), request_state.avatar_id, ))
+        retry_entry = (
+            _retry_time(), 
+            request_state.avatar_id, 
+            request_state.retry_count, 
+        )
+        state["retry-list"].append(retry_entry)
 
     return []
 
@@ -257,6 +267,17 @@ def _check_time(state):
     state["low_traffic_thread"].reset()
 
     current_time = time.time()
+
+    # see if we have any retries ready
+    next_retry_list = list()
+    for retry_timestamp, avatar_id, retry_count in state["retry-list"]:
+        if current_time >= retry_timestamp:
+            _start_consistency_check(avatar_id, retry_count +1)
+        else:
+            next_retry_list.append(retry_timestamp, avatar_id, retry_count, )
+    state["retry-list"] = next_retry_list
+
+    # see if we have any timeouts
     for request_id, request_state in filter(_is_request_state, state.items()):
         if current_time > request_state.timeout:
             log.warn(

@@ -25,8 +25,10 @@ os.environ["DIY_NODE_EXCHANGES"] = " ".join(
 
 from diyapi_anti_entropy_server.diyapi_anti_entropy_server_main import \
     _create_state, \
+    _is_request_state, \
     _start_consistency_check, \
-    _handle_database_consistency_check_reply
+    _handle_database_consistency_check_reply, \
+    _timeout_request
 
 _reply_routing_header = "test_archive"
 
@@ -99,7 +101,7 @@ class TestAntiEntropyServer(unittest.TestCase):
         self.assertEqual(len(state["retry-list"]), 1)
 
     def test_mismatch_reply(self):
-        """test getting a ahsh that doesn't match"""
+        """test getting a hash that doesn't match"""
         avatar_id = 1001
         state = _create_state()
 
@@ -132,6 +134,39 @@ class TestAntiEntropyServer(unittest.TestCase):
         )
 
         _handle_database_consistency_check_reply(state, message.marshall())
+        self.assertEqual(len(state["retry-list"]), 1)
+
+    def test_timeout(self):
+        """test not getting all the responses in time"""
+        avatar_id = 1001
+        state = _create_state()
+
+        # we expect to send a DatabaseConsistencyCheck to the database_server
+        # on every node
+        result = _start_consistency_check(state, avatar_id)
+        self.assertEqual(len(result), len(_node_names), result)
+
+        valid_hash = "aaaaaaaaaaaaaaaa"
+        invalid_hash = "aaaaaaaaaaaaaaab"
+        self.assertEqual(len(state["retry-list"]), 0)
+
+        # send back a successful reply from each node
+        for (_exchange, _routing_key, request, ),  node_name in \
+        zip(result[:-1], _node_names[:-1]):
+            message = DatabaseConsistencyCheckReply(
+                request.request_id,
+                node_name,
+                DatabaseConsistencyCheckReply.successful,
+                valid_hash
+            )
+            _handle_database_consistency_check_reply(state, message.marshall())
+
+        # fish out the request id
+        request_list = [r for r, _ in filter(_is_request_state, state.items())]
+        self.assertEqual(len(request_list), 1)
+        request_id = request_list[0]
+
+        _timeout_request(request_id, state)
         self.assertEqual(len(state["retry-list"]), 1)
 
 if __name__ == "__main__":

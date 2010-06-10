@@ -30,6 +30,7 @@ reconstructed and added.
 Any other situation would indicate a data integrity error 
 that should be resolved.
 """
+from collections import namedtuple
 import logging
 import os
 import sys
@@ -64,8 +65,23 @@ _low_traffic_routing_key = ".".join([
 _polling_interval = float(os.environ.get(
     "DIYAPI_ANTI_ENTROPY_POLLING_INTERVAL", "600.0")
 )
+_request_timeout = 5.0 * 60.0
+_retry_interval = 60.0 * 60.0
+_max_retry_count = 2
 _exchanges = os.environ["DIY_NODE_EXCHANGES"].split()
 _error_hash = "*** error ***"
+
+_request_state_tuple = namedtuple("RequestState", [ 
+    "timestamp",
+    "timeout",
+    "timeout_function",
+    "avatar_id",
+    "retry_count",
+    "replies",
+])
+
+def _is_request_state((_, value, )):
+    return value.__class__.__name__ == "RequestState"
 
 def _create_state():
     return dict()
@@ -73,17 +89,48 @@ def _create_state():
 def _next_poll_interval():
     return time.time() + _polling_interval
 
-def _start_consistency_check(state, avatar_id):
+def _retry_time():
+    return time.time() + _retry_interval
+
+def _timeout_request(request_id, state):
+    """
+    If we don't hear from all the nodes in a reasonable time,
+    put the request in the retry queue
+    """
+    log = logging.getLogger("_timeout_request")
+    try:
+        request_state = state.pop(request_id)
+    except KeyError:
+        log.error("can't find %s in state" % (request_id, ))
+        return
+
+    if request_state.retry_count >= _max_retry_count:
+        log.error("timeout: %s with too many retries %s " % (
+            request_state.avatar_id, request_state.retry_count
+        ))
+        # TODO: need to do something with this
+        return
+
+    log.error("timeout %s. will retry in %s seconds" % (
+        request_state.avatar_id, _retry_interval,
+    ))
+    state["retry-list"].append((_retry_time(), request_state.avatar_id, ))
+
+def _start_consistency_check(state, avatar_id, retry_count=0):
     log = logging.getLogger("_start_consistency_check")
     log.info("start consistency check on %s" % (avatar_id, ))
 
     request_id = uuid.uuid1().hex
     timestamp = time.time()
 
-    state[request_id] = dict()
-    state[request_id]["avatar_id"] = avatar_id
-    state[request_id]["timestamp"] = timestamp
-    state[request_id]["replies"] = dict() 
+    state[request_id] = _request_state_tuple(
+        timestamp=timestamp,
+        timeout=time.time()+_request_timeout,
+        timeout_function=_timeout_request,
+        avatar_id=avatar_id,
+        retry_count=retry_count,
+        replies=dict(), 
+    )
 
     message = DatabaseConsistencyCheck(
         request_id,
@@ -116,7 +163,7 @@ def _handle_database_consistency_check_reply(state, message_body):
     request_id = message.request_id
     if message.error:
         log.error("%s (%s) %s from %s %s" % (
-            state[request_id]["avatar_id"], 
+            state[request_id].avatar_id, 
             message.result,
             message.error_message,
             message.node_name,
@@ -126,48 +173,62 @@ def _handle_database_consistency_check_reply(state, message_body):
     else:
         hash_value = message.hash
         
-    if message.node_name in state[request_id]["replies"]:
+    if message.node_name in state[request_id].replies:
         log.error("duplicate reply from %s %s %s" % (
             message.node_name,
-            state[request_id]["avatar_id"], 
-            message.request_id
+            state[request_id].avatar_id, 
+            request_id
         ))
         return []
 
-    state[request_id]["replies"][message.node_name] = hash_value
+    state[request_id].replies[message.node_name] = hash_value
 
-    if len(state[request_id]["replies"]) < len(_exchanges):
+    if len(state[request_id].replies) < len(_exchanges):
         return []
 
-    # at this point we should have a reply from every node. Are they all the
-    # same?
-    hash_list = list(set(state[request_id]["replies"].values()))
+    # at this point we should have a reply from every node, so
+    # we don't want to preserve state anymore
+    request_state = state.pop(request_id)
+    
+    hash_list = list(set(request_state.replies.values()))
     
     # ok - all have the same hash
     if len(hash_list) == 1 and hash_list[0] != _error_hash:
-        log.info("avatar %s compares ok" % (state[request_id]["avatar_id"], ))
-        del state[request_id]
+        log.info("avatar %s compares ok" % (request_state.avatar_id, ))
         return []
 
     # we have error(s), but the non-errors compare ok
     if len(hash_list) == 2 and _error_hash in hash_list:
         error_count = 0
-        for value in state[request_id]["replies"].values():
+        for value in request_state.replies.values():
             if value == _error_hash:
                 error_count += 1
-        log.warn("avatar %s compares ok with %s nodes reporting errors" % (
-            state[request_id]["avatar_id"], 
-            error_count
-        ))
-        del state[request_id]
+        if request_state.retry_count >= _max_retry_count:
+            log.error("avatar %s %s errors, too many retries" % (
+                request_state.avatar_id, 
+                error_count
+            ))
+            # TODO: needto do something here
+        else:
+            log.warn("avatar %s nodes reporting errors" % (
+                request_state.avatar_id, 
+                error_count
+            ))
+            state["retry-list"].append(
+                (_retry_time(), request_state.avatar_id, )
+            )
         return []
 
     # if we make it here, we have some form of mismatch, possibly mixed with
     # errors
-    log.error("avatar %s hash mismatch" % (state[request_id]["avatar_id"], ))
-    for node_name, value in state[request_id]["replies"].items():
+    log.error("avatar %s hash mismatch" % (request_state.avatar_id, ))
+    for node_name, value in request_state.replies.items():
         log.error("    node %s vlaue %s" % (node_name, value, ))
-    del state[request_id]["avatar_id"]
+    if request_state.retry_count >= _max_retry_count:
+        log.error("%s too many retries" % (request_state.avatar_id, ))
+        # TODO: need to do something here
+    else:
+        state["retry-list"].append((_retry_time(), request_state.avatar_id, ))
 
     return []
 
@@ -184,6 +245,7 @@ def _startup(halt_event, state):
     )
     state["low_traffic_thread"].start()
     state["next_poll_interval"] = _next_poll_interval()
+    state["retry_list"] = list()
 
     return []
 
@@ -193,7 +255,17 @@ def _check_time(state):
 
     state["low_traffic_thread"].reset()
 
-    if time.time() < state["next_poll_interval"]:
+    current_time = time.time()
+    for request_id, request_state in filter(_is_request_state, state.items()):
+        if current_time > request_state.timeout:
+            log.warn(
+                "%s timed out waiting message; running timeout function" % (
+                    request_id
+                )
+            )
+            request_state.timeout_function(request_id, state)
+
+    if current_time < state["next_poll_interval"]:
         return []
 
     state["next_poll_interval"] = _next_poll_interval()

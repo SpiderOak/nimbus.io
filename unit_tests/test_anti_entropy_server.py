@@ -52,7 +52,7 @@ class TestAntiEntropyServer(unittest.TestCase):
 
         valid_hash = "aaaaaaaaaaaaaaaa"
 
-        # send back a reply from each node
+        # send back a successful reply from each node
         for (_exchange, _routing_key, request, ),  node_name in \
         zip(result, _node_names):
             message = DatabaseConsistencyCheckReply(

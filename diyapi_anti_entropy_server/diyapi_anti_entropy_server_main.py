@@ -84,7 +84,9 @@ def _is_request_state((_, value, )):
     return value.__class__.__name__ == "RequestState"
 
 def _create_state():
-    return dict()
+    return {
+        "retry-list" : list(),
+    }
 
 def _next_poll_interval():
     return time.time() + _polling_interval
@@ -210,7 +212,7 @@ def _handle_database_consistency_check_reply(state, message_body):
             ))
             # TODO: needto do something here
         else:
-            log.warn("avatar %s nodes reporting errors" % (
+            log.warn("avatar %s %s errors, will retry" % (
                 request_state.avatar_id, 
                 error_count
             ))
@@ -223,7 +225,7 @@ def _handle_database_consistency_check_reply(state, message_body):
     # errors
     log.error("avatar %s hash mismatch" % (request_state.avatar_id, ))
     for node_name, value in request_state.replies.items():
-        log.error("    node %s vlaue %s" % (node_name, value, ))
+        log.error("    node %s value %s" % (node_name, value, ))
     if request_state.retry_count >= _max_retry_count:
         log.error("%s too many retries" % (request_state.avatar_id, ))
         # TODO: need to do something here
@@ -245,7 +247,6 @@ def _startup(halt_event, state):
     )
     state["low_traffic_thread"].start()
     state["next_poll_interval"] = _next_poll_interval()
-    state["retry_list"] = list()
 
     return []
 

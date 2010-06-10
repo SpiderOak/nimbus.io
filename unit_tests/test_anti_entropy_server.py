@@ -63,6 +63,77 @@ class TestAntiEntropyServer(unittest.TestCase):
             )
             _handle_database_consistency_check_reply(state, message.marshall())
 
+    def test_error_reply(self):
+        """test getting an error reply"""
+        avatar_id = 1001
+        state = _create_state()
+
+        # we expect to send a DatabaseConsistencyCheck to the database_server
+        # on every node
+        result = _start_consistency_check(state, avatar_id)
+        self.assertEqual(len(result), len(_node_names), result)
+
+        valid_hash = "aaaaaaaaaaaaaaaa"
+        self.assertEqual(len(state["retry-list"]), 0)
+
+        # send back a successful reply from each node
+        for (_exchange, _routing_key, request, ),  node_name in \
+        zip(result[:-1], _node_names[:-1]):
+            message = DatabaseConsistencyCheckReply(
+                request.request_id,
+                node_name,
+                DatabaseConsistencyCheckReply.successful,
+                valid_hash
+            )
+            _handle_database_consistency_check_reply(state, message.marshall())
+
+        (_exchange, _routing_key, request, ) = result[-1]
+        message = DatabaseConsistencyCheckReply(
+            request.request_id,
+            _node_names[-1],
+            DatabaseConsistencyCheckReply.error_database_failure,
+            error_message="test"
+        )
+
+        _handle_database_consistency_check_reply(state, message.marshall())
+        self.assertEqual(len(state["retry-list"]), 1)
+
+    def test_mismatch_reply(self):
+        """test getting a ahsh that doesn't match"""
+        avatar_id = 1001
+        state = _create_state()
+
+        # we expect to send a DatabaseConsistencyCheck to the database_server
+        # on every node
+        result = _start_consistency_check(state, avatar_id)
+        self.assertEqual(len(result), len(_node_names), result)
+
+        valid_hash = "aaaaaaaaaaaaaaaa"
+        invalid_hash = "aaaaaaaaaaaaaaab"
+        self.assertEqual(len(state["retry-list"]), 0)
+
+        # send back a successful reply from each node
+        for (_exchange, _routing_key, request, ),  node_name in \
+        zip(result[:-1], _node_names[:-1]):
+            message = DatabaseConsistencyCheckReply(
+                request.request_id,
+                node_name,
+                DatabaseConsistencyCheckReply.successful,
+                valid_hash
+            )
+            _handle_database_consistency_check_reply(state, message.marshall())
+
+        (_exchange, _routing_key, request, ) = result[-1]
+        message = DatabaseConsistencyCheckReply(
+            request.request_id,
+            _node_names[-1],
+            DatabaseConsistencyCheckReply.successful,
+            invalid_hash
+        )
+
+        _handle_database_consistency_check_reply(state, message.marshall())
+        self.assertEqual(len(state["retry-list"]), 1)
+
 if __name__ == "__main__":
     initialize_logging(_log_path)
     unittest.main()

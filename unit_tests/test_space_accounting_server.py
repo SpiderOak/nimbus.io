@@ -23,8 +23,8 @@ _log_path = "/var/log/pandora/test_space_accounting_server.log"
 from diyapi_space_accounting_server.diyapi_space_accounting_server_main import \
     _create_state, _floor_hour, _handle_detail
 
-class TestDatabaseServer(unittest.TestCase):
-    """test message handling in database server"""
+class TestSpaceAccountingServer(unittest.TestCase):
+    """test message handling in space accounting server"""
 
     def setUp(self):
         self.tearDown()

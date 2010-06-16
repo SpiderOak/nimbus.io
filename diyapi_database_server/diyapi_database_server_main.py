@@ -18,6 +18,7 @@ import bsddb3.db
 import hashlib
 import logging
 import os
+import os.path
 import sys
 import time
 
@@ -31,6 +32,8 @@ from diyapi_database_server import database_content
 
 from messages.process_status import ProcessStatus
 
+from messages.database_avatar_list_request import DatabaseAvatarListRequest
+from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
 from messages.database_consistency_check_reply import \
     DatabaseConsistencyCheckReply
@@ -47,10 +50,9 @@ from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
 
-_log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
-)
-_queue_name = "database-server-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
+_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % ( _node_name,)
+_queue_name = "database-server-%s" % (_node_name, )
 _routing_header = "database_server"
 _routing_key_binding = ".".join([_routing_header, "*"])
 _max_cached_databases = 10
@@ -120,6 +122,20 @@ def _list_content(database, search_key):
         return result_list
     finally:
         cursor.close()
+
+def _find_avatars():
+    """a generator to identify avatars wiht contents databases"""
+    repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
+    for file_name in os.listdir(repository_path):
+        try:
+            avatar_id = int(file_name)
+        except ValueError:
+            continue
+        content_database_path = os.path.join(
+            repository_path, file_name, "contents.db"
+        )
+        if os.path.exists(content_database_path):
+            yield avatar_id
 
 def _handle_key_insert(state, message_body):
     log = logging.getLogger("_handle_key_insert")
@@ -570,9 +586,24 @@ def _handle_consistency_check(state, message_body):
 
     reply = DatabaseConsistencyCheckReply(
         message.request_id,
+        _node_name,
         DatabaseConsistencyCheckReply.successful,
-        md5.hexdigest()
+        hash_value=md5.hexdigest()
     )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
+def _handle_avatar_list_request(state, message_body):
+    log = logging.getLogger("_handle_avatar_list_request")
+    message = DatabaseAvatarListRequest.unmarshall(message_body)
+    log.info("reply exchange = %s" % (message.reply_exchange, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = ".".join([
+        message.reply_routing_header, DatabaseAvatarListReply.routing_tag
+    ])
+    reply = DatabaseAvatarListReply(message.request_id)
+    reply.put(_find_avatars())
+
     return [(reply_exchange, reply_routing_key, reply, )]
 
 def _handle_process_status(_state, message_body):
@@ -594,6 +625,7 @@ _dispatch_table = {
     DatabaseKeyPurge.routing_key            : _handle_key_purge,
     DatabaseListMatch.routing_key           : _handle_listmatch,
     DatabaseConsistencyCheck.routing_key    : _handle_consistency_check,
+    DatabaseAvatarListRequest.routing_key   : _handle_avatar_list_request,
     ProcessStatus.routing_key               : _handle_process_status,
 }
 

@@ -14,6 +14,8 @@ import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_database_server import database_content
+from messages.database_avatar_list_request import DatabaseAvatarListRequest
+from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
 from messages.database_consistency_check_reply import \
     DatabaseConsistencyCheckReply
@@ -40,7 +42,8 @@ os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
 from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup, \
         _handle_key_list, _handle_key_destroy, _handle_key_purge, \
-        _handle_listmatch, _handle_consistency_check
+        _handle_listmatch, _handle_consistency_check, \
+        _handle_avatar_list_request
 
 _reply_routing_header = "test_database_server"
 
@@ -809,6 +812,40 @@ class TestDatabaseServer(unittest.TestCase):
         )
         self.assertEqual(reply.request_id, request_id)
         self.assertEqual(reply.result, 0, reply.error_message)
+
+    def test_avatar_list_request(self):
+        """test requesting a list of avatar ids"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        content = generate_database_content()
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+
+        message = DatabaseAvatarListRequest(
+            request_id,
+            exchange,
+            _reply_routing_header
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_avatar_list_request(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_avatar_list_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+        reply_avatar_ids = list(reply.get())
+        self.assertEqual(reply_avatar_ids[0], avatar_id)
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,8 @@ from zlib import adler32
 from unit_tests.util import generate_database_content
 
 from diyapi_database_server import database_content
+from messages.database_avatar_list_request import DatabaseAvatarListRequest
+from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
 from messages.database_consistency_check_reply import \
     DatabaseConsistencyCheckReply
@@ -56,199 +58,236 @@ from unit_tests.util import random_string
 class TestMessages(unittest.TestCase):
     """test AMQP Messages"""
 
+    def test_database_avatar_list_request(self):
+        """test DatabaseAvatarListRequest"""
+        request_id = uuid.uuid1().hex
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        message = DatabaseAvatarListRequest(
+            request_id,
+            reply_exchange,
+            reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseAvatarListRequest.unmarshall(marshalled_message)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, reply_exchange
+        )
+
+    def test_database_avatar_list_reply(self):
+        """test DatabaseAvatarListReply"""
+        request_id = uuid.uuid1().hex
+        avatar_id_list = [1001, 1002, 1003, ]
+        message = DatabaseAvatarListReply(request_id)
+        message.put(avatar_id_list)
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseAvatarListReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        for avatar_id, reply_avatar_id in zip(
+            avatar_id_list, unmarshalled_message.get()
+        ):
+            self.assertEqual(avatar_id, reply_avatar_id)
+
     def test_database_consistency_check(self):
         """test DatabaseConsistencyCheck"""
-        original_content = generate_database_content()
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_timestamp = time.time()
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
+        content = generate_database_content()
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        timestamp = time.time()
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
         message = DatabaseConsistencyCheck(
-            original_request_id,
-            original_avatar_id,
-            original_timestamp,
-            original_reply_exchange,
-            original_reply_routing_header
+            request_id,
+            avatar_id,
+            timestamp,
+            reply_exchange,
+            reply_routing_header
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseConsistencyCheck.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
 
     def test_database_consistency_check_reply_ok(self):
         """test DatabaseConsistencyCheckReply"""
-        original_request_id = uuid.uuid1().hex
-        original_node_name = "node01"
-        original_result = 0
-        original_hash = md5("test").digest()
+        request_id = uuid.uuid1().hex
+        node_name = "node01"
+        result = 0
+        hash = md5("test").digest()
         message = DatabaseConsistencyCheckReply(
-            original_request_id,
-            original_node_name,
-            original_result,
-            original_hash
+            request_id,
+            node_name,
+            result,
+            hash
         )
         marshaled_message = message.marshall()
         unmarshalled_message = DatabaseConsistencyCheckReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.node_name, original_node_name)
-        self.assertEqual(unmarshalled_message.result, original_result)
-        self.assertEqual(unmarshalled_message.hash, original_hash)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.node_name, node_name)
+        self.assertEqual(unmarshalled_message.result, result)
+        self.assertEqual(unmarshalled_message.hash, hash)
 
     def test_database_key_insert(self):
         """test DatabaseKeyInsert"""
-        original_content = generate_database_content()
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
+        content = generate_database_content()
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        key  = "abcdefghijk"
         message = DatabaseKeyInsert(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_key, 
-            original_content
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            key, 
+            content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyInsert.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.database_content, original_content
+            unmarshalled_message.database_content, content
         )
 
     def test_database_key_insert_reply_ok(self):
         """test DatabaseKeyInsertReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_previous_size = 42
+        request_id = uuid.uuid1().hex
+        result = 0
+        previous_size = 42
         message = DatabaseKeyInsertReply(
-            original_request_id,
-            original_result,
-            original_previous_size
+            request_id,
+            result,
+            previous_size
         )
         marshaled_message = message.marshall()
         unmarshalled_message = DatabaseKeyInsertReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(
-            unmarshalled_message.previous_size, original_previous_size
+            unmarshalled_message.previous_size, previous_size
         )
 
     def test_database_key_lookup(self):
         """test DatabaseKeyLookup"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
-        original_version_number = 0
-        original_segment_number = 1
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        key  = "abcdefghijk"
+        version_number = 0
+        segment_number = 1
         message = DatabaseKeyLookup(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_key, 
-            original_version_number,
-            original_segment_number
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            key, 
+            version_number,
+            segment_number
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyLookup.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
 
     def test_database_key_lookup_reply_ok(self):
         """test DatabaseKeyLookupReply"""
-        original_content = generate_database_content()
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
+        content = generate_database_content()
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
         message = DatabaseKeyLookupReply(
-            original_request_id,
+            request_id,
             0,
-            original_content
+            content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyLookupReply.unmarshall(
             marshalled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
         self.assertEqual(
-            unmarshalled_message.database_content, original_content
+            unmarshalled_message.database_content, content
         )
 
     def test_database_key_list(self):
         """test DatabaseKeyList"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        key  = "abcdefghijk"
         message = DatabaseKeyList(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_key 
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            key 
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyList.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.key, key)
 
     def test_database_key_list_reply_ok(self):
         """test DatabaseKeyListReply"""
         content_list = [
             generate_database_content(segment_number=n) for n in range(3)
         ]
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
         message = DatabaseKeyListReply(
-            original_request_id,
+            request_id,
             0,
             content_list
         )
@@ -256,690 +295,690 @@ class TestMessages(unittest.TestCase):
         unmarshalled_message = DatabaseKeyListReply.unmarshall(
             marshalled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
         self.assertEqual(
             unmarshalled_message.content_list, content_list
         )
 
     def test_database_key_destroy(self):
         """test DatabaseKeyDestroy"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_key  = "abcdefghijk"
-        original_version_number = 0
-        original_segment_number = 4
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        key  = "abcdefghijk"
+        version_number = 0
+        segment_number = 4
         message = DatabaseKeyDestroy(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_key,
-            original_version_number,
-            original_segment_number,
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            key,
+            version_number,
+            segment_number,
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyDestroy.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.timestamp, original_timestamp
+            unmarshalled_message.timestamp, timestamp
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
 
     def test_database_key_destroy_reply_ok(self):
         """test DatabaseKeyDestroyReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_total_size = 42
+        request_id = uuid.uuid1().hex
+        result = 0
+        total_size = 42
         message = DatabaseKeyDestroyReply(
-            original_request_id,
-            original_result,
-            original_total_size
+            request_id,
+            result,
+            total_size
         )
         marshaled_message = message.marshall()
         unmarshalled_message = DatabaseKeyDestroyReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(
-            unmarshalled_message.total_size, original_total_size
+            unmarshalled_message.total_size, total_size
         )
 
     def test_database_key_purge(self):
         """test DatabaseKeyPurge"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_key  = "abcdefghijk"
-        original_version_number = 0
-        original_segment_number = 4
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        key  = "abcdefghijk"
+        version_number = 0
+        segment_number = 4
         message = DatabaseKeyPurge(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_key,
-            original_version_number,
-            original_segment_number,
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            key,
+            version_number,
+            segment_number,
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseKeyPurge.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.timestamp, original_timestamp
+            unmarshalled_message.timestamp, timestamp
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
 
     def test_database_key_purge_reply_ok(self):
         """test DatabaseKeyPurgeReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
+        request_id = uuid.uuid1().hex
+        result = 0
         message = DatabaseKeyPurgeReply(
-            original_request_id,
-            original_result
+            request_id,
+            result
         )
         marshaled_message = message.marshall()
         unmarshalled_message = DatabaseKeyPurgeReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_database_listmatch(self):
         """test DatabaseListMatch"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_prefix  = "abcdefghijk"
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        prefix  = "abcdefghijk"
         message = DatabaseListMatch(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_prefix 
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            prefix 
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseListMatch.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
-        self.assertEqual(unmarshalled_message.prefix, original_prefix)
+        self.assertEqual(unmarshalled_message.prefix, prefix)
 
     def test_database_listmatch_reply_ok(self):
         """test DatabaseListMatchReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_is_complete = True
-        original_key_list = [str(x) for x in range(1000)]
+        request_id = uuid.uuid1().hex
+        result = 0
+        is_complete = True
+        key_list = [str(x) for x in range(1000)]
         message = DatabaseListMatchReply(
-            original_request_id,
-            original_result,
-            original_is_complete,
-            original_key_list
+            request_id,
+            result,
+            is_complete,
+            key_list
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DatabaseListMatchReply.unmarshall(
             marshalled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
-        self.assertEqual(unmarshalled_message.is_complete, original_is_complete)
-        self.assertEqual(unmarshalled_message.key_list, original_key_list)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
+        self.assertEqual(unmarshalled_message.is_complete, is_complete)
+        self.assertEqual(unmarshalled_message.key_list, key_list)
 
     def test_archive_key_entire(self):
         """test ArchiveKeyEntire"""
-        original_content = random_string(64 * 1024) 
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_key  = "abcdefghijk"
-        original_version_number = 0
-        original_segment_number = 3
-        original_file_adler32 = adler32(original_content)
-        original_file_md5 = md5(original_content).digest()
-        original_segment_adler32 = 42
-        original_segment_md5 = "ffffffffffffffff"
+        content = random_string(64 * 1024) 
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        key  = "abcdefghijk"
+        version_number = 0
+        segment_number = 3
+        file_adler32 = adler32(content)
+        file_md5 = md5(content).digest()
+        segment_adler32 = 42
+        segment_md5 = "ffffffffffffffff"
         message = ArchiveKeyEntire(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_key, 
-            original_version_number,
-            original_segment_number,
-            original_file_adler32,
-            original_file_md5,
-            original_segment_adler32,
-            original_segment_md5,
-            original_content
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            key, 
+            version_number,
+            segment_number,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
+            content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = ArchiveKeyEntire.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.reply_routing_header, original_reply_routing_header
+            unmarshalled_message.reply_routing_header, reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
-        )
-        self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.file_adler32, original_file_adler32
+            unmarshalled_message.segment_number, segment_number
         )
         self.assertEqual(
-            unmarshalled_message.file_md5, original_file_md5
+            unmarshalled_message.file_adler32, file_adler32
         )
         self.assertEqual(
-            unmarshalled_message.segment_adler32, original_segment_adler32
+            unmarshalled_message.file_md5, file_md5
         )
         self.assertEqual(
-            unmarshalled_message.segment_md5, original_segment_md5
+            unmarshalled_message.segment_adler32, segment_adler32
         )
-        self.assertEqual(unmarshalled_message.content, original_content)
+        self.assertEqual(
+            unmarshalled_message.segment_md5, segment_md5
+        )
+        self.assertEqual(unmarshalled_message.content, content)
 
     def test_archive_key_start(self):
         """test ArchiveKeyStart"""
-        original_segment_size = 64 * 1024
-        original_content = random_string(original_segment_size) 
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_sequence = 0
-        original_key  = "abcdefghijk"
-        original_version_number = 1
-        original_segment_number = 3
+        segment_size = 64 * 1024
+        content = random_string(segment_size) 
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        sequence = 0
+        key  = "abcdefghijk"
+        version_number = 1
+        segment_number = 3
 
         message = ArchiveKeyStart(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_sequence,
-            original_key, 
-            original_version_number,
-            original_segment_number,
-            original_segment_size,
-            original_content
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            sequence,
+            key, 
+            version_number,
+            segment_number,
+            segment_size,
+            content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = ArchiveKeyStart.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.reply_routing_header, original_reply_routing_header
+            unmarshalled_message.reply_routing_header, reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
-        )
-        self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_size, original_segment_size
+            unmarshalled_message.segment_number, segment_number
         )
-        self.assertEqual(unmarshalled_message.data_content, original_content)
+        self.assertEqual(
+            unmarshalled_message.segment_size, segment_size
+        )
+        self.assertEqual(unmarshalled_message.data_content, content)
 
     def test_archive_key_start_reply_ok(self):
         """test ArchiveKeyStartReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
+        request_id = uuid.uuid1().hex
+        result = 0
         message = ArchiveKeyStartReply(
-            original_request_id,
-            original_result
+            request_id,
+            result
         )
         marshaled_message = message.marshall()
         unmarshalled_message = ArchiveKeyStartReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_archive_key_next(self):
         """test ArchiveKeyNext"""
-        original_segment_size = 64 * 1024
-        original_content = random_string(original_segment_size) 
-        original_request_id = uuid.uuid1().hex
-        original_sequence = 01
+        segment_size = 64 * 1024
+        content = random_string(segment_size) 
+        request_id = uuid.uuid1().hex
+        sequence = 01
 
         message = ArchiveKeyNext(
-            original_request_id,
-            original_sequence,
-            original_content
+            request_id,
+            sequence,
+            content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = ArchiveKeyNext.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
-        self.assertEqual(unmarshalled_message.data_content, original_content)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
+        self.assertEqual(unmarshalled_message.data_content, content)
 
     def test_archive_key_next_reply_ok(self):
         """test ArchiveKeyNextReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
+        request_id = uuid.uuid1().hex
+        result = 0
         message = ArchiveKeyNextReply(
-            original_request_id,
-            original_result
+            request_id,
+            result
         )
         marshaled_message = message.marshall()
         unmarshalled_message = ArchiveKeyNextReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_archive_key_final(self):
         """test ArchiveKeyFinal"""
-        original_content = random_string(64 * 1024) 
-        original_request_id = uuid.uuid1().hex
-        original_sequence = 3
-        original_total_size = 42L
-        original_file_adler32 = 10
-        original_file_md5 = "ffffffffffffffff"
-        original_segment_adler32 = 100
-        original_segment_md5 = "1111111111111111"
+        content = random_string(64 * 1024) 
+        request_id = uuid.uuid1().hex
+        sequence = 3
+        total_size = 42L
+        file_adler32 = 10
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 100
+        segment_md5 = "1111111111111111"
         message = ArchiveKeyFinal(
-            original_request_id,
-            original_sequence,
-            original_total_size,
-            original_file_adler32,
-            original_file_md5,
-            original_segment_adler32,
-            original_segment_md5,
-            original_content
+            request_id,
+            sequence,
+            total_size,
+            file_adler32,
+            file_md5,
+            segment_adler32,
+            segment_md5,
+            content
         )
         marshalled_message = message.marshall()
         unmarshalled_message = ArchiveKeyFinal.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
-        self.assertEqual(unmarshalled_message.total_size, original_total_size)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
+        self.assertEqual(unmarshalled_message.total_size, total_size)
         self.assertEqual(
-            unmarshalled_message.file_adler32, original_file_adler32
+            unmarshalled_message.file_adler32, file_adler32
         )
         self.assertEqual(
-            unmarshalled_message.file_md5, original_file_md5
+            unmarshalled_message.file_md5, file_md5
         )
         self.assertEqual(
-            unmarshalled_message.segment_adler32, original_segment_adler32
+            unmarshalled_message.segment_adler32, segment_adler32
         )
         self.assertEqual(
-            unmarshalled_message.segment_md5, original_segment_md5
+            unmarshalled_message.segment_md5, segment_md5
         )
-        self.assertEqual(unmarshalled_message.data_content, original_content)
+        self.assertEqual(unmarshalled_message.data_content, content)
 
     def test_archive_key_final_reply_ok(self):
         """test ArchiveKeyFinalReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_previous_size = 42
+        request_id = uuid.uuid1().hex
+        result = 0
+        previous_size = 42
         message = ArchiveKeyFinalReply(
-            original_request_id,
-            original_result,
-            original_previous_size
+            request_id,
+            result,
+            previous_size
         )
         marshaled_message = message.marshall()
         unmarshalled_message = ArchiveKeyFinalReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(
-            unmarshalled_message.previous_size, original_previous_size
+            unmarshalled_message.previous_size, previous_size
         )
 
     def test_retrieve_key_start(self):
         """test RetrieveKeyStart"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_key  = "abcdefghijk"
-        original_version_number = 0
-        original_segment_number = 5
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        key  = "abcdefghijk"
+        version_number = 0
+        segment_number = 5
         message = RetrieveKeyStart(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_key,
-            original_version_number,
-            original_segment_number
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            key,
+            version_number,
+            segment_number
         )
         marshalled_message = message.marshall()
         unmarshalled_message = RetrieveKeyStart.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
-            unmarshalled_message.reply_routing_header, original_reply_routing_header
+            unmarshalled_message.reply_routing_header, reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
 
     def test_retrieve_key_start_reply_ok(self):
         """test RetrieveKeyStartReply"""
-        original_database_content = generate_database_content()
-        original_data_content = random_string(64 * 1024) 
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
+        database_content = generate_database_content()
+        data_content = random_string(64 * 1024) 
+        request_id = uuid.uuid1().hex
+        result = 0
         message = RetrieveKeyStartReply(
-            original_request_id,
-            original_result,
-            original_database_content.timestamp,
-            original_database_content.is_tombstone,
-            original_database_content.version_number,
-            original_database_content.segment_number,
-            original_database_content.segment_count,
-            original_database_content.segment_size,
-            original_database_content.total_size,
-            original_database_content.file_adler32,
-            original_database_content.file_md5,
-            original_database_content.segment_adler32,
-            original_database_content.segment_md5,
-            original_data_content
+            request_id,
+            result,
+            database_content.timestamp,
+            database_content.is_tombstone,
+            database_content.version_number,
+            database_content.segment_number,
+            database_content.segment_count,
+            database_content.segment_size,
+            database_content.total_size,
+            database_content.file_adler32,
+            database_content.file_md5,
+            database_content.segment_adler32,
+            database_content.segment_md5,
+            data_content
         )
         marshaled_message = message.marshall()
         unmarshalled_message = RetrieveKeyStartReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(
             unmarshalled_message.timestamp, 
-            original_database_content.timestamp
+            database_content.timestamp
         )
         self.assertEqual(
             unmarshalled_message.is_tombstone, 
-            original_database_content.is_tombstone
+            database_content.is_tombstone
         )
         self.assertEqual(
             unmarshalled_message.version_number, 
-            original_database_content.version_number
+            database_content.version_number
         )
         self.assertEqual(
             unmarshalled_message.segment_number, 
-            original_database_content.segment_number
+            database_content.segment_number
         )
         self.assertEqual(
             unmarshalled_message.segment_count, 
-            original_database_content.segment_count
+            database_content.segment_count
         )
         self.assertEqual(
             unmarshalled_message.segment_size, 
-            original_database_content.segment_size
+            database_content.segment_size
         )
         self.assertEqual(
             unmarshalled_message.total_size, 
-            original_database_content.total_size
+            database_content.total_size
         )
         self.assertEqual(
             unmarshalled_message.file_adler32, 
-            original_database_content.file_adler32
+            database_content.file_adler32
         )
         self.assertEqual(
             unmarshalled_message.file_md5, 
-            original_database_content.file_md5
+            database_content.file_md5
         )
         self.assertEqual(
             unmarshalled_message.segment_adler32, 
-            original_database_content.segment_adler32
+            database_content.segment_adler32
         )
         self.assertEqual(
             unmarshalled_message.segment_md5, 
-            original_database_content.segment_md5
+            database_content.segment_md5
         )
         self.assertEqual(
-            unmarshalled_message.data_content, original_data_content
+            unmarshalled_message.data_content, data_content
         )
 
     def test_retrieve_key_next(self):
         """test RetrieveKeyNext"""
-        original_request_id = uuid.uuid1().hex
-        original_sequence  = 2
+        request_id = uuid.uuid1().hex
+        sequence  = 2
         message = RetrieveKeyNext(
-            original_request_id,
-            original_sequence 
+            request_id,
+            sequence 
         )
         marshalled_message = message.marshall()
         unmarshalled_message = RetrieveKeyNext.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
 
     def test_retrieve_key_next_reply_ok(self):
         """test RetrieveKeyNextReply"""
-        original_data_content = random_string(64 * 1024) 
-        original_request_id = uuid.uuid1().hex
-        original_sequence = 42
-        original_result = 0
+        data_content = random_string(64 * 1024) 
+        request_id = uuid.uuid1().hex
+        sequence = 42
+        result = 0
         message = RetrieveKeyNextReply(
-            original_request_id,
-            original_sequence,
-            original_result,
-            original_data_content
+            request_id,
+            sequence,
+            result,
+            data_content
         )
         marshaled_message = message.marshall()
         unmarshalled_message = RetrieveKeyNextReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
+        self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(
-            unmarshalled_message.data_content, original_data_content
+            unmarshalled_message.data_content, data_content
         )
 
     def test_retrieve_key_final(self):
         """test RetrieveKeyFinal"""
-        original_request_id = uuid.uuid1().hex
-        original_sequence  = 2
+        request_id = uuid.uuid1().hex
+        sequence  = 2
         message = RetrieveKeyFinal(
-            original_request_id,
-            original_sequence 
+            request_id,
+            sequence 
         )
         marshalled_message = message.marshall()
         unmarshalled_message = RetrieveKeyFinal.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
 
     def test_retrieve_key_final_reply_ok(self):
         """test RetrieveKeyFinalReply"""
-        original_data_content = random_string(64 * 1024) 
-        original_request_id = uuid.uuid1().hex
-        original_sequence = 452
-        original_result = 0
+        data_content = random_string(64 * 1024) 
+        request_id = uuid.uuid1().hex
+        sequence = 452
+        result = 0
         message = RetrieveKeyFinalReply(
-            original_request_id,
-            original_sequence,
-            original_result,
-            original_data_content
+            request_id,
+            sequence,
+            result,
+            data_content
         )
         marshaled_message = message.marshall()
         unmarshalled_message = RetrieveKeyFinalReply.unmarshall(
             marshaled_message
         )
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.sequence, original_sequence)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.sequence, sequence)
+        self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(
-            unmarshalled_message.data_content, original_data_content
+            unmarshalled_message.data_content, data_content
         )
 
     def test_destroy_key(self):
         """test DestroyKey"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id  = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_key = "test.key"
-        original_version_number = 0
-        original_segment_number = 6
+        request_id = uuid.uuid1().hex
+        avatar_id  = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        key = "test.key"
+        version_number = 0
+        segment_number = 6
         message = DestroyKey(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_key,
-            original_version_number,
-            original_segment_number,
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            key,
+            version_number,
+            segment_number,
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DestroyKey.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
 
     def test_destroy_key_reply_ok(self):
         """test DestroyKeyReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_total_size = 43L
+        request_id = uuid.uuid1().hex
+        result = 0
+        total_size = 43L
         message = DestroyKeyReply(
-            original_request_id,
-            original_result,
-            original_total_size
+            request_id,
+            result,
+            total_size
         )
         marshalled_message = message.marshall()
         unmarshalled_message = DestroyKeyReply.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
-        self.assertEqual(unmarshalled_message.total_size, original_total_size)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
+        self.assertEqual(unmarshalled_message.total_size, total_size)
 
     def test_purge_key(self):
         """test PurgeKey"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id  = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_key = "test.key"
-        original_version_number = 0
-        original_segment_number = 6
+        request_id = uuid.uuid1().hex
+        avatar_id  = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        key = "test.key"
+        version_number = 0
+        segment_number = 6
         message = PurgeKey(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_key,
-            original_version_number,
-            original_segment_number,
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            key,
+            version_number,
+            segment_number,
         )
         marshalled_message = message.marshall()
         unmarshalled_message = PurgeKey.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
 
     def test_purge_key_reply_ok(self):
         """test PurgeKeyReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
+        request_id = uuid.uuid1().hex
+        result = 0
         message = PurgeKeyReply(
-            original_request_id,
-            original_result
+            request_id,
+            result
         )
         marshalled_message = message.marshall()
         unmarshalled_message = PurgeKeyReply.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_process_status(self):
         """test ProcessStatus"""
@@ -962,61 +1001,61 @@ class TestMessages(unittest.TestCase):
 
     def test_hinted_handoff(self):
         """test HintedHandoff"""
-        original_request_id = uuid.uuid1().hex
-        original_avatar_id  = 1001
-        original_reply_exchange = "reply-exchange"
-        original_reply_routing_header = "reply-header"
-        original_timestamp = time.time()
-        original_key = "test.key"
-        original_version_number = 0
-        original_segment_number = 6
+        request_id = uuid.uuid1().hex
+        avatar_id  = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        timestamp = time.time()
+        key = "test.key"
+        version_number = 0
+        segment_number = 6
         dest_exchange = "dest-exchange"
         message = HintedHandoff(
-            original_request_id,
-            original_avatar_id,
-            original_reply_exchange,
-            original_reply_routing_header,
-            original_timestamp,
-            original_key,
-            original_version_number,
-            original_segment_number,
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header,
+            timestamp,
+            key,
+            version_number,
+            segment_number,
             dest_exchange
         )
         marshalled_message = message.marshall()
         unmarshalled_message = HintedHandoff.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.avatar_id, original_avatar_id)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(
-            unmarshalled_message.reply_exchange, original_reply_exchange
+            unmarshalled_message.reply_exchange, reply_exchange
         )
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
-            original_reply_routing_header
+            reply_routing_header
         )
-        self.assertEqual(unmarshalled_message.timestamp, original_timestamp)
-        self.assertEqual(unmarshalled_message.key, original_key)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.key, key)
         self.assertEqual(
-            unmarshalled_message.version_number, original_version_number
+            unmarshalled_message.version_number, version_number
         )
         self.assertEqual(
-            unmarshalled_message.segment_number, original_segment_number
+            unmarshalled_message.segment_number, segment_number
         )
         self.assertEqual(unmarshalled_message.dest_exchange, dest_exchange)
 
     def test_hinted_handoff_reply_ok(self):
         """test HintedHandoffReply"""
-        original_request_id = uuid.uuid1().hex
-        original_result = 0
-        original_total_size = 43L
+        request_id = uuid.uuid1().hex
+        result = 0
+        total_size = 43L
         message = HintedHandoffReply(
-            original_request_id,
-            original_result,
-            original_total_size
+            request_id,
+            result,
+            total_size
         )
         marshalled_message = message.marshall()
         unmarshalled_message = HintedHandoffReply.unmarshall(marshalled_message)
-        self.assertEqual(unmarshalled_message.request_id, original_request_id)
-        self.assertEqual(unmarshalled_message.result, original_result)
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_space_accounting_detail(self):
         """test SpaceAccountingDetail"""

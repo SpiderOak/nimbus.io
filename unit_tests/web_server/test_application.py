@@ -100,6 +100,38 @@ class TestApplication(unittest.TestCase):
             0
         )
 
+    def test_archive_small_with_overwrite(self):
+        timestamp = time.time()
+        old_size_per_slice = 12345
+        old_size_total = 0
+        for i in xrange(len(self.exchange_manager)):
+            request_id = uuid.UUID(int=i).hex
+            self.amqp_handler.replies_to_send[request_id].put(
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    old_size_per_slice
+                )
+            )
+            old_size_total += old_size_per_slice
+        avatar_id = self.authenticator.remote_user
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        resp = self.app.post('/data/' + key, content)
+        self.assertEqual(resp.body, 'OK')
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            len(content)
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            old_size_total
+        )
+
     def test_archive_small_with_handoff(self):
         timestamp = time.time()
         self.exchange_manager.mark_down(0)

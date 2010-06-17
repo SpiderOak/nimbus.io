@@ -166,6 +166,7 @@ class Application(object):
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         remaining = req.content_length
+        previous_size = None
         for slice in DataSlicer(req.body_file, SLICE_SIZE, remaining):
             remaining -= len(slice)
             file_adler32 = zlib.adler32(slice, file_adler32)
@@ -187,6 +188,12 @@ class Application(object):
                     )
             except (HandoffFailedError, ArchiveFailedError):
                 raise exc.HTTPGatewayTimeout()
+        if previous_size is not None:
+            self.accounter.removed(
+                avatar_id,
+                timestamp,
+                previous_size
+            )
         self.accounter.added(
             avatar_id,
             timestamp,

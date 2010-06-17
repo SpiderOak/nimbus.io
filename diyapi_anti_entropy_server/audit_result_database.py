@@ -9,55 +9,99 @@ import logging
 from diyapi_tools.pandora_database_connection import \
         get_pandora_database_connection
 
-_insert_command = """
+state_audit_started = "audit-started"
+state_audit_successful = "audit-successful"
+state_audit_error = "audit-error"
+
+_database_user = "diyapi_auditor"
+
+_start_audit_command = """
 INSERT INTO diyapi_audit_result
-(avatar_id, timestamp, bytes_added, bytes_removed, bytes_retrieved)
-VALUES(%s, '%s'::timestamp, %s, %s, %s);
+(avatar_id, state, audit_started)
+VALUES(%s, '%s', '%s'::timestamp)
+RETURNING diyapi_audit_result_id;
+""".strip()
+
+_audit_result_command = """
+UPDATE diyapi_audit_result
+SET state = '%s', audit_finished = '%s'::timestamp
+WHERE diyapi_audit_result_id = %s;
+""".strip()
+
+_eligible_query = """
+SELECT avatar_id FROM diyapi_audit_result
+WHERE COALESCE(state, 'audit-successful') = 'audit-successful'
+AND COALESCE(audit_finished, now()) < '%s'::timestamp;
+""".strip()
+
+_clear_command = """
+DELETE FROM diyapi_audit_result
+WHERE avatar_id = %s
 """.strip()
 
 class AuditResultDatabase(object):
     """wrap access to the diyapi_audit_result table"""
     def __init__(self):
         self._log = logging.getLogger("AuditResultDatabase")
-        self._connection = get_pandora_database_connection()
-        self._connection.execute("BEGIN;")
+        self._connection = get_pandora_database_connection(_database_user)
 
-    def commit(self):
+    def close(self):
         """commit the updates and close the database connection"""
-        self._connection.execute("COMMIT;")
         self._connection.close()
 
-    def store_avatar_stats(
-        self,
-        avatar_id,
-        timestamp,
-        bytes_added,
-        bytes_retrieved,
-        bytes_removed
-    ):
-        """store one row for an avatar"""
-        command = _insert_command % (
-            avatar_id,
-            timestamp,
-            bytes_added,
-            bytes_retrieved,
-            bytes_removed,
+    def start_audit(self, avatar_id, timestamp):
+        """insert a row to mark the start of an audit"""
+        command = _start_audit_command % (
+            avatar_id, state_audit_started, timestamp, 
+        )
+        (row_id, ) = self._connection.fetch_one_row(command)
+        self._connection.commit()
+        return row_id
+
+    def successful_audit(self, row_id, timestamp):
+        """update a row to mark success of an audit"""
+        command = _audit_result_command % (
+            state_audit_successful, timestamp, row_id, 
         )
         self._connection.execute(command)
+        self._connection.commit()
 
+    def eligible_avatar_ids(self, cutoff_timestamp):
+        """return a list of avatar_ids that are eligible for audit"""
+        command = _eligible_query % (cutoff_timestamp, )
+        result = self._connection.fetch_all_rows(command)
+        return [avatar_id for (avatar_id, ) in result]
+
+    def _clear_avatar(self, avatar_id):
+        """for testing: remove all rows for an avatar"""
+        command = _clear_command % (avatar_id, )
+        self._connection.execute(command)
+        self._connection.commit()
 
 if __name__ == "__main__":
     import datetime
+    avatar_id = 1001
+    start_time = datetime.datetime.now()
+    finished_time = start_time + datetime.timedelta(minutes=1)
+    audit_time = start_time + datetime.timedelta(hours=1)
+
     print
     print "testing"
-    audit_result_database = SpaceAccountingDatabase()
-    audit_result_database.store_avatar_stats(
-        1001, 
-        datetime.datetime.now(),
-        1,
-        0, 
-        1
-    )
-    audit_result_database.commit()
+
+    audit_result_database = AuditResultDatabase()
+    audit_result_database._clear_avatar(avatar_id)
+
+    eligible_list = audit_result_database.eligible_avatar_ids(audit_time)
+    assert len(eligible_list) == 0
+
+    row_id = audit_result_database.start_audit(avatar_id, start_time)
+    print "row_id =", row_id
+    audit_result_database.successful_audit(row_id, finished_time)
+
+    eligible_list = audit_result_database.eligible_avatar_ids(audit_time)
+    print "eligible", eligible_list
+
+    audit_result_database._clear_avatar(avatar_id)
+    audit_result_database.close()
     print "test complete"
 

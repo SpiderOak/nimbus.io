@@ -32,11 +32,19 @@ class PandoraDatabaseConnection(object):
         return result
         
     def execute(self, query, *args):
-        """run a query and return the contents of all rows"""
+        """run a statement and return the last row id inserted"""
         cursor = self._connection.cursor()
         cursor.execute(query, *args)
         cursor.close()
         
+    def commit(self):
+        """commit any pending transaction"""
+        self._connection.commit()
+
+    def rollback(self):
+        """roll back any pending transaction"""
+        self._connection.rollback()
+
     def close(self):
         """close the connection"""
         self._connection.close()
@@ -44,13 +52,13 @@ class PandoraDatabaseConnection(object):
 _database_name = "pandora"
 _database_user = "pandora_storage_server"
 
-def get_pandora_database_connection():
+def get_pandora_database_connection(database_user=_database_user):
     database_host = os.environ.get('PANDORA_DATABASE_HOST', 'localhost')
     if not database_host:
         database_host = None
     connection = PandoraDatabaseConnection(
         database_name=_database_name,
-        database_user=_database_user,
+        database_user=database_user,
         database_host=database_host
     )
     return connection

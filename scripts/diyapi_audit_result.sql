@@ -17,5 +17,6 @@ CREATE TABLE diyapi_audit_result(
 
 CREATE INDEX diyapi_audit_result_avatar_id ON diyapi_audit_result (avatar_id);
 
+GRANT SELECT, UPDATE ON diyapi_audit_result_id_sequence TO diyapi_auditor;
 GRANT SELECT, INSERT, UPDATE, DELETE ON diyapi_audit_result 
 TO diyapi_auditor;

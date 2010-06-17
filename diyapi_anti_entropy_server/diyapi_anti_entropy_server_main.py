@@ -42,6 +42,8 @@ from diyapi_tools.amqp_connection import local_exchange_name
 from diyapi_tools.low_traffic_thread import LowTrafficThread, \
         low_traffic_routing_tag
 
+from messages.database_avatar_list_request import DatabaseAvatarListRequest
+from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
 from messages.database_consistency_check_reply import \
     DatabaseConsistencyCheckReply
@@ -54,6 +56,10 @@ _queue_name = "anti-entropy-%s" % (
 )
 _routing_header = "anti-entropy"
 _routing_key_binding = ".".join([_routing_header, "*"])
+_database_avatar_list_reply_routing_key = ".".join([
+    _routing_header,
+    DatabaseAvatarListReply.routing_tag,
+])
 _database_consistency_check_reply_routing_key = ".".join([
     _routing_header,
     DatabaseConsistencyCheckReply.routing_tag,
@@ -149,10 +155,28 @@ def _start_consistency_check(state, avatar_id, retry_count=0):
         for dest_exchange in _exchanges
     ]
 
+def _choose_avatar_for_consistency_check(state):
+    """pick an avatar and start a new consistency check"""
+    available_avatar_ids = state["avatar-ids"].copy()
+
+
+
 def _handle_low_traffic(_state, _message_body):
     log = logging.getLogger("_handle_low_traffic")
     log.debug("ignoring low traffic message")
     return None
+
+def _handle_database_avatar_list_reply(state, message_body):
+    log = logging.getLogger("_handle_database_avatar_list_reply")
+    message = DatabaseAvatarListReply.unmarshall(message_body)
+
+    state["avatar-ids"] = set(message.get())
+
+    # if we don't have a consistency check in progress, start one
+    if not any(filter(_is_request_state, state.items())):
+        return _choose_avatar_for_consistency_check(state)
+
+    return []
 
 def _handle_database_consistency_check_reply(state, message_body):
     log = logging.getLogger("_handle_database_consistency_check_reply")
@@ -245,6 +269,8 @@ def _handle_database_consistency_check_reply(state, message_body):
     return []
 
 _dispatch_table = {
+    _database_avatar_list_reply_routing_key   : \
+        _handle_database_avatar_list_reply,
     _database_consistency_check_reply_routing_key   : \
         _handle_database_consistency_check_reply,
     _low_traffic_routing_key            : _handle_low_traffic,
@@ -258,7 +284,16 @@ def _startup(halt_event, state):
     state["low_traffic_thread"].start()
     state["next_poll_interval"] = _next_poll_interval()
 
-    return []
+    # request a list of avatar ids from the local database server
+    request_id = uuid.uuid1().hex
+
+    message = DatabaseAvatarListRequest(
+        request_id,
+        exchange,
+        _reply_routing_header
+    )
+
+    return [local_exchange_name, message.routing_key, message]
 
 def _check_time(state):
     """check if enough time has elapsed"""

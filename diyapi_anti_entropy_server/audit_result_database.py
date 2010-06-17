@@ -28,10 +28,10 @@ SET state = '%s', audit_finished = '%s'::timestamp
 WHERE diyapi_audit_result_id = %s;
 """.strip()
 
-_eligible_query = """
+_ineligible_query = """
 SELECT avatar_id FROM diyapi_audit_result
-WHERE COALESCE(state, 'audit-successful') = 'audit-successful'
-AND COALESCE(audit_finished, now()) < '%s'::timestamp;
+WHERE COALESCE(state, 'audit-successful') != 'audit-successful'
+OR COALESCE(audit_finished, now()) > '%s'::timestamp;
 """.strip()
 
 _clear_command = """
@@ -66,9 +66,9 @@ class AuditResultDatabase(object):
         self._connection.execute(command)
         self._connection.commit()
 
-    def eligible_avatar_ids(self, cutoff_timestamp):
-        """return a list of avatar_ids that are eligible for audit"""
-        command = _eligible_query % (cutoff_timestamp, )
+    def ineligible_avatar_ids(self, cutoff_timestamp):
+        """return a list of avatar_ids that are NOT eligible for audit"""
+        command = _ineligible_query % (cutoff_timestamp, )
         result = self._connection.fetch_all_rows(command)
         return [avatar_id for (avatar_id, ) in result]
 
@@ -82,8 +82,8 @@ if __name__ == "__main__":
     import datetime
     avatar_id = 1001
     start_time = datetime.datetime.now()
-    finished_time = start_time + datetime.timedelta(minutes=1)
-    audit_time = start_time + datetime.timedelta(hours=1)
+    finished_time = start_time + datetime.timedelta(minutes=2)
+    audit_time = start_time + datetime.timedelta(minutes=1)
 
     print
     print "testing"
@@ -91,15 +91,15 @@ if __name__ == "__main__":
     audit_result_database = AuditResultDatabase()
     audit_result_database._clear_avatar(avatar_id)
 
-    eligible_list = audit_result_database.eligible_avatar_ids(audit_time)
-    assert len(eligible_list) == 0
+    ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)
+    assert len(ineligible_list) == 0
 
     row_id = audit_result_database.start_audit(avatar_id, start_time)
     print "row_id =", row_id
     audit_result_database.successful_audit(row_id, finished_time)
 
-    eligible_list = audit_result_database.eligible_avatar_ids(audit_time)
-    print "eligible", eligible_list
+    ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)
+    print "ineligible", ineligible_list
 
     audit_result_database._clear_avatar(avatar_id)
     audit_result_database.close()

@@ -31,8 +31,10 @@ Any other situation would indicate a data integrity error
 that should be resolved.
 """
 from collections import namedtuple
+import datetime
 import logging
 import os
+import random
 import sys
 import time
 import uuid
@@ -41,6 +43,8 @@ from diyapi_tools import message_driven_process as process
 from diyapi_tools.amqp_connection import local_exchange_name 
 from diyapi_tools.low_traffic_thread import LowTrafficThread, \
         low_traffic_routing_tag
+
+from diyapi_anti_entropy_server.audit_result_database import AuditResultDatabase 
 
 from messages.database_avatar_list_request import DatabaseAvatarListRequest
 from messages.database_avatar_list_reply import DatabaseAvatarListReply
@@ -76,6 +80,7 @@ _retry_interval = 60.0 * 60.0
 _max_retry_count = 2
 _exchanges = os.environ["DIY_NODE_EXCHANGES"].split()
 _error_hash = "*** error ***"
+_audit_cutoff_days = int(os.environ.get("DIYAPI_AUDIT_CUTOFF_DAYS", "14"))
 
 _request_state_tuple = namedtuple("RequestState", [ 
     "timestamp",
@@ -157,9 +162,23 @@ def _start_consistency_check(state, avatar_id, retry_count=0):
 
 def _choose_avatar_for_consistency_check(state):
     """pick an avatar and start a new consistency check"""
-    available_avatar_ids = state["avatar-ids"].copy()
+    log = logging.getLogger("_choose_avatar_for_consistency_check")
+    cutoff_timestamp = \
+        datetime.datetime.now() - \
+        datetime.timedelta(days=_audit_cutoff_days)
+    database = AuditResultDatabase()
+    ineligible_avatar_ids = set(
+        database.ineligible_avatar_ids(cutoff_timestamp)
+    )
+    eligible_avatar_ids = state["avatar-ids"] - ineligible_avatar_ids
+    log.info("found %s avatars eligible for consistency check" % (
+        len(eligible_avatar_ids),
+    ))
+    if len(eligible_avatar_ids) == 0:
+        return []
 
-
+    avatar_id = random.choice(list(eligible_avatar_ids))
+    return _start_consistency_check(avatar_id)
 
 def _handle_low_traffic(_state, _message_body):
     log = logging.getLogger("_handle_low_traffic")
@@ -167,7 +186,6 @@ def _handle_low_traffic(_state, _message_body):
     return None
 
 def _handle_database_avatar_list_reply(state, message_body):
-    log = logging.getLogger("_handle_database_avatar_list_reply")
     message = DatabaseAvatarListReply.unmarshall(message_body)
 
     state["avatar-ids"] = set(message.get())
@@ -289,8 +307,8 @@ def _startup(halt_event, state):
 
     message = DatabaseAvatarListRequest(
         request_id,
-        exchange,
-        _reply_routing_header
+        local_exchange_name,
+        _routing_header
     )
 
     return [local_exchange_name, message.routing_key, message]

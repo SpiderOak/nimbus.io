@@ -92,6 +92,40 @@ class TestWebServer(unittest.TestCase):
         else:
             raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
 
+    def test_upload_0_bytes(self):
+        log = logging.getLogger('test_upload_0_bytes')
+        log.info('start')
+        content = ''
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        self.assertEqual(result, 'OK')
+
+    def test_upload_0_bytes_and_listmatch(self):
+        log = logging.getLogger('test_upload_0_bytes_and_listmatch')
+        log.info('start')
+        content = ''
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('listmatch')
+        result = self._make_request(
+            _base_url + '/data/test-key?action=listmatch')
+        self.assertEqual(result, repr([key]))
+
+    def test_upload_0_bytes_and_retrieve(self):
+        log = logging.getLogger('test_upload_0_bytes_and_retrieve')
+        log.info('start')
+        content = ''
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key)
+        self.assertEqual(len(result), len(content))
+        self.assertEqual(result, content)
+
     def test_upload_small(self):
         log = logging.getLogger('test_upload_small')
         log.info('start')

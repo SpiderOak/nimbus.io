@@ -182,14 +182,15 @@ class Application(object):
                 file_md5.update(slice)
                 file_size += len(slice)
                 segments = segmenter.encode(slice)
-            if segments:
-                previous_size = archiver.archive_final(
-                    file_size,
-                    file_adler32,
-                    file_md5.digest(),
-                    segments,
-                    EXCHANGE_TIMEOUT
-                )
+            if not segments:
+                segments = segmenter.encode('')
+            previous_size = archiver.archive_final(
+                file_size,
+                file_adler32,
+                file_md5.digest(),
+                segments,
+                EXCHANGE_TIMEOUT
+            )
         except (HandoffFailedError, ArchiveFailedError):
             raise exc.HTTPGatewayTimeout()
         if previous_size is not None:

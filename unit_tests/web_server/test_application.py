@@ -71,6 +71,37 @@ class TestApplication(unittest.TestCase):
             status=401
         )
 
+    def test_archive_0_bytes(self):
+        timestamp = time.time()
+        for i in xrange(len(self.exchange_manager)):
+            request_id = uuid.UUID(int=i).hex
+            self.amqp_handler.replies_to_send[request_id].put(
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                )
+            )
+        avatar_id = self.authenticator.remote_user
+        content = ''
+        key = self._key_generator.next()
+        resp = self.app.post('/data/' + key, content)
+        self.assertEqual(resp.body, 'OK')
+        self.assertEqual(len(self.amqp_handler.messages),
+                         len(self.exchange_manager))
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
+
     def test_archive_small(self):
         timestamp = time.time()
         for i in xrange(len(self.exchange_manager)):
@@ -87,6 +118,8 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
+        self.assertEqual(len(self.amqp_handler.messages),
+                         len(self.exchange_manager))
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             len(content)

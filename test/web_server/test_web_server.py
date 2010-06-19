@@ -26,12 +26,12 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
 
-_prod_base_url = 'https://test.diy.spideroak.com' # test.diy.spideroak.com
+_prod_base_url = os.environ['DIYAPI_TEST_BASE_URL']
 _local_base_url = 'http://127.0.0.1:8088'
 
-_test_username = 'test'
-_test_key_id = 0
-_test_key = 'deadbeef'
+_test_username = os.environ['DIYAPI_TEST_USERNAME']
+_test_key_id = int(os.environ['DIYAPI_TEST_KEY_ID'])
+_test_key = os.environ['DIYAPI_TEST_KEY']
 
 
 class TestWebServer(unittest.TestCase):

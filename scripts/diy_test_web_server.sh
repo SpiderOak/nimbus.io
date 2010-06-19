@@ -11,6 +11,19 @@ export RABBITMQ_NODENAME="${SPIDEROAK_MULTI_NODE_NAME}"
 export RABBITMQ_NODE_IP_ADDRESS="127.0.0.1"
 export RABBITMQ_NODE_PORT="6000"
 
+if [ -z $DIYAPI_TEST_BASE_URL ]; then
+    export DIYAPI_TEST_BASE_URL="https://test.diy.spideroak.com"
+fi
+if [ -z $DIYAPI_TEST_USERNAME ]; then
+    export DIYAPI_TEST_USERNAME="test"
+fi
+if [ -z $DIYAPI_TEST_KEY_ID ]; then
+    export DIYAPI_TEST_KEY_ID=0
+fi
+if [ -z $DIYAPI_TEST_KEY ]; then
+    export DIYAPI_TEST_KEY="deadbeef"
+fi
+
 export DIY_NODE_EXCHANGES="node-sim-00-exchange node-sim-01-exchange node-sim-02-exchange node-sim-03-exchange node-sim-04-exchange node-sim-05-exchange node-sim-06-exchange node-sim-07-exchange node-sim-08-exchange node-sim-09-exchange"
 
 rm /var/log/pandora/test_web_server.log

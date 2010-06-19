@@ -165,29 +165,33 @@ class Application(object):
             len(self.exchange_manager))
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
-        remaining = req.content_length
-        previous_size = None
-        for slice in DataSlicer(req.body_file, SLICE_SIZE, remaining):
-            remaining -= len(slice)
-            file_adler32 = zlib.adler32(slice, file_adler32)
-            file_md5.update(slice)
-            segments = segmenter.encode(slice)
-            try:
-                if remaining:
+        file_size = 0
+        previous_size = 0
+        segments = None
+        try:
+            for slice in DataSlicer(req.body_file,
+                                    SLICE_SIZE,
+                                    req.content_length):
+                if segments:
                     archiver.archive_slice(
                         segments,
                         EXCHANGE_TIMEOUT
                     )
-                else:
-                    previous_size = archiver.archive_final(
-                        req.content_length,
-                        file_adler32,
-                        file_md5.digest(),
-                        segments,
-                        EXCHANGE_TIMEOUT
-                    )
-            except (HandoffFailedError, ArchiveFailedError):
-                raise exc.HTTPGatewayTimeout()
+                    segments = None
+                file_adler32 = zlib.adler32(slice, file_adler32)
+                file_md5.update(slice)
+                file_size += len(slice)
+                segments = segmenter.encode(slice)
+            if segments:
+                previous_size = archiver.archive_final(
+                    file_size,
+                    file_adler32,
+                    file_md5.digest(),
+                    segments,
+                    EXCHANGE_TIMEOUT
+                )
+        except (HandoffFailedError, ArchiveFailedError):
+            raise exc.HTTPGatewayTimeout()
         if previous_size is not None:
             self.accounter.removed(
                 avatar_id,
@@ -197,6 +201,6 @@ class Application(object):
         self.accounter.added(
             avatar_id,
             timestamp,
-            req.content_length
+            file_size
         )
         return Response('OK')

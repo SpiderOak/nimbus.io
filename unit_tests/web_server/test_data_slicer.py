@@ -42,6 +42,15 @@ class TestDataSlicer(unittest.TestCase):
         yielded_data = list(slicer)
         self.assertEqual(yielded_data, data)
 
+    def test_slicer_without_total_size(self):
+        data = [random_string(SLICE_SIZE),
+                random_string(SLICE_SIZE),
+                'extra data at the end']
+        f = StringIO(''.join(data))
+        slicer = DataSlicer(f, SLICE_SIZE)
+        yielded_data = list(slicer)
+        self.assertEqual(yielded_data, data)
+
 
 if __name__ == "__main__":
     unittest.main()

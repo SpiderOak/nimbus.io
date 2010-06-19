@@ -12,7 +12,7 @@ import time
 import zlib
 import hashlib
 
-from webtest import TestApp
+from webtest import TestApp, TestRequest, StringIO
 
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
@@ -381,7 +381,42 @@ class TestApplication(unittest.TestCase):
             0
         )
 
-    # TODO: test archive without content-length header
+    def test_archive_small_without_content_length(self):
+        timestamp = time.time()
+        for i in xrange(len(self.exchange_manager)):
+            request_id = uuid.UUID(int=i).hex
+            self.amqp_handler.replies_to_send[request_id].put(
+                ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                )
+            )
+        avatar_id = self.authenticator.remote_user
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+
+        environ = self.app._make_environ(None)
+        environ['REQUEST_METHOD'] = 'POST'
+        environ['CONTENT_TYPE'] = 'application/x-www-form-urlencoded'
+        environ['QUERY_STRING'] = ''
+        environ['wsgi.input'] = StringIO(content)
+        req = TestRequest.blank('/data/' + key, environ)
+
+        resp = self.app.do_request(req, status=None, expect_errors=None)
+        self.assertEqual(resp.body, 'OK')
+        self.assertEqual(
+            self.accounter._added[avatar_id, timestamp],
+            len(content)
+        )
+        self.assertEqual(
+            self.accounter._retrieved[avatar_id, timestamp],
+            0
+        )
+        self.assertEqual(
+            self.accounter._removed[avatar_id, timestamp],
+            0
+        )
 
     def test_listmatch(self):
         prefix = 'a_prefix'

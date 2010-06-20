@@ -42,7 +42,15 @@ def main():
 
     test_dir = "/tmp"
 
-    node_sims = [NodeSim(test_dir, i) for i in xrange(_node_count)]
+    node_sims = [NodeSim(test_dir, i) for i in xrange(_node_count-1)]
+    node_sims.append(
+        NodeSim(
+            test_dir, 
+            _node_count-1, 
+            space_accounting=True,
+            anti_entropy=True
+        )
+    )
 
     print "starting node sims with delay"
     for node_sim in node_sims:

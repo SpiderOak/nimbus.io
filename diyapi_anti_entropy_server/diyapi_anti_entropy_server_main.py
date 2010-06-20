@@ -311,7 +311,7 @@ def _startup(halt_event, state):
         _routing_header
     )
 
-    return [local_exchange_name, message.routing_key, message]
+    return [(local_exchange_name, message.routing_key, message, ), ]
 
 def _check_time(state):
     """check if enough time has elapsed"""

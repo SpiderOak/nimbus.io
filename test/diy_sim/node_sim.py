@@ -15,6 +15,13 @@ import time
 class SimError(Exception):
     pass
 
+def _generate_node_name(node_index):
+    return "node-sim-%02d" % (node_index, )
+
+_node_count = 10
+os.environ["DIY_NODE_EXCHANGES"] = " ".join(
+    [_generate_node_name(node_index) for node_index in xrange(_node_count)]
+)
 _rabbitmq_base_port = 6000
 _rabbitmq_ip_address = "127.0.0.1"
 
@@ -31,15 +38,20 @@ def _identify_program_dir(target_path):
                 
 class NodeSim(object):
     """simulate one node in a cluster"""
-    def __init__(self, test_dir, node_index):
+
+    def __init__(
+        self, test_dir, node_index, space_accounting=False, anti_entropy=False
+    ):
         self._node_index = node_index
-        self._node_name = "node-sim-%02d" % (node_index, )
+        self._node_name = _generate_node_name(node_index)
         self._rabbitmq_port = _rabbitmq_base_port + self._node_index 
         self._log = logging.getLogger(self._node_name)
         self._home_dir = os.path.join(test_dir, self._node_name)
         if not os.path.exists(self._home_dir):
             os.makedirs(self._home_dir)
         self._processes = dict()
+        self._space_accounting = space_accounting
+        self._anti_entropy = anti_entropy
 
     def start(self):
         self._log.debug("start")
@@ -50,6 +62,16 @@ class NodeSim(object):
             ("data_reader",         self._start_data_reader, ),
             ("handoff_server",      self._start_handoff_server, ),
         ]
+
+        if self._space_accounting:
+            process_specs.append(
+                ("space_accounting", self._start_space_accounting_server, )
+            )
+
+        if self._anti_entropy:
+            process_specs.append(
+                ("anti_entropy", self._start_anti_entropy_server, )
+            )
 
         for process_name, start_function in process_specs:
             self._processes[process_name] = start_function()
@@ -158,6 +180,45 @@ class NodeSim(object):
         environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
 
         self._log.info("starting handoff_server")
+
+        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
+    def _start_space_accounting_server(self):
+        space_accounting_server_dir = _identify_program_dir(
+            u"diyapi_space_accounting_server"
+        )
+        space_accounting_server_path = os.path.join(
+            space_accounting_server_dir, 
+            u"diyapi_space_accounting_server_main.py"
+        )
+        
+        args = [sys.executable, space_accounting_server_path, ]
+
+        environment = self._rabbitmq_env()
+        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
+        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
+
+        self._log.info("starting space_accoounting_server")
+
+        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
+    def _start_anti_entropy_server(self):
+        anti_entropy_server_dir = _identify_program_dir(
+            u"diyapi_anti_entropy_server"
+        )
+        anti_entropy_server_path = os.path.join(
+            anti_entropy_server_dir, 
+            u"diyapi_anti_entropy_server_main.py"
+        )
+        
+        args = [sys.executable, anti_entropy_server_path, ]
+
+        environment = self._rabbitmq_env()
+        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
+        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
+        environment["DIY_NODE_EXCHANGES"] = os.environ["DIY_NODE_EXCHANGES"]
+
+        self._log.info("starting anti_entropy_server")
 
         return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 

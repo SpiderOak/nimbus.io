@@ -10,6 +10,7 @@ from diyapi_tools.pandora_database_connection import \
         get_pandora_database_connection
 
 state_audit_started = "audit-started"
+state_audit_waiting_retry = "audit-waiting-retry"
 state_audit_successful = "audit-successful"
 state_audit_error = "audit-error"
 
@@ -20,6 +21,18 @@ INSERT INTO diyapi_audit_result
 (avatar_id, state, audit_started)
 VALUES(%s, '%s', '%s'::timestamp)
 RETURNING diyapi_audit_result_id;
+""".strip()
+
+_audit_retry_command = """
+UPDATE diyapi_audit_result
+SET state = '%s', audit_started = NULL
+WHERE diyapi_audit_result_id = %s;
+""".strip()
+
+_restart_audit_command = """
+UPDATE diyapi_audit_result
+SET state = '%s', audit_started = '%s'::timestamp
+WHERE diyapi_audit_result_id = %s;
 """.strip()
 
 _audit_result_command = """
@@ -58,6 +71,22 @@ class AuditResultDatabase(object):
         self._connection.commit()
         return row_id
 
+    def wait_for_retry(self, row_id):
+        """update a row to mark waiting for retry"""
+        command = _audit_retry_command % (
+            state_audit_waiting_retry, row_id, 
+        )
+        self._connection.execute(command)
+        self._connection.commit()
+
+    def restart_audit(self, row_id, timestamp):
+        """update a row to mark waiting for retry"""
+        command = _restart_audit_command % (
+            state_audit_started, timestamp, row_id,  
+        )
+        self._connection.execute(command)
+        self._connection.commit()
+
     def successful_audit(self, row_id, timestamp):
         """update a row to mark success of an audit"""
         command = _audit_result_command % (
@@ -82,8 +111,9 @@ if __name__ == "__main__":
     import datetime
     avatar_id = 1001
     start_time = datetime.datetime.now()
-    finished_time = start_time + datetime.timedelta(minutes=2)
-    audit_time = start_time + datetime.timedelta(minutes=1)
+    restart_time = start_time + datetime.timedelta(minutes=1)
+    finished_time = start_time + datetime.timedelta(minutes=3)
+    audit_time = start_time + datetime.timedelta(minutes=2)
 
     print
     print "testing"
@@ -96,6 +126,11 @@ if __name__ == "__main__":
 
     row_id = audit_result_database.start_audit(avatar_id, start_time)
     print "row_id =", row_id
+
+    audit_result_database.wait_for_retry(row_id)
+
+    audit_result_database.restart_audit(row_id, restart_time)
+    
     audit_result_database.successful_audit(row_id, finished_time)
 
     ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)

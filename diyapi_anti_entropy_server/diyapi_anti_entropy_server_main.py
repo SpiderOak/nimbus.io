@@ -186,9 +186,11 @@ def _handle_low_traffic(_state, _message_body):
     return None
 
 def _handle_database_avatar_list_reply(state, message_body):
+    log = logging.getLogger("_handle_database_avatar_list_reply")
     message = DatabaseAvatarListReply.unmarshall(message_body)
 
     state["avatar-ids"] = set(message.get())
+    log.info("found %s avatar ids" % (len(state["avatar-ids"]), ))
 
     # if we don't have a consistency check in progress, start one
     if not any(filter(_is_request_state, state.items())):
@@ -339,6 +341,8 @@ def _check_time(state):
                 )
             )
             request_state.timeout_function(request_id, state)
+
+    # TODO: perioidcally send DatabaseAvatarListRequest
 
     if current_time < state["next_poll_interval"]:
         return []

@@ -44,7 +44,8 @@ from diyapi_tools.amqp_connection import local_exchange_name
 from diyapi_tools.low_traffic_thread import LowTrafficThread, \
         low_traffic_routing_tag
 
-from diyapi_anti_entropy_server.audit_result_database import AuditResultDatabase 
+from diyapi_anti_entropy_server.audit_result_database import \
+    AuditResultDatabase 
 
 from messages.database_avatar_list_request import DatabaseAvatarListRequest
 from messages.database_avatar_list_reply import DatabaseAvatarListReply
@@ -73,7 +74,10 @@ _low_traffic_routing_key = ".".join([
     low_traffic_routing_tag,
 ])
 _polling_interval = float(os.environ.get(
-    "DIYAPI_ANTI_ENTROPY_POLLING_INTERVAL", "600.0")
+    "DIYAPI_ANTI_ENTROPY_POLLING_INTERVAL", "1800.0")
+)
+_avatar_polling_interval = float(os.environ.get(
+    "DIYAPI_ANTI_ENTROPY_AVATAR_POLLING_INTERVAL", "86400.0") # 24 * 60 * 60
 )
 _request_timeout = 5.0 * 60.0
 _retry_interval = 60.0 * 60.0
@@ -89,6 +93,13 @@ _request_state_tuple = namedtuple("RequestState", [
     "avatar_id",
     "retry_count",
     "replies",
+    "row_id",
+])
+_retry_entry_tuple = namedtuple("RetryEntry", [
+    "retry_time", 
+    "avatar_id", 
+    "row_id",
+    "retry_count"
 ])
 
 def _is_request_state((_, value, )):
@@ -102,8 +113,23 @@ def _create_state():
 def _next_poll_interval():
     return time.time() + _polling_interval
 
+def _next_avatar_poll_interval():
+    return time.time() + _avatar_polling_interval
+
 def _retry_time():
     return time.time() + _retry_interval
+
+def _request_avatar_ids():
+    # request a list of avatar ids from the local database server
+    request_id = uuid.uuid1().hex
+
+    message = DatabaseAvatarListRequest(
+        request_id,
+        local_exchange_name,
+        _routing_header
+    )
+
+    return [(local_exchange_name, message.routing_key, message, ), ]
 
 def _timeout_request(request_id, state):
     """
@@ -117,10 +143,14 @@ def _timeout_request(request_id, state):
         log.error("can't find %s in state" % (request_id, ))
         return
 
+    database = AuditResultDatabase()
+
     if request_state.retry_count >= _max_retry_count:
         log.error("timeout: %s with too many retries %s " % (
             request_state.avatar_id, request_state.retry_count
         ))
+        database.too_many_retries(request_state.row_id)
+        database.close()
         # TODO: need to do something with this
         return
 
@@ -128,15 +158,29 @@ def _timeout_request(request_id, state):
         request_state.avatar_id, _retry_interval,
     ))
     state["retry-list"].append(
-        (_retry_time(), request_state.avatar_id, request_state.retry_count, )
+        _retry_entry_tuple(
+            retry_time=_retry_time(), 
+            avatar_id=request_state.avatar_id,
+            row_id=request_state.row_id,
+            retry_count=request_state.retry_count, 
+        )
     )
+    database.wait_for_retry(request_state.row_id)
+    database.close()
 
-def _start_consistency_check(state, avatar_id, retry_count=0):
+def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
     log = logging.getLogger("_start_consistency_check")
     log.info("start consistency check on %s" % (avatar_id, ))
 
     request_id = uuid.uuid1().hex
-    timestamp = time.time()
+    timestamp = datetime.datetime.now()
+
+    database = AuditResultDatabase()
+    if row_id is None:
+        row_id = database.start_audit(avatar_id, timestamp)
+    else:
+        database.restart_audit(row_id, timestamp)
+    database.close()
 
     state[request_id] = _request_state_tuple(
         timestamp=timestamp,
@@ -145,6 +189,7 @@ def _start_consistency_check(state, avatar_id, retry_count=0):
         avatar_id=avatar_id,
         retry_count=retry_count,
         replies=dict(), 
+        row_id=row_id
     )
 
     message = DatabaseConsistencyCheck(
@@ -237,12 +282,15 @@ def _handle_database_consistency_check_reply(state, message_body):
     # at this point we should have a reply from every node, so
     # we don't want to preserve state anymore
     request_state = state.pop(request_id)
+    database = AuditResultDatabase()
+    timestamp = datetime.datetime.now()
     
     hash_list = list(set(request_state.replies.values()))
     
     # ok - all have the same hash
     if len(hash_list) == 1 and hash_list[0] != _error_hash:
         log.info("avatar %s compares ok" % (request_state.avatar_id, ))
+        database.successful_audit(request_state.row_id, timestamp)
         return []
 
     # we have error(s), but the non-errors compare ok
@@ -256,18 +304,23 @@ def _handle_database_consistency_check_reply(state, message_body):
                 request_state.avatar_id, 
                 error_count
             ))
+            database.audit_error(request_state.row_id, timestamp)
             # TODO: needto do something here
         else:
             log.warn("avatar %s %s errors, will retry" % (
                 request_state.avatar_id, 
                 error_count
             ))
-            retry_entry = (
-                _retry_time(), 
-                request_state.avatar_id, 
-                request_state.retry_count, 
+            state["retry-list"].append(
+                _retry_entry_tuple(
+                    retry_time=_retry_time(), 
+                    avatar_id=request_state.avatar_id,
+                    row_id=request_state.row_id,
+                    retry_count=request_state.retry_count, 
+                )
             )
-            state["retry-list"].append(retry_entry)
+            database.wait_for_retry(request_state.row_id)
+        database.close()
         return []
 
     # if we make it here, we have some form of mismatch, possibly mixed with
@@ -277,15 +330,20 @@ def _handle_database_consistency_check_reply(state, message_body):
         log.error("    node %s value %s" % (node_name, value, ))
     if request_state.retry_count >= _max_retry_count:
         log.error("%s too many retries" % (request_state.avatar_id, ))
+        database.audit_error(request_state.row_id, timestamp)
         # TODO: need to do something here
     else:
-        retry_entry = (
-            _retry_time(), 
-            request_state.avatar_id, 
-            request_state.retry_count, 
+        state["retry-list"].append(
+            _retry_entry_tuple(
+                retry_time=_retry_time(), 
+                avatar_id=request_state.avatar_id,
+                row_id=request_state.row_id,
+                retry_count=request_state.retry_count, 
+            )
         )
-        state["retry-list"].append(retry_entry)
+        database.wait_for_retry(request_state.row_id)
 
+    database.close()
     return []
 
 _dispatch_table = {
@@ -303,17 +361,8 @@ def _startup(halt_event, state):
     )
     state["low_traffic_thread"].start()
     state["next_poll_interval"] = _next_poll_interval()
-
-    # request a list of avatar ids from the local database server
-    request_id = uuid.uuid1().hex
-
-    message = DatabaseAvatarListRequest(
-        request_id,
-        local_exchange_name,
-        _routing_header
-    )
-
-    return [(local_exchange_name, message.routing_key, message, ), ]
+    state["next_avatar_poll_interval"] = _next_avatar_poll_interval()
+    return _request_avatar_ids()
 
 def _check_time(state):
     """check if enough time has elapsed"""
@@ -325,11 +374,14 @@ def _check_time(state):
 
     # see if we have any retries ready
     next_retry_list = list()
-    for retry_timestamp, avatar_id, retry_count in state["retry-list"]:
-        if current_time >= retry_timestamp:
-            _start_consistency_check(avatar_id, retry_count +1)
+    for retry_entry in state["retry-list"]:
+        if current_time >= retry_entry.retry_timestamp:
+            _start_consistency_check(
+                retry_entry.avatar_id, 
+                row_id=retry_entry.row_id,
+                retry_count=retry_entry.retry_count +1)
         else:
-            next_retry_list.append(retry_timestamp, avatar_id, retry_count, )
+            next_retry_list.append(retry_entry)
     state["retry-list"] = next_retry_list
 
     # see if we have any timeouts
@@ -342,12 +394,14 @@ def _check_time(state):
             )
             request_state.timeout_function(request_id, state)
 
-    # TODO: perioidcally send DatabaseAvatarListRequest
+    # periodically send DatabaseAvatarListRequest
+    if current_time >= state["next_avatar_poll_interval"]:
+        state["next_avatar_poll_interval"] = _next_avatar_poll_interval()
+        return _request_avatar_ids()
 
-    if current_time < state["next_poll_interval"]:
-        return []
-
-    state["next_poll_interval"] = _next_poll_interval()
+    if current_time >= state["next_poll_interval"]:
+        state["next_poll_interval"] = _next_poll_interval()
+        return _choose_avatar_for_consistency_check()
 
     return []
 

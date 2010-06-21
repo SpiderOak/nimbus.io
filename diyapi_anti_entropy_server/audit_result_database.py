@@ -11,6 +11,7 @@ from diyapi_tools.pandora_database_connection import \
 
 state_audit_started = "audit-started"
 state_audit_waiting_retry = "audit-waiting-retry"
+state_audit_too_many_retries = "audit-too-many-retries"
 state_audit_successful = "audit-successful"
 state_audit_error = "audit-error"
 
@@ -79,6 +80,14 @@ class AuditResultDatabase(object):
         self._connection.execute(command)
         self._connection.commit()
 
+    def too_many_retries(self, row_id):
+        """update a row to mark too many retries"""
+        command = _audit_retry_command % (
+            state_audit_too_many_retries, row_id, 
+        )
+        self._connection.execute(command)
+        self._connection.commit()
+
     def restart_audit(self, row_id, timestamp):
         """update a row to mark waiting for retry"""
         command = _restart_audit_command % (
@@ -91,6 +100,14 @@ class AuditResultDatabase(object):
         """update a row to mark success of an audit"""
         command = _audit_result_command % (
             state_audit_successful, timestamp, row_id, 
+        )
+        self._connection.execute(command)
+        self._connection.commit()
+
+    def audit_error(self, row_id, timestamp):
+        """update a row to mark failure of an audit"""
+        command = _audit_result_command % (
+            state_audit_error, timestamp, row_id, 
         )
         self._connection.execute(command)
         self._connection.commit()

@@ -11,7 +11,7 @@ monkey.patch_all(dns=False)
 import os
 import sys
 
-from gevent import wsgi
+from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 
 import psycopg2
@@ -54,7 +54,7 @@ class WebServer(object):
             authenticator,
             accounter
         )
-        self.wsgi_server = wsgi.WSGIServer(('', 8088), self.application)
+        self.wsgi_server = WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
 
     def start(self):

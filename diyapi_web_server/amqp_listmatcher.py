@@ -29,8 +29,8 @@ class AMQPListmatcher(object):
             self.amqp_handler.queue_name,
             prefix
         )
-        reply_queue = self.amqp_handler.send_message(message,
-                                                     self._random_exchange())
+        # 2010-06-23 dougfort -- always send to the local exchange
+        reply_queue = self.amqp_handler.send_message(message)
         # TODO: select a different node if node is down
         reply = reply_queue.get(timeout=timeout)
         return reply.key_list

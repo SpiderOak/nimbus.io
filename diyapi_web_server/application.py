@@ -25,7 +25,9 @@ from diyapi_web_server.amqp_destroyer import AMQPDestroyer
 from diyapi_web_server.data_slicer import DataSlicer
 
 
-EXCHANGE_TIMEOUT = 5        # sec
+# 2010-06-23 dougfort -- jacked up the timeout to an hour
+# we don't want anything tming out until we straighten out handoffs
+EXCHANGE_TIMEOUT = 60 * 60  # sec
 SLICE_SIZE = 1024 * 1024    # 1MB
 
 

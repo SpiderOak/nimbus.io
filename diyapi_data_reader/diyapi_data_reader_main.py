@@ -493,7 +493,11 @@ def _shutdown(state):
     state["low_traffic_thread"].join()
     del state["low_traffic_thread"]
 
-    save_state(state, _queue_name)
+    pickleable_state = dict()
+    for key, value in state:
+        pickleable_state[key] = value._asdict()
+
+    save_state(pickleable_state, _queue_name)
 
     message = ProcessStatus(
         time.time(),
@@ -508,9 +512,11 @@ def _shutdown(state):
     return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
-    state = load_state(_queue_name)
-    if state is None:
-        state = dict()
+    state = dict()
+    pickleable_state = load_state(_queue_name)
+    if pickleable_state is not None:
+        for key, value in pickleable_state:
+            state[key] = _retrieve_state_tuple(**value)
 
     sys.exit(
         process.main(

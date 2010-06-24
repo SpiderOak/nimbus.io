@@ -14,6 +14,10 @@ from zlib import adler32
 from unit_tests.util import generate_database_content
 
 from diyapi_database_server import database_content
+from messages.database_avatar_database_request import \
+    DatabaseAvatarDatabaseRequest
+from messages.database_avatar_database_reply import \
+    DatabaseAvatarDatabaseReply
 from messages.database_avatar_list_request import DatabaseAvatarListRequest
 from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
@@ -57,6 +61,49 @@ from unit_tests.util import random_string
 
 class TestMessages(unittest.TestCase):
     """test AMQP Messages"""
+
+    def test_database_avatar_database_request(self):
+        """test DatabaseAvatarDatabaseRequest"""
+        request_id = uuid.uuid1().hex
+        dest_host = "localhost"
+        dest_dir = "/var/pandora/xxxx"
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        message = DatabaseAvatarDatabaseRequest(
+            request_id,
+            dest_host,
+            dest_dir,
+            reply_exchange,
+            reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseAvatarDatabaseRequest.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.dest_host, dest_host)
+        self.assertEqual(unmarshalled_message.dest_dir, dest_dir)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, reply_exchange
+        )
+
+    def test_database_avatar_database_reply(self):
+        """test DatabaseAvatarDatabaseReply"""
+        request_id = uuid.uuid1().hex
+        node_name = "mpde-1"
+        result = 0
+        message = DatabaseAvatarDatabaseReply(request_id, node_name, result)
+        marshalled_message = message.marshall()
+        unmarshalled_message = DatabaseAvatarDatabaseReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.node_name, node_name)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_database_avatar_list_request(self):
         """test DatabaseAvatarListRequest"""

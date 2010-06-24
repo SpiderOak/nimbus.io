@@ -9,7 +9,8 @@ import struct
 from diyapi_tools.marshalling import marshall_string, unmarshall_string
 
 # 32s - request-id 32 char hex uuid
-_header_format = "32s"
+# Q   -  avatar_id
+_header_format = "32sQ"
 _header_size = struct.calcsize(_header_format)
 
 class DatabaseAvatarDatabaseRequest(object):
@@ -22,12 +23,14 @@ class DatabaseAvatarDatabaseRequest(object):
     def __init__(
         self, 
         request_id, 
+        avatar_id,
         dest_host,
         dest_dir,
         reply_exchange,
         reply_routing_header
     ):
         self.request_id = request_id
+        self.avatar_id = avatar_id
         self.dest_host = dest_host
         self.dest_dir = dest_dir
         self.reply_exchange = reply_exchange
@@ -37,7 +40,7 @@ class DatabaseAvatarDatabaseRequest(object):
     def unmarshall(cls, data):
         """return a DatabaseAvatarDatabaseRequest message"""
         pos = 0
-        (request_id, ) = struct.unpack(
+        (request_id, avatar_id, ) = struct.unpack(
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
@@ -47,6 +50,7 @@ class DatabaseAvatarDatabaseRequest(object):
         (reply_routing_header, pos) = unmarshall_string(data, pos)
         return DatabaseAvatarDatabaseRequest(
             request_id, 
+            avatar_id,
             dest_host,
             dest_dir,
             reply_exchange, 
@@ -55,7 +59,7 @@ class DatabaseAvatarDatabaseRequest(object):
 
     def marshall(self):
         """return a data string suitable for transmission"""
-        header = struct.pack(_header_format, self.request_id)
+        header = struct.pack(_header_format, self.request_id, self.avatar_id)
         packed_dest_host = marshall_string(self.dest_host)
         packed_dest_dir = marshall_string(self.dest_dir)
         packed_reply_exchange = marshall_string(self.reply_exchange)

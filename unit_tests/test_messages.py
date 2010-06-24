@@ -65,12 +65,14 @@ class TestMessages(unittest.TestCase):
     def test_database_avatar_database_request(self):
         """test DatabaseAvatarDatabaseRequest"""
         request_id = uuid.uuid1().hex
+        avatar_id = 1001
         dest_host = "localhost"
         dest_dir = "/var/pandora/xxxx"
         reply_exchange = "reply-exchange"
         reply_routing_header = "reply-header"
         message = DatabaseAvatarDatabaseRequest(
             request_id,
+            avatar_id,
             dest_host,
             dest_dir,
             reply_exchange,
@@ -81,6 +83,7 @@ class TestMessages(unittest.TestCase):
             marshalled_message
         )
         self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
         self.assertEqual(unmarshalled_message.dest_host, dest_host)
         self.assertEqual(unmarshalled_message.dest_dir, dest_dir)
         self.assertEqual(

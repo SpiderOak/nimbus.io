@@ -13,6 +13,8 @@ from zlib import adler32
 
 from unit_tests.util import generate_database_content
 
+from messages.anti_entropy_audit_request import AntiEntropyAuditRequest
+from messages.anti_entropy_audit_reply import AntiEntropyAuditReply
 from diyapi_database_server import database_content
 from messages.database_avatar_database_request import \
     DatabaseAvatarDatabaseRequest
@@ -61,6 +63,44 @@ from unit_tests.util import random_string
 
 class TestMessages(unittest.TestCase):
     """test AMQP Messages"""
+
+    def test_anti_entropy_audit_request(self):
+        """test AntiEntropyAuditRequest"""
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        message = AntiEntropyAuditRequest(
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = AntiEntropyAuditRequest.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, reply_exchange
+        )
+
+    def test_anti_entropy_audit_reply(self):
+        """test AntiEntropyAuditReply"""
+        request_id = uuid.uuid1().hex
+        result = 0
+        message = AntiEntropyAuditReply(request_id, result)
+        marshalled_message = message.marshall()
+        unmarshalled_message = AntiEntropyAuditReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
 
     def test_database_avatar_database_request(self):
         """test DatabaseAvatarDatabaseRequest"""

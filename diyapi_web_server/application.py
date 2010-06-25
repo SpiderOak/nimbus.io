@@ -87,9 +87,12 @@ class Application(object):
                 continue
 
             try:
-                return method(req, *url_match.groups(), **url_match.groupdict())
+                self._log("before method")
+                result = method(req, *url_match.groups(), **url_match.groupdict())
+                self._log("after method")
+                return result
             except Exception:
-                self._log.exception("%s" % (req, ))
+                self._log.exception("%s" % (req.diy_username, ))
                 raise
 
         if url_matched:

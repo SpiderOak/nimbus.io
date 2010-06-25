@@ -4,8 +4,8 @@ application.py
 
 The diyapi wsgi application
 """
+import logging
 import re
-import os
 import time
 import zlib
 import hashlib
@@ -48,6 +48,7 @@ class router(list):
 class Application(object):
     def __init__(self, amqp_handler,
                  exchange_manager, authenticator, accounter):
+        self._log = logging.getLogger("Application")
         self.amqp_handler = amqp_handler
         self.exchange_manager = exchange_manager
         self.authenticator = authenticator
@@ -84,13 +85,22 @@ class Application(object):
                 method = getattr(self, func_name)
             except AttributeError:
                 continue
-            return method(req, *url_match.groups(), **url_match.groupdict())
+
+            try:
+                return method(req, *url_match.groups(), **url_match.groupdict())
+            except Exception:
+                self._log.exception("%s" % (req, ))
+                raise
+
         if url_matched:
             raise exc.HTTPMethodNotAllowed()
         raise exc.HTTPNotFound()
 
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):
+        self._log.debug("listmatch: avatar_id = %s prefix = '%s'" % (
+            req.remote_user, prefix
+        ))
         delimiter = req.GET.get('delimiter', '/')
         # TODO: do something with delimiter
         avatar_id = req.remote_user
@@ -103,6 +113,9 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
+        self._log.debug("destroy: avatar_id = %s key = %s" % (
+            req.remote_user, key,
+        ))
         avatar_id = req.remote_user
         timestamp = time.time()
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
@@ -121,6 +134,9 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
+        self._log.debug("retrieve: avatar_id = %s key = %s" % (
+            req.remote_user, key
+        ))
         avatar_id = req.remote_user
         timestamp = time.time()
         segmenter = ZfecSegmenter(
@@ -154,6 +170,11 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
+        self._log.debug(
+            "archive: avatar_id = %s key = %s, content_length = %s" % (
+                req.remote_user, key, req.content_length
+            )
+        )
         avatar_id = req.remote_user
         timestamp = time.time()
         archiver = AMQPArchiver(
@@ -172,7 +193,7 @@ class Application(object):
         previous_size = 0
         segments = None
         try:
-            for slice in DataSlicer(req.body_file,
+            for slice_item in DataSlicer(req.body_file,
                                     SLICE_SIZE,
                                     req.content_length):
                 if segments:
@@ -181,10 +202,10 @@ class Application(object):
                         EXCHANGE_TIMEOUT
                     )
                     segments = None
-                file_adler32 = zlib.adler32(slice, file_adler32)
-                file_md5.update(slice)
-                file_size += len(slice)
-                segments = segmenter.encode(slice)
+                file_adler32 = zlib.adler32(slice_item, file_adler32)
+                file_md5.update(slice_item)
+                file_size += len(slice_item)
+                segments = segmenter.encode(slice_item)
             if not segments:
                 segments = segmenter.encode('')
             previous_size = archiver.archive_final(

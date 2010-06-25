@@ -13,6 +13,7 @@ import time
 from unit_tests.util import generate_key
 from unit_tests.web_server import util
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.exceptions import DestroyFailedError
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
 
@@ -52,8 +53,8 @@ class TestAMQPDestroyer(unittest.TestCase):
                 self.amqp_handler.queue_name,
                 timestamp,
                 key,
-                0,
-                i + 1   # segment_number
+                i + 1,   # segment_number
+                0        # version number
             )
             reply = DestroyKeyReply(
                 request_id,
@@ -75,6 +76,7 @@ class TestAMQPDestroyer(unittest.TestCase):
         return base_size, messages
 
     def test_destroy(self):
+        """test successful destroy"""
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
@@ -94,9 +96,14 @@ class TestAMQPDestroyer(unittest.TestCase):
             for message, exchange in self.amqp_handler.messages
         ]
         self.assertEqual(
-            actual, expected, 'destroyer did not send expected messages')
+            actual, expected, 
+            'destroyer did not send expected messages %s %s' % (
+                len(expected), len(actual),
+            )
+        )
 
-    def test_destroy_with_handoff(self):
+    def test_destroy_with_failure(self):
+        """test failed destroy"""
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
@@ -105,22 +112,11 @@ class TestAMQPDestroyer(unittest.TestCase):
         self.exchange_manager.mark_up(0)
 
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
-        size_deleted = destroyer.destroy(avatar_id, key, timestamp, 0)
-
-        self.assertEqual(size_deleted, base_size)
-        self.assertTrue(self.exchange_manager.is_down(0))
-
-        expected = [
-            (message.marshall(), exchange)
-            for message, exchange in messages
-        ]
-        actual = [
-            (message.marshall(), exchange)
-            for message, exchange in self.amqp_handler.messages
-        ]
-        self.assertEqual(
-            actual, expected, 'destroyer did not send expected messages')
-
+        timeout = 1.0
+        self.assertRaises(
+            DestroyFailedError, 
+            destroyer.destroy, avatar_id, key, timestamp, timeout
+        )
 
 if __name__ == "__main__":
     from diyapi_tools.standard_logging import initialize_logging

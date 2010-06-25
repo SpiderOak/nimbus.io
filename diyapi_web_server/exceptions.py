@@ -4,6 +4,9 @@ class AlreadyInProgress(Exception):
 class ArchiveFailedError(Exception):
     pass
 
+class DestroyFailedError(Exception):
+    pass
+
 class HandoffFailedError(ArchiveFailedError):
     pass
 

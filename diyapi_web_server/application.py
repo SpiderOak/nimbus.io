@@ -109,7 +109,8 @@ class Application(object):
         try:
             size_deleted = destroyer.destroy(
                 avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
-        except HandoffFailedError:
+        except DestroyFailedError:
+            # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         self.accounter.removed(
             avatar_id,
@@ -194,6 +195,7 @@ class Application(object):
                 EXCHANGE_TIMEOUT
             )
         except (HandoffFailedError, ArchiveFailedError):
+            # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         if previous_size is not None:
             self.accounter.removed(

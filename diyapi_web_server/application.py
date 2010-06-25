@@ -87,9 +87,9 @@ class Application(object):
                 continue
 
             try:
-                self._log("before method")
+                self._log.debug("before method")
                 result = method(req, *url_match.groups(), **url_match.groupdict())
-                self._log("after method")
+                self._log.debug("after method, result = %s" % (result, ))
                 return result
             except Exception:
                 self._log.exception("%s" % (req.diy_username, ))

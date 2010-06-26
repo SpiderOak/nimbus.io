@@ -18,7 +18,7 @@ class AntiEntropyAuditRequest(object):
     AMQP message to request anti_entropy server to run an audit on an avatar
     """
 
-    routing_key = "anti_entropy_server.audit_request"
+    routing_key = "anti-entropy.audit_request"
 
     def __init__(
         self, 

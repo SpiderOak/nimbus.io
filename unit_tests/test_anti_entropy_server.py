@@ -8,12 +8,14 @@ import logging
 import os
 import time
 import unittest
+import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.amqp_connection import exchange_template
 
 _log_path = "/var/log/pandora/test_anti_entropy_server.log"
 
+from messages.anti_entropy_audit_request import AntiEntropyAuditRequest
 from messages.database_consistency_check import DatabaseConsistencyCheck
 from messages.database_consistency_check_reply import \
     DatabaseConsistencyCheckReply
@@ -27,6 +29,7 @@ from diyapi_anti_entropy_server.diyapi_anti_entropy_server_main import \
     _create_state, \
     _is_request_state, \
     _start_consistency_check, \
+    _handle_anti_entropy_audit_request, \
     _handle_database_consistency_check_reply, \
     _timeout_request
 
@@ -168,6 +171,62 @@ class TestAntiEntropyServer(unittest.TestCase):
 
         _timeout_request(request_id, state)
         self.assertEqual(len(state["retry-list"]), 1)
+
+    def test_audit_request(self):
+        """test using the AntiEntropyAuditRequest message"""
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-routing-header"
+        state = _create_state()
+
+        message = AntiEntropyAuditRequest(
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header
+        )
+
+        # we expect to send a DatabaseConsistencyCheck to the database_server
+        # on every node
+        result = _handle_anti_entropy_audit_request(state, message.marshall())
+        self.assertEqual(len(result), len(_node_names), result)
+
+        valid_hash = "aaaaaaaaaaaaaaaa"
+
+        # send back a successful reply from each node except the last one
+        for (_exchange, _routing_key, request, ),  node_name in \
+        zip(result[:-1], _node_names[:-1]):
+            message = DatabaseConsistencyCheckReply(
+                request.request_id,
+                node_name,
+                DatabaseConsistencyCheckReply.successful,
+                valid_hash
+            )
+            result = _handle_database_consistency_check_reply(
+                state, message.marshall()
+            )
+            self.assertEqual(len(result), 0, result)
+
+        # send back a successful reply from the last node
+        # we expect to get a AntiEntropyAuditReply
+        _exchange, _routing_key, request = result[-1]
+        node_name = _node_names[-1]
+        message = DatabaseConsistencyCheckReply(
+            request.request_id,
+            node_name,
+            DatabaseConsistencyCheckReply.successful,
+            valid_hash
+        )
+        result = _handle_database_consistency_check_reply(
+            state, message.marshall()
+        )
+        self.assertEqual(len(result), 1, result)
+        _exchange, _key, reply = result[0]
+        self.assertEqual(
+            reply.__class__.__name__, "AntiEntropyAuditReply", reply
+        )
+        self.assertEqual(reply.status, 0, reply)        
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

@@ -47,6 +47,8 @@ from diyapi_tools.low_traffic_thread import LowTrafficThread, \
 from diyapi_anti_entropy_server.audit_result_database import \
     AuditResultDatabase 
 
+from messages.anti_entropy_audit_request import AntiEntropyAuditRequest
+from messages.anti_entropy_audit_reply import AntiEntropyAuditReply
 from messages.database_avatar_list_request import DatabaseAvatarListRequest
 from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
@@ -94,6 +96,8 @@ _request_state_tuple = namedtuple("RequestState", [
     "retry_count",
     "replies",
     "row_id",
+    "reply_exchange",
+    "reply_routing_header"
 ])
 _retry_entry_tuple = namedtuple("RetryEntry", [
     "retry_time", 
@@ -189,7 +193,9 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
         avatar_id=avatar_id,
         retry_count=retry_count,
         replies=dict(), 
-        row_id=row_id
+        row_id=row_id,
+        reply_exchange=None,
+        reply_routing_header=None
     )
 
     message = DatabaseConsistencyCheck(
@@ -224,6 +230,43 @@ def _choose_avatar_for_consistency_check(state):
 
     avatar_id = random.choice(list(eligible_avatar_ids))
     return _start_consistency_check(avatar_id)
+
+def _handle_anti_entropy_audit_request(state, message_body):
+    """handle a requst to audit a specific avatar, not some random one"""
+    log = logging.getLogger("_handle_anti_entropy_audit_request")
+    message = AntiEntropyAuditRequest.unmarshall(message_body)
+    log.info("request for audit on %s" % (message.avatar_id, )) 
+
+    timestamp = datetime.datetime.now()
+
+    database = AuditResultDatabase()
+    row_id = database.start_audit(message.avatar_id, timestamp)
+    database.close()
+
+    state[message.request_id] = _request_state_tuple(
+        timestamp=timestamp,
+        timeout=time.time()+_request_timeout,
+        timeout_function=_timeout_request,
+        avatar_id=message.avatar_id,
+        retry_count=_max_retry_count,
+        replies=dict(), 
+        row_id=row_id,
+        reply_exchange=message.reply_exchange,
+        reply_routing_header=message.reply_routing_header
+    )
+
+    message = DatabaseConsistencyCheck(
+        messabge.request_id,
+        message.avatar_id,
+        timestamp,
+        local_exchange_name,
+        _routing_header
+    )
+    # send the DatabaseConsistencyCheck to every node
+    return [
+        (dest_exchange, message.routing_key, message) \
+        for dest_exchange in _exchanges
+    ]
 
 def _handle_low_traffic(_state, _message_body):
     log = logging.getLogger("_handle_low_traffic")
@@ -347,6 +390,7 @@ def _handle_database_consistency_check_reply(state, message_body):
     return []
 
 _dispatch_table = {
+    AntiEntropyAuditRequest.routing_key : _handle_anti_entropy_audit_request,    
     _database_avatar_list_reply_routing_key   : \
         _handle_database_avatar_list_reply,
     _database_consistency_check_reply_routing_key   : \

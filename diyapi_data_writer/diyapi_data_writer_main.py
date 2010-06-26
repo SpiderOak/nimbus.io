@@ -948,7 +948,7 @@ def _shutdown(state):
     del state["low_traffic_thread"]
 
     pickleable_state = dict()
-    for key, value in state:
+    for key, value in state.items():
         pickleable_state[key] = value._asdict()
 
     save_state(pickleable_state, _queue_name)

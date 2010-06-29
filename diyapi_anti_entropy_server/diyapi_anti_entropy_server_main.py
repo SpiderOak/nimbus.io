@@ -229,7 +229,7 @@ def _choose_avatar_for_consistency_check(state):
         return []
 
     avatar_id = random.choice(list(eligible_avatar_ids))
-    return _start_consistency_check(avatar_id)
+    return _start_consistency_check(state, avatar_id)
 
 def _handle_anti_entropy_audit_request(state, message_body):
     """handle a requst to audit a specific avatar, not some random one"""
@@ -483,6 +483,7 @@ def _check_time(state):
     for retry_entry in state["retry-list"]:
         if current_time >= retry_entry.retry_timestamp:
             _start_consistency_check(
+                state,
                 retry_entry.avatar_id, 
                 row_id=retry_entry.row_id,
                 retry_count=retry_entry.retry_count +1)

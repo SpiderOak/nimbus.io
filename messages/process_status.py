@@ -17,6 +17,7 @@ class ProcessStatus(object):
     AMQP message to broadcast a process's status to the world
     """
     status_startup = "startup"
+    status_heartbeat = "heartbeat"
     status_shutdown = "shutdown"
 
     routing_key = "process_status"

@@ -77,6 +77,9 @@ _key_insert_timeout = 60.0
 _key_destroy_timeout = 60.0
 _key_purge_timeout = 60.0
 _archive_timeout = 30 * 60.0
+_heartbeat_interval = float(
+    os.environ.get("DIYAPI_DATA_WRITER_HEARTBEAT", "60.0")
+)
 
 _archive_state_tuple = namedtuple("ArchiveState", [ 
     "timestamp",
@@ -92,6 +95,9 @@ _archive_state_tuple = namedtuple("ArchiveState", [
     "reply_exchange",
     "reply_routing_header",
 ])
+
+def _next_heartbeat_time():
+    return time.time() + _heartbeat_interval
 
 def _handle_key_insert_timeout(request_id, state):
     """called when we wait too long for a reply to a KeyInsert message"""
@@ -881,7 +887,7 @@ def _handle_key_purge_reply(state, message_body):
     reply = PurgeKeyReply(message.request_id, PurgeKeyReply.successful)
     return [(reply_exchange, reply_routing_key, reply, )]      
 
-def _handle_low_traffic(state, message_body):
+def _handle_low_traffic(_state, _message_body):
     log = logging.getLogger("_handle_low_traffic")
     log.debug("ignoring low traffic message")
     return None
@@ -904,6 +910,7 @@ def _startup(halt_event, state):
         halt_event, _routing_header
     )
     state["low_traffic_thread"].start()
+    state["next-heartbeat-time"] = _next_heartbeat_time()
 
     message = ProcessStatus(
         time.time(),
@@ -920,9 +927,9 @@ def _startup(halt_event, state):
 def _is_archive_state((_, value, )):
     return value.__class__.__name__ == "ArchiveState"
 
-def _check_message_timeout(state):
+def _check_time(state):
     """check request_ids who are waiting for a message"""
-    log = logging.getLogger("_check_message_timeout")
+    log = logging.getLogger("_check_time")
 
     state["low_traffic_thread"].reset()
 
@@ -930,6 +937,7 @@ def _check_message_timeout(state):
     return_list = list()
 
     current_time = time.time()
+
     for request_id, archive_state in filter(_is_archive_state, state.items()):
         if current_time > archive_state.timeout:
             log.warn(
@@ -941,15 +949,36 @@ def _check_message_timeout(state):
                 archive_state.timeout_function(request_id, state)
             )
 
+    if current_time > state["next-heartbeat-time"]:
+        log.debug("sending heartbeat. next heartbeat %s seconds" % (
+            _heartbeat_interval,
+        ))
+        message = ProcessStatus(
+            time.time(),
+            amqp_connection.local_exchange_name,
+            _routing_header,
+            ProcessStatus.status_heartbeat
+        )
+
+        exchange = amqp_connection.broadcast_exchange_name
+        routing_key = ProcessStatus.routing_key
+
+        return_list.append(
+            (exchange, routing_key, message, )
+        )
+
+        state["next-heartbeat-time"] = _next_heartbeat_time()
+
     return return_list
 
 def _shutdown(state):
     state["low_traffic_thread"].join()
     del state["low_traffic_thread"]
+    del state["next-heartbeat-time"]
 
     pickleable_state = dict()
-    for key, value in state.items():
-        pickleable_state[key] = value._asdict()
+    for request_id, archive_state in filter(_is_archive_state, state.items()):
+        pickleable_state[request_id] = archive_state._asdict()
 
     save_state(pickleable_state, _queue_name)
 
@@ -980,7 +1009,7 @@ if __name__ == "__main__":
             _dispatch_table, 
             state,
             pre_loop_function=_startup,
-            in_loop_function=_check_message_timeout,
+            in_loop_function=_check_time,
             post_loop_function=_shutdown
         )
     )

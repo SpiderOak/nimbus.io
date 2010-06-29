@@ -256,7 +256,7 @@ def _handle_anti_entropy_audit_request(state, message_body):
     )
 
     message = DatabaseConsistencyCheck(
-        messabge.request_id,
+        message.request_id,
         message.avatar_id,
         timestamp,
         local_exchange_name,

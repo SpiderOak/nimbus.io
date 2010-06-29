@@ -308,17 +308,40 @@ def _handle_database_consistency_check_reply(state, message_body):
         hash_value = _error_hash
     else:
         hash_value = message.hash
+
+    # if this audit was started by an AntiEntropyAuditRequest message,
+    # we want to send a reply
+    if state[request_id].reply_routing_header is not None:
+        reply_routing_key = ".".join([
+            state[request_id].reply_routing_header,
+            AntiEntropyAuditReply.routing_tag
+        ])
+        reply_exchange = state[request_id].reply_exchange
+        assert reply_exchange is not None
+    else:
+        reply_routing_key = None
+        reply_exchange = None
         
     if message.node_name in state[request_id].replies:
-        log.error("duplicate reply from %s %s %s" % (
+        error_message = "duplicate reply from %s %s %s" % (
             message.node_name,
             state[request_id].avatar_id, 
             request_id
-        ))
-        return []
+        )
+        log.error(error_message)
+        if reply_exchange is not None:
+            reply_message = AntiEntropyAuditReply(
+                request_id,
+                AntiEntropyAuditReply.other_error,
+                error_message
+            )
+            return [(reply_exchange, reply_routing_key, reply_message, ), ]
+        else:
+            return []
 
     state[request_id].replies[message.node_name] = hash_value
 
+    # not done yet, wait for more replies
     if len(state[request_id].replies) < len(_exchanges):
         return []
 
@@ -334,7 +357,14 @@ def _handle_database_consistency_check_reply(state, message_body):
     if len(hash_list) == 1 and hash_list[0] != _error_hash:
         log.info("avatar %s compares ok" % (request_state.avatar_id, ))
         database.successful_audit(request_state.row_id, timestamp)
-        return []
+        if reply_exchange is not None:
+            reply_message = AntiEntropyAuditReply(
+                request_id,
+                AntiEntropyAuditReply.successful
+            )
+            return [(reply_exchange, reply_routing_key, reply_message, ), ]
+        else:
+            return []
 
     # we have error(s), but the non-errors compare ok
     if len(hash_list) == 2 and _error_hash in hash_list:
@@ -342,6 +372,20 @@ def _handle_database_consistency_check_reply(state, message_body):
         for value in request_state.replies.values():
             if value == _error_hash:
                 error_count += 1
+
+        # if we come from AntiEntropyAuditRequest, don't retry
+        if reply_exchange is not None:
+            database.audit_error(request_state.row_id, timestamp)
+            database.close()
+            error_message = "There were %s error hashes" % (error_count, )
+            log.error(error_message)
+            reply_message = AntiEntropyAuditReply(
+                request_id,
+                AntiEntropyAuditReply.other_error,
+                error_message
+            )
+            return [(reply_exchange, reply_routing_key, reply_message, ), ]
+        
         if request_state.retry_count >= _max_retry_count:
             log.error("avatar %s %s errors, too many retries" % (
                 request_state.avatar_id, 
@@ -368,9 +412,26 @@ def _handle_database_consistency_check_reply(state, message_body):
 
     # if we make it here, we have some form of mismatch, possibly mixed with
     # errors
-    log.error("avatar %s hash mismatch" % (request_state.avatar_id, ))
+    error_message = "avatar %s hash mismatch" % (request_state.avatar_id, )
+    log.error(error_message)
     for node_name, value in request_state.replies.items():
         log.error("    node %s value %s" % (node_name, value, ))
+
+    # if we come from AntiEntropyAuditRequest, don't retry
+    if reply_exchange is not None:
+        database.audit_error(request_state.row_id, timestamp)
+        database.close()
+        error_message = "There were %s error hashes" % (error_count, )
+        log.error(error_message)
+        reply_message = AntiEntropyAuditReply(
+            request_id,
+            AntiEntropyAuditReply.audit_error,
+            error_message
+        )
+        database.audit_error(request_state.row_id, timestamp)
+        database.close()
+        return [(reply_exchange, reply_routing_key, reply_message, ), ]
+
     if request_state.retry_count >= _max_retry_count:
         log.error("%s too many retries" % (request_state.avatar_id, ))
         database.audit_error(request_state.row_id, timestamp)
@@ -390,7 +451,8 @@ def _handle_database_consistency_check_reply(state, message_body):
     return []
 
 _dispatch_table = {
-    AntiEntropyAuditRequest.routing_key : _handle_anti_entropy_audit_request,    
+    AntiEntropyAuditRequest.routing_key : \
+        _handle_anti_entropy_audit_request,    
     _database_avatar_list_reply_routing_key   : \
         _handle_database_avatar_list_reply,
     _database_consistency_check_reply_routing_key   : \

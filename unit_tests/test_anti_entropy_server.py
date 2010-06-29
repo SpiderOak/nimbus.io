@@ -172,7 +172,7 @@ class TestAntiEntropyServer(unittest.TestCase):
         _timeout_request(request_id, state)
         self.assertEqual(len(state["retry-list"]), 1)
 
-    def xxxtest_audit_request(self):
+    def test_audit_request(self):
         """test using the AntiEntropyAuditRequest message"""
         request_id = uuid.uuid1().hex
         avatar_id = 1001
@@ -203,10 +203,10 @@ class TestAntiEntropyServer(unittest.TestCase):
                 DatabaseConsistencyCheckReply.successful,
                 valid_hash
             )
-            result = _handle_database_consistency_check_reply(
+            check_result = _handle_database_consistency_check_reply(
                 state, message.marshall()
             )
-            self.assertEqual(len(result), 0, result)
+            self.assertEqual(len(check_result), 0, check_result)
 
         # send back a successful reply from the last node
         # we expect to get a AntiEntropyAuditReply

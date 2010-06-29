@@ -60,6 +60,10 @@ _purge_key_reply_routing_key = ".".join([
     _routing_header, PurgeKeyReply.routing_tag
 ])
 
+_active_status = [
+    ProcessStatus.status_startup, ProcessStatus.status_heartbeat,
+] 
+
 def _handle_hinted_handoff(state, message_body):
     log = logging.getLogger("_handle_hinted_handoff")
     message = HintedHandoff.unmarshall(message_body)
@@ -108,10 +112,10 @@ def _handle_process_status(state, message_body):
         format_timestamp(message.timestamp),
     ))
     
-    # we're interested in startup messages from data_writers
+    # we're interested in startup and heartbeat messages from data_writers
     # for whom we may have handoffs
     if message.routing_header == data_writer_routing_header \
-       and message.status == ProcessStatus.status_startup:
+    and message.status in _active_status:
         results = _check_for_handoffs(state, message.exchange)
     else:
         results = []

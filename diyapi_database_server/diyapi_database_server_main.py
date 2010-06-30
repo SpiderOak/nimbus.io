@@ -59,6 +59,13 @@ _max_cached_databases = 10
 _database_cache = "open-database-cache"
 _max_listmatch_size = 1024 * 1024 * 1024
 
+def _content_database_exists(avatar_id):
+    repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
+    content_database_path = os.path.join(
+        repository_path, str(avatar_id), "contents.db"
+    )
+    return os.path.exists(content_database_path)
+
 def _open_database(state, avatar_id):
     database = None
 
@@ -124,17 +131,14 @@ def _list_content(database, search_key):
         cursor.close()
 
 def _find_avatars():
-    """a generator to identify avatars wiht contents databases"""
+    """a generator to identify avatars with contents databases"""
     repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
     for file_name in os.listdir(repository_path):
         try:
             avatar_id = int(file_name)
         except ValueError:
             continue
-        content_database_path = os.path.join(
-            repository_path, file_name, "contents.db"
-        )
-        if os.path.exists(content_database_path):
+        if _content_database_exists(avatar_id):
             yield avatar_id
 
 def _handle_key_insert(state, message_body):
@@ -553,6 +557,16 @@ def _handle_consistency_check(state, message_body):
         message.reply_routing_header, DatabaseConsistencyCheckReply.routing_tag
     ])
 
+    if not _content_database_exists(message.avatar_id):
+        error_message = "no database for avatar_id %s" % (message.avatar_id, )
+        log.error(error_message)
+        reply = DatabaseConsistencyCheckReply(
+            message.request_id,
+            DatabaseConsistencyCheckReply.error_database_failure,
+            error_message=error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
     result_list = list()
     try:
         database = _open_database(state, message.avatar_id)
@@ -592,7 +606,7 @@ def _handle_consistency_check(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
-def _handle_avatar_list_request(state, message_body):
+def _handle_avatar_list_request(_state, message_body):
     log = logging.getLogger("_handle_avatar_list_request")
     message = DatabaseAvatarListRequest.unmarshall(message_body)
     log.info("reply exchange = %s" % (message.reply_exchange, ))

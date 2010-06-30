@@ -421,8 +421,6 @@ def _handle_database_consistency_check_reply(state, message_body):
     if reply_exchange is not None:
         database.audit_error(request_state.row_id, timestamp)
         database.close()
-        error_message = "There were %s error hashes" % (error_count, )
-        log.error(error_message)
         reply_message = AntiEntropyAuditReply(
             request_id,
             AntiEntropyAuditReply.audit_error,

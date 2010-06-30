@@ -426,8 +426,6 @@ def _handle_database_consistency_check_reply(state, message_body):
             AntiEntropyAuditReply.audit_error,
             error_message
         )
-        database.audit_error(request_state.row_id, timestamp)
-        database.close()
         return [(reply_exchange, reply_routing_key, reply_message, ), ]
 
     if request_state.retry_count >= _max_retry_count:

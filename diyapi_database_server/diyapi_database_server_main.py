@@ -562,6 +562,7 @@ def _handle_consistency_check(state, message_body):
         log.error(error_message)
         reply = DatabaseConsistencyCheckReply(
             message.request_id,
+            _node_name,
             DatabaseConsistencyCheckReply.error_database_failure,
             error_message=error_message
         )
@@ -586,6 +587,7 @@ def _handle_consistency_check(state, message_body):
         log.exception("%s" % (message.avatar_id, ))
         reply = DatabaseConsistencyCheckReply(
             message.request_id,
+            _node_name,
             DatabaseConsistencyCheckReply.error_database_failure,
             error_message=str(instance)
         )

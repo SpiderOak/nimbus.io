@@ -54,6 +54,7 @@ from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
 from messages.database_consistency_check_reply import \
     DatabaseConsistencyCheckReply
+from messages.process_status import ProcessStatus
 
 _log_path = u"/var/log/pandora/diyapi_anti_entropy_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
@@ -446,6 +447,10 @@ def _handle_database_consistency_check_reply(state, message_body):
     database.close()
     return []
 
+def _handle_process_status(_state, _message_body):
+    """silently discard ProcessStatus to keep from cluttering up the log"""
+    return []
+
 _dispatch_table = {
     AntiEntropyAuditRequest.routing_key : \
         _handle_anti_entropy_audit_request,    
@@ -453,6 +458,7 @@ _dispatch_table = {
         _handle_database_avatar_list_reply,
     _database_consistency_check_reply_routing_key   : \
         _handle_database_consistency_check_reply,
+    ProcessStatus.routing_key           : _handle_process_status,
     _low_traffic_routing_key            : _handle_low_traffic,
 }
 

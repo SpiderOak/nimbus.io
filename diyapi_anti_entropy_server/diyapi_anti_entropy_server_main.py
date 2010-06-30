@@ -508,7 +508,7 @@ def _check_time(state):
 
     if current_time >= state["next_poll_interval"]:
         state["next_poll_interval"] = _next_poll_interval()
-        return _choose_avatar_for_consistency_check()
+        return _choose_avatar_for_consistency_check(state)
 
     return []
 

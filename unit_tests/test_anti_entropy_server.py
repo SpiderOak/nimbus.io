@@ -226,7 +226,7 @@ class TestAntiEntropyServer(unittest.TestCase):
         self.assertEqual(
             reply.__class__.__name__, "AntiEntropyAuditReply", reply
         )
-        self.assertEqual(reply.status, 0, reply)        
+        self.assertEqual(reply.result, 0, reply)        
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

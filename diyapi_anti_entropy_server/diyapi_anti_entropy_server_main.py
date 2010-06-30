@@ -201,7 +201,7 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
     message = DatabaseConsistencyCheck(
         request_id,
         avatar_id,
-        timestamp,
+        time.mktime(timestamp.timetuple()),
         local_exchange_name,
         _routing_header
     )
@@ -258,7 +258,7 @@ def _handle_anti_entropy_audit_request(state, message_body):
     message = DatabaseConsistencyCheck(
         message.request_id,
         message.avatar_id,
-        timestamp,
+        time.mktime(timestamp.timetuple()),
         local_exchange_name,
         _routing_header
     )

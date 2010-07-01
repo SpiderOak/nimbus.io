@@ -185,7 +185,8 @@ def _handle_retrieve_key_next(state, message_body):
          RetrieveKeyNextReply.routing_tag]
     )
 
-    if message.sequence != retrieve_state.sequence+1:
+    if retrieve_state.sequence is None \
+    or message.sequence != retrieve_state.sequence+1:
         error_string = "%s %s out of sequence %s %s" % (
             retrieve_state.avatar_id, 
             retrieve_state.key,
@@ -512,11 +513,11 @@ def _shutdown(state):
     return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
-    state = dict()
+    work_state = dict()
     pickleable_state = load_state(_queue_name)
     if pickleable_state is not None:
         for key, value in pickleable_state:
-            state[key] = _retrieve_state_tuple(**value)
+            work_state[key] = _retrieve_state_tuple(**value)
 
     sys.exit(
         process.main(
@@ -524,7 +525,7 @@ if __name__ == "__main__":
             _queue_name, 
             _routing_key_binding, 
             _dispatch_table, 
-            state,
+            work_state,
             pre_loop_function=_startup,
             in_loop_function=_check_message_timeout,
             post_loop_function=_shutdown

@@ -18,7 +18,7 @@ class DatabaseAvatarDatabaseRequest(object):
     AMQP message to request a list of known avatars from the database server
     """
 
-    routing_key = "database_server.avatar_list_request"
+    routing_key = "database_server.avatar_database_request"
 
     def __init__(
         self, 

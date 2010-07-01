@@ -19,8 +19,8 @@ class DatabaseAvatarDatabaseReply(object):
     routing_tag = "database_avatar_database_reply"
 
     successful = 0
-    transmission_error = 1
-    other_error = 2
+    error_database_failure = 1
+    error_transmission_failure = 2
    
     def __init__(self, request_id, node_name, result, error_message=""):
         self.request_id = request_id

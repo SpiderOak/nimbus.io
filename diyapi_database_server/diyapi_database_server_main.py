@@ -19,6 +19,7 @@ import hashlib
 import logging
 import os
 import os.path
+import subprocess
 import sys
 import time
 
@@ -32,6 +33,9 @@ from diyapi_database_server import database_content
 
 from messages.process_status import ProcessStatus
 
+from messages.database_avatar_database_request import \
+    DatabaseAvatarDatabaseRequest
+from messages.database_avatar_database_reply import DatabaseAvatarDatabaseReply
 from messages.database_avatar_list_request import DatabaseAvatarListRequest
 from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
@@ -58,13 +62,16 @@ _routing_key_binding = ".".join([_routing_header, "*"])
 _max_cached_databases = 10
 _database_cache = "open-database-cache"
 _max_listmatch_size = 1024 * 1024 * 1024
+_send_database_template = "/usr/bin/scp -q %s %s:%s/content.%s" 
 
-def _content_database_exists(avatar_id):
+def _content_database_path(avatar_id):
     repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
-    content_database_path = os.path.join(
+    return os.path.join(
         repository_path, str(avatar_id), "contents.db"
     )
-    return os.path.exists(content_database_path)
+
+def _content_database_exists(avatar_id):
+    return os.path.exists(_content_database_path(avatar_id))
 
 def _open_database(state, avatar_id):
     database = None
@@ -608,6 +615,53 @@ def _handle_consistency_check(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
+def _handle_avatar_database_request(_state, message_body):
+    log = logging.getLogger("_handle_avatar_database_request")
+    message = DatabaseAvatarDatabaseRequest.unmarshall(message_body)
+    log.info("reply exchange = %s" % (message.reply_exchange, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = ".".join([
+        message.reply_routing_header, DatabaseAvatarDatabaseReply.routing_tag
+    ])
+
+    if not _content_database_exists(message.avatar_id):
+        error_message = "no database for avatar_id %s" % (message.avatar_id, )
+        log.error(error_message)
+        reply = DatabaseConsistencyCheckReply(
+            message.request_id,
+            _node_name,
+            DatabaseAvatarDatabaseReply.error_database_failure,
+            error_message=error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    send_database_command = _send_database_template % (
+        _content_database_path(message.avatar_id),
+        message.dest_host,
+        message.dest_dir,
+        _node_name
+    )
+
+    try:
+        subprocess.check_call(args=send_database_command.split())
+    except Exception, instance:
+        log.exception(send_database_command)
+        reply = DatabaseConsistencyCheckReply(
+            message.request_id,
+            _node_name,
+            DatabaseAvatarDatabaseReply.error_transmission_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    reply = DatabaseAvatarDatabaseReply(
+        message.request_id,
+        _node_name, 
+        DatabaseAvatarDatabaseReply.successful
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
 def _handle_avatar_list_request(_state, message_body):
     log = logging.getLogger("_handle_avatar_list_request")
     message = DatabaseAvatarListRequest.unmarshall(message_body)
@@ -641,6 +695,8 @@ _dispatch_table = {
     DatabaseKeyPurge.routing_key            : _handle_key_purge,
     DatabaseListMatch.routing_key           : _handle_listmatch,
     DatabaseConsistencyCheck.routing_key    : _handle_consistency_check,
+    DatabaseAvatarDatabaseRequest.routing_key : \
+        _handle_avatar_database_request,
     DatabaseAvatarListRequest.routing_key   : _handle_avatar_list_request,
     ProcessStatus.routing_key               : _handle_process_status,
 }

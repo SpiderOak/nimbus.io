@@ -8,12 +8,16 @@ import logging
 import os
 import os.path
 import shutil
+import sys
 import time
 import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_database_server import database_content
+from messages.database_avatar_database_request import \
+    DatabaseAvatarDatabaseRequest
+from messages.database_avatar_database_reply import DatabaseAvatarDatabaseReply
 from messages.database_avatar_list_request import DatabaseAvatarListRequest
 from messages.database_avatar_list_reply import DatabaseAvatarListReply
 from messages.database_consistency_check import DatabaseConsistencyCheck
@@ -43,6 +47,7 @@ from diyapi_database_server.diyapi_database_server_main import \
         _database_cache, _handle_key_insert, _handle_key_lookup, \
         _handle_key_list, _handle_key_destroy, _handle_key_purge, \
         _handle_listmatch, _handle_consistency_check, \
+        _handle_avatar_database_request, \
         _handle_avatar_list_request
 
 _reply_routing_header = "test_database_server"
@@ -812,6 +817,50 @@ class TestDatabaseServer(unittest.TestCase):
         )
         self.assertEqual(reply.request_id, request_id)
         self.assertEqual(reply.result, 0, reply.error_message)
+
+    def test_avatar_database_request(self):
+        """test requesting database server to send us the database"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        content = generate_database_content()
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        request_id = uuid.uuid1().hex
+        dest_host = "127.0.0.1"
+        dest_dir = os.path.join(_repository_path, "dest_dir")
+        os.mkdir(dest_dir)
+
+        exchange = "reply-exchange"
+
+        message = DatabaseAvatarDatabaseRequest(
+            request_id,
+            avatar_id,
+            dest_host,
+            dest_dir,
+            exchange,
+            _reply_routing_header
+        )
+        marshalled_message = message.marshall()
+
+        state = {_database_cache : dict()}
+        replies = _handle_avatar_database_request(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.database_avatar_database_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0, reply.error_message)
+        dest_list = os.listdir(dest_dir)
+        # check that we got something, hoping database_server sent the right
+        # thing
+        self.assertEqual(len(dest_list), 1, dest_list)
 
     def test_avatar_list_request(self):
         """test requesting a list of avatar ids"""

@@ -58,6 +58,8 @@ from messages.process_status import ProcessStatus
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 from messages.space_accounting_detail import SpaceAccountingDetail
+from messages.rebuild_request import RebuildRequest
+from messages.rebuild_reply import RebuildReply
 
 from unit_tests.util import random_string
 
@@ -1168,6 +1170,45 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.timestamp, timestamp)
         self.assertEqual(unmarshalled_message.event, event)
         self.assertEqual(unmarshalled_message.value, value)
+
+    def test_rebuild_request(self):
+        """test RebuildRequest"""
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        message = RebuildRequest(
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = RebuildRequest.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, reply_exchange
+        )
+
+    def test_rebuild_reply(self):
+        """test RebuildReply"""
+        request_id = uuid.uuid1().hex
+        result = 0
+        message = RebuildReply(request_id, result)
+        marshalled_message = message.marshall()
+        unmarshalled_message = RebuildReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
+
 
 if __name__ == "__main__":
     unittest.main()

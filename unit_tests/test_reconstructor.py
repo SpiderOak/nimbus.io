@@ -3,7 +3,6 @@
 test_reconstructor.py
 
 test the reconstructor
-this ends up being a simulator for almost the full system
 """
 import datetime
 import logging
@@ -24,6 +23,7 @@ class TestReconstructor(unittest.TestCase):
     """test message handling in reconstructor"""
 
     def setUp(self):
+        logging.root.setLevel(logging.DEBUG)
         self.tearDown()
 
     def tearDown(self):

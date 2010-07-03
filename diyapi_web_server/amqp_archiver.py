@@ -37,101 +37,109 @@ class AMQPArchiver(object):
         self.key = key
         self.version_number = 0
         self.timestamp = timestamp
-        self.pending = {}
-        self._segment_request_ids = {}
-        self._segment_adler32s = {}
-        self._segment_md5s = defaultdict(hashlib.md5)
         self.sequence_number = 0
-        self.result = None
         self._handoff_exchanges = {}
+        self._request_ids = {}
+        self._adler32s = {}
+        self._md5s = defaultdict(hashlib.md5)
+        self._pending = {}
+        self._done = []
+        self._result = None
 
-    def _do_handoff(self, segment_number, message, exchange):
-        exchange_num = self.exchange_manager.index(exchange)
-        self.exchange_manager.mark_down(exchange_num)
-        replies = []
-        self._handoff_exchanges[segment_number] = \
-            self.exchange_manager.handoff_exchanges(exchange_num)
-        for exchange in self._handoff_exchanges[segment_number]:
-            self.log.debug(
-                '%s to %r '
-                'segment_number = %d (handoff)' % (
-                    message.__class__.__name__,
-                    exchange,
-                    segment_number,
-                ))
-            reply_queue = self.amqp_handler.send_message(message, exchange)
-            replies.append(gevent.spawn(reply_queue.get))
-        gevent.joinall(replies)
-        if isinstance(message, (ArchiveKeyEntire, ArchiveKeyFinal)):
-            self.result += sum(reply.value.previous_size for reply in replies)
-
-    def _wait_for_reply(self, segment_number, message, exchange, reply_queue):
+    def _wait_for_reply(self, segment_number, message,
+                        exchange, reply_queue, handoff):
         try:
             reply = reply_queue.get()
         except StartHandoff:
-            self._do_handoff(segment_number, message, exchange)
-        else:
-            try:
-                result = reply.previous_size
-                self.log.debug(
-                    '%s from %r: '
-                    'segment_number = %d: '
-                    'previous_size = %r' % (
-                        reply.__class__.__name__,
-                        exchange,
-                        segment_number,
-                        result,
-                    ))
-                self.result += result
-            except AttributeError:
-                self.log.debug(
-                    '%s from %r: '
-                    'segment_number = %d' % (
-                        reply.__class__.__name__,
-                        exchange,
-                        segment_number,
-                    ))
-        del self.pending[segment_number, exchange]
+            if (
+                handoff or
+                len(self._handoff_exchanges) >= 2 or
+                len(self._done) < 2
+            ):
+                gevent.killall(self._pending.values())
+                raise ArchiveFailedError()
+            exchange_num = self.exchange_manager.index(exchange)
+            self.exchange_manager.mark_down(exchange_num)
+            self._handoff_exchanges[segment_number] = self._done[:2]
+            del self._done[:2]
+            self._send_message(message, segment_number)
+            return
+        finally:
+            del self._pending[segment_number, exchange]
 
-    def start_handoff(self, timeout=None):
+        self._done.append(exchange)
+        if isinstance(message, (ArchiveKeyStart, ArchiveKeyNext)):
+            self.log.debug(
+                '%s from %r: '
+                'segment_number = %d%s' % (
+                    reply.__class__.__name__,
+                    exchange,
+                    segment_number,
+                    ' (handoff)' if handoff else '',
+                ))
+        else:
+            result = reply.previous_size
+            self.log.debug(
+                '%s from %r: '
+                'segment_number = %d: '
+                'previous_size = %r%s' % (
+                    reply.__class__.__name__,
+                    exchange,
+                    segment_number,
+                    result,
+                    ' (handoff)' if handoff else '',
+                ))
+            self._result += result
+        # TODO: if handoff: send hinted_handoff message
+
+    def start_handoff(self):
         self.log.info('starting handoff')
-        try:
-            gevent.killall(self.pending.values(), StartHandoff, True, timeout)
-        except gevent.Timeout:
-            pass
+        gevent.killall(self._pending.values(), StartHandoff, True)
 
     def _send_message(self, message, segment_number):
         if segment_number in self._handoff_exchanges:
             exchanges = self._handoff_exchanges[segment_number]
+            handoff = True
         else:
             exchanges = [self.exchange_manager[segment_number - 1]]
+            handoff = False
         for exchange in exchanges:
             self.log.debug(
                 '%s to %r '
-                'segment_number = %d' % (
+                'segment_number = %d%s' % (
                     message.__class__.__name__,
                     exchange,
                     segment_number,
+                    ' (handoff)' if handoff else '',
                 ))
             reply_queue = self.amqp_handler.send_message(message, exchange)
-            self.pending[segment_number, exchange] = gevent.spawn(
+            self._pending[segment_number, exchange] = gevent.spawn(
                 self._wait_for_reply, segment_number,
-                message, exchange, reply_queue)
+                message, exchange, reply_queue, handoff)
+
+    def _join(self, timeout):
+        gevent.joinall(self._pending.values(), timeout, True)
+        if self.sequence_number == 0 and self._pending:
+            self.start_handoff()
+            gevent.joinall(self._pending.values(), timeout, True)
+        if self._pending:
+            gevent.killall(self._pending.values())
+            raise ArchiveFailedError()
 
     def archive_slice(self, segments, timeout=None):
-        if self.pending:
+        if self._pending:
             raise AlreadyInProgress()
         for i, segment in enumerate(segments):
             segment_number = i + 1
-            self._segment_adler32s[segment_number] = zlib.adler32(
+            self._adler32s[segment_number] = zlib.adler32(
                 segment,
-                self._segment_adler32s.get(segment_number, zlib.adler32(''))
+                self._adler32s.get(segment_number, 1)
             )
-            self._segment_md5s[segment_number].update(segment)
+            self._md5s[segment_number].update(segment)
             if self.sequence_number == 0:
-                self._segment_request_ids[segment_number] = uuid.uuid1().hex
+                self._request_ids[segment_number] = uuid.uuid1().hex
                 message = ArchiveKeyStart(
-                    self._segment_request_ids[segment_number],
+                    self._request_ids[segment_number],
                     self.avatar_id,
                     self.amqp_handler.exchange,
                     self.amqp_handler.queue_name,
@@ -145,37 +153,30 @@ class AMQPArchiver(object):
                 )
             else:
                 message = ArchiveKeyNext(
-                    self._segment_request_ids[segment_number],
+                    self._request_ids[segment_number],
                     self.sequence_number,
                     segment
                 )
             self._send_message(message, segment_number)
-        gevent.joinall(self.pending.values(), timeout, True)
-        if self.sequence_number == 0:
-            if self.pending:
-                self.start_handoff(timeout)
-            if self.pending:
-                raise HandoffFailedError()
-        elif self.pending:
-            raise ArchiveFailedError()
+        self._join(timeout)
         self.sequence_number += 1
 
     def archive_final(self, file_size, file_adler32, file_md5,
                       segments, timeout=None):
-        if self.pending:
+        if self._pending:
             raise AlreadyInProgress()
-        self.result = 0
+        self._result = 0
         for i, segment in enumerate(segments):
             segment_number = i + 1
-            self._segment_adler32s[segment_number] = zlib.adler32(
+            self._adler32s[segment_number] = zlib.adler32(
                 segment,
-                self._segment_adler32s.get(segment_number, zlib.adler32(''))
+                self._adler32s.get(segment_number, 1)
             )
-            self._segment_md5s[segment_number].update(segment)
+            self._md5s[segment_number].update(segment)
             if self.sequence_number == 0:
-                self._segment_request_ids[segment_number] = uuid.uuid1().hex
+                self._request_ids[segment_number] = uuid.uuid1().hex
                 message = ArchiveKeyEntire(
-                    self._segment_request_ids[segment_number],
+                    self._request_ids[segment_number],
                     self.avatar_id,
                     self.amqp_handler.exchange,
                     self.amqp_handler.queue_name,
@@ -185,28 +186,21 @@ class AMQPArchiver(object):
                     segment_number,
                     file_adler32,
                     file_md5,
-                    self._segment_adler32s[segment_number],
-                    self._segment_md5s[segment_number].digest(),
+                    self._adler32s[segment_number],
+                    self._md5s[segment_number].digest(),
                     segment
                 )
             else:
                 message = ArchiveKeyFinal(
-                    self._segment_request_ids[segment_number],
+                    self._request_ids[segment_number],
                     self.sequence_number,
                     file_size,
                     file_adler32,
                     file_md5,
-                    self._segment_adler32s[segment_number],
-                    self._segment_md5s[segment_number].digest(),
+                    self._adler32s[segment_number],
+                    self._md5s[segment_number].digest(),
                     segment
                 )
             self._send_message(message, segment_number)
-        gevent.joinall(self.pending.values(), timeout, True)
-        if self.sequence_number == 0:
-            if self.pending:
-                self.start_handoff(timeout)
-            if self.pending:
-                raise HandoffFailedError()
-        elif self.pending:
-            raise ArchiveFailedError()
-        return self.result
+        self._join(timeout)
+        return self._result

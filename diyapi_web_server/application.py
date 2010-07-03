@@ -105,7 +105,7 @@ class Application(object):
         delimiter = req.GET.get('delimiter', '/')
         # TODO: do something with delimiter
         avatar_id = req.remote_user
-        matcher = AMQPListmatcher(self.amqp_handler, self.exchange_manager)
+        matcher = AMQPListmatcher(self.amqp_handler)
         # TODO: handle listmatch failure
         # TODO: break up large (>1mb) listmatch response
         keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)

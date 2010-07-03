@@ -37,6 +37,8 @@ class FakeAMQPHandler(object):
         self.replies_to_send_by_exchange = defaultdict(Queue)
 
     def send_message(self, message, exchange=None):
+        if exchange is None:
+            exchange = self.exchange
         self.messages.append((message, exchange))
         try:
             if (message.request_id, exchange) in self.replies_to_send_by_exchange:

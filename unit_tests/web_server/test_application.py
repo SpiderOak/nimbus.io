@@ -713,7 +713,87 @@ class TestApplication(unittest.TestCase):
             base_size
         )
 
-    def test_destroy_with_handoff(self):
+    # TODO: uncomment this when we figure out handoffs for destroy
+    #def test_destroy_with_handoff(self):
+    #    avatar_id = self.authenticator.remote_user
+    #    key = self._key_generator.next()
+    #    base_size = 12345
+    #    timestamp = time.time()
+    #    self.exchange_manager.mark_down(0)
+    #    for i, exchange in enumerate(self.exchange_manager):
+    #        request_id = uuid.UUID(int=i).hex
+    #        message = DestroyKeyReply(
+    #            request_id,
+    #            DestroyKeyReply.successful,
+    #            base_size + i
+    #        )
+    #        if self.exchange_manager.is_down(i):
+    #            for exchange in self.exchange_manager.handoff_exchanges(i):
+    #                self.amqp_handler.replies_to_send_by_exchange[(
+    #                    request_id, exchange
+    #                )].put(message)
+    #        else:
+    #            self.amqp_handler.replies_to_send_by_exchange[(
+    #                request_id, self.exchange_manager[i]
+    #            )].put(message)
+    #    self.exchange_manager.mark_up(0)
+
+    #    resp = self.app.delete('/data/%s' % (key,))
+    #    self.assertEqual(resp.body, 'OK')
+    #    self.assertEqual(
+    #        self.accounter._added[avatar_id, timestamp],
+    #        0
+    #    )
+    #    self.assertEqual(
+    #        self.accounter._retrieved[avatar_id, timestamp],
+    #        0
+    #    )
+    #    self.assertEqual(
+    #        self.accounter._removed[avatar_id, timestamp],
+    #        base_size
+    #    )
+
+    #def test_destroy_with_handoff_failure(self):
+    #    avatar_id = self.authenticator.remote_user
+    #    key = self._key_generator.next()
+    #    base_size = 12345
+    #    timestamp = time.time()
+    #    self.exchange_manager.mark_down(0)
+    #    for i, exchange in enumerate(self.exchange_manager):
+    #        request_id = uuid.UUID(int=i).hex
+    #        message = DestroyKeyReply(
+    #            request_id,
+    #            DestroyKeyReply.successful,
+    #            base_size + i
+    #        )
+    #        if self.exchange_manager.is_down(i):
+    #            for j, exchange in enumerate(
+    #                self.exchange_manager.handoff_exchanges(i)):
+    #                    if j != 0:
+    #                        self.amqp_handler.replies_to_send_by_exchange[(
+    #                            request_id, exchange
+    #                        )].put(message)
+    #        else:
+    #            self.amqp_handler.replies_to_send_by_exchange[(
+    #                request_id, self.exchange_manager[i]
+    #            )].put(message)
+    #    self.exchange_manager.mark_up(0)
+
+    #    resp = self.app.delete('/data/%s' % (key,), status=504)
+    #    self.assertEqual(
+    #        self.accounter._added[avatar_id, timestamp],
+    #        0
+    #    )
+    #    self.assertEqual(
+    #        self.accounter._retrieved[avatar_id, timestamp],
+    #        0
+    #    )
+    #    self.assertEqual(
+    #        self.accounter._removed[avatar_id, timestamp],
+    #        0
+    #    )
+
+    def test_destroy_with_failure(self):
         avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
         base_size = 12345
@@ -726,53 +806,7 @@ class TestApplication(unittest.TestCase):
                 DestroyKeyReply.successful,
                 base_size + i
             )
-            if self.exchange_manager.is_down(i):
-                for exchange in self.exchange_manager.handoff_exchanges(i):
-                    self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
-                    )].put(message)
-            else:
-                self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, self.exchange_manager[i]
-                )].put(message)
-        self.exchange_manager.mark_up(0)
-
-        resp = self.app.delete('/data/%s' % (key,))
-        self.assertEqual(resp.body, 'OK')
-        self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
-            0
-        )
-        self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
-            0
-        )
-        self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
-            base_size
-        )
-
-    def test_destroy_with_handoff_failure(self):
-        avatar_id = self.authenticator.remote_user
-        key = self._key_generator.next()
-        base_size = 12345
-        timestamp = time.time()
-        self.exchange_manager.mark_down(0)
-        for i, exchange in enumerate(self.exchange_manager):
-            request_id = uuid.UUID(int=i).hex
-            message = DestroyKeyReply(
-                request_id,
-                DestroyKeyReply.successful,
-                base_size + i
-            )
-            if self.exchange_manager.is_down(i):
-                for j, exchange in enumerate(
-                    self.exchange_manager.handoff_exchanges(i)):
-                        if j != 0:
-                            self.amqp_handler.replies_to_send_by_exchange[(
-                                request_id, exchange
-                            )].put(message)
-            else:
+            if not self.exchange_manager.is_down(i):
                 self.amqp_handler.replies_to_send_by_exchange[(
                     request_id, self.exchange_manager[i]
                 )].put(message)

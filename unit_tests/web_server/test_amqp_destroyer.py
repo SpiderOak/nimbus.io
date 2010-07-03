@@ -76,7 +76,6 @@ class TestAMQPDestroyer(unittest.TestCase):
         return base_size, messages
 
     def test_destroy(self):
-        """test successful destroy"""
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
@@ -103,7 +102,6 @@ class TestAMQPDestroyer(unittest.TestCase):
         )
 
     def test_destroy_with_failure(self):
-        """test failed destroy"""
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = time.time()
@@ -112,10 +110,9 @@ class TestAMQPDestroyer(unittest.TestCase):
         self.exchange_manager.mark_up(0)
 
         destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
-        timeout = 1.0
         self.assertRaises(
-            DestroyFailedError, 
-            destroyer.destroy, avatar_id, key, timestamp, timeout
+            DestroyFailedError,
+            destroyer.destroy, avatar_id, key, timestamp, 0
         )
 
 if __name__ == "__main__":

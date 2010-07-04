@@ -61,14 +61,21 @@ _database_cache = "open-database-cache"
 _max_listmatch_size = 1024 * 1024 * 1024
 _send_database_template = "/usr/bin/scp -q %s %s:%s/content.%s" 
 
-def _content_database_path(avatar_id):
+def _content_database_path(state, avatar_id):
+    """
+    get the database path without creating the intervening directories
+    if they do not exist
+    """
     repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
-    return os.path.join(
-        repository_path, str(avatar_id), "contents.db"
+    return state.get(
+        "database-path", 
+        os.path.join(
+            repository_path, str(avatar_id), "contents.db"
+        )
     )
 
-def _content_database_exists(avatar_id):
-    return os.path.exists(_content_database_path(avatar_id))
+def _content_database_exists(state, avatar_id):
+    return os.path.exists(_content_database_path(state, avatar_id))
 
 def _open_database(state, avatar_id):
     database = None
@@ -134,7 +141,7 @@ def _list_content(database, search_key):
     finally:
         cursor.close()
 
-def _find_avatars():
+def _find_avatars(state):
     """a generator to identify avatars with contents databases"""
     repository_path = os.environ["DIYAPI_REPOSITORY_PATH"]
     for file_name in os.listdir(repository_path):
@@ -142,7 +149,7 @@ def _find_avatars():
             avatar_id = int(file_name)
         except ValueError:
             continue
-        if _content_database_exists(avatar_id):
+        if _content_database_exists(state, avatar_id):
             yield avatar_id
 
 def _handle_key_insert(state, message_body):
@@ -561,7 +568,7 @@ def _handle_consistency_check(state, message_body):
         message.reply_routing_header, DatabaseConsistencyCheckReply.routing_tag
     ])
 
-    if not _content_database_exists(message.avatar_id):
+    if not _content_database_exists(state, message.avatar_id):
         error_message = "no database for avatar_id %s" % (message.avatar_id, )
         log.error(error_message)
         reply = DatabaseConsistencyCheckReply(
@@ -622,7 +629,7 @@ def _handle_avatar_database_request(state, message_body):
         message.reply_routing_header, DatabaseAvatarDatabaseReply.routing_tag
     ])
 
-    if not _content_database_exists(message.avatar_id):
+    if not _content_database_exists(state, message.avatar_id):
         error_message = "no database for avatar_id %s" % (message.avatar_id, )
         log.error(error_message)
         reply = DatabaseConsistencyCheckReply(
@@ -634,7 +641,7 @@ def _handle_avatar_database_request(state, message_body):
         return [(reply_exchange, reply_routing_key, reply, )]
 
     send_database_command = _send_database_template % (
-        _content_database_path(message.avatar_id),
+        _content_database_path(state, message.avatar_id),
         message.dest_host,
         message.dest_dir,
         state["node-name"]
@@ -659,7 +666,7 @@ def _handle_avatar_database_request(state, message_body):
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
-def _handle_avatar_list_request(_state, message_body):
+def _handle_avatar_list_request(state, message_body):
     log = logging.getLogger("_handle_avatar_list_request")
     message = DatabaseAvatarListRequest.unmarshall(message_body)
     log.info("reply exchange = %s" % (message.reply_exchange, ))
@@ -669,7 +676,7 @@ def _handle_avatar_list_request(_state, message_body):
         message.reply_routing_header, DatabaseAvatarListReply.routing_tag
     ])
     reply = DatabaseAvatarListReply(message.request_id)
-    reply.put(_find_avatars())
+    reply.put(_find_avatars(state))
 
     return [(reply_exchange, reply_routing_key, reply, )]
 

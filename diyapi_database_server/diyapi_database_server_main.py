@@ -54,9 +54,6 @@ from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
 
-_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % ( _node_name,)
-_queue_name = "database-server-%s" % (_node_name, )
 _routing_header = "database_server"
 _routing_key_binding = ".".join([_routing_header, "*"])
 _max_cached_databases = 10
@@ -569,7 +566,7 @@ def _handle_consistency_check(state, message_body):
         log.error(error_message)
         reply = DatabaseConsistencyCheckReply(
             message.request_id,
-            _node_name,
+            state["node-name"],
             DatabaseConsistencyCheckReply.error_database_failure,
             error_message=error_message
         )
@@ -594,7 +591,7 @@ def _handle_consistency_check(state, message_body):
         log.exception("%s" % (message.avatar_id, ))
         reply = DatabaseConsistencyCheckReply(
             message.request_id,
-            _node_name,
+            state["node-name"],
             DatabaseConsistencyCheckReply.error_database_failure,
             error_message=str(instance)
         )
@@ -609,13 +606,13 @@ def _handle_consistency_check(state, message_body):
 
     reply = DatabaseConsistencyCheckReply(
         message.request_id,
-        _node_name,
+        state["node-name"],
         DatabaseConsistencyCheckReply.successful,
         hash_value=md5.hexdigest()
     )
     return [(reply_exchange, reply_routing_key, reply, )]
 
-def _handle_avatar_database_request(_state, message_body):
+def _handle_avatar_database_request(state, message_body):
     log = logging.getLogger("_handle_avatar_database_request")
     message = DatabaseAvatarDatabaseRequest.unmarshall(message_body)
     log.info("reply exchange = %s" % (message.reply_exchange, ))
@@ -630,7 +627,7 @@ def _handle_avatar_database_request(_state, message_body):
         log.error(error_message)
         reply = DatabaseConsistencyCheckReply(
             message.request_id,
-            _node_name,
+            state["node-name"],
             DatabaseAvatarDatabaseReply.error_database_failure,
             error_message=error_message
         )
@@ -640,7 +637,7 @@ def _handle_avatar_database_request(_state, message_body):
         _content_database_path(message.avatar_id),
         message.dest_host,
         message.dest_dir,
-        _node_name
+        state["node-name"]
     )
 
     try:
@@ -649,7 +646,7 @@ def _handle_avatar_database_request(_state, message_body):
         log.exception(send_database_command)
         reply = DatabaseConsistencyCheckReply(
             message.request_id,
-            _node_name,
+            state["node-name"],
             DatabaseAvatarDatabaseReply.error_transmission_failure,
             error_message=str(instance)
         )
@@ -657,7 +654,7 @@ def _handle_avatar_database_request(_state, message_body):
 
     reply = DatabaseAvatarDatabaseReply(
         message.request_id,
-        _node_name, 
+        state["node-name"], 
         DatabaseAvatarDatabaseReply.successful
     )
     return [(reply_exchange, reply_routing_key, reply, )]
@@ -728,11 +725,18 @@ def _shutdown(_state):
     return [(exchange, routing_key, message, )]
 
 if __name__ == "__main__":
-    state = {_database_cache : LRUCache(_max_cached_databases)}
+    state = {
+        _database_cache : LRUCache(_max_cached_databases),
+        "node-name"     : os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+    }
+    log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % ( 
+        state["node-name"],
+    )
+    queue_name = "database-server-%s" % (state["node-name"], )
     sys.exit(
         process.main(
-            _log_path, 
-            _queue_name, 
+            log_path, 
+            queue_name, 
             _routing_key_binding, 
             _dispatch_table, 
             state,

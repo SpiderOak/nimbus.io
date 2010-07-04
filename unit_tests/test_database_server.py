@@ -52,6 +52,13 @@ from diyapi_database_server.diyapi_database_server_main import \
 
 _reply_routing_header = "test_database_server"
 
+def _create_database_state():
+    return {
+        _database_cache : dict(),
+        "node-name"     : "node01",
+    }
+
+
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
 
@@ -78,7 +85,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_key_insert(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -105,7 +112,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_key_lookup(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -130,7 +137,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_key_list(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -160,7 +167,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_key_destroy(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -190,7 +197,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_key_purge(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -727,7 +734,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_listmatch(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -768,7 +775,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_listmatch(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -806,7 +813,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_consistency_check(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -846,7 +853,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_avatar_database_request(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
@@ -883,7 +890,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
         marshalled_message = message.marshall()
 
-        state = {_database_cache : dict()}
+        state = _create_database_state()
         replies = _handle_avatar_list_request(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies

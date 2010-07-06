@@ -25,6 +25,7 @@ from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 
 from diyapi_web_server.amqp_archiver import AMQPArchiver
+from diyapi_web_server.exceptions import *
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
@@ -46,7 +47,7 @@ class TestAMQPArchiver(unittest.TestCase):
         uuid.uuid1 = self._real_uuid1
         random.sample = self._real_sample
 
-    def _make_small_data(self, avatar_id, timestamp, key):
+    def _make_small_data(self, avatar_id, timestamp, key, fail=False):
         file_size = 1024 * NUM_SEGMENTS
         file_adler32 = -42
         file_md5 = 'ffffff'
@@ -83,9 +84,10 @@ class TestAMQPArchiver(unittest.TestCase):
             messages.append((message, self.exchange_manager[i]))
             if self.exchange_manager.is_down(i):
                 for exchange in self.exchange_manager.handoff_exchanges(i):
-                    self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
-                    )].put(reply)
+                    if not fail:
+                        self.amqp_handler.replies_to_send_by_exchange[(
+                            request_id, exchange
+                        )].put(reply)
                     messages_to_append.append((message, exchange))
             else:
                 self.amqp_handler.replies_to_send_by_exchange[(
@@ -165,6 +167,50 @@ class TestAMQPArchiver(unittest.TestCase):
         )
 
         self.assertEqual(previous_size, 0)
+        self.assertTrue(self.exchange_manager.is_down(0))
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected, 'archiver did not send expected messages')
+
+    def test_archive_small_with_failure(self):
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        self.exchange_manager.mark_down(0)
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(avatar_id, timestamp, key, True)
+        self.exchange_manager.mark_up(0)
+
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        self.assertRaises(ArchiveFailedError,
+            archiver.archive_final,
+            file_size,
+            file_adler32,
+            file_md5,
+            segments,
+            0
+        )
+
         self.assertTrue(self.exchange_manager.is_down(0))
 
         expected = [

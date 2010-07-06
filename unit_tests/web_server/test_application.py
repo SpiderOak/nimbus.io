@@ -7,7 +7,6 @@ test diyapi_web_server/application.py
 import os
 import unittest
 import uuid
-import random
 import time
 import zlib
 import hashlib
@@ -21,6 +20,7 @@ from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
+from messages.hinted_handoff_reply import HintedHandoffReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
@@ -50,8 +50,6 @@ class TestApplication(unittest.TestCase):
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
-        self._real_sample = random.sample
-        random.sample = util.fake_sample
         self._real_timeout = application.EXCHANGE_TIMEOUT
         application.EXCHANGE_TIMEOUT = 0
         self._real_time = time.time
@@ -59,7 +57,6 @@ class TestApplication(unittest.TestCase):
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
-        random.sample = self._real_sample
         time.time = self._real_time
         application.EXCHANGE_TIMEOUT = self._real_timeout
 
@@ -176,10 +173,17 @@ class TestApplication(unittest.TestCase):
                 0
             )
             if self.exchange_manager.is_down(i):
-                for exchange in self.exchange_manager.handoff_exchanges(i):
+                handoff_reply = HintedHandoffReply(
+                    request_id,
+                    HintedHandoffReply.successful,
+                )
+                for exchange in self.exchange_manager[1:3]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
                     )].put(message)
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].put(handoff_reply)
             else:
                 self.amqp_handler.replies_to_send_by_exchange[(
                     request_id, self.exchange_manager[i]
@@ -216,7 +220,7 @@ class TestApplication(unittest.TestCase):
             )
             if self.exchange_manager.is_down(i):
                 for j, exchange in enumerate(
-                    self.exchange_manager.handoff_exchanges(i)):
+                    self.exchange_manager[1:3]):
                         if j != 0:
                             self.amqp_handler.replies_to_send_by_exchange[(
                                 request_id, exchange
@@ -319,7 +323,7 @@ class TestApplication(unittest.TestCase):
                 ),
             ]:
                 if self.exchange_manager.is_down(i):
-                    for exchange in self.exchange_manager.handoff_exchanges(i):
+                    for exchange in self.exchange_manager[1:3]:
                         self.amqp_handler.replies_to_send_by_exchange[(
                             request_id, exchange
                         )].put(message)
@@ -327,6 +331,15 @@ class TestApplication(unittest.TestCase):
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, self.exchange_manager[i]
                     )].put(message)
+            if self.exchange_manager.is_down(i):
+                handoff_reply = HintedHandoffReply(
+                    request_id,
+                    HintedHandoffReply.successful,
+                )
+                for exchange in self.exchange_manager[1:3]:
+                    self.amqp_handler.replies_to_send_by_exchange[(
+                        request_id, exchange
+                    )].put(handoff_reply)
         self.exchange_manager.mark_up(0)
         key = self._key_generator.next()
         with open('/dev/urandom', 'rb') as f:
@@ -379,7 +392,7 @@ class TestApplication(unittest.TestCase):
             ]):
                 if self.exchange_manager.is_down(i):
                     for k, exchange in enumerate(
-                        self.exchange_manager.handoff_exchanges(i)):
+                        self.exchange_manager[1:3]):
                             if not (j >=1 and k == 0):
                                 self.amqp_handler.replies_to_send_by_exchange[(
                                     request_id, exchange

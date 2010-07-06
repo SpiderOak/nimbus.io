@@ -16,6 +16,7 @@ from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_next import ArchiveKeyNext
 from messages.archive_key_final import ArchiveKeyFinal
+from messages.hinted_handoff import HintedHandoff
 
 from diyapi_web_server.exceptions import *
 
@@ -46,13 +47,13 @@ class AMQPArchiver(object):
         self._done = []
         self._result = None
 
-    def _wait_for_reply(self, segment_number, message,
-                        exchange, reply_queue, handoff):
+    def _wait_for_reply(self, segment_number, message, exchange,
+                        reply_queue, dest_exchange=None):
         try:
             reply = reply_queue.get()
         except StartHandoff:
             if (
-                handoff or
+                dest_exchange is not None or
                 len(self._handoff_exchanges) >= 2 or
                 len(self._done) < 2
             ):
@@ -75,7 +76,7 @@ class AMQPArchiver(object):
                     reply.__class__.__name__,
                     exchange,
                     segment_number,
-                    ' (handoff)' if handoff else '',
+                    ' (handoff)' if dest_exchange is not None else '',
                 ))
         else:
             result = reply.previous_size
@@ -87,10 +88,50 @@ class AMQPArchiver(object):
                     exchange,
                     segment_number,
                     result,
-                    ' (handoff)' if handoff else '',
+                    ' (handoff)' if dest_exchange is not None else '',
                 ))
             self._result += result
-        # TODO: if handoff: send hinted_handoff message
+            if dest_exchange is not None:
+                handoff = gevent.spawn(self._send_hinted_handoff,
+                                       segment_number, exchange, dest_exchange)
+                self._pending[segment_number, exchange] = handoff
+                try:
+                    handoff.join()
+                finally:
+                    del self._pending[segment_number, exchange]
+
+    def _send_hinted_handoff(self, segment_number, exchange, dest_exchange):
+        message = HintedHandoff(
+            self._request_ids[segment_number],
+            self.avatar_id,
+            self.amqp_handler.exchange,
+            self.amqp_handler.queue_name,
+            self.timestamp,
+            self.key,
+            self.version_number,
+            segment_number,
+            self.exchange_manager[segment_number - 1],
+        )
+        self.log.debug(
+            '%s to %r '
+            'segment_number = %d' % (
+                message.__class__.__name__,
+                exchange,
+                segment_number,
+            ))
+        reply_queue = self.amqp_handler.send_message(message, exchange)
+        reply = reply_queue.get()
+        result = reply.previous_size
+        self.log.debug(
+            '%s from %r: '
+            'segment_number = %d: '
+            'previous_size = %r' % (
+                reply.__class__.__name__,
+                exchange,
+                segment_number,
+                result,
+            ))
+        self._result += result
 
     def start_handoff(self):
         self.log.info('starting handoff')
@@ -99,10 +140,10 @@ class AMQPArchiver(object):
     def _send_message(self, message, segment_number):
         if segment_number in self._handoff_exchanges:
             exchanges = self._handoff_exchanges[segment_number]
-            handoff = True
+            dest_exchange = self.exchange_manager[segment_number - 1]
         else:
             exchanges = [self.exchange_manager[segment_number - 1]]
-            handoff = False
+            dest_exchange = None
         for exchange in exchanges:
             self.log.debug(
                 '%s to %r '
@@ -110,12 +151,12 @@ class AMQPArchiver(object):
                     message.__class__.__name__,
                     exchange,
                     segment_number,
-                    ' (handoff)' if handoff else '',
+                    ' (handoff)' if dest_exchange is not None else '',
                 ))
             reply_queue = self.amqp_handler.send_message(message, exchange)
             self._pending[segment_number, exchange] = gevent.spawn(
-                self._wait_for_reply, segment_number,
-                message, exchange, reply_queue, handoff)
+                self._wait_for_reply, segment_number, message,
+                exchange, reply_queue, dest_exchange)
 
     def _join(self, timeout):
         gevent.joinall(self._pending.values(), timeout, True)

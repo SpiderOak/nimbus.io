@@ -66,9 +66,12 @@ class TestWebServer(unittest.TestCase):
             'X-DIYAPI-Timestamp': timestamp,
         }
 
-    def _make_request(self, url, data=None, key=None):
+    def _make_request(self, url, data=None, key=None, read_resp=True):
         request = urllib2.Request(url, data, self._auth_headers('GET' if data is None else 'POST', key))
-        return urllib2.urlopen(request).read()
+        resp = urllib2.urlopen(request)
+        if read_resp:
+            return resp.read()
+        return resp
 
     def test_unauthorized_when_auth_header_missing(self):
         log = logging.getLogger('test_unauthorized_when_auth_header_missing')
@@ -86,7 +89,8 @@ class TestWebServer(unittest.TestCase):
         log.info('start')
         try:
             resp = self._make_request(
-                _base_url + '/data/test-key?action=listmatch', key='cafeface')
+                _base_url + '/data/test-key?action=listmatch', key='cafeface',
+                read_resp=False)
         except urllib2.HTTPError, err:
             self.assertEqual(err.code, 401)
         else:
@@ -168,8 +172,8 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/%s?action=delete' % (key,), '')
         log.info('retrieve')
         try:
-            result = self._make_request(
-                _base_url + '/data/' + key)
+            resp = self._make_request(
+                _base_url + '/data/' + key, read_resp=False)
         except urllib2.HTTPError, err:
             self.assertEqual(err.code, 404)
         else:
@@ -233,8 +237,8 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/%s?action=delete' % (key,), '')
         log.info('retrieve')
         try:
-            result = self._make_request(
-                _base_url + '/data/' + key)
+            resp = self._make_request(
+                _base_url + '/data/' + key, read_resp=False)
         except urllib2.HTTPError, err:
             self.assertEqual(err.code, 404)
         else:

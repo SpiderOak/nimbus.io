@@ -17,6 +17,7 @@ import urllib2
 import hmac
 import hashlib
 import time
+import json
 
 from diyapi_tools.standard_logging import initialize_logging
 from unit_tests.util import random_string, generate_key
@@ -115,7 +116,7 @@ class TestWebServer(unittest.TestCase):
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(result, repr([key]))
+        self.assertEqual(json.loads(result), [key])
 
     def test_upload_0_bytes_and_retrieve(self):
         log = logging.getLogger('test_upload_0_bytes_and_retrieve')
@@ -149,7 +150,7 @@ class TestWebServer(unittest.TestCase):
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(result, repr([key]))
+        self.assertEqual(json.loads(result), [key])
 
     def test_upload_small_and_retrieve(self):
         log = logging.getLogger('test_upload_small_and_retrieve')
@@ -223,7 +224,7 @@ class TestWebServer(unittest.TestCase):
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(result, repr([]))
+        self.assertEqual(json.loads(result), [])
 
     def test_upload_small_then_delete_and_retrieve(self):
         log = logging.getLogger('test_upload_small_then_delete_and_retrieve')

@@ -9,6 +9,7 @@ import re
 import time
 import zlib
 import hashlib
+import json
 from itertools import chain
 
 from webob.dec import wsgify
@@ -109,7 +110,7 @@ class Application(object):
         # TODO: handle listmatch failure
         # TODO: break up large (>1mb) listmatch response
         keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
-        return Response(repr(keys))
+        return Response(json.dumps(keys))
 
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')

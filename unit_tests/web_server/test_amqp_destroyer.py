@@ -63,7 +63,7 @@ class TestAMQPDestroyer(unittest.TestCase):
             )
             messages.append((message, self.exchange_manager[i]))
             if self.exchange_manager.is_down(i):
-                for exchange in self.exchange_manager.handoff_exchanges(i):
+                for exchange in self.exchange_manager[1:3]:
                     self.amqp_handler.replies_to_send_by_exchange[(
                         request_id, exchange
                     )].put(reply)

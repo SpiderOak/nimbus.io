@@ -4,10 +4,6 @@ amqp_exchange_manager.py
 
 A class that keeps track of which exchanges are responding.
 """
-import random
-
-
-HANDOFF_NUM = 2
 
 
 class AMQPExchangeManager(list):
@@ -30,10 +26,4 @@ class AMQPExchangeManager(list):
 
     def mark_up(self, exchange_num):
         # TODO: add a broadcast-channel listener for node-up messages
-        try:
-            self._down.remove(exchange_num)
-        except KeyError:
-            pass
-
-    def handoff_exchanges(self, exchange_num):
-        return random.sample(self.up(), HANDOFF_NUM)
+        self._down.discard(exchange_num)

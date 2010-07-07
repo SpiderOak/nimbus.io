@@ -5,7 +5,6 @@ test_amqp_exchange_manager.py
 test diyapi_web_server/amqp_exchange_manager.py
 """
 import os
-import random
 import unittest
 
 from unit_tests.web_server import util
@@ -14,18 +13,12 @@ from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
-HANDOFF_NUM = 2
 
 
 class TestAMQPExchangeManager(unittest.TestCase):
     """test diyapi_web_server/amqp_exchange_manager.py"""
     def setUp(self):
         self.manager = AMQPExchangeManager(EXCHANGES)
-        self._real_sample = random.sample
-        random.sample = util.fake_sample
-
-    def tearDown(self):
-        random.sample = self._real_sample
 
     def test_initially_full(self):
         self.assertEqual(list(self.manager), EXCHANGES)
@@ -50,11 +43,6 @@ class TestAMQPExchangeManager(unittest.TestCase):
         self.manager.mark_down(3)
         self.assertEqual(self.manager.up(),
                          self.manager[:3] + self.manager[4:])
-
-    def test_handoff_exchanges(self):
-        self.manager.mark_down(3)
-        self.assertEqual(self.manager.handoff_exchanges(3),
-                         random.sample(self.manager.up(), HANDOFF_NUM))
 
 
 if __name__ == "__main__":

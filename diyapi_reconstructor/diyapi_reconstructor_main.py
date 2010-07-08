@@ -53,10 +53,8 @@ from collections import namedtuple
 import datetime
 import logging
 import os
-import random
 import sys
 import time
-import uuid
 
 from diyapi_tools import message_driven_process as process
 from diyapi_tools.amqp_connection import local_exchange_name 
@@ -122,6 +120,10 @@ def _timeout_request(request_id, state):
         log.error("can't find %s in state" % (request_id, ))
         return
 
+    log.error("timeout on rebuild %s request_id %s" % (
+        request_state.avatar_id, request_id,
+    ))
+
 def _handle_rebuild_request(state, message_body):
     """handle a request to rebuild the data for an avatar"""
     log = logging.getLogger("_handle_rebuild_request")
@@ -166,6 +168,59 @@ def _handle_low_traffic(_state, _message_body):
 def _handle_database_avatar_database_reply(state, message_body):
     log = logging.getLogger("_handle_database_avatar_database_reply")
     message = DatabaseAvatarDatabaseReply.unmarshall(message_body)
+
+    if not message.request_id in state:
+        # if we don't have any state for this request, 
+        # all we can do is heave it
+        log.warn("no state for request %s" % (message.request_id, ))
+        return []
+
+    request_state = state[message.request_id]
+
+    reply_routing_key = ".".join([
+        request_state.reply_routing_header,
+        RebuildReply.routing_tag
+    ])
+    reply_exchange = request_state.reply_exchange
+
+    # if we already have a reply for this node, something is badly wrong
+    if message.node_name in request_state.replies:
+        del state[message.request_id]
+        error_message = "duplicate reply from node %s" % (message.node_name, )
+        log.error(error_message)
+        reply = RebuildReply(
+            message.request_id,
+            RebuildReply.other_error,
+            error_message=error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, ), ]
+
+    request_state.replies[message.node_name] = message.result
+
+    if message.error:
+        log.error("error %s from node %s %s" % (
+            message.result, message.node_name, message.error_message
+        ))
+
+    # if we don't replies from all exchanges, wait for some more
+    if len(request_state.replies) != len(_exchanges):
+        return []
+
+    # at this point we should have a reply from every node, so
+    # we don't want to preserve state anymore
+    del state[message.request_id]
+
+    # To begin with, we're going to give up if we got any errors fetching
+    # databases. Maybe later we could rebuild one or two missing databases
+    if any(request_state.replies.values()):
+        error_message = "errors fetching databases"
+        log.error(error_message)
+        reply = RebuildReply(
+            message.request_id,
+            RebuildReply.database_error,
+            error_message=error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, ), ]
 
     return []
 

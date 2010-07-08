@@ -632,7 +632,7 @@ def _handle_avatar_database_request(state, message_body):
     if not _content_database_exists(state, message.avatar_id):
         error_message = "no database for avatar_id %s" % (message.avatar_id, )
         log.error(error_message)
-        reply = DatabaseConsistencyCheckReply(
+        reply = DatabaseAvatarDatabaseReply(
             message.request_id,
             state["node-name"],
             DatabaseAvatarDatabaseReply.error_database_failure,
@@ -651,7 +651,7 @@ def _handle_avatar_database_request(state, message_body):
         subprocess.check_call(args=send_database_command.split())
     except Exception, instance:
         log.exception(send_database_command)
-        reply = DatabaseConsistencyCheckReply(
+        reply = DatabaseAvatarDatabaseReply(
             message.request_id,
             state["node-name"],
             DatabaseAvatarDatabaseReply.error_transmission_failure,

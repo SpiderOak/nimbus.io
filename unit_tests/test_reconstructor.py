@@ -123,7 +123,7 @@ class TestReconstructor(unittest.TestCase):
 
         self.assertEqual(len(final_result), 1)
 
-        _exchange, _routing_key, rebuild_reply = final_result
+        _exchange, _routing_key, rebuild_reply = final_result[0]
         self.assertEqual(rebuild_reply.__class__.__name__, "RebuildReply")
 
         # the caller must evaluate the reply

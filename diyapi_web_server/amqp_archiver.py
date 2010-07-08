@@ -46,6 +46,7 @@ class AMQPArchiver(object):
         self._pending = {}
         self._done = []
         self._result = None
+        self._failed = False
 
     def _wait_for_reply(self, segment_number, message, exchange,
                         reply_queue, dest_exchange=None):
@@ -58,7 +59,8 @@ class AMQPArchiver(object):
                 len(self._done) < 2
             ):
                 gevent.killall(self._pending.values())
-                raise ArchiveFailedError()
+                self._failed = True
+                return
             exchange_num = self.exchange_manager.index(exchange)
             self.exchange_manager.mark_down(exchange_num)
             self._handoff_exchanges[segment_number] = self._done[:2]
@@ -67,8 +69,23 @@ class AMQPArchiver(object):
             return
         finally:
             del self._pending[segment_number, exchange]
-
         self._done.append(exchange)
+
+        if reply.error:
+            self.log.error(
+                '%s from %r: '
+                'segment_number = %d, '
+                'result = %d, '
+                'error_message = %r' % (
+                    reply.__class__.__name__,
+                    exchange,
+                    segment_number,
+                    reply.result,
+                    reply.error_message,
+                ))
+            self._failed = True
+            return
+
         if isinstance(message, (ArchiveKeyStart, ArchiveKeyNext)):
             self.log.debug(
                 '%s from %r: '
@@ -96,7 +113,7 @@ class AMQPArchiver(object):
                                        segment_number, exchange, dest_exchange)
                 self._pending[segment_number, exchange] = handoff
                 try:
-                    handoff.join()
+                    handoff.get()
                 finally:
                     del self._pending[segment_number, exchange]
 
@@ -121,6 +138,22 @@ class AMQPArchiver(object):
             ))
         reply_queue = self.amqp_handler.send_message(message, exchange)
         reply = reply_queue.get()
+
+        if reply.error:
+            self.log.error(
+                '%s from %r: '
+                'segment_number = %d, '
+                'result = %d, '
+                'error_message = %r' % (
+                    reply.__class__.__name__,
+                    exchange,
+                    segment_number,
+                    reply.result,
+                    reply.error_message,
+                ))
+            self._failed = True
+            return
+
         result = reply.previous_size
         self.log.debug(
             '%s from %r: '
@@ -160,10 +193,10 @@ class AMQPArchiver(object):
 
     def _join(self, timeout):
         gevent.joinall(self._pending.values(), timeout, True)
-        if self.sequence_number == 0 and self._pending:
+        if self.sequence_number == 0 and self._pending and not self._failed:
             self.start_handoff()
             gevent.joinall(self._pending.values(), timeout, True)
-        if self._pending:
+        if self._pending or self._failed:
             gevent.killall(self._pending.values())
             raise ArchiveFailedError()
 

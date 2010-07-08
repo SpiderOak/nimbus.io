@@ -47,7 +47,10 @@ class TestAMQPArchiver(unittest.TestCase):
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
 
-    def _make_small_data(self, avatar_id, timestamp, key, fail=False):
+    def _make_small_data(self, avatar_id, timestamp, key, fail=False,
+                         reply_result=None, error_message=None,
+                         handoff_reply_result=None,
+                         handoff_error_message=None):
         file_size = 1024 * NUM_SEGMENTS
         file_adler32 = -42
         file_md5 = 'ffffff'
@@ -77,11 +80,19 @@ class TestAMQPArchiver(unittest.TestCase):
                 segment_md5,
                 segment
             )
-            reply = ArchiveKeyFinalReply(
-                request_id,
-                ArchiveKeyFinalReply.successful,
-                0
-            )
+            if reply_result is None:
+                reply = ArchiveKeyFinalReply(
+                    request_id,
+                    ArchiveKeyFinalReply.successful,
+                    0
+                )
+            else:
+                reply = ArchiveKeyFinalReply(
+                    request_id,
+                    reply_result,
+                    0,
+                    error_message
+                )
             messages.append((message, self.exchange_manager[i]))
             if self.exchange_manager.is_down(i):
                 for exchange in self.exchange_manager[1:3]:
@@ -100,10 +111,17 @@ class TestAMQPArchiver(unittest.TestCase):
                             segment_number,
                             self.exchange_manager[i],
                         )
-                        handoff_reply = HintedHandoffReply(
-                            request_id,
-                            HintedHandoffReply.successful,
-                        )
+                        if handoff_reply_result is None:
+                            handoff_reply = HintedHandoffReply(
+                                request_id,
+                                HintedHandoffReply.successful,
+                            )
+                        else:
+                            handoff_reply = HintedHandoffReply(
+                                request_id,
+                                handoff_reply_result,
+                                error_message=handoff_error_message
+                            )
                         handoff_messages.append((handoff, exchange))
                         self.amqp_handler.replies_to_send_by_exchange[(
                             request_id, exchange
@@ -248,6 +266,76 @@ class TestAMQPArchiver(unittest.TestCase):
         ]
         self.assertEqual(
             actual, expected, 'archiver did not send expected messages')
+
+    def test_archive_small_with_error(self):
+        self.log.debug('test_archive_small_with_error')
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(
+            avatar_id, timestamp, key,
+            reply_result=ArchiveKeyFinalReply.error_exception,
+            error_message='There was an exception')
+
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        self.assertRaises(
+            ArchiveFailedError,
+            archiver.archive_final,
+            file_size,
+            file_adler32,
+            file_md5,
+            segments,
+            0
+        )
+
+    def test_archive_small_with_handoff_error(self):
+        self.log.debug('test_archive_small_with_handoff_error')
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        self.exchange_manager.mark_down(0)
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(
+            avatar_id, timestamp, key,
+            handoff_reply_result=HintedHandoffReply.error_exception,
+            handoff_error_message='There was an exception')
+        self.exchange_manager.mark_up(0)
+
+        archiver = AMQPArchiver(
+            self.amqp_handler,
+            self.exchange_manager,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        self.assertRaises(
+            ArchiveFailedError,
+            archiver.archive_final,
+            file_size,
+            file_adler32,
+            file_md5,
+            segments,
+            0
+        )
 
     def _make_large_data(self, avatar_id, timestamp,
                          key, n_slices, fail=False):

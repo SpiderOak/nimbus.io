@@ -10,6 +10,7 @@ import uuid
 import time
 import zlib
 import hashlib
+import json
 
 from webtest import TestApp, TestRequest, StringIO
 
@@ -476,7 +477,7 @@ class TestApplication(unittest.TestCase):
             )
         )
         resp = self.app.get('/data/%s' % (prefix,), dict(action='listmatch'))
-        self.assertEqual(resp.body, repr(key_list))
+        self.assertEqual(json.loads(resp.body), key_list)
 
     def test_retrieve_nonexistent(self):
         avatar_id = self.authenticator.remote_user

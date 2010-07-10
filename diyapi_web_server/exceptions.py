@@ -12,3 +12,11 @@ class HandoffFailedError(ArchiveFailedError):
 
 class RetrieveFailedError(Exception):
     pass
+
+class DataWriterDownError(Exception):
+    pass
+
+class StartHandoff(Exception):
+    def __init__(self, to):
+        super(StartHandoff, self).__init__()
+        self.to = to

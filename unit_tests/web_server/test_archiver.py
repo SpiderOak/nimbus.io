@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-test_amqp_archiver.py
+test_archiver.py
 
-test diyapi_web_server/amqp_archiver.py
+test diyapi_web_server/archiver.py
 """
 import os
 import unittest
@@ -16,6 +16,7 @@ from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
 
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_next import ArchiveKeyNext
@@ -26,7 +27,7 @@ from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
-from diyapi_web_server.amqp_archiver import AMQPArchiver
+from diyapi_web_server.archiver import Archiver
 from diyapi_web_server.exceptions import *
 
 
@@ -34,15 +35,17 @@ EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 NUM_SEGMENTS = 10
 
 
-class TestAMQPArchiver(unittest.TestCase):
-    """test diyapi_web_server/amqp_archiver.py"""
+class TestArchiver(unittest.TestCase):
+    """test diyapi_web_server/archiver.py"""
     def setUp(self):
         self.amqp_handler = util.FakeAMQPHandler()
         self.exchange_manager = AMQPExchangeManager(EXCHANGES)
+        self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
+                             for exchange in self.exchange_manager]
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
-        self.log = logging.getLogger('TestAMQPArchiver')
+        self.log = logging.getLogger('TestArchiver')
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
@@ -148,9 +151,8 @@ class TestAMQPArchiver(unittest.TestCase):
             file_md5,
         ) = self._make_small_data(avatar_id, timestamp, key)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -191,9 +193,8 @@ class TestAMQPArchiver(unittest.TestCase):
         ) = self._make_small_data(avatar_id, timestamp, key)
         self.exchange_manager.mark_up(0)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -208,7 +209,6 @@ class TestAMQPArchiver(unittest.TestCase):
         )
 
         self.assertEqual(previous_size, 0)
-        self.assertTrue(self.exchange_manager.is_down(0))
 
         expected = [
             (message.marshall(), exchange)
@@ -236,9 +236,8 @@ class TestAMQPArchiver(unittest.TestCase):
         ) = self._make_small_data(avatar_id, timestamp, key, True)
         self.exchange_manager.mark_up(0)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -253,8 +252,6 @@ class TestAMQPArchiver(unittest.TestCase):
             segments,
             0
         )
-
-        self.assertTrue(self.exchange_manager.is_down(0))
 
         expected = [
             (message.marshall(), exchange)
@@ -283,9 +280,8 @@ class TestAMQPArchiver(unittest.TestCase):
             reply_result=ArchiveKeyFinalReply.error_exception,
             error_message='There was an exception')
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -319,9 +315,8 @@ class TestAMQPArchiver(unittest.TestCase):
             handoff_error_message='There was an exception')
         self.exchange_manager.mark_up(0)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -504,9 +499,8 @@ class TestAMQPArchiver(unittest.TestCase):
             file_md5,
         ) = self._make_large_data(avatar_id, timestamp, key, 4)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -551,9 +545,8 @@ class TestAMQPArchiver(unittest.TestCase):
         ) = self._make_large_data(avatar_id, timestamp, key, 4)
         self.exchange_manager.mark_up(0)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -571,7 +564,6 @@ class TestAMQPArchiver(unittest.TestCase):
         )
 
         self.assertEqual(previous_size, 0)
-        self.assertTrue(self.exchange_manager.is_down(0))
 
         expected = [
             (message.marshall(), exchange)
@@ -599,9 +591,8 @@ class TestAMQPArchiver(unittest.TestCase):
         ) = self._make_large_data(avatar_id, timestamp, key, 4, True)
         self.exchange_manager.mark_up(0)
 
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp
@@ -614,7 +605,6 @@ class TestAMQPArchiver(unittest.TestCase):
             0
         )
 
-        self.assertTrue(self.exchange_manager.is_down(0))
 
         expected = [
             (message.marshall(), exchange)

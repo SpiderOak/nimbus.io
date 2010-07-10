@@ -19,7 +19,8 @@ from webob import Response
 from diyapi_web_server import util
 from diyapi_web_server.exceptions import *
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
-from diyapi_web_server.amqp_archiver import AMQPArchiver
+from diyapi_web_server.archiver import Archiver
+from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
 from diyapi_web_server.amqp_destroyer import AMQPDestroyer
@@ -54,6 +55,8 @@ class Application(object):
         self.exchange_manager = exchange_manager
         self.authenticator = authenticator
         self.accounter = accounter
+        self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
+                             for exchange in self.exchange_manager]
 
     routes = router()
 
@@ -179,9 +182,8 @@ class Application(object):
         )
         avatar_id = req.remote_user
         timestamp = time.time()
-        archiver = AMQPArchiver(
-            self.amqp_handler,
-            self.exchange_manager,
+        archiver = Archiver(
+            self.data_writers,
             avatar_id,
             key,
             timestamp

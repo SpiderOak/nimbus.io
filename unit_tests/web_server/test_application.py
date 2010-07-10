@@ -195,7 +195,6 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
-        self.assertTrue(self.exchange_manager.is_down(0))
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             len(content)
@@ -353,7 +352,6 @@ class TestApplication(unittest.TestCase):
                 body_file=f,
             )
         self.assertEqual(resp.body, 'OK')
-        self.assertTrue(self.exchange_manager.is_down(0))
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             content_length
@@ -414,7 +412,6 @@ class TestApplication(unittest.TestCase):
                 body_file=f,
                 status=504
             )
-        self.assertTrue(self.exchange_manager.is_down(0))
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             0

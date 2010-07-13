@@ -12,6 +12,7 @@ from socket import error as socket_error
 
 import gevent
 from gevent.queue import Queue
+from gevent.coros import RLock
 
 import amqplib.client_0_8 as amqp
 
@@ -57,26 +58,28 @@ class AMQPHandler(object):
         self.exchange = amqp_connection.local_exchange_name
         self.routing_key_binding = '%s.*' % (self.queue_name,)
         self.reply_queues = WeakValueDictionary()
+        self._send_lock = RLock()
 
     def send_message(self, message, exchange=None):
         if exchange is None:
             exchange = self.exchange
 
-        try:
-            reply_queue = self.reply_queues[message.request_id]
-        except AttributeError:
-            reply_queue = None
-        except KeyError:
-            reply_queue = self.reply_queues[message.request_id] = Queue()
+        with self._send_lock:
+            try:
+                reply_queue = self.reply_queues[message.request_id]
+            except AttributeError:
+                reply_queue = None
+            except KeyError:
+                reply_queue = self.reply_queues[message.request_id] = Queue()
 
-        self.channel.basic_publish(
-            amqp.Message(message.marshall()),
-            exchange=exchange,
-            routing_key=message.routing_key,
-            mandatory=True
-        )
+            self.channel.basic_publish(
+                amqp.Message(message.marshall()),
+                exchange=exchange,
+                routing_key=message.routing_key,
+                mandatory=True
+            )
 
-        return reply_queue
+            return reply_queue
 
     def _callback(self, amqp_message):
         routing_key = amqp_message.delivery_info['routing_key']

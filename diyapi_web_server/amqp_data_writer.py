@@ -7,6 +7,7 @@ A class that represents a data writer in the system.
 import logging
 
 import gevent
+from gevent.event import AsyncResult
 
 from diyapi_web_server.exceptions import (
     DataWriterDownError,
@@ -109,10 +110,16 @@ class AMQPDataWriter(object):
         try:
             reply = self._send(message, ArchiveFailedError)
         except StartHandoff, handoff:
-            tasks = [gevent.spawn(writer._send, message, ArchiveFailedError)
-                     for writer in handoff.to]
-            gevent.joinall(tasks, raise_error=True)
-            return sum(task.value.previous_size for task in tasks)
+            results = []
+            for writer in handoff.to:
+                result = AsyncResult()
+                gevent.spawn(
+                    writer._send,
+                    message,
+                    ArchiveFailedError
+                ).link(result)
+                results.append(result)
+            return sum(result.get().previous_size for result in results)
         else:
             return reply.previous_size
 

@@ -34,7 +34,7 @@ class Archiver(object):
         self._request_ids = {}
         self._adler32s = {}
         self._md5s = defaultdict(hashlib.md5)
-        self._handoff_writers = {}
+        self._handoff_writers = defaultdict(list)
         self._pending = GreenletSet()
         self._done = []
 
@@ -46,23 +46,34 @@ class Archiver(object):
             return
         if handoff or self.sequence_number != 0:
             raise ArchiveFailedError()
-        for task in self._pending:
+        for task in self._pending.greenlets.copy():
             if len(self._done) < HANDOFF_NUM:
                 raise ArchiveFailedError()
-            to = self._handoff_writers[task.segment_number] = [
-                t.data_writer for t in self._done[:HANDOFF_NUM]]
+            for done_task in self._done[:HANDOFF_NUM]:
+                self._handoff_writers[task.segment_number].append(
+                    done_task.data_writer)
+                self._spawn(
+                    task.segment_number,
+                    done_task.data_writer,
+                    getattr(done_task.data_writer, task.method_name),
+                    *task.args
+                )
             del self._done[:HANDOFF_NUM]
-            task.kill(StartHandoff(to), False)
+            task.kill()
         self._join(timeout, True)
 
     def _done_link(self, task):
+        if isinstance(task.value, gevent.GreenletExit):
+            return
         self._done.append(task)
 
-    def _spawn(self, segment_number, data_writer, *args):
-        task = self._pending.spawn(*args)
+    def _spawn(self, segment_number, data_writer, run, *args):
+        method_name = run.__name__
+        task = self._pending.spawn(run, *args)
         task.rawlink(self._done_link)
         task.segment_number = segment_number
         task.data_writer = data_writer
+        task.method_name = method_name
         return task
 
     def _do_handoff(self, timeout):

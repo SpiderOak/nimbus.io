@@ -25,7 +25,6 @@ from diyapi_web_server.exceptions import (
     DataWriterDownError,
     ArchiveFailedError,
     HandoffFailedError,
-    StartHandoff,
 )
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 
@@ -106,72 +105,6 @@ class TestAMQPDataWriter(unittest.TestCase):
         self.assertEqual(
             actual, expected, 'did not send expected messages')
 
-    def test_archive_key_entire_with_handoff(self):
-        self.log.debug('test_archive_key_entire_with_handoff')
-        request_id = 'request_id'
-        avatar_id = 1001
-        timestamp = 12345
-        key = 'key'
-        version_number = 0
-        segment_number = 1
-        file_adler32 = 1
-        file_md5 = 'ffff'
-        segment_adler32 = 1
-        segment_md5 = 'ffff'
-        segment = 'segment'
-        previous_size = 0
-        message = ArchiveKeyEntire(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            timestamp,
-            key,
-            version_number,
-            segment_number,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            segment
-        )
-        reply = ArchiveKeyFinalReply(
-            request_id,
-            ArchiveKeyFinalReply.successful,
-            previous_size
-        )
-        self.amqp_handler.replies_to_send_by_exchange[
-            request_id,
-            self.handoff_writer.exchange
-        ].put(reply)
-        task = gevent.spawn(
-            self.writer.archive_key_entire,
-            request_id,
-            avatar_id,
-            timestamp,
-            key,
-            version_number,
-            segment_number,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            segment
-        )
-        gevent.sleep(0)
-        task.kill(StartHandoff([self.handoff_writer]))
-        self.assertEqual(task.value, previous_size)
-        expected = [
-            (message.marshall(), exchange)
-            for exchange in (self.exchange, self.handoff_writer.exchange)
-        ]
-        actual = [
-            (message.marshall(), exchange)
-            for message, exchange in self.amqp_handler.messages
-        ]
-        self.assertEqual(
-            actual, expected, 'did not send expected messages')
-
     def test_archive_key_entire_with_error(self):
         self.log.debug('test_archive_key_entire_with_error')
         reply = ArchiveKeyFinalReply(
@@ -239,62 +172,6 @@ class TestAMQPDataWriter(unittest.TestCase):
         actual = (self.amqp_handler.messages[0][0].marshall(),
                   self.amqp_handler.messages[0][1])
         expected = (message.marshall(), self.exchange)
-        self.assertEqual(
-            actual, expected, 'did not send expected messages')
-
-    def test_archive_key_start_with_handoff(self):
-        self.log.debug('test_archive_key_start_with_handoff')
-        request_id = 'request_id'
-        avatar_id = 1001
-        timestamp = 12345
-        sequence_number = 0
-        key = 'key'
-        version_number = 0
-        segment_number = 1
-        segment = 'segment'
-        message = ArchiveKeyStart(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            timestamp,
-            sequence_number,
-            key,
-            version_number,
-            segment_number,
-            len(segment),
-            segment
-        )
-        reply = ArchiveKeyStartReply(
-            request_id,
-            ArchiveKeyStartReply.successful,
-            0
-        )
-        self.amqp_handler.replies_to_send_by_exchange[
-            request_id,
-            self.handoff_writer.exchange
-        ].put(reply)
-        task = gevent.spawn(
-            self.writer.archive_key_start,
-            request_id,
-            avatar_id,
-            timestamp,
-            sequence_number,
-            key,
-            version_number,
-            segment_number,
-            segment
-        )
-        gevent.sleep(0)
-        task.kill(StartHandoff([self.handoff_writer]))
-        expected = [
-            (message.marshall(), exchange)
-            for exchange in (self.exchange, self.handoff_writer.exchange)
-        ]
-        actual = [
-            (message.marshall(), exchange)
-            for message, exchange in self.amqp_handler.messages
-        ]
         self.assertEqual(
             actual, expected, 'did not send expected messages')
 

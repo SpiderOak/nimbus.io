@@ -107,21 +107,8 @@ class AMQPDataWriter(object):
                 message.request_id,
                 segment_number,
             ))
-        try:
-            reply = self._send(message, ArchiveFailedError)
-        except StartHandoff, handoff:
-            results = []
-            for writer in handoff.to:
-                result = AsyncResult()
-                gevent.spawn(
-                    writer._send,
-                    message,
-                    ArchiveFailedError
-                ).link(result)
-                results.append(result)
-            return sum(result.get().previous_size for result in results)
-        else:
-            return reply.previous_size
+        reply = self._send(message, ArchiveFailedError)
+        return reply.previous_size
 
     def archive_key_start(
         self,
@@ -155,12 +142,7 @@ class AMQPDataWriter(object):
                 message.request_id,
                 segment_number,
             ))
-        try:
-            reply = self._send(message, ArchiveFailedError)
-        except StartHandoff, handoff:
-            tasks = [gevent.spawn(writer._send, message, ArchiveFailedError)
-                     for writer in handoff.to]
-            gevent.joinall(tasks, raise_error=True)
+        reply = self._send(message, ArchiveFailedError)
 
     def archive_key_next(
         self,
@@ -180,12 +162,6 @@ class AMQPDataWriter(object):
                 message.request_id,
             ))
         reply = self._send(message, ArchiveFailedError)
-        self.log.debug(
-            '%s: '
-            'request_id = %s' % (
-                reply.__class__.__name__,
-                reply.request_id,
-            ))
 
     def archive_key_final(
         self,
@@ -216,11 +192,7 @@ class AMQPDataWriter(object):
             ))
         reply = self._send(message, ArchiveFailedError)
         self.log.debug(
-            '%s: '
-            'request_id = %s, '
             'previous_size = %r' % (
-                reply.__class__.__name__,
-                reply.request_id,
                 reply.previous_size,
             ))
         return reply.previous_size
@@ -254,11 +226,7 @@ class AMQPDataWriter(object):
             ))
         reply = self._send(message, HandoffFailedError)
         self.log.debug(
-            '%s: '
-            'request_id = %s, '
             'previous_size = %r' % (
-                reply.__class__.__name__,
-                reply.request_id,
                 reply.previous_size,
             ))
         return reply.previous_size

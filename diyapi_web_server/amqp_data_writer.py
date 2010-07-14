@@ -73,7 +73,7 @@ class AMQPDataWriter(object):
         self.is_down = True
 
     def _send(self, message, error_class):
-        if self.is_down and not force:
+        if self.is_down:
             raise DataWriterDownError()
         reply = self.amqp_handler.send_message(
             message, self.exchange).get()

@@ -35,7 +35,7 @@ class AMQPDataWriter(object):
         self.amqp_handler = amqp_handler
         self.exchange = exchange
         self.is_down = False
-        self.heartbeat_interval = _HEARTBEAT_INTERVAL
+        self.heartbeat_interval = _HEARTBEAT_INTERVAL * 2
         self._heartbeat_timeout = gevent.spawn_later(
             self.heartbeat_interval,
             self.mark_down

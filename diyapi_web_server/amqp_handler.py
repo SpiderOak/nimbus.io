@@ -8,6 +8,7 @@ import os
 import errno
 import logging
 from collections import defaultdict
+from weakref import ref as WeakReference
 from weakref import WeakValueDictionary
 from socket import error as socket_error
 
@@ -84,7 +85,27 @@ class AMQPHandler(object):
             return reply_queue
 
     def subscribe(self, message_type, callback):
-        self.subscriptions[message_type].append(callback)
+        self.subscriptions[message_type].append(WeakReference(callback))
+
+    def _handle_subscriptions(self, message_type, message):
+        if message_type not in self.subscriptions:
+            return False
+        handled = False
+        subscriptions = self.subscriptions[message_type]
+        dead_refs = []
+        for i, ref in enumerate(subscriptions):
+            callback = ref()
+            if callback is None:
+                dead_refs.append(i)
+                continue
+            callback(message)
+            handled = True
+        dead_refs.reverse()
+        for i in dead_refs:
+            del subscriptions[i]
+        if not subscriptions:
+            del self.subscriptions[message_type]
+        return handled
 
     def _callback(self, amqp_message):
         routing_key = amqp_message.delivery_info['routing_key']
@@ -100,10 +121,7 @@ class AMQPHandler(object):
             handled = True
         except (AttributeError, KeyError):
             pass
-        if message_type in self.subscriptions:
-            for callback in self.subscriptions[message_type]:
-                callback(message)
-                handled = True
+        handled = handled or self._handle_subscriptions(message_type, message)
         if not handled:
             self.log.debug('Received unhandled message: %s, '
                            'request_id=%r' % (

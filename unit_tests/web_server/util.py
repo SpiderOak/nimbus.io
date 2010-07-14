@@ -50,6 +50,14 @@ class FakeAMQPHandler(object):
         self.messages = []
         self.replies_to_send = defaultdict(Queue)
         self.replies_to_send_by_exchange = defaultdict(Queue)
+        self.subscriptions = defaultdict(list)
+
+    def subscribe(self, message_type, callback):
+        self.subscriptions[message_type].append(callback)
+
+    def _call_subscriptions(self, message):
+        for callback in self.subscriptions[type(message)]:
+            callback(message)
 
     def send_message(self, message, exchange=None):
         if exchange is None:

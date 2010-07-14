@@ -20,6 +20,7 @@ from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
+from messages.process_status import ProcessStatus
 
 from diyapi_web_server.exceptions import (
     DataWriterDownError,
@@ -311,6 +312,68 @@ class TestAMQPDataWriter(unittest.TestCase):
             'other-exchange'
         )
         self.assertEqual(len(self.amqp_handler.messages), 1)
+
+    def test_shutdown(self):
+        self.log.debug('test_shutdown')
+        self.assertFalse(self.writer.is_down)
+        timestamp = 12345
+        exchange = 'some_exchange'
+        routing_header = 'a_routing_header'
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            ProcessStatus.status_shutdown
+        )
+        self.amqp_handler._call_subscriptions(message)
+        self.assertTrue(self.writer.is_down)
+
+    def test_startup(self):
+        self.log.debug('test_startup')
+        self.writer.mark_down()
+        timestamp = 12345
+        exchange = 'some_exchange'
+        routing_header = 'a_routing_header'
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            ProcessStatus.status_startup
+        )
+        self.amqp_handler._call_subscriptions(message)
+        self.assertFalse(self.writer.is_down)
+
+    def test_heartbeat_coming_up(self):
+        self.log.debug('test_heartbeat_coming_up')
+        self.writer.mark_down()
+        timestamp = 12345
+        exchange = 'some_exchange'
+        routing_header = 'a_routing_header'
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            ProcessStatus.status_heartbeat
+        )
+        self.amqp_handler._call_subscriptions(message)
+        self.assertFalse(self.writer.is_down)
+
+    def test_heartbeat_going_down(self):
+        self.log.debug('test_heartbeat_going_down')
+        self.assertFalse(self.writer.is_down)
+        self.writer.heartbeat_interval = 0
+        timestamp = 12345
+        exchange = 'some_exchange'
+        routing_header = 'a_routing_header'
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            ProcessStatus.status_heartbeat
+        )
+        self.amqp_handler._call_subscriptions(message)
+        gevent.sleep(0)
+        self.assertTrue(self.writer.is_down)
 
 
 if __name__ == "__main__":

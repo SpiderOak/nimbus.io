@@ -4,6 +4,7 @@ amqp_data_writer.py
 
 A class that represents a data writer in the system.
 """
+import os
 import logging
 
 import gevent
@@ -21,6 +22,11 @@ from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_next import ArchiveKeyNext
 from messages.archive_key_final import ArchiveKeyFinal
 from messages.hinted_handoff import HintedHandoff
+from messages.process_status import ProcessStatus
+
+_HEARTBEAT_INTERVAL = float(
+    os.environ.get("DIYAPI_DATA_WRITER_HEARTBEAT", "60.0")
+)
 
 
 class AMQPDataWriter(object):
@@ -29,6 +35,12 @@ class AMQPDataWriter(object):
         self.amqp_handler = amqp_handler
         self.exchange = exchange
         self.is_down = False
+        self.heartbeat_interval = _HEARTBEAT_INTERVAL
+        self._heartbeat_timeout = gevent.spawn_later(
+            self.heartbeat_interval,
+            self.mark_down
+        )
+        amqp_handler.subscribe(ProcessStatus, self._heartbeat)
 
     def __hash__(self):
         return hash(self.exchange)
@@ -40,6 +52,21 @@ class AMQPDataWriter(object):
 
     def __ne__(self, other):
         return not (self == other)
+
+    def _heartbeat(self, message):
+        self._heartbeat_timeout.kill()
+        self._heartbeat_timeout = gevent.spawn_later(
+            self.heartbeat_interval,
+            self.mark_down
+        )
+        if message.status == ProcessStatus.status_shutdown:
+            self.mark_down()
+        else:
+            self.mark_up()
+
+    def mark_up(self):
+        self.log.debug('mark_up')
+        self.is_down = False
 
     def mark_down(self):
         self.log.debug('mark_down')

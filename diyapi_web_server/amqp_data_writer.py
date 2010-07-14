@@ -70,7 +70,7 @@ class AMQPDataWriter(object):
 
     def mark_down(self):
         self.log.debug('mark_down')
-        #self.is_down = True
+        self.is_down = True
 
     def _send(self, message, error_class):
         if self.is_down:

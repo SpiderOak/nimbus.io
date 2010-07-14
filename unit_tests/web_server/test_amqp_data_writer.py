@@ -313,20 +313,20 @@ class TestAMQPDataWriter(unittest.TestCase):
         )
         self.assertEqual(len(self.amqp_handler.messages), 1)
 
-    #def test_shutdown(self):
-    #    self.log.debug('test_shutdown')
-    #    self.assertFalse(self.writer.is_down)
-    #    timestamp = 12345
-    #    exchange = 'some_exchange'
-    #    routing_header = 'a_routing_header'
-    #    message = ProcessStatus(
-    #        timestamp,
-    #        exchange,
-    #        routing_header,
-    #        ProcessStatus.status_shutdown
-    #    )
-    #    self.amqp_handler._call_subscriptions(message)
-    #    self.assertTrue(self.writer.is_down)
+    def test_shutdown(self):
+        self.log.debug('test_shutdown')
+        self.assertFalse(self.writer.is_down)
+        timestamp = 12345
+        exchange = 'some_exchange'
+        routing_header = 'a_routing_header'
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            ProcessStatus.status_shutdown
+        )
+        self.amqp_handler._call_subscriptions(message)
+        self.assertTrue(self.writer.is_down)
 
     def test_startup(self):
         self.log.debug('test_startup')
@@ -358,22 +358,22 @@ class TestAMQPDataWriter(unittest.TestCase):
         self.amqp_handler._call_subscriptions(message)
         self.assertFalse(self.writer.is_down)
 
-    #def test_heartbeat_going_down(self):
-    #    self.log.debug('test_heartbeat_going_down')
-    #    self.assertFalse(self.writer.is_down)
-    #    self.writer.heartbeat_interval = 0
-    #    timestamp = 12345
-    #    exchange = 'some_exchange'
-    #    routing_header = 'a_routing_header'
-    #    message = ProcessStatus(
-    #        timestamp,
-    #        exchange,
-    #        routing_header,
-    #        ProcessStatus.status_heartbeat
-    #    )
-    #    self.amqp_handler._call_subscriptions(message)
-    #    gevent.sleep(0)
-    #    self.assertTrue(self.writer.is_down)
+    def test_heartbeat_going_down(self):
+        self.log.debug('test_heartbeat_going_down')
+        self.assertFalse(self.writer.is_down)
+        self.writer.heartbeat_interval = 0
+        timestamp = 12345
+        exchange = 'some_exchange'
+        routing_header = 'a_routing_header'
+        message = ProcessStatus(
+            timestamp,
+            exchange,
+            routing_header,
+            ProcessStatus.status_heartbeat
+        )
+        self.amqp_handler._call_subscriptions(message)
+        gevent.sleep(0)
+        self.assertTrue(self.writer.is_down)
 
 
 if __name__ == "__main__":

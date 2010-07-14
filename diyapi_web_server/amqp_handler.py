@@ -7,6 +7,7 @@ A class that facilitates sending AMQP messages and receiving replies.
 import os
 import errno
 import logging
+from collections import defaultdict
 from weakref import WeakValueDictionary
 from socket import error as socket_error
 
@@ -59,6 +60,7 @@ class AMQPHandler(object):
         self.routing_key_binding = '%s.*' % (self.queue_name,)
         self.reply_queues = WeakValueDictionary()
         self._send_lock = RLock()
+        self.subscriptions = defaultdict(list)
 
     def send_message(self, message, exchange=None):
         if exchange is None:
@@ -81,6 +83,9 @@ class AMQPHandler(object):
 
             return reply_queue
 
+    def subscribe(self, message_type, callback):
+        self.subscriptions[message_type].append(callback)
+
     def _callback(self, amqp_message):
         routing_key = amqp_message.delivery_info['routing_key']
         try:
@@ -89,13 +94,22 @@ class AMQPHandler(object):
             self.log.debug('skipping unknown routing key %r' % (routing_key,))
             return
         message = message_type.unmarshall(amqp_message.body)
+        handled = False
         try:
             self.reply_queues[message.request_id].put(message)
-        except AttributeError:
+            handled = True
+        except (AttributeError, KeyError):
             pass
-        except KeyError:
-            self.log.debug('got a reply for %r '
-                           'but no one cares' % (message.request_id,))
+        if message_type in self.subscriptions:
+            for callback in self.subscriptions[message_type]:
+                callback(message)
+                handled = True
+        if not handled:
+            self.log.debug('Received unhandled message: %s, '
+                           'request_id=%r' % (
+                               message.__class__.__name__,
+                               message.request_id,
+                           ))
 
     def _run(self):
         self.log.debug('start AMQP loop')

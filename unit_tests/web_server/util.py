@@ -13,7 +13,22 @@ class FakeMessage(object):
             self.request_id = request_id
 
     def marshall(self):
-        return self.body
+        args = [self.routing_key, self.body]
+        try:
+            args.append(self.request_id)
+        except AttributeError:
+            pass
+        return '\t'.join(args)
+
+    @classmethod
+    def unmarshall(cls, data):
+        return cls(*data.split('\t'))
+
+
+class FakeAMQPMessage(object):
+    def __init__(self, routing_key, body):
+        self.delivery_info = dict(routing_key=routing_key)
+        self.body = body
 
 
 class MockChannel(object):

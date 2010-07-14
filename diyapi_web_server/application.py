@@ -110,9 +110,12 @@ class Application(object):
         # TODO: do something with delimiter
         avatar_id = req.remote_user
         matcher = AMQPListmatcher(self.amqp_handler)
-        # TODO: handle listmatch failure
+        try:
+            keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
+        except DataWriterDownError:
+            # 2010-06-25 dougfort -- Isn't there some better error for this
+            raise exc.HTTPGatewayTimeout()
         # TODO: break up large (>1mb) listmatch response
-        keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
         return Response(json.dumps(keys))
 
     @routes.add(r'/data/(.+)$', 'DELETE')
@@ -127,7 +130,7 @@ class Application(object):
         try:
             size_deleted = destroyer.destroy(
                 avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
-        except DestroyFailedError:
+        except (DataWriterDownError, DestroyFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         self.accounter.removed(
@@ -158,14 +161,19 @@ class Application(object):
         retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)
         try:
             first_segments = retrieved.next()
-        except RetrieveFailedError:
+        except (DataWriterDownError, RetrieveFailedError):
             return exc.HTTPNotFound()
         def app_iter():
             sent = 0
-            for segments in chain([first_segments], retrieved):
-                data = segmenter.decode(segments.values())
-                sent += len(data)
-                yield data
+            try:
+                for segments in chain([first_segments], retrieved):
+                    data = segmenter.decode(segments.values())
+                    sent += len(data)
+                    yield data
+            except (DataWriterDownError, RetrieveFailedError):
+                self._log.warning('retrieve failed: avatar_id = %s' % (
+                    avatar_id,
+                ))
             self.accounter.retrieved(
                 avatar_id,
                 timestamp,
@@ -219,7 +227,7 @@ class Application(object):
                 segments,
                 EXCHANGE_TIMEOUT
             )
-        except (HandoffFailedError, ArchiveFailedError):
+        except (DataWriterDownError, HandoffFailedError, ArchiveFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         if previous_size is not None:

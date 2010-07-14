@@ -23,11 +23,11 @@ from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
 from messages.database_listmatch_reply import DatabaseListMatchReply
-from messages.database_key_list_reply import DatabaseKeyListReply
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key_reply import DestroyKeyReply
+from messages.hinted_handoff_reply import HintedHandoffReply
 
 
 _local_node_name = os.environ['SPIDEROAK_MULTI_NODE_NAME']
@@ -40,11 +40,11 @@ MESSAGE_TYPES = dict(
         ArchiveKeyNextReply,
         ArchiveKeyFinalReply,
         DatabaseListMatchReply,
-        DatabaseKeyListReply,
         RetrieveKeyStartReply,
         RetrieveKeyNextReply,
         RetrieveKeyFinalReply,
         DestroyKeyReply,
+        HintedHandoffReply,
     ]
 )
 

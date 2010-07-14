@@ -52,6 +52,7 @@ class TestArchiver(unittest.TestCase):
 
     def _make_small_data(self, avatar_id, timestamp, key, fail=False,
                          reply_result=None, error_message=None,
+                         handoff_fail=False,
                          handoff_reply_result=None,
                          handoff_error_message=None):
         file_size = 1024 * NUM_SEGMENTS
@@ -114,21 +115,22 @@ class TestArchiver(unittest.TestCase):
                             segment_number,
                             self.exchange_manager[i],
                         )
-                        if handoff_reply_result is None:
-                            handoff_reply = HintedHandoffReply(
-                                request_id,
-                                HintedHandoffReply.successful,
-                            )
-                        else:
-                            handoff_reply = HintedHandoffReply(
-                                request_id,
-                                handoff_reply_result,
-                                error_message=handoff_error_message
-                            )
                         handoff_messages.append((handoff, exchange))
-                        self.amqp_handler.replies_to_send_by_exchange[(
-                            request_id, exchange
-                        )].put(handoff_reply)
+                        if not handoff_fail:
+                            if handoff_reply_result is None:
+                                handoff_reply = HintedHandoffReply(
+                                    request_id,
+                                    HintedHandoffReply.successful,
+                                )
+                            else:
+                                handoff_reply = HintedHandoffReply(
+                                    request_id,
+                                    handoff_reply_result,
+                                    error_message=handoff_error_message
+                                )
+                            self.amqp_handler.replies_to_send_by_exchange[(
+                                request_id, exchange
+                            )].put(handoff_reply)
                     messages_to_append.append((message, exchange))
             else:
                 self.amqp_handler.replies_to_send_by_exchange[(
@@ -263,6 +265,38 @@ class TestArchiver(unittest.TestCase):
         ]
         self.assertEqual(
             actual, expected, 'archiver did not send expected messages')
+
+    def test_archive_small_with_handoff_failure(self):
+        self.log.debug('test_archive_small_with_handoff_failure')
+        avatar_id = 1001
+        timestamp = time.time()
+        key = self._key_generator.next()
+        self.exchange_manager.mark_down(0)
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(avatar_id, timestamp, key, handoff_fail=True)
+        self.exchange_manager.mark_up(0)
+
+        archiver = Archiver(
+            self.data_writers,
+            avatar_id,
+            key,
+            timestamp
+        )
+
+        self.assertRaises(
+            ArchiveFailedError,
+            archiver.archive_final,
+            file_size,
+            file_adler32,
+            file_md5,
+            segments,
+            0
+        )
 
     def test_archive_small_with_error(self):
         self.log.debug('test_archive_small_with_error')

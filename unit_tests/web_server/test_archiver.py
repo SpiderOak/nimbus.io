@@ -223,50 +223,6 @@ class TestArchiver(unittest.TestCase):
         self.assertEqual(
             actual, expected, 'archiver did not send expected messages')
 
-    #def test_archive_small_with_data_writer_down(self):
-    #    self.log.debug('test_archive_small_with_data_writer_down')
-    #    avatar_id = 1001
-    #    timestamp = time.time()
-    #    key = self._key_generator.next()
-    #    self.exchange_manager.mark_down(0)
-    #    (
-    #        segments,
-    #        messages,
-    #        file_size,
-    #        file_adler32,
-    #        file_md5,
-    #    ) = self._make_small_data(avatar_id, timestamp, key)
-
-    #    self.data_writers[0].mark_down()
-
-    #    archiver = Archiver(
-    #        self.data_writers,
-    #        avatar_id,
-    #        key,
-    #        timestamp
-    #    )
-
-    #    previous_size = archiver.archive_final(
-    #        file_size,
-    #        file_adler32,
-    #        file_md5,
-    #        segments,
-    #        0
-    #    )
-
-    #    self.assertEqual(previous_size, 0)
-
-    #    expected = [
-    #        (message.marshall(), exchange)
-    #        for message, exchange in messages
-    #    ]
-    #    actual = [
-    #        (message.marshall(), exchange)
-    #        for message, exchange in self.amqp_handler.messages
-    #    ]
-    #    self.assertEqual(
-    #        actual, expected, 'archiver did not send expected messages')
-
     def test_archive_small_with_failure(self):
         self.log.debug('test_archive_small_with_failure')
         avatar_id = 1001

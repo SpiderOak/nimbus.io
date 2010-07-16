@@ -30,6 +30,7 @@ from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key_reply import DestroyKeyReply
 from messages.hinted_handoff_reply import HintedHandoffReply
+from messages.process_status import ProcessStatus
 
 
 _local_node_name = os.environ['SPIDEROAK_MULTI_NODE_NAME']
@@ -49,6 +50,7 @@ MESSAGE_TYPES = dict(
         HintedHandoffReply,
     ]
 )
+MESSAGE_TYPES['process_status'] = ProcessStatus
 
 
 class AMQPHandler(object):
@@ -115,19 +117,22 @@ class AMQPHandler(object):
             self.log.debug('skipping unknown routing key %r' % (routing_key,))
             return
         message = message_type.unmarshall(amqp_message.body)
-        handled = False
+        handled_reply = False
         try:
             self.reply_queues[message.request_id].put(message)
-            handled = True
+            handled_reply = True
         except (AttributeError, KeyError):
             pass
-        handled = handled or self._handle_subscriptions(message_type, message)
-        if not handled:
-            self.log.debug('Received unhandled message: %s, '
-                           'request_id=%r' % (
-                               message.__class__.__name__,
-                               message.request_id,
-                           ))
+        handled_subscrip = self._handle_subscriptions(message_type, message)
+        if not (handled_reply or handled_subscrip):
+            msg = 'Received unhandled message: %s' % (
+                    message.__class__.__name__,)
+            try:
+                msg += ', request_id=%r' % (
+                    message.request_id,)
+            except AttributeError:
+                pass
+            self.log.debug(msg)
 
     def _run(self):
         self.log.debug('start AMQP loop')

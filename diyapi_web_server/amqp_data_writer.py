@@ -40,7 +40,8 @@ class AMQPDataWriter(object):
             self.heartbeat_interval,
             self.mark_down
         )
-        amqp_handler.subscribe(ProcessStatus, self._heartbeat)
+        self._heartbeat_subscription = self._heartbeat
+        amqp_handler.subscribe(ProcessStatus, self._heartbeat_subscription)
 
     def __hash__(self):
         return hash(self.exchange)
@@ -65,12 +66,14 @@ class AMQPDataWriter(object):
             self.mark_up()
 
     def mark_up(self):
-        self.log.debug('mark_up')
-        self.is_down = False
+        if self.is_down:
+            self.log.debug('mark_up')
+            self.is_down = False
 
     def mark_down(self):
-        self.log.debug('mark_down')
-        #self.is_down = True
+        if not self.is_down:
+            self.log.debug('mark_down')
+            self.is_down = True
 
     def _send(self, message, error_class):
         if self.is_down:

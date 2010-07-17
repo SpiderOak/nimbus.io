@@ -7,7 +7,6 @@ test diyapi_web_server/archiver.py
 import os
 import unittest
 import uuid
-import time
 import hashlib
 import zlib
 import logging
@@ -17,6 +16,8 @@ from unit_tests.web_server import util
 
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
+from diyapi_web_server.exceptions import ArchiveFailedError
+
 from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_next import ArchiveKeyNext
@@ -28,7 +29,6 @@ from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 
 from diyapi_web_server.archiver import Archiver
-from diyapi_web_server.exceptions import *
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
@@ -143,7 +143,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_small(self):
         self.log.debug('test_archive_small')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         (
             segments,
@@ -183,7 +183,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_small_with_handoff(self):
         self.log.debug('test_archive_small_with_handoff')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
         (
@@ -226,7 +226,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_small_with_failure(self):
         self.log.debug('test_archive_small_with_failure')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
         (
@@ -269,7 +269,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_small_with_handoff_failure(self):
         self.log.debug('test_archive_small_with_handoff_failure')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
         (
@@ -301,7 +301,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_small_with_error(self):
         self.log.debug('test_archive_small_with_error')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         (
             segments,
@@ -334,7 +334,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_small_with_handoff_error(self):
         self.log.debug('test_archive_small_with_handoff_error')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
         (
@@ -523,7 +523,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_large(self):
         self.log.debug('test_archive_large')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         (
             slices,
@@ -567,7 +567,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_large_with_handoff(self):
         self.log.debug('test_archive_large_with_handoff')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
         (
@@ -613,7 +613,7 @@ class TestArchiver(unittest.TestCase):
     def test_archive_large_with_failure(self):
         self.log.debug('test_archive_large_with_failure')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         self.exchange_manager.mark_down(0)
         (

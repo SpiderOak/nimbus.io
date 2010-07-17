@@ -12,7 +12,6 @@ import logging
 from unit_tests.util import generate_key
 from unit_tests.web_server import util
 
-from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.exceptions import DestroyFailedError
 
@@ -29,9 +28,8 @@ class TestDestroyer(unittest.TestCase):
     """test diyapi_web_server/destroyer.py"""
     def setUp(self):
         self.amqp_handler = util.FakeAMQPHandler()
-        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
-                             for exchange in self.exchange_manager]
+                             for exchange in EXCHANGES]
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
@@ -44,7 +42,7 @@ class TestDestroyer(unittest.TestCase):
         base_size = 12345
         messages = []
         messages_to_append = []
-        for i in xrange(len(self.exchange_manager)):
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             message = DestroyKey(
                 request_id,
@@ -61,16 +59,17 @@ class TestDestroyer(unittest.TestCase):
                 DestroyKeyReply.successful,
                 base_size + i
             )
-            messages.append((message, self.exchange_manager[i]))
-            if self.exchange_manager.is_down(i):
-                for exchange in self.exchange_manager[1:3]:
+            messages.append((message, data_writer.exchange))
+            if data_writer.is_down:
+                for handoff_data_writer in self.data_writers[1:3]:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
+                        request_id, handoff_data_writer.exchange
                     )].put(reply)
-                    messages_to_append.append((message, exchange))
+                    messages_to_append.append((
+                        message, handoff_data_writer.exchange))
             else:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, self.exchange_manager[i]
+                    request_id, data_writer.exchange
                 )].put(reply)
         messages.extend(messages_to_append)
         return base_size, messages
@@ -107,9 +106,9 @@ class TestDestroyer(unittest.TestCase):
         avatar_id = 1001
         key = self._key_generator.next()
         timestamp = util.fake_time()
-        self.exchange_manager.mark_down(0)
+        self.data_writers[0].mark_down()
         base_size, messages = self._make_messages(avatar_id, timestamp, key)
-        self.exchange_manager.mark_up(0)
+        self.data_writers[0].mark_up()
 
         destroyer = Destroyer(self.data_writers)
         self.assertRaises(

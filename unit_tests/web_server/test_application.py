@@ -18,6 +18,7 @@ from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
@@ -41,9 +42,12 @@ class TestApplication(unittest.TestCase):
         self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self.authenticator = util.FakeAuthenticator(0)
         self.amqp_handler = util.FakeAMQPHandler()
+        self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
+                             for exchange in EXCHANGES]
         self.accounter = util.FakeAccounter()
         self.app = TestApp(Application(
             self.amqp_handler,
+            self.data_writers,
             self.exchange_manager,
             self.authenticator,
             self.accounter
@@ -71,7 +75,7 @@ class TestApplication(unittest.TestCase):
 
     def test_archive_0_bytes(self):
         timestamp = time.time()
-        for i in xrange(len(self.exchange_manager)):
+        for i in xrange(len(self.data_writers)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyFinalReply(
@@ -86,7 +90,7 @@ class TestApplication(unittest.TestCase):
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(len(self.amqp_handler.messages),
-                         len(self.exchange_manager))
+                         len(self.data_writers))
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             0
@@ -102,7 +106,7 @@ class TestApplication(unittest.TestCase):
 
     def test_archive_small(self):
         timestamp = time.time()
-        for i in xrange(len(self.exchange_manager)):
+        for i in xrange(len(self.data_writers)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyFinalReply(
@@ -117,7 +121,7 @@ class TestApplication(unittest.TestCase):
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(len(self.amqp_handler.messages),
-                         len(self.exchange_manager))
+                         len(self.data_writers))
         self.assertEqual(
             self.accounter._added[avatar_id, timestamp],
             len(content)
@@ -135,7 +139,7 @@ class TestApplication(unittest.TestCase):
         timestamp = time.time()
         old_size_per_slice = 12345
         old_size_total = 0
-        for i in xrange(len(self.exchange_manager)):
+        for i in xrange(len(self.data_writers)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyFinalReply(
@@ -165,31 +169,31 @@ class TestApplication(unittest.TestCase):
 
     def test_archive_small_with_handoff(self):
         timestamp = time.time()
-        self.exchange_manager.mark_down(0)
-        for i in xrange(len(self.exchange_manager)):
+        self.data_writers[0].mark_down()
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             message = ArchiveKeyFinalReply(
                 request_id,
                 ArchiveKeyFinalReply.successful,
                 0
             )
-            if self.exchange_manager.is_down(i):
+            if data_writer.is_down:
                 handoff_reply = HintedHandoffReply(
                     request_id,
                     HintedHandoffReply.successful,
                 )
-                for exchange in self.exchange_manager[1:3]:
+                for handoff_data_writer in self.data_writers[1:3]:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
+                        request_id, handoff_data_writer.exchange
                     )].put(message)
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
+                        request_id, handoff_data_writer.exchange
                     )].put(handoff_reply)
             else:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, self.exchange_manager[i]
+                    request_id, data_writer.exchange
                 )].put(message)
-        self.exchange_manager.mark_up(0)
+        self.data_writers[0].mark_up()
         avatar_id = self.authenticator.remote_user
         content = random_string(64 * 1024)
         key = self._key_generator.next()
@@ -210,26 +214,26 @@ class TestApplication(unittest.TestCase):
 
     def test_archive_small_with_handoff_failure(self):
         timestamp = time.time()
-        self.exchange_manager.mark_down(0)
-        for i in xrange(len(self.exchange_manager)):
+        self.data_writers[0].mark_down()
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             message = ArchiveKeyFinalReply(
                 request_id,
                 ArchiveKeyFinalReply.successful,
                 0
             )
-            if self.exchange_manager.is_down(i):
-                for j, exchange in enumerate(
-                    self.exchange_manager[1:3]):
+            if data_writer.is_down:
+                for j, handoff_data_writer in enumerate(
+                    self.data_writers[1:3]):
                         if j != 0:
                             self.amqp_handler.replies_to_send_by_exchange[(
-                                request_id, exchange
+                                request_id, handoff_data_writer.exchange
                             )].put(message)
             else:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, self.exchange_manager[i]
+                    request_id, data_writer.exchange
                 )].put(message)
-        self.exchange_manager.mark_up(0)
+        self.data_writers[0].mark_up()
         avatar_id = self.authenticator.remote_user
         content = random_string(64 * 1024)
         key = self._key_generator.next()
@@ -251,7 +255,7 @@ class TestApplication(unittest.TestCase):
         timestamp = time.time()
         avatar_id = self.authenticator.remote_user
         content_length = 1024 * 1024 * 3
-        for i in xrange(len(self.exchange_manager)):
+        for i in xrange(len(self.data_writers)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyStartReply(
@@ -302,8 +306,8 @@ class TestApplication(unittest.TestCase):
         timestamp = time.time()
         avatar_id = self.authenticator.remote_user
         content_length = 1024 * 1024 * 3
-        self.exchange_manager.mark_down(0)
-        for i in xrange(len(self.exchange_manager)):
+        self.data_writers[0].mark_down()
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             for message in [
                 ArchiveKeyStartReply(
@@ -322,25 +326,25 @@ class TestApplication(unittest.TestCase):
                     0
                 ),
             ]:
-                if self.exchange_manager.is_down(i):
-                    for exchange in self.exchange_manager[1:3]:
+                if data_writer.is_down:
+                    for handoff_data_writer in self.data_writers[1:3]:
                         self.amqp_handler.replies_to_send_by_exchange[(
-                            request_id, exchange
+                            request_id, handoff_data_writer.exchange
                         )].put(message)
                 else:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, self.exchange_manager[i]
+                        request_id, data_writer.exchange
                     )].put(message)
-            if self.exchange_manager.is_down(i):
+            if data_writer.is_down:
                 handoff_reply = HintedHandoffReply(
                     request_id,
                     HintedHandoffReply.successful,
                 )
-                for exchange in self.exchange_manager[1:3]:
+                for handoff_data_writer in self.data_writers[1:3]:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
+                        request_id, handoff_data_writer.exchange
                     )].put(handoff_reply)
-        self.exchange_manager.mark_up(0)
+        self.data_writers[0].mark_up()
         key = self._key_generator.next()
         with open('/dev/urandom', 'rb') as f:
             resp = self.app.request(
@@ -369,8 +373,8 @@ class TestApplication(unittest.TestCase):
         timestamp = time.time()
         avatar_id = self.authenticator.remote_user
         content_length = 1024 * 1024 * 3
-        self.exchange_manager.mark_down(0)
-        for i in xrange(len(self.exchange_manager)):
+        self.data_writers[0].mark_down()
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             for j, message in enumerate([
                 ArchiveKeyStartReply(
@@ -389,18 +393,18 @@ class TestApplication(unittest.TestCase):
                     0
                 ),
             ]):
-                if self.exchange_manager.is_down(i):
-                    for k, exchange in enumerate(
-                        self.exchange_manager[1:3]):
+                if data_writer.is_down:
+                    for k, handoff_data_writer in enumerate(
+                        self.data_writers[1:3]):
                             if not (j >=1 and k == 0):
                                 self.amqp_handler.replies_to_send_by_exchange[(
-                                    request_id, exchange
+                                    request_id, handoff_data_writer.exchange
                                 )].put(message)
                 else:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, self.exchange_manager[i]
+                        request_id, data_writer.exchange
                     )].put(message)
-        self.exchange_manager.mark_up(0)
+        self.data_writers[0].mark_up()
         key = self._key_generator.next()
         with open('/dev/urandom', 'rb') as f:
             resp = self.app.request(
@@ -427,7 +431,7 @@ class TestApplication(unittest.TestCase):
 
     def test_archive_small_without_content_length(self):
         timestamp = time.time()
-        for i in xrange(len(self.exchange_manager)):
+        for i in xrange(len(self.data_writers)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 ArchiveKeyFinalReply(
@@ -699,7 +703,7 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         base_size = 12345
         timestamp = time.time()
-        for i, exchange in enumerate(self.exchange_manager):
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 DestroyKeyReply(
@@ -724,104 +728,24 @@ class TestApplication(unittest.TestCase):
             base_size
         )
 
-    # TODO: uncomment this when we figure out handoffs for destroy
-    #def test_destroy_with_handoff(self):
-    #    avatar_id = self.authenticator.remote_user
-    #    key = self._key_generator.next()
-    #    base_size = 12345
-    #    timestamp = time.time()
-    #    self.exchange_manager.mark_down(0)
-    #    for i, exchange in enumerate(self.exchange_manager):
-    #        request_id = uuid.UUID(int=i).hex
-    #        message = DestroyKeyReply(
-    #            request_id,
-    #            DestroyKeyReply.successful,
-    #            base_size + i
-    #        )
-    #        if self.exchange_manager.is_down(i):
-    #            for exchange in self.exchange_manager.handoff_exchanges(i):
-    #                self.amqp_handler.replies_to_send_by_exchange[(
-    #                    request_id, exchange
-    #                )].put(message)
-    #        else:
-    #            self.amqp_handler.replies_to_send_by_exchange[(
-    #                request_id, self.exchange_manager[i]
-    #            )].put(message)
-    #    self.exchange_manager.mark_up(0)
-
-    #    resp = self.app.delete('/data/%s' % (key,))
-    #    self.assertEqual(resp.body, 'OK')
-    #    self.assertEqual(
-    #        self.accounter._added[avatar_id, timestamp],
-    #        0
-    #    )
-    #    self.assertEqual(
-    #        self.accounter._retrieved[avatar_id, timestamp],
-    #        0
-    #    )
-    #    self.assertEqual(
-    #        self.accounter._removed[avatar_id, timestamp],
-    #        base_size
-    #    )
-
-    #def test_destroy_with_handoff_failure(self):
-    #    avatar_id = self.authenticator.remote_user
-    #    key = self._key_generator.next()
-    #    base_size = 12345
-    #    timestamp = time.time()
-    #    self.exchange_manager.mark_down(0)
-    #    for i, exchange in enumerate(self.exchange_manager):
-    #        request_id = uuid.UUID(int=i).hex
-    #        message = DestroyKeyReply(
-    #            request_id,
-    #            DestroyKeyReply.successful,
-    #            base_size + i
-    #        )
-    #        if self.exchange_manager.is_down(i):
-    #            for j, exchange in enumerate(
-    #                self.exchange_manager.handoff_exchanges(i)):
-    #                    if j != 0:
-    #                        self.amqp_handler.replies_to_send_by_exchange[(
-    #                            request_id, exchange
-    #                        )].put(message)
-    #        else:
-    #            self.amqp_handler.replies_to_send_by_exchange[(
-    #                request_id, self.exchange_manager[i]
-    #            )].put(message)
-    #    self.exchange_manager.mark_up(0)
-
-    #    resp = self.app.delete('/data/%s' % (key,), status=504)
-    #    self.assertEqual(
-    #        self.accounter._added[avatar_id, timestamp],
-    #        0
-    #    )
-    #    self.assertEqual(
-    #        self.accounter._retrieved[avatar_id, timestamp],
-    #        0
-    #    )
-    #    self.assertEqual(
-    #        self.accounter._removed[avatar_id, timestamp],
-    #        0
-    #    )
-
     def test_destroy_with_failure(self):
         avatar_id = self.authenticator.remote_user
         key = self._key_generator.next()
         base_size = 12345
         timestamp = time.time()
-        self.exchange_manager.mark_down(0)
-        for i, exchange in enumerate(self.exchange_manager):
+        self.data_writers[0].mark_down()
+        for i, data_writer in enumerate(self.data_writers):
             request_id = uuid.UUID(int=i).hex
             message = DestroyKeyReply(
                 request_id,
                 DestroyKeyReply.successful,
                 base_size + i
             )
-            if not self.exchange_manager.is_down(i):
+            if not data_writer.is_down:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, self.exchange_manager[i]
+                    request_id, data_writer.exchange
                 )].put(message)
-        self.exchange_manager.mark_up(0)
+        self.data_writers[0].mark_up()
 
         resp = self.app.delete('/data/%s' % (key,), status=504)
         self.assertEqual(

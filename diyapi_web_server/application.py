@@ -48,15 +48,14 @@ class router(list):
 
 
 class Application(object):
-    def __init__(self, amqp_handler,
+    def __init__(self, amqp_handler, data_writers,
                  exchange_manager, authenticator, accounter):
         self._log = logging.getLogger("Application")
         self.amqp_handler = amqp_handler
+        self.data_writers = data_writers
         self.exchange_manager = exchange_manager
         self.authenticator = authenticator
         self.accounter = accounter
-        self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
-                             for exchange in self.exchange_manager]
 
     routes = router()
 
@@ -198,7 +197,7 @@ class Application(object):
         )
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            len(self.exchange_manager))
+            len(self.data_writers))
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0

@@ -18,13 +18,13 @@ from webob import Response
 
 from diyapi_web_server import util
 from diyapi_web_server.exceptions import *
+from diyapi_web_server.data_slicer import DataSlicer
+from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.archiver import Archiver
-from diyapi_web_server.amqp_data_writer import AMQPDataWriter
+from diyapi_web_server.destroyer import Destroyer
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
 from diyapi_web_server.amqp_retriever import AMQPRetriever
-from diyapi_web_server.amqp_destroyer import AMQPDestroyer
-from diyapi_web_server.data_slicer import DataSlicer
 
 
 # 2010-06-23 dougfort -- jacked up the timeout to an hour
@@ -126,7 +126,7 @@ class Application(object):
         ))
         avatar_id = req.remote_user
         timestamp = time.time()
-        destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
+        destroyer = Destroyer(self.data_writers)
         try:
             size_deleted = destroyer.destroy(
                 avatar_id, key, timestamp, EXCHANGE_TIMEOUT)

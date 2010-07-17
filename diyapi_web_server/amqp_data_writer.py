@@ -13,6 +13,7 @@ from gevent.event import AsyncResult
 from diyapi_web_server.exceptions import (
     DataWriterDownError,
     ArchiveFailedError,
+    DestroyFailedError,
     HandoffFailedError,
     StartHandoff,
 )
@@ -21,6 +22,7 @@ from messages.archive_key_entire import ArchiveKeyEntire
 from messages.archive_key_start import ArchiveKeyStart
 from messages.archive_key_next import ArchiveKeyNext
 from messages.archive_key_final import ArchiveKeyFinal
+from messages.destroy_key import DestroyKey
 from messages.hinted_handoff import HintedHandoff
 from messages.process_status import ProcessStatus
 
@@ -226,6 +228,36 @@ class AMQPDataWriter(object):
                 reply.previous_size,
             ))
         return reply.previous_size
+
+    def destroy_key(
+        self,
+        request_id,
+        avatar_id,
+        timestamp,
+        key,
+        segment_number,
+        version_number
+    ):
+        message = DestroyKey(
+            request_id,
+            avatar_id,
+            self.amqp_handler.exchange,
+            self.amqp_handler.queue_name,
+            timestamp,
+            key,
+            segment_number,
+            version_number
+        )
+        self.log.debug(
+            '%s: '
+            'request_id = %s, '
+            'segment_number = %d' % (
+                message.__class__.__name__,
+                message.request_id,
+                segment_number,
+            ))
+        reply = self._send(message, DestroyFailedError)
+        return reply.total_size
 
     def hinted_handoff(
         self,

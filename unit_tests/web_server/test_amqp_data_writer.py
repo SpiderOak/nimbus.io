@@ -18,6 +18,8 @@ from messages.archive_key_final import ArchiveKeyFinal
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
+from messages.destroy_key import DestroyKey
+from messages.destroy_key_reply import DestroyKeyReply
 from messages.hinted_handoff import HintedHandoff
 from messages.hinted_handoff_reply import HintedHandoffReply
 from messages.process_status import ProcessStatus
@@ -374,6 +376,47 @@ class TestAMQPDataWriter(unittest.TestCase):
         self.amqp_handler._call_subscriptions(message)
         gevent.sleep(0)
         self.assertTrue(self.writer.is_down)
+
+    def test_destroy_key(self):
+        self.log.debug('test_destroy_key')
+        request_id = 'request_id'
+        avatar_id = 1001
+        timestamp = 12345
+        key = 'key'
+        version_number = 0
+        segment_number = 1
+        size_deleted = 432
+        message = DestroyKey(
+            request_id,
+            avatar_id,
+            self.amqp_handler.exchange,
+            self.amqp_handler.queue_name,
+            timestamp,
+            key,
+            segment_number,
+            version_number
+        )
+        reply = DestroyKeyReply(
+            request_id,
+            DestroyKeyReply.successful,
+            size_deleted
+        )
+        self.amqp_handler.replies_to_send[request_id].put(reply)
+        result = self.writer.destroy_key(
+            request_id,
+            avatar_id,
+            timestamp,
+            key,
+            segment_number,
+            version_number
+        )
+        self.assertEqual(result, size_deleted)
+        self.assertEqual(len(self.amqp_handler.messages), 1)
+        actual = (self.amqp_handler.messages[0][0].marshall(),
+                  self.amqp_handler.messages[0][1])
+        expected = (message.marshall(), self.exchange)
+        self.assertEqual(
+            actual, expected, 'did not send expected messages')
 
 
 if __name__ == "__main__":

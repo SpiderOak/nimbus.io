@@ -1,44 +1,44 @@
 # -*- coding: utf-8 -*-
 """
-test_amqp_destroyer.py
+test_destroyer.py
 
-test diyapi_web_server/amqp_destroyer.py
+test diyapi_web_server/destroyer.py
 """
 import os
 import unittest
 import uuid
-import random
-import time
+import logging
 
 from unit_tests.util import generate_key
 from unit_tests.web_server import util
+
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
+from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.exceptions import DestroyFailedError
+
 from messages.destroy_key import DestroyKey
 from messages.destroy_key_reply import DestroyKeyReply
 
-from diyapi_web_server.amqp_destroyer import AMQPDestroyer
+from diyapi_web_server.destroyer import Destroyer
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 
 
-class TestAMQPDestroyer(unittest.TestCase):
-    """test diyapi_web_server/amqp_destroyer.py"""
+class TestDestroyer(unittest.TestCase):
+    """test diyapi_web_server/destroyer.py"""
     def setUp(self):
-        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
-        self.channel = util.MockChannel()
         self.amqp_handler = util.FakeAMQPHandler()
-        self.amqp_handler.channel = self.channel
+        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
+        self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
+                             for exchange in self.exchange_manager]
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
-        self._real_sample = random.sample
-        random.sample = util.fake_sample
+        self.log = logging.getLogger('TestDestroyer')
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
-        random.sample = self._real_sample
 
     def _make_messages(self, avatar_id, timestamp, key):
         base_size = 12345
@@ -76,12 +76,13 @@ class TestAMQPDestroyer(unittest.TestCase):
         return base_size, messages
 
     def test_destroy(self):
+        self.log.debug('test_destroy')
         avatar_id = 1001
         key = self._key_generator.next()
-        timestamp = time.time()
+        timestamp = util.fake_time()
         base_size, messages = self._make_messages(avatar_id, timestamp, key)
 
-        destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
+        destroyer = Destroyer(self.data_writers)
         size_deleted = destroyer.destroy(avatar_id, key, timestamp, 0)
 
         self.assertEqual(size_deleted, base_size)
@@ -102,14 +103,15 @@ class TestAMQPDestroyer(unittest.TestCase):
         )
 
     def test_destroy_with_failure(self):
+        self.log.debug('test_destroy_with_failure')
         avatar_id = 1001
         key = self._key_generator.next()
-        timestamp = time.time()
+        timestamp = util.fake_time()
         self.exchange_manager.mark_down(0)
         base_size, messages = self._make_messages(avatar_id, timestamp, key)
         self.exchange_manager.mark_up(0)
 
-        destroyer = AMQPDestroyer(self.amqp_handler, self.exchange_manager)
+        destroyer = Destroyer(self.data_writers)
         self.assertRaises(
             DestroyFailedError,
             destroyer.destroy, avatar_id, key, timestamp, 0

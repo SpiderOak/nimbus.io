@@ -43,7 +43,7 @@ class RetrieveKeyNextReply(object):
 
     @property
     def error(self):
-        return self.result != RetrieveKeyStartReply.successful
+        return self.result != RetrieveKeyNextReply.successful
 
     @classmethod
     def unmarshall(cls, data):

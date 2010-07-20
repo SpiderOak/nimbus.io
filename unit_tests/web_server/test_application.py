@@ -470,14 +470,16 @@ class TestApplication(unittest.TestCase):
     def test_listmatch(self):
         prefix = 'a_prefix'
         key_list = ['%s-%d' % (prefix, i) for i in xrange(10)]
-        request_id = uuid.UUID(int=0).hex
-        self.amqp_handler.replies_to_send[request_id].put(
-            DatabaseListMatchReply(
+        for i, data_reader in enumerate(self.data_readers):
+            request_id = uuid.UUID(int=i).hex
+            reply = DatabaseListMatchReply(
                 request_id,
                 DatabaseListMatchReply.successful,
                 key_list=key_list
             )
-        )
+            self.amqp_handler.replies_to_send_by_exchange[(
+                request_id, data_reader.exchange
+            )].put(reply)
         resp = self.app.get('/data/%s' % (prefix,), dict(action='listmatch'))
         self.assertEqual(json.loads(resp.body), key_list)
 

@@ -15,6 +15,8 @@ from messages.retrieve_key_final import RetrieveKeyFinal
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
+from messages.database_listmatch import DatabaseListMatch
+from messages.database_listmatch_reply import DatabaseListMatchReply
 
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
 
@@ -160,6 +162,39 @@ class TestAMQPDataReader(unittest.TestCase):
             sequence_number
         )
         self.assertEqual(result, segment)
+        self.assertEqual(len(self.amqp_handler.messages), 1)
+        actual = (self.amqp_handler.messages[0][0].marshall(),
+                  self.amqp_handler.messages[0][1])
+        expected = (message.marshall(), self.exchange)
+        self.assertEqual(
+            actual, expected, 'did not send expected messages')
+
+    # listmatch is not technically part of data_reader
+    def test_listmatch(self):
+        self.log.debug('test_listmatch')
+        request_id = 'request_id'
+        avatar_id = 1001
+        prefix = 'prefix'
+        key_list = ['key1', 'key2']
+        message = DatabaseListMatch(
+            request_id,
+            avatar_id,
+            self.amqp_handler.exchange,
+            self.amqp_handler.queue_name,
+            prefix
+        )
+        reply = DatabaseListMatchReply(
+            request_id,
+            DatabaseListMatchReply.successful,
+            key_list=key_list
+        )
+        self.amqp_handler.replies_to_send[request_id].put(reply)
+        result = self.reader.listmatch(
+            request_id,
+            avatar_id,
+            prefix
+        )
+        self.assertEqual(result, key_list)
         self.assertEqual(len(self.amqp_handler.messages), 1)
         actual = (self.amqp_handler.messages[0][0].marshall(),
                   self.amqp_handler.messages[0][1])

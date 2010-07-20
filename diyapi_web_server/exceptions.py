@@ -13,6 +13,9 @@ class HandoffFailedError(ArchiveFailedError):
 class RetrieveFailedError(Exception):
     pass
 
+class ListmatchFailedError(Exception):
+    pass
+
 class DataWriterDownError(Exception):
     pass
 

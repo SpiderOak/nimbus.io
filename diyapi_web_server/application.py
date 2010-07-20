@@ -23,7 +23,7 @@ from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.archiver import Archiver
 from diyapi_web_server.destroyer import Destroyer
-from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
+from diyapi_web_server.listmatcher import Listmatcher
 from diyapi_web_server.retriever import Retriever
 
 
@@ -108,7 +108,10 @@ class Application(object):
         delimiter = req.GET.get('delimiter', '/')
         # TODO: do something with delimiter
         avatar_id = req.remote_user
-        matcher = AMQPListmatcher(self.amqp_handler)
+        matcher = Listmatcher(
+            self.data_readers,
+            8 # TODO: min_segments
+        )
         try:
             keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
         except DataWriterDownError:

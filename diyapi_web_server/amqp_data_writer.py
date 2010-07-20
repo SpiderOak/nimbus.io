@@ -33,6 +33,8 @@ _HEARTBEAT_INTERVAL = float(
 
 
 class AMQPDataWriter(AMQPProcess):
+    _downerror_class = DataWriterDownError
+
     def __init__(self, amqp_handler, exchange):
         super(AMQPDataWriter, self).__init__(amqp_handler, exchange)
         self.heartbeat_interval = _HEARTBEAT_INTERVAL * 2

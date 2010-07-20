@@ -123,6 +123,25 @@ class TestAMQPDataWriter(unittest.TestCase):
             'segment'
         )
 
+    def test_archive_key_entire_when_down_raises_error(self):
+        self.log.debug('test_archive_key_entire_when_down_raises_error')
+        self.writer.mark_down()
+        self.assertRaises(
+            DataWriterDownError,
+            self.writer.archive_key_entire,
+            'request_id',
+            1001,
+            12345,
+            'key',
+            0,
+            1,
+            1,
+            'ffff',
+            1,
+            'ffff',
+            'segment'
+        )
+
     def test_archive_key_start(self):
         self.log.debug('test_archive_key_start')
         request_id = 'request_id'

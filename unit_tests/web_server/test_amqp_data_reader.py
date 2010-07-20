@@ -18,6 +18,11 @@ from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
 
+from diyapi_web_server.exceptions import (
+    DataReaderDownError,
+    RetrieveFailedError,
+)
+
 
 class TestAMQPDataReader(unittest.TestCase):
     """test diyapi_web_server/amqp_data_reader.py"""
@@ -74,6 +79,37 @@ class TestAMQPDataReader(unittest.TestCase):
         expected = (message.marshall(), self.exchange)
         self.assertEqual(
             actual, expected, 'did not send expected messages')
+
+    def test_retrieve_key_start_with_error(self):
+        self.log.debug('test_retrieve_key_start_with_error')
+        reply = RetrieveKeyStartReply(
+            'request_id',
+            RetrieveKeyStartReply.error_exception,
+            error_message='there was an error'
+        )
+        self.amqp_handler.replies_to_send['request_id'].put(reply)
+        self.assertRaises(
+            RetrieveFailedError,
+            self.reader.retrieve_key_start,
+            'request_id',
+            1001,
+            'key',
+            0,
+            3
+        )
+
+    def test_retrieve_key_start_when_down_raises_error(self):
+        self.log.debug('test_retrieve_key_start_when_down_raises_error')
+        self.reader.mark_down()
+        self.assertRaises(
+            DataReaderDownError,
+            self.reader.retrieve_key_start,
+            'request_id',
+            1001,
+            'key',
+            0,
+            3
+        )
 
     def test_retrieve_key_next(self):
         self.log.debug('test_retrieve_key_next')

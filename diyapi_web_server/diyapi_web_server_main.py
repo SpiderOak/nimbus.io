@@ -21,7 +21,6 @@ from diyapi_tools.standard_logging import initialize_logging
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.amqp_handler import AMQPHandler
-from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
 from diyapi_web_server.amqp_space_accounter import AMQPSpaceAccounter
@@ -41,7 +40,6 @@ MAX_DOWN_EXCHANGES = 2
 class WebServer(object):
     def __init__(self):
         self.amqp_handler = AMQPHandler()
-        exchange_manager = AMQPExchangeManager(EXCHANGES)
         # TODO: keep a connection pool or something
         db_connection = psycopg2.connect(
             database=DB_NAME,
@@ -59,7 +57,6 @@ class WebServer(object):
             self.amqp_handler,
             data_writers,
             data_readers,
-            exchange_manager,
             authenticator,
             accounter
         )

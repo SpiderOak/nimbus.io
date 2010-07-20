@@ -49,12 +49,11 @@ class router(list):
 
 class Application(object):
     def __init__(self, amqp_handler, data_writers, data_readers,
-                 exchange_manager, authenticator, accounter):
+                 authenticator, accounter):
         self._log = logging.getLogger("Application")
         self.amqp_handler = amqp_handler
         self.data_writers = data_writers
         self.data_readers = data_readers
-        self.exchange_manager = exchange_manager
         self.authenticator = authenticator
         self.accounter = accounter
 
@@ -149,7 +148,7 @@ class Application(object):
         timestamp = time.time()
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            len(self.exchange_manager))
+            len(self.data_readers))
         retriever = Retriever(
             self.data_readers,
             avatar_id,

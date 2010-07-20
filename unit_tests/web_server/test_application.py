@@ -17,7 +17,6 @@ from webtest import TestApp, TestRequest, StringIO
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
-from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
 from messages.archive_key_start_reply import ArchiveKeyStartReply
@@ -40,7 +39,6 @@ EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 class TestApplication(unittest.TestCase):
     """test diyapi_web_server/application.py"""
     def setUp(self):
-        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
         self.authenticator = util.FakeAuthenticator(0)
         self.amqp_handler = util.FakeAMQPHandler()
         self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
@@ -52,7 +50,6 @@ class TestApplication(unittest.TestCase):
             self.amqp_handler,
             self.data_writers,
             self.data_readers,
-            self.exchange_manager,
             self.authenticator,
             self.accounter
         ))
@@ -489,7 +486,7 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         timestamp = time.time()
 
-        for i in xrange(len(self.exchange_manager)):
+        for i in xrange(len(self.data_readers)):
             request_id = uuid.UUID(int=i).hex
             self.amqp_handler.replies_to_send[request_id].put(
                 RetrieveKeyStartReply(
@@ -525,7 +522,7 @@ class TestApplication(unittest.TestCase):
 
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            len(self.exchange_manager))
+            len(self.data_readers))
         segments = segmenter.encode(data_content)
 
         for segment_number, segment in enumerate(segments):
@@ -579,17 +576,18 @@ class TestApplication(unittest.TestCase):
 
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
-            len(self.exchange_manager))
+            len(self.data_readers))
         segments = segmenter.encode(data_content)
 
-        self.exchange_manager.mark_down(0)
+        self.data_readers[0].mark_down()
         for i, segment in enumerate(segments):
             segment_adler32 = zlib.adler32(segment)
             segment_md5 = hashlib.md5(segment).digest()
             request_id = uuid.UUID(int=i).hex
-            if not self.exchange_manager.is_down(i):
+            data_reader = self.data_readers[i]
+            if not data_reader.is_down:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, self.exchange_manager[i]
+                    request_id, data_reader.exchange
                 )].put(
                     RetrieveKeyStartReply(
                         request_id,
@@ -641,7 +639,7 @@ class TestApplication(unittest.TestCase):
         for sequence_number, slice in enumerate(data_list):
             segmenter = ZfecSegmenter(
                 8, # TODO: min_segments
-                len(self.exchange_manager))
+                len(self.data_readers))
             segments = segmenter.encode(slice)
             for segment_number, segment in enumerate(segments):
                 segment_number += 1

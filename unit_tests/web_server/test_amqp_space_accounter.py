@@ -7,7 +7,6 @@ test diyapi_web_server/amqp_space_accounter.py
 import unittest
 
 from unit_tests.web_server import util
-from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from messages.space_accounting_detail import SpaceAccountingDetail
 
 from diyapi_web_server.amqp_space_accounter import AMQPSpaceAccounter

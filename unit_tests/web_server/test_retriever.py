@@ -171,6 +171,43 @@ class TestRetriever(unittest.TestCase):
         self.assertEqual(
             actual, expected)
 
+    def test_retrieve_small_when_not_enough_data_readers_up(self):
+        self.log.debug('test_retrieve_small_not_enough_data_readers_up')
+        avatar_id = 1001
+        timestamp = util.fake_time()
+        key = self._key_generator.next()
+        for i in xrange(NUM_SEGMENTS - SEGMENTS_NEEDED + 1):
+            self.data_readers[i].mark_down()
+        (
+            segments,
+            messages,
+            file_size,
+            file_adler32,
+            file_md5,
+        ) = self._make_small_data(avatar_id, timestamp, key)
+        for i in xrange(NUM_SEGMENTS - SEGMENTS_NEEDED + 1):
+            self.data_readers[i].mark_up()
+
+        retriever = Retriever(
+            self.data_readers,
+            avatar_id,
+            key,
+            SEGMENTS_NEEDED
+        )
+
+        self.assertRaises(RetrieveFailedError, list, retriever.retrieve(0))
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected)
+
     def _make_large_data(self, avatar_id, timestamp, key, n_slices):
         file_size = NUM_SEGMENTS * n_slices
         file_adler32 = -42

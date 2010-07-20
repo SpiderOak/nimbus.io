@@ -85,8 +85,8 @@ class TestRetriever(unittest.TestCase):
                 segment
             )
             data_reader = self.data_readers[i]
+            messages.append((message, data_reader.exchange))
             if not data_reader.is_down:
-                messages.append((message, data_reader.exchange))
                 self.amqp_handler.replies_to_send_by_exchange[(
                     request_id, data_reader.exchange
                 )].put(reply)
@@ -131,8 +131,8 @@ class TestRetriever(unittest.TestCase):
         self.assertEqual(
             actual, expected)
 
-    def test_retrieve_small_when_exchange_is_down(self):
-        self.log.debug('test_retrieve_small_when_exchange_is_down')
+    def test_retrieve_small_when_data_reader_is_down(self):
+        self.log.debug('test_retrieve_small_data_reader_is_down')
         avatar_id = 1001
         timestamp = util.fake_time()
         key = self._key_generator.next()
@@ -144,6 +144,7 @@ class TestRetriever(unittest.TestCase):
             file_adler32,
             file_md5,
         ) = self._make_small_data(avatar_id, timestamp, key)
+        self.data_readers[0].mark_up()
 
         retriever = Retriever(
             self.data_readers,
@@ -169,9 +170,6 @@ class TestRetriever(unittest.TestCase):
         ]
         self.assertEqual(
             actual, expected)
-
-    # TODO: test when nodes are down
-    # TODO: test when receiving replies out of order
 
     def _make_large_data(self, avatar_id, timestamp, key, n_slices):
         file_size = NUM_SEGMENTS * n_slices
@@ -212,7 +210,6 @@ class TestRetriever(unittest.TestCase):
                 file_size,
                 file_adler32,
                 file_md5,
-                # TODO: these should be for the cat'd segments
                 segment_adler32s[segment_number],
                 segment_md5s[segment_number],
                 segment

@@ -7,6 +7,7 @@ from gevent.queue import Queue
 
 class FakeMessage(object):
     def __init__(self, routing_key, body, request_id=None):
+        self.error = False
         self.routing_key = routing_key
         self.body = body
         if request_id is not None:

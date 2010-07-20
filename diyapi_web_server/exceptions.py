@@ -16,6 +16,9 @@ class RetrieveFailedError(Exception):
 class DataWriterDownError(Exception):
     pass
 
+class DataReaderDownError(Exception):
+    pass
+
 class StartHandoff(Exception):
     def __init__(self, to):
         super(StartHandoff, self).__init__()

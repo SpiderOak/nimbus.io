@@ -29,6 +29,7 @@ from diyapi_web_server.exceptions import (
     ArchiveFailedError,
     HandoffFailedError,
 )
+
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 
 
@@ -41,16 +42,6 @@ class TestAMQPDataWriter(unittest.TestCase):
         self.writer = AMQPDataWriter(self.amqp_handler, self.exchange)
         self.handoff_writer = AMQPDataWriter(self.amqp_handler,
                                              'other_exchange')
-
-    def test_hash(self):
-        self.assertEquals(hash(self.writer), hash(self.exchange))
-
-    def test_eq(self):
-        self.assertEquals(
-            self.writer, AMQPDataWriter(self.amqp_handler, self.exchange))
-        self.assertNotEquals(
-            self.writer, AMQPDataWriter(self.amqp_handler, 'other-exchange'))
-        self.assertNotEquals(self.writer, 5)
 
     def test_archive_key_entire(self):
         self.log.debug('test_archive_key_entire')

@@ -19,6 +19,7 @@ from unit_tests.web_server import util
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
+from diyapi_web_server.amqp_data_reader import AMQPDataReader
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
@@ -44,10 +45,13 @@ class TestApplication(unittest.TestCase):
         self.amqp_handler = util.FakeAMQPHandler()
         self.data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
                              for exchange in EXCHANGES]
+        self.data_readers = [AMQPDataReader(self.amqp_handler, exchange)
+                             for exchange in EXCHANGES]
         self.accounter = util.FakeAccounter()
         self.app = TestApp(Application(
             self.amqp_handler,
             self.data_writers,
+            self.data_readers,
             self.exchange_manager,
             self.authenticator,
             self.accounter

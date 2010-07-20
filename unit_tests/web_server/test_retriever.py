@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
 """
-test_amqp_retriever.py
+test_retriever.py
 
-test diyapi_web_server/amqp_retriever.py
+test diyapi_web_server/retriever.py
 """
 import os
 import unittest
 import uuid
-import time
-import zlib
 import hashlib
+import zlib
+import logging
 
 from unit_tests.util import random_string, generate_key
 from unit_tests.web_server import util
-from diyapi_web_server.amqp_exchange_manager import AMQPExchangeManager
-from diyapi_web_server.exceptions import *
+
+from diyapi_web_server.amqp_data_reader import AMQPDataReader
+from diyapi_web_server.exceptions import RetrieveFailedError
 
 from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_next import RetrieveKeyNext
@@ -23,7 +24,7 @@ from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 
-from diyapi_web_server.amqp_retriever import AMQPRetriever
+from diyapi_web_server.retriever import Retriever
 
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
@@ -31,16 +32,16 @@ NUM_SEGMENTS = 10
 SEGMENTS_NEEDED = 8
 
 
-class TestAMQPRetriever(unittest.TestCase):
-    """test diyapi_web_server/amqp_retriever.py"""
+class TestRetriever(unittest.TestCase):
+    """test diyapi_web_server/retriever.py"""
     def setUp(self):
-        self.exchange_manager = AMQPExchangeManager(EXCHANGES)
-        self.channel = util.MockChannel()
         self.amqp_handler = util.FakeAMQPHandler()
-        self.amqp_handler.channel = self.channel
+        self.data_readers = [AMQPDataReader(self.amqp_handler, exchange)
+                             for exchange in EXCHANGES]
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
+        self.log = logging.getLogger('TestRetriever')
 
     def tearDown(self):
         uuid.uuid1 = self._real_uuid1
@@ -83,18 +84,19 @@ class TestAMQPRetriever(unittest.TestCase):
                 segment_md5,
                 segment
             )
-            exchange = self.exchange_manager[i]
-            messages.append((message, exchange))
-            if not self.exchange_manager.is_down(i):
+            data_reader = self.data_readers[i]
+            if not data_reader.is_down:
+                messages.append((message, data_reader.exchange))
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, exchange
+                    request_id, data_reader.exchange
                 )].put(reply)
 
         return segments, messages, file_size, file_adler32, file_md5
 
     def test_retrieve_small(self):
+        self.log.debug('test_retrieve_small')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         (
             segments,
@@ -104,12 +106,10 @@ class TestAMQPRetriever(unittest.TestCase):
             file_md5,
         ) = self._make_small_data(avatar_id, timestamp, key)
 
-        retriever = AMQPRetriever(
-            self.amqp_handler,
-            self.exchange_manager,
+        retriever = Retriever(
+            self.data_readers,
             avatar_id,
             key,
-            NUM_SEGMENTS,
             SEGMENTS_NEEDED
         )
         retrieved = list(retriever.retrieve(0))
@@ -132,10 +132,11 @@ class TestAMQPRetriever(unittest.TestCase):
             actual, expected)
 
     def test_retrieve_small_when_exchange_is_down(self):
+        self.log.debug('test_retrieve_small_when_exchange_is_down')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
-        self.exchange_manager.mark_down(0)
+        self.data_readers[0].mark_down()
         (
             segments,
             messages,
@@ -144,12 +145,10 @@ class TestAMQPRetriever(unittest.TestCase):
             file_md5,
         ) = self._make_small_data(avatar_id, timestamp, key)
 
-        retriever = AMQPRetriever(
-            self.amqp_handler,
-            self.exchange_manager,
+        retriever = Retriever(
+            self.data_readers,
             avatar_id,
             key,
-            NUM_SEGMENTS,
             SEGMENTS_NEEDED
         )
         retrieved = list(retriever.retrieve(0))
@@ -218,11 +217,11 @@ class TestAMQPRetriever(unittest.TestCase):
                 segment_md5s[segment_number],
                 segment
             )
-            exchange = self.exchange_manager[i]
-            messages.append((message, exchange))
-            if not self.exchange_manager.is_down(i):
+            data_reader = self.data_readers[i]
+            messages.append((message, data_reader.exchange))
+            if not data_reader.is_down:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, exchange
+                    request_id, data_reader.exchange
                 )].put(reply)
 
         for _ in xrange(n_slices - 2):
@@ -248,11 +247,11 @@ class TestAMQPRetriever(unittest.TestCase):
                     RetrieveKeyNextReply.successful,
                     segment
                 )
-                exchange = self.exchange_manager[i]
-                messages.append((message, exchange))
-                if not self.exchange_manager.is_down(i):
+                data_reader = self.data_readers[i]
+                messages.append((message, data_reader.exchange))
+                if not data_reader.is_down:
                     self.amqp_handler.replies_to_send_by_exchange[(
-                        request_id, exchange
+                        request_id, data_reader.exchange
                     )].put(reply)
 
         slices.append([])
@@ -277,18 +276,19 @@ class TestAMQPRetriever(unittest.TestCase):
                 RetrieveKeyFinalReply.successful,
                 segment
             )
-            exchange = self.exchange_manager[i]
-            messages.append((message, exchange))
-            if not self.exchange_manager.is_down(i):
+            data_reader = self.data_readers[i]
+            messages.append((message, data_reader.exchange))
+            if not data_reader.is_down:
                 self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, exchange
+                    request_id, data_reader.exchange
                 )].put(reply)
 
         return slices, messages, file_size, file_adler32, file_md5
 
     def test_retrieve_large(self):
+        self.log.debug('test_retrieve_large')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
         (
             slices,
@@ -298,12 +298,10 @@ class TestAMQPRetriever(unittest.TestCase):
             file_md5,
         ) = self._make_large_data(avatar_id, timestamp, key, 4)
 
-        retriever = AMQPRetriever(
-            self.amqp_handler,
-            self.exchange_manager,
+        retriever = Retriever(
+            self.data_readers,
             avatar_id,
             key,
-            NUM_SEGMENTS,
             SEGMENTS_NEEDED
         )
         retrieved = list(retriever.retrieve(0))
@@ -327,8 +325,9 @@ class TestAMQPRetriever(unittest.TestCase):
             actual, expected, 'retriever did not send expected messages')
 
     def test_retrieve_nonexistent(self):
+        self.log.debug('test_retrieve_nonexistent')
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = util.fake_time()
         key = self._key_generator.next()
 
         for segment_number in xrange(1, NUM_SEGMENTS + 1):
@@ -338,17 +337,15 @@ class TestAMQPRetriever(unittest.TestCase):
                 RetrieveKeyStartReply.error_key_not_found,
                 error_message='key not found',
             )
-            for exchange in self.exchange_manager[segment_number - 1]:
-                self.amqp_handler.replies_to_send_by_exchange[(
-                    request_id, exchange
-                )].put(reply)
+            data_reader = self.data_readers[segment_number - 1]
+            self.amqp_handler.replies_to_send_by_exchange[(
+                request_id, data_reader.exchange
+            )].put(reply)
 
-        retriever = AMQPRetriever(
-            self.amqp_handler,
-            self.exchange_manager,
+        retriever = Retriever(
+            self.data_readers,
             avatar_id,
             key,
-            NUM_SEGMENTS,
             SEGMENTS_NEEDED
         )
 

@@ -8,7 +8,8 @@ import os
 import logging
 
 import gevent
-from gevent.event import AsyncResult
+
+from diyapi_web_server.amqp_process import AMQPProcess
 
 from diyapi_web_server.exceptions import (
     DataWriterDownError,
@@ -31,12 +32,9 @@ _HEARTBEAT_INTERVAL = float(
 )
 
 
-class AMQPDataWriter(object):
+class AMQPDataWriter(AMQPProcess):
     def __init__(self, amqp_handler, exchange):
-        self.log = logging.getLogger('AMQPDataWriter(%r)' % (exchange,))
-        self.amqp_handler = amqp_handler
-        self.exchange = exchange
-        self.is_down = False
+        super(AMQPDataWriter, self).__init__(amqp_handler, exchange)
         self.heartbeat_interval = _HEARTBEAT_INTERVAL * 2
         self._heartbeat_timeout = gevent.spawn_later(
             self.heartbeat_interval,
@@ -44,17 +42,6 @@ class AMQPDataWriter(object):
         )
         self._heartbeat_subscription = self._heartbeat
         amqp_handler.subscribe(ProcessStatus, self._heartbeat_subscription)
-
-    def __hash__(self):
-        return hash(self.exchange)
-
-    def __eq__(self, other):
-        if not isinstance(other, AMQPDataWriter):
-            return False
-        return self.exchange == other.exchange
-
-    def __ne__(self, other):
-        return not (self == other)
 
     def _heartbeat(self, message):
         self._heartbeat_timeout.kill()
@@ -66,41 +53,6 @@ class AMQPDataWriter(object):
             self.mark_down()
         else:
             self.mark_up()
-
-    def mark_up(self):
-        if self.is_down:
-            self.log.debug('mark_up')
-            self.is_down = False
-
-    def mark_down(self):
-        if not self.is_down:
-            self.log.debug('mark_down')
-            self.is_down = True
-
-    def _send(self, message, error_class):
-        if self.is_down:
-            raise DataWriterDownError()
-        reply = self.amqp_handler.send_message(
-            message, self.exchange).get()
-        if reply.error:
-            self.log.error(
-                '%s: '
-                'request_id = %s, '
-                'result = %d, '
-                'error_message = %r' % (
-                    reply.__class__.__name__,
-                    reply.request_id,
-                    reply.result,
-                    reply.error_message,
-                ))
-            raise error_class(reply.result, reply.error_message)
-        self.log.debug(
-            '%s: '
-            'request_id = %s' % (
-                reply.__class__.__name__,
-                reply.request_id,
-            ))
-        return reply
 
     def archive_key_entire(
         self,

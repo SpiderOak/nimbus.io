@@ -24,7 +24,7 @@ from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.archiver import Archiver
 from diyapi_web_server.destroyer import Destroyer
 from diyapi_web_server.amqp_listmatcher import AMQPListmatcher
-from diyapi_web_server.amqp_retriever import AMQPRetriever
+from diyapi_web_server.retriever import Retriever
 
 
 # 2010-06-23 dougfort -- jacked up the timeout to an hour
@@ -48,11 +48,12 @@ class router(list):
 
 
 class Application(object):
-    def __init__(self, amqp_handler, data_writers,
+    def __init__(self, amqp_handler, data_writers, data_readers,
                  exchange_manager, authenticator, accounter):
         self._log = logging.getLogger("Application")
         self.amqp_handler = amqp_handler
         self.data_writers = data_writers
+        self.data_readers = data_readers
         self.exchange_manager = exchange_manager
         self.authenticator = authenticator
         self.accounter = accounter
@@ -149,12 +150,10 @@ class Application(object):
         segmenter = ZfecSegmenter(
             8, # TODO: min_segments
             len(self.exchange_manager))
-        retriever = AMQPRetriever(
-            self.amqp_handler,
-            self.exchange_manager,
+        retriever = Retriever(
+            self.data_readers,
             avatar_id,
             key,
-            len(self.exchange_manager),
             8 # TODO: min_segments
         )
         retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)

@@ -5,6 +5,7 @@ listmatcher.py
 A class that performs a listmatch query.
 """
 import uuid
+from collections import defaultdict
 
 import gevent
 from gevent.pool import GreenletSet
@@ -29,10 +30,9 @@ class Listmatcher(object):
         self._pending.join(timeout)
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)
-        if self._pending:
-            raise ListmatchFailedError()
         if len(self._done) < self.agreement_level:
             raise ListmatchFailedError()
+        self._pending.kill()
 
     def _done_link(self, task):
         if isinstance(task.value, gevent.GreenletExit):
@@ -59,4 +59,9 @@ class Listmatcher(object):
                 prefix
             )
         self._join(timeout)
-        return self._done[0].value
+        result = defaultdict(int)
+        for task in self._done:
+            for key in task.value:
+                result[key] += 1
+        return [key for key in sorted(result)
+                if result[key] >= self.agreement_level]

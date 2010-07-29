@@ -24,6 +24,7 @@ from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.archiver import Archiver
 from diyapi_web_server.destroyer import Destroyer
 from diyapi_web_server.listmatcher import Listmatcher
+from diyapi_web_server.space_usage_getter import SpaceUsageGetter
 from diyapi_web_server.retriever import Retriever
 
 
@@ -100,6 +101,24 @@ class Application(object):
             raise exc.HTTPMethodNotAllowed()
         raise exc.HTTPNotFound()
 
+    @routes.add(r'/usage$')
+    def usage(self, req):
+        self._log.debug("usage: avatar_id = %s" % (
+            req.remote_user,
+        ))
+        avatar_id = req.remote_user
+        getter = SpaceUsageGetter(
+            self.data_readers,
+            8 # TODO: min_segments
+        )
+        try:
+            usage = getter.get_space_usage(avatar_id, EXCHANGE_TIMEOUT)
+        except (DataReaderDownError, ListmatchFailedError):
+            # 2010-06-25 dougfort -- Isn't there some better error for this
+            raise exc.HTTPGatewayTimeout()
+        # TODO: break up large (>1mb) listmatch response
+        return Response('OK')
+
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):
         self._log.debug("listmatch: avatar_id = %s prefix = '%s'" % (
@@ -114,7 +133,7 @@ class Application(object):
         )
         try:
             keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
-        except DataWriterDownError:
+        except (DataReaderDownError, ListmatchFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         # TODO: break up large (>1mb) listmatch response

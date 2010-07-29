@@ -28,6 +28,7 @@ from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key_reply import DestroyKeyReply
+from messages.space_usage_reply import SpaceUsageReply
 
 from diyapi_web_server import application
 from diyapi_web_server.application import Application
@@ -765,6 +766,22 @@ class TestApplication(unittest.TestCase):
             0
         )
 
+    def test_usage(self):
+        for i, data_reader in enumerate(self.data_readers):
+            request_id = uuid.UUID(int=i).hex
+            reply = SpaceUsageReply(
+                request_id,
+                SpaceUsageReply.successful
+            )
+            self.amqp_handler.replies_to_send_by_exchange[(
+                request_id, data_reader.exchange
+            )].put(reply)
+        resp = self.app.get('/usage')
+        self.assertEqual(resp.body, 'OK')
+
 
 if __name__ == "__main__":
+    from diyapi_tools.standard_logging import initialize_logging
+    _log_path = "/var/log/pandora/test_web_server.log"
+    initialize_logging(_log_path)
     unittest.main()

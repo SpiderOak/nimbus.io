@@ -18,6 +18,7 @@ from messages.retrieve_key_start import RetrieveKeyStart
 from messages.retrieve_key_next import RetrieveKeyNext
 from messages.retrieve_key_final import RetrieveKeyFinal
 from messages.database_listmatch import DatabaseListMatch
+from messages.space_usage import SpaceUsage
 
 
 class AMQPDataReader(AMQPProcess):
@@ -114,3 +115,22 @@ class AMQPDataReader(AMQPProcess):
             ))
         reply = self._send(message, ListmatchFailedError)
         return reply.key_list
+
+    def get_space_usage(
+        self,
+        request_id,
+        avatar_id
+    ):
+        message = SpaceUsage(
+            request_id,
+            avatar_id,
+            self.amqp_handler.exchange,
+            self.amqp_handler.queue_name
+        )
+        self.log.debug(
+            '%s: '
+            'request_id = %s' % (
+                message.__class__.__name__,
+                message.request_id,
+            ))
+        reply = self._send(message, ListmatchFailedError)

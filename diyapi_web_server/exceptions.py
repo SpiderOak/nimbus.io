@@ -16,6 +16,12 @@ class RetrieveFailedError(Exception):
 class ListmatchFailedError(Exception):
     pass
 
+class SpaceUsageFailedError(Exception):
+    pass
+
+class StatFailedError(Exception):
+    pass
+
 class DataWriterDownError(Exception):
     pass
 

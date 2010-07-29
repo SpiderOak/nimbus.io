@@ -25,6 +25,7 @@ from diyapi_web_server.archiver import Archiver
 from diyapi_web_server.destroyer import Destroyer
 from diyapi_web_server.listmatcher import Listmatcher
 from diyapi_web_server.space_usage_getter import SpaceUsageGetter
+from diyapi_web_server.stat_getter import StatGetter
 from diyapi_web_server.retriever import Retriever
 
 
@@ -113,10 +114,26 @@ class Application(object):
         )
         try:
             usage = getter.get_space_usage(avatar_id, EXCHANGE_TIMEOUT)
-        except (DataReaderDownError, ListmatchFailedError):
+        except (DataReaderDownError, SpaceUsageFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
-        # TODO: break up large (>1mb) listmatch response
+        return Response('OK')
+
+    @routes.add(r'/data/(.+)$', action='stat')
+    def stat(self, req, path):
+        self._log.debug("stat: avatar_id = %s path = %r" % (
+            req.remote_user,
+            path
+        ))
+        avatar_id = req.remote_user
+        getter = StatGetter(
+            self.data_readers,
+            8 # TODO: min_segments
+        )
+        try:
+            stat = getter.stat(avatar_id, path, EXCHANGE_TIMEOUT)
+        except (DataReaderDownError, StatFailedError):
+            raise exc.HTTPNotFound()
         return Response('OK')
 
     @routes.add(r'/data/(.*)$', action='listmatch')

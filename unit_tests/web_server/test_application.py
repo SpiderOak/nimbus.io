@@ -29,6 +29,7 @@ from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key_reply import DestroyKeyReply
 from messages.space_usage_reply import SpaceUsageReply
+from messages.stat_reply import StatReply
 
 from diyapi_web_server import application
 from diyapi_web_server.application import Application
@@ -777,6 +778,38 @@ class TestApplication(unittest.TestCase):
                 request_id, data_reader.exchange
             )].put(reply)
         resp = self.app.get('/usage')
+        self.assertEqual(resp.body, 'OK')
+
+    def test_stat_nonexistent(self):
+        key = self._key_generator.next()
+        for i, data_reader in enumerate(self.data_readers):
+            request_id = uuid.UUID(int=i).hex
+            reply = StatReply(
+                request_id,
+                StatReply.error_key_not_found,
+                error_message='key not found',
+            )
+            self.amqp_handler.replies_to_send_by_exchange[(
+                request_id, data_reader.exchange
+            )].put(reply)
+        resp = self.app.get(
+            '/data/' + key,
+            dict(action='stat'),
+            status=404
+        )
+
+    def test_stat(self):
+        key = self._key_generator.next()
+        for i, data_reader in enumerate(self.data_readers):
+            request_id = uuid.UUID(int=i).hex
+            reply = StatReply(
+                request_id,
+                StatReply.successful,
+            )
+            self.amqp_handler.replies_to_send_by_exchange[(
+                request_id, data_reader.exchange
+            )].put(reply)
+        resp = self.app.get('/data/' + key, dict(action='stat'))
         self.assertEqual(resp.body, 'OK')
 
 

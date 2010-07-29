@@ -10,11 +10,9 @@ from collections import defaultdict
 import gevent
 from gevent.pool import GreenletSet
 
-from messages.space_usage import SpaceUsage
-
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
-    ListmatchFailedError,
+    SpaceUsageFailedError,
 )
 
 
@@ -31,7 +29,7 @@ class SpaceUsageGetter(object):
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)
         if len(self._done) < self.agreement_level:
-            raise ListmatchFailedError()
+            raise SpaceUsageFailedError()
         self._pending.kill()
 
     def _done_link(self, task):

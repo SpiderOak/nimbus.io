@@ -10,7 +10,7 @@ import uuid
 
 from unit_tests.web_server import util
 
-from diyapi_web_server.amqp_data_reader import AMQPDataReader
+from diyapi_web_server.amqp_database_server import AMQPDatabaseServer
 
 from messages.stat import Stat
 from messages.stat_reply import StatReply
@@ -30,9 +30,11 @@ class TestStatGetter(unittest.TestCase):
     """test diyapi_web_server/stat_getter.py"""
     def setUp(self):
         self.amqp_handler = util.FakeAMQPHandler()
-        self.data_readers = [AMQPDataReader(self.amqp_handler, exchange)
-                             for exchange in EXCHANGES]
-        self.getter = StatGetter(self.data_readers, AGREEMENT_LEVEL)
+        self.database_servers = [
+            AMQPDatabaseServer(self.amqp_handler, exchange)
+            for exchange in EXCHANGES
+        ]
+        self.getter = StatGetter(self.database_servers, AGREEMENT_LEVEL)
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
 
@@ -43,7 +45,7 @@ class TestStatGetter(unittest.TestCase):
         avatar_id = 1001
         path = 'some/path'
         messages = []
-        for i, data_reader in enumerate(self.data_readers):
+        for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             message = Stat(
                 request_id,
@@ -57,9 +59,9 @@ class TestStatGetter(unittest.TestCase):
                 StatReply.successful
             )
             self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, data_reader.exchange
+                request_id, server.exchange
             )].put(reply)
-            messages.append((message, data_reader.exchange))
+            messages.append((message, server.exchange))
 
         result = self.getter.stat(avatar_id, path, 0)
 

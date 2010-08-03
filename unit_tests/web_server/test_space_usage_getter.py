@@ -10,7 +10,7 @@ import uuid
 
 from unit_tests.web_server import util
 
-from diyapi_web_server.amqp_data_reader import AMQPDataReader
+from diyapi_web_server.amqp_database_server import AMQPDatabaseServer
 
 from messages.space_usage import SpaceUsage
 from messages.space_usage_reply import SpaceUsageReply
@@ -30,9 +30,11 @@ class TestSpaceUsageGetter(unittest.TestCase):
     """test diyapi_web_server/space_usage_getter.py"""
     def setUp(self):
         self.amqp_handler = util.FakeAMQPHandler()
-        self.data_readers = [AMQPDataReader(self.amqp_handler, exchange)
-                             for exchange in EXCHANGES]
-        self.getter = SpaceUsageGetter(self.data_readers, AGREEMENT_LEVEL)
+        self.database_servers = [
+            AMQPDatabaseServer(self.amqp_handler, exchange)
+            for exchange in EXCHANGES
+        ]
+        self.getter = SpaceUsageGetter(self.database_servers, AGREEMENT_LEVEL)
         self._real_uuid1 = uuid.uuid1
         uuid.uuid1 = util.fake_uuid_gen().next
 
@@ -42,7 +44,7 @@ class TestSpaceUsageGetter(unittest.TestCase):
     def test_get_space_usage(self):
         avatar_id = 1001
         messages = []
-        for i, data_reader in enumerate(self.data_readers):
+        for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             message = SpaceUsage(
                 request_id,
@@ -55,9 +57,9 @@ class TestSpaceUsageGetter(unittest.TestCase):
                 SpaceUsageReply.successful
             )
             self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, data_reader.exchange
+                request_id, server.exchange
             )].put(reply)
-            messages.append((message, data_reader.exchange))
+            messages.append((message, server.exchange))
 
         result = self.getter.get_space_usage(avatar_id, 0)
 

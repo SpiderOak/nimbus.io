@@ -19,6 +19,7 @@ from unit_tests.web_server import util
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
+from diyapi_web_server.amqp_database_server import AMQPDatabaseServer
 from messages.archive_key_start_reply import ArchiveKeyStartReply
 from messages.archive_key_next_reply import ArchiveKeyNextReply
 from messages.archive_key_final_reply import ArchiveKeyFinalReply
@@ -47,11 +48,16 @@ class TestApplication(unittest.TestCase):
                              for exchange in EXCHANGES]
         self.data_readers = [AMQPDataReader(self.amqp_handler, exchange)
                              for exchange in EXCHANGES]
+        self.database_servers = [
+            AMQPDatabaseServer(self.amqp_handler, exchange)
+            for exchange in EXCHANGES
+        ]
         self.accounter = util.FakeAccounter()
         self.app = TestApp(Application(
             self.amqp_handler,
             self.data_writers,
             self.data_readers,
+            self.database_servers,
             self.authenticator,
             self.accounter
         ))
@@ -472,7 +478,7 @@ class TestApplication(unittest.TestCase):
     def test_listmatch(self):
         prefix = 'a_prefix'
         key_list = ['%s-%d' % (prefix, i) for i in xrange(10)]
-        for i, data_reader in enumerate(self.data_readers):
+        for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             reply = DatabaseListMatchReply(
                 request_id,
@@ -480,7 +486,7 @@ class TestApplication(unittest.TestCase):
                 key_list=key_list
             )
             self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, data_reader.exchange
+                request_id, server.exchange
             )].put(reply)
         resp = self.app.get('/data/%s' % (prefix,), dict(action='listmatch'))
         self.assertEqual(json.loads(resp.body), key_list)
@@ -768,21 +774,21 @@ class TestApplication(unittest.TestCase):
         )
 
     def test_usage(self):
-        for i, data_reader in enumerate(self.data_readers):
+        for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             reply = SpaceUsageReply(
                 request_id,
                 SpaceUsageReply.successful
             )
             self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, data_reader.exchange
+                request_id, server.exchange
             )].put(reply)
         resp = self.app.get('/usage')
         self.assertEqual(resp.body, 'OK')
 
     def test_stat_nonexistent(self):
         key = self._key_generator.next()
-        for i, data_reader in enumerate(self.data_readers):
+        for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             reply = StatReply(
                 request_id,
@@ -790,7 +796,7 @@ class TestApplication(unittest.TestCase):
                 error_message='key not found',
             )
             self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, data_reader.exchange
+                request_id, server.exchange
             )].put(reply)
         resp = self.app.get(
             '/data/' + key,
@@ -800,14 +806,14 @@ class TestApplication(unittest.TestCase):
 
     def test_stat(self):
         key = self._key_generator.next()
-        for i, data_reader in enumerate(self.data_readers):
+        for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             reply = StatReply(
                 request_id,
                 StatReply.successful,
             )
             self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, data_reader.exchange
+                request_id, server.exchange
             )].put(reply)
         resp = self.app.get('/data/' + key, dict(action='stat'))
         self.assertEqual(resp.body, 'OK')

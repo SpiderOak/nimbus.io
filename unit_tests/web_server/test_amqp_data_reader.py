@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_data_reader.py
+test_amqp_data_reader.py
 
 test diyapi_web_server/amqp_data_reader.py
 """
@@ -15,12 +15,6 @@ from messages.retrieve_key_final import RetrieveKeyFinal
 from messages.retrieve_key_start_reply import RetrieveKeyStartReply
 from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
-from messages.database_listmatch import DatabaseListMatch
-from messages.database_listmatch_reply import DatabaseListMatchReply
-from messages.space_usage import SpaceUsage
-from messages.space_usage_reply import SpaceUsageReply
-from messages.stat import Stat
-from messages.stat_reply import StatReply
 
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
 
@@ -166,98 +160,6 @@ class TestAMQPDataReader(unittest.TestCase):
             sequence_number
         )
         self.assertEqual(result, segment)
-        self.assertEqual(len(self.amqp_handler.messages), 1)
-        actual = (self.amqp_handler.messages[0][0].marshall(),
-                  self.amqp_handler.messages[0][1])
-        expected = (message.marshall(), self.exchange)
-        self.assertEqual(
-            actual, expected, 'did not send expected messages')
-
-    # listmatch is not technically part of data_reader
-    def test_listmatch(self):
-        self.log.debug('test_listmatch')
-        request_id = 'request_id'
-        avatar_id = 1001
-        prefix = 'prefix'
-        key_list = ['key1', 'key2']
-        message = DatabaseListMatch(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            prefix
-        )
-        reply = DatabaseListMatchReply(
-            request_id,
-            DatabaseListMatchReply.successful,
-            key_list=key_list
-        )
-        self.amqp_handler.replies_to_send[request_id].put(reply)
-        result = self.reader.listmatch(
-            request_id,
-            avatar_id,
-            prefix
-        )
-        self.assertEqual(result, key_list)
-        self.assertEqual(len(self.amqp_handler.messages), 1)
-        actual = (self.amqp_handler.messages[0][0].marshall(),
-                  self.amqp_handler.messages[0][1])
-        expected = (message.marshall(), self.exchange)
-        self.assertEqual(
-            actual, expected, 'did not send expected messages')
-
-    # get_space_usage is not technically part of data_reader
-    def test_get_space_usage(self):
-        self.log.debug('test_get_space_usage')
-        request_id = 'request_id'
-        avatar_id = 1001
-        message = SpaceUsage(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name
-        )
-        reply = SpaceUsageReply(
-            request_id,
-            SpaceUsageReply.successful
-        )
-        self.amqp_handler.replies_to_send[request_id].put(reply)
-        result = self.reader.get_space_usage(
-            request_id,
-            avatar_id
-        )
-        #self.assertEqual(result, key_list)
-        self.assertEqual(len(self.amqp_handler.messages), 1)
-        actual = (self.amqp_handler.messages[0][0].marshall(),
-                  self.amqp_handler.messages[0][1])
-        expected = (message.marshall(), self.exchange)
-        self.assertEqual(
-            actual, expected, 'did not send expected messages')
-
-    # stat is not technically part of data_reader
-    def test_stat(self):
-        self.log.debug('test_stat')
-        request_id = 'request_id'
-        avatar_id = 1001
-        path = 'some/path'
-        message = Stat(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            path
-        )
-        reply = StatReply(
-            request_id,
-            StatReply.successful
-        )
-        self.amqp_handler.replies_to_send[request_id].put(reply)
-        result = self.reader.stat(
-            request_id,
-            avatar_id,
-            path
-        )
-        #self.assertEqual(result, key_list)
         self.assertEqual(len(self.amqp_handler.messages), 1)
         actual = (self.amqp_handler.messages[0][0].marshall(),
                   self.amqp_handler.messages[0][1])

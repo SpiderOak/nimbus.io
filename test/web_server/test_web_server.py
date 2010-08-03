@@ -165,17 +165,17 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
-    def test_upload_small_and_stat(self):
-        log = logging.getLogger('test_upload_small_and_stat')
-        log.info('start')
-        content = random_string(64 * 1024)
-        key = self._key_generator.next()
-        result = self._make_request(
-            _base_url + '/data/' + key, content)
-        log.info('retrieve')
-        result = self._make_request(
-            _base_url + '/data/' + key + '?action=stat')
-        self.assertEqual(result, 'OK')
+    #def test_upload_small_and_stat(self):
+    #    log = logging.getLogger('test_upload_small_and_stat')
+    #    log.info('start')
+    #    content = random_string(64 * 1024)
+    #    key = self._key_generator.next()
+    #    result = self._make_request(
+    #        _base_url + '/data/' + key, content)
+    #    log.info('retrieve')
+    #    result = self._make_request(
+    #        _base_url + '/data/' + key + '?action=stat')
+    #    self.assertEqual(result, 'OK')
 
     def test_retrieve_nonexistent_key(self):
         log = logging.getLogger('test_retrieve_nonexistent_key')

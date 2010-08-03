@@ -19,7 +19,6 @@ from webob import Response
 from diyapi_web_server import util
 from diyapi_web_server.exceptions import *
 from diyapi_web_server.data_slicer import DataSlicer
-from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.archiver import Archiver
 from diyapi_web_server.destroyer import Destroyer
@@ -51,11 +50,12 @@ class router(list):
 
 class Application(object):
     def __init__(self, amqp_handler, data_writers, data_readers,
-                 authenticator, accounter):
+                 database_servers, authenticator, accounter):
         self._log = logging.getLogger("Application")
         self.amqp_handler = amqp_handler
         self.data_writers = data_writers
         self.data_readers = data_readers
+        self.database_servers = database_servers
         self.authenticator = authenticator
         self.accounter = accounter
 
@@ -109,7 +109,7 @@ class Application(object):
         ))
         avatar_id = req.remote_user
         getter = SpaceUsageGetter(
-            self.data_readers,
+            self.database_servers,
             8 # TODO: min_segments
         )
         try:
@@ -127,7 +127,7 @@ class Application(object):
         ))
         avatar_id = req.remote_user
         getter = StatGetter(
-            self.data_readers,
+            self.database_servers,
             8 # TODO: min_segments
         )
         try:
@@ -145,7 +145,7 @@ class Application(object):
         # TODO: do something with delimiter
         avatar_id = req.remote_user
         matcher = Listmatcher(
-            self.data_readers,
+            self.database_servers,
             8 # TODO: min_segments
         )
         try:

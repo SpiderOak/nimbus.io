@@ -28,6 +28,9 @@ class DataWriterDownError(Exception):
 class DataReaderDownError(Exception):
     pass
 
+class DatabaseServerDownError(Exception):
+    pass
+
 class StartHandoff(Exception):
     def __init__(self, to):
         super(StartHandoff, self).__init__()

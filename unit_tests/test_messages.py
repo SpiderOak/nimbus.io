@@ -60,6 +60,10 @@ from messages.hinted_handoff_reply import HintedHandoffReply
 from messages.space_accounting_detail import SpaceAccountingDetail
 from messages.rebuild_request import RebuildRequest
 from messages.rebuild_reply import RebuildReply
+from messages.stat import Stat
+from messages.stat_reply import StatReply
+from messages.space_usage import SpaceUsage
+from messages.space_usage_reply import SpaceUsageReply
 
 from unit_tests.util import random_string
 
@@ -1209,6 +1213,120 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.request_id, request_id)
         self.assertEqual(unmarshalled_message.result, result)
 
+    def test_stat(self):
+        """test Stat"""
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        path = "aaa/bbb"
+        message = Stat(
+            request_id,
+            avatar_id,
+            path,
+            reply_exchange,
+            reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = Stat.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
+        self.assertEqual(unmarshalled_message.path, path)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, reply_exchange
+        )
+
+    def test_stat_reply(self):
+        """test StatReply"""
+        request_id = uuid.uuid1().hex
+        result = 0
+        timestamp = time.time()
+        total_size = 1024 * 1024 * 1024
+        file_adler = -1
+        file_md5 = "ABCDEF0123456789"
+        userid = 0001
+        groupid = 0002
+        permissions = 0666
+
+        message = StatReply(
+            request_id, 
+            result,
+            timestamp,
+            total_size,
+            file_adler,
+            file_md5,
+            userid,
+            groupid,
+            permissions
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = StatReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
+        self.assertEqual(unmarshalled_message.timestamp, timestamp)
+        self.assertEqual(unmarshalled_message.total_size, total_size)
+        self.assertEqual(unmarshalled_message.file_adler, file_adler)
+        self.assertEqual(unmarshalled_message.file_md5, file_md5)
+        self.assertEqual(unmarshalled_message.userid, userid)
+        self.assertEqual(unmarshalled_message.groupid, groupid)
+        self.assertEqual(unmarshalled_message.permissions, permissions)
+
+    def test_space_usage(self):
+        """test SpaceUsage"""
+        request_id = uuid.uuid1().hex
+        avatar_id = 1001
+        reply_exchange = "reply-exchange"
+        reply_routing_header = "reply-header"
+        message = SpaceUsage(
+            request_id,
+            avatar_id,
+            reply_exchange,
+            reply_routing_header
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = SpaceUsage.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
+        self.assertEqual(
+            unmarshalled_message.reply_routing_header, 
+            reply_routing_header
+        )
+        self.assertEqual(
+            unmarshalled_message.reply_exchange, reply_exchange
+        )
+
+    def test_space_usage_reply(self):
+        """test SpaceUsageReply"""
+        request_id = uuid.uuid1().hex
+        result = 0
+        bytes_added = 1024 * 1024 * 1024
+        bytes_removed = 1024 * 1024
+        bytes_retrieved = 512 * 1024 * 1204
+
+        message = SpaceUsageReply(
+            request_id, 
+            result,
+            bytes_added,
+            bytes_removed,
+            bytes_retrieved
+        )
+        marshalled_message = message.marshall()
+        unmarshalled_message = SpaceUsageReply.unmarshall(
+            marshalled_message
+        )
+        self.assertEqual(unmarshalled_message.request_id, request_id)
+        self.assertEqual(unmarshalled_message.result, result)
+        self.assertEqual(unmarshalled_message.bytes_added, bytes_added)
 
 if __name__ == "__main__":
     unittest.main()

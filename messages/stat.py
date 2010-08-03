@@ -22,15 +22,15 @@ class Stat(object):
         self,
         request_id,
         avatar_id,
+        path,
         reply_exchange,
-        reply_routing_header,
-        path
+        reply_routing_header
     ):
         self.request_id = request_id
         self.avatar_id = avatar_id
+        self.path = path
         self.reply_exchange = reply_exchange
         self.reply_routing_header = reply_routing_header
-        self.path = path
 
     @classmethod
     def unmarshall(cls, data):
@@ -40,29 +40,30 @@ class Stat(object):
             _header_format, data[pos:pos+_header_size]
         )
         pos += _header_size
+        (path, pos) = unmarshall_string(data, pos)
         (reply_exchange, pos) = unmarshall_string(data, pos)
         (reply_routing_header, pos) = unmarshall_string(data, pos)
-        (path, pos) = unmarshall_string(data, pos)
         return Stat(
             request_id,
             avatar_id,
+            path,
             reply_exchange,
-            reply_routing_header,
-            path
+            reply_routing_header
         )
 
     def marshall(self):
         """return a data string suitable for transmission"""
         header = struct.pack(_header_format, self.request_id, self.avatar_id)
+        path = marshall_string(self.path)
         packed_reply_exchange = marshall_string(self.reply_exchange)
         packed_reply_routing_header = marshall_string(
             self.reply_routing_header)
-        path = marshall_string(self.path)
         return "".join(
             [
                 header,
-                packed_reply_exchange,
-                packed_reply_routing_header,
                 path,
+                packed_reply_exchange,
+                packed_reply_routing_header
             ]
         )
+

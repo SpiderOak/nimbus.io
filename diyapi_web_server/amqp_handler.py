@@ -30,6 +30,8 @@ from messages.retrieve_key_next_reply import RetrieveKeyNextReply
 from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
 from messages.destroy_key_reply import DestroyKeyReply
 from messages.hinted_handoff_reply import HintedHandoffReply
+from messages.stat_reply import StatReply
+from messages.space_usage_reply import SpaceUsageReply
 from messages.process_status import ProcessStatus
 
 
@@ -48,6 +50,8 @@ MESSAGE_TYPES = dict(
         RetrieveKeyFinalReply,
         DestroyKeyReply,
         HintedHandoffReply,
+        StatReply,
+        SpaceUsageReply,
     ]
 )
 MESSAGE_TYPES['process_status'] = ProcessStatus

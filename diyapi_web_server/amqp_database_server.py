@@ -87,3 +87,12 @@ class AMQPDatabaseServer(AMQPProcess):
                 path
             ))
         reply = self._send(message, StatFailedError)
+        return dict(
+            timestamp=reply.timestamp,
+            total_size=reply.total_size,
+            file_adler=reply.file_adler,
+            file_md5=reply.file_md5,
+            userid=reply.userid,
+            groupid=reply.groupid,
+            permissions=reply.permissions,
+        )

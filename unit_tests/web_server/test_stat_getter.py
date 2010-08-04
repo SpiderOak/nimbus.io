@@ -44,6 +44,15 @@ class TestStatGetter(unittest.TestCase):
     def test_stat(self):
         avatar_id = 1001
         path = 'some/path'
+        stat = dict(
+            timestamp=util.fake_time(),
+            total_size=1235,
+            file_adler=-42,
+            file_md5="ffff",
+            userid=501,
+            groupid=100,
+            permissions=0o644,
+        )
         messages = []
         for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
@@ -56,7 +65,8 @@ class TestStatGetter(unittest.TestCase):
             )
             reply = StatReply(
                 request_id,
-                StatReply.successful
+                StatReply.successful,
+                **stat
             )
             self.amqp_handler.replies_to_send_by_exchange[(
                 request_id, server.exchange
@@ -65,7 +75,67 @@ class TestStatGetter(unittest.TestCase):
 
         result = self.getter.stat(avatar_id, path, 0)
 
-        self.assertEqual(result, None)
+        self.assertEqual(result, stat)
+
+        expected = [
+            (message.marshall(), exchange)
+            for message, exchange in messages
+        ]
+        actual = [
+            (message.marshall(), exchange)
+            for message, exchange in self.amqp_handler.messages
+        ]
+        self.assertEqual(
+            actual, expected)
+
+    def test_stat_fails_with_disagreement(self):
+        avatar_id = 1001
+        path = 'some/path'
+        stat1 = dict(
+            timestamp=util.fake_time(),
+            total_size=1235,
+            file_adler=-42,
+            file_md5="ffff",
+            userid=501,
+            groupid=100,
+            permissions=0o644,
+        )
+        stat2 = dict(
+            timestamp=util.fake_time() + 5,
+            total_size=1235,
+            file_adler=-42,
+            file_md5="ffff",
+            userid=501,
+            groupid=100,
+            permissions=0o644,
+        )
+        messages = []
+        for i, server in enumerate(self.database_servers):
+            request_id = uuid.UUID(int=i).hex
+            message = Stat(
+                request_id,
+                avatar_id,
+                self.amqp_handler.exchange,
+                self.amqp_handler.queue_name,
+                path
+            )
+            reply = StatReply(
+                request_id,
+                StatReply.successful,
+                **(stat2 if i < AGREEMENT_LEVEL - 1 else stat1)
+            )
+            self.amqp_handler.replies_to_send_by_exchange[(
+                request_id, server.exchange
+            )].put(reply)
+            messages.append((message, server.exchange))
+
+        self.assertRaises(
+            StatFailedError,
+            self.getter.stat,
+            avatar_id,
+            path,
+            0
+        )
 
         expected = [
             (message.marshall(), exchange)

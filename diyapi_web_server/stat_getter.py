@@ -57,3 +57,10 @@ class StatGetter(object):
                 path
             )
         self._join(timeout)
+        result = defaultdict(int)
+        for task in self._done:
+            key = frozenset(task.value.items())
+            result[key] += 1
+            if result[key] >= self.agreement_level:
+                return task.value
+        raise StatFailedError()

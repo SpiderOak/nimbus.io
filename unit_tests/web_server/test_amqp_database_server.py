@@ -95,6 +95,15 @@ class TestAMQPDatabaseServer(unittest.TestCase):
         request_id = 'request_id'
         avatar_id = 1001
         path = 'some/path'
+        stat = dict(
+            timestamp=util.fake_time(),
+            total_size=1235,
+            file_adler=-42,
+            file_md5="ffff",
+            userid=501,
+            groupid=100,
+            permissions=0o644,
+        )
         message = Stat(
             request_id,
             avatar_id,
@@ -104,7 +113,8 @@ class TestAMQPDatabaseServer(unittest.TestCase):
         )
         reply = StatReply(
             request_id,
-            StatReply.successful
+            StatReply.successful,
+            **stat
         )
         self.amqp_handler.replies_to_send[request_id].put(reply)
         result = self.server.stat(
@@ -112,7 +122,7 @@ class TestAMQPDatabaseServer(unittest.TestCase):
             avatar_id,
             path
         )
-        #self.assertEqual(result, key_list)
+        self.assertEqual(result, stat)
         self.assertEqual(len(self.amqp_handler.messages), 1)
         actual = (self.amqp_handler.messages[0][0].marshall(),
                   self.amqp_handler.messages[0][1])

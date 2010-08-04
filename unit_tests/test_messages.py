@@ -1219,11 +1219,13 @@ class TestMessages(unittest.TestCase):
         avatar_id = 1001
         reply_exchange = "reply-exchange"
         reply_routing_header = "reply-header"
-        path = "aaa/bbb"
+        key = "aaa/bbb"
+        version_number = 0
         message = Stat(
             request_id,
             avatar_id,
-            path,
+            key,
+            version_number,
             reply_exchange,
             reply_routing_header
         )
@@ -1233,7 +1235,10 @@ class TestMessages(unittest.TestCase):
         )
         self.assertEqual(unmarshalled_message.request_id, request_id)
         self.assertEqual(unmarshalled_message.avatar_id, avatar_id)
-        self.assertEqual(unmarshalled_message.path, path)
+        self.assertEqual(unmarshalled_message.key, key)
+        self.assertEqual(
+            unmarshalled_message.version_number, version_number
+        )
         self.assertEqual(
             unmarshalled_message.reply_routing_header, 
             reply_routing_header

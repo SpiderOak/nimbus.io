@@ -113,6 +113,7 @@ def _handle_space_usage(_state, message_body):
         [message.reply_routing_header, ".", SpaceUsageReply.routing_tag]
     )
 
+    # get sums of stats from the database
     space_accounting_database = SpaceAccountingDatabase(transaction=False)
     try:
         stats = space_accounting_database.retrieve_avatar_stats(
@@ -128,9 +129,24 @@ def _handle_space_usage(_state, message_body):
             error_message=error_message
         )
         return [(reply_exchange, reply_routing_key, reply, )]
+    finally:
+        space_accounting_database.close()
 
     bytes_added, bytes_removed, bytes_retrieved = stats
 
+    # increment sums with data from state
+    current_time = datetime.datetime.now()
+    current_hour = _floor_hour(current_time)
+
+    if current_hour in state["data"]:
+        if message.avatar_id in state["data"][current_hour]:
+            events = state["data"][current_hour][message.avatar_id]
+            bytes_added += events.get(SpaceAccountingDetail.bytes_added, 0)
+            bytes_removed += events.get(SpaceAccountingDetail.bytes_removed, 0)
+            bytes_retrieved += events.get(
+                SpaceAccountingDetail.bytes_retrieved, 0
+            )
+        
     reply = SpaceUsageReply(
         message.request_id,
         SpaceUsageReply.successful,

@@ -53,6 +53,8 @@ from messages.database_key_purge import DatabaseKeyPurge
 from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
+from messages.stat import Stat
+from messages.stat_reply import StatReply
 
 _routing_header = "database_server"
 _routing_key_binding = ".".join([_routing_header, "*"])
@@ -114,6 +116,28 @@ def _get_content(
         (content, _) = database_content.unmarshall(packed_content, 0)
         while content.version_number != search_version_number \
         or content.segment_number != search_segment_number:
+            result = cursor.next_dup()
+            if result is None:
+                return None
+            _, packed_content = result
+            (content, _) = database_content.unmarshall(packed_content, 0)
+        return content
+    finally:
+        cursor.close()
+
+def _get_content_any_segment(database, search_key, search_version_number):
+    """
+    get a a database entry matching key
+    return None on failure
+    """
+    cursor = database.cursor()
+    try:
+        result = cursor.set(search_key)
+        if result is None:
+            return None
+        _, packed_content = result
+        (content, _) = database_content.unmarshall(packed_content, 0)
+        while content.version_number != search_version_number:
             result = cursor.next_dup()
             if result is None:
                 return None
@@ -691,6 +715,68 @@ def _handle_process_status(_state, message_body):
     ))
     return []
 
+def _handle_stat_request(state, message_body):
+    log = logging.getLogger("_handle_stat_request")
+    message = Stat.unmarshall(message_body)
+    log.info("avatar_id = %s" % (message.avatar_id, ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = ".".join([
+        message.reply_routing_header, StatReply.routing_tag
+    ])
+
+    if not _content_database_exists(state, message.avatar_id):
+        error_message = "no database for avatar_id %s" % (message.avatar_id, )
+        log.error(error_message)
+        reply = StatReply(
+            message.request_id,
+            StatReply.error_database_failure,
+            error_message=error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    try:
+        database = _open_database(state, message.avatar_id)
+        existing_entry = _get_content_any_segment(
+            database, 
+            message.key, 
+            message.version_number
+        )
+    except Exception, instance:
+        log.exception("%s, %s" % (message.avatar_id, message.key, ))
+        reply = StatReply(
+            message.request_id,
+            StatReply.error_database_failure,
+            error_message=str(instance)
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    if existing_entry is None:
+        error_string = "%s no such key %s %s" % (
+            message.avatar_id, 
+            message.key, 
+            message.version_number
+        )
+        log.error(error_string)
+        reply = StatReply(
+            message.request_id,
+            StatReply.error_no_such_key,
+            error_message=error_string
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+    
+    reply = StatReply(
+        message.request_id,
+        StatReply.successful,
+        total_size=existing_entry.total_size,
+        file_adler=existing_entry.file_adler,
+        file_md5=existing_entry.file_md5,
+        userid=existing_entry.userid,
+        groupid=existing_entry.groupid,
+        permissions=existing_entry.permissions,
+    )
+    return [(reply_exchange, reply_routing_key, reply, )]
+
 _dispatch_table = {
     DatabaseKeyInsert.routing_key           : _handle_key_insert,
     DatabaseKeyLookup.routing_key           : _handle_key_lookup,
@@ -702,6 +788,7 @@ _dispatch_table = {
     DatabaseAvatarDatabaseRequest.routing_key : \
         _handle_avatar_database_request,
     DatabaseAvatarListRequest.routing_key   : _handle_avatar_list_request,
+    Stat.routing_key                        : _handle_stat_request,
     ProcessStatus.routing_key               : _handle_process_status,
 }
 

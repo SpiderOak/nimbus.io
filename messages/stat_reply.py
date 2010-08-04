@@ -40,7 +40,8 @@ class StatReply(object):
     routing_tag = "stat_reply"
 
     successful = 0
-    error_key_not_found = 1
+    error_database_failure = 1
+    error_no_such_key = 2
 
     def __init__(
         self,

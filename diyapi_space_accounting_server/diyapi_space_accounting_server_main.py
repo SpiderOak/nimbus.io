@@ -28,9 +28,11 @@ from diyapi_tools.low_traffic_thread import LowTrafficThread, \
         low_traffic_routing_tag
 
 from messages.space_accounting_detail import SpaceAccountingDetail
+from messages.space_usage import SpaceUsage
+from messages.space_usage_reply import SpaceUsageReply
 
 from diyapi_space_accounting_server.space_accounting_database import \
-        SpaceAccountingDatabase
+        SpaceAccountingDatabase, SpaceAccountingDatabaseAvatarNotFound
 
 _log_path = u"/var/log/pandora/diyapi_space_accounting_server_%s.log" % (
     os.environ["SPIDEROAK_MULTI_NODE_NAME"],
@@ -99,8 +101,49 @@ def _handle_detail(state, message_body):
 
     return []
 
+def _handle_space_usage(_state, message_body):
+    log = logging.getLogger("_handle_space_usage")
+    message = SpaceUsage.unmarshall(message_body)
+    log.info("request from %s for avatar %s" % (
+        message.reply_exchange, message.avatar_id,
+    ))
+
+    reply_exchange = message.reply_exchange
+    reply_routing_key = "".join(
+        [message.reply_routing_header, ".", SpaceUsageReply.routing_tag]
+    )
+
+    space_accounting_database = SpaceAccountingDatabase(transaction=False)
+    try:
+        stats = space_accounting_database.retrieve_avatar_stats(
+            message.avatar_id
+        )
+    except SpaceAccountingDatabaseAvatarNotFound, instance:
+        error_message = "avatar not found %s" % (instance, )
+        log.warn(error_message)
+
+        reply = SpaceUsageReply(
+            message.request_id,
+            SpaceUsageReply.unknown_avatar,
+            error_message=error_message
+        )
+        return [(reply_exchange, reply_routing_key, reply, )]
+
+    bytes_added, bytes_removed, bytes_retrieved = stats
+
+    reply = SpaceUsageReply(
+        message.request_id,
+        SpaceUsageReply.successful,
+        bytes_added,
+        bytes_removed,
+        bytes_retrieved
+    )
+
+    return [(reply_exchange, reply_routing_key, reply, )]
+
 _dispatch_table = {
     SpaceAccountingDetail.routing_key   : _handle_detail,
+    SpaceUsage.routing_key              : _handle_space_usage,
     _low_traffic_routing_key            : _handle_low_traffic,
 }
 
@@ -115,10 +158,29 @@ def _startup(halt_event, state):
 
     return []
 
+def _flush_to_database(state, hour):
+    log = logging.getLogger("_flush_to_database")
+
+    if hour not in state["data"]:
+        log.warn("no data for %s" % (hour, ))
+        return
+
+    log.info("storing data for %s" % (hour, ))
+    space_accounting_database = SpaceAccountingDatabase()
+    for avatar_id, events in state["data"][hour].items():
+        space_accounting_database.store_avatar_stats(
+            avatar_id,
+            hour,
+            events.get(SpaceAccountingDetail.bytes_added, 0),
+            events.get(SpaceAccountingDetail.bytes_removed, 0),
+            events.get(SpaceAccountingDetail.bytes_retrieved, 0)
+        )
+    space_accounting_database.commit()
+
+    del state["data"][hour]
+
 def _check_dump_time(state):
     """dump stats to database, if enough time has elapsed"""
-    log = logging.getLogger("_check_dump_time")
-
     state["low_traffic_thread"].reset()
 
     if time.time() < state["next_dump_interval"]:
@@ -131,26 +193,7 @@ def _check_dump_time(state):
     current_hour = _floor_hour(current_time)
     prev_hour = current_hour -  datetime.timedelta(hours=1)
 
-    if prev_hour not in state["data"]:
-        log.warn("no data for %s" % (prev_hour, ))
-        return []
-
-    log.info("storing data for %s" % (prev_hour, ))
-    space_accounting_database = SpaceAccountingDatabase()
-    for avatar_id, events in state["data"][prev_hour].items():
-        space_accounting_database.store_avatar_stats(
-            avatar_id,
-            prev_hour,
-            events.get(SpaceAccountingDetail.bytes_added, 0),
-            events.get(SpaceAccountingDetail.bytes_retrieved, 0),
-            events.get(SpaceAccountingDetail.bytes_removed, 0)
-        )
-    space_accounting_database.commit()
-
-    # clear out everything except the current hour
-    for key in state["data"].keys():
-        if key != current_hour:
-            del state["data"][key]
+    _flush_to_database(state, prev_hour)
 
     return []
 

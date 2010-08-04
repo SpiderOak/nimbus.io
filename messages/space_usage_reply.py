@@ -31,6 +31,7 @@ class SpaceUsageReply(object):
     routing_tag = "space_usage_reply"
 
     successful = 0
+    unknown_avatar = 1
 
     def __init__(
         self,
@@ -46,7 +47,7 @@ class SpaceUsageReply(object):
         self.bytes_added = bytes_added
         self.bytes_removed = bytes_removed
         self.bytes_retrieved = bytes_retrieved
-        self.error_message=error_message
+        self.error_message = error_message
 
     @property
     def error(self):
@@ -73,8 +74,8 @@ class SpaceUsageReply(object):
         (error_message, pos) = unmarshall_string(data, pos)
 
         return SpaceUsageReply(
-            request_id,
-            result,
+            header.request_id,
+            header.result,
             error_message
         )
 

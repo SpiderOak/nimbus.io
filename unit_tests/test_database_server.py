@@ -932,7 +932,7 @@ class TestDatabaseServer(unittest.TestCase):
         marshalled_message = message.marshall()
 
         state = _create_database_state()
-        replies = _handle_avatar_list_request(state, marshalled_message)
+        replies = _handle_stat(state, marshalled_message)
         self.assertEqual(len(replies), 1)
         [(reply_exchange, reply_routing_key, reply, ), ] = replies
         self.assertEqual(reply_exchange, exchange)

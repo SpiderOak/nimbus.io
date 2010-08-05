@@ -22,7 +22,7 @@ VALUES(%s, '%s'::timestamp, %s, %s, %s);
 
 _avatar_query = """
 SELECT SUM(bytes_added), SUM(bytes_removed), SUM(bytes_retrieved)
-FROM diyaqpi_space_accounting 
+FROM diyapi_space_accounting 
 WHERE avatar_id = %s
 """.strip()
 

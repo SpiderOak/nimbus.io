@@ -101,7 +101,7 @@ def _handle_detail(state, message_body):
 
     return []
 
-def _handle_space_usage(_state, message_body):
+def _handle_space_usage(state, message_body):
     log = logging.getLogger("_handle_space_usage")
     message = SpaceUsage.unmarshall(message_body)
     log.info("request from %s for avatar %s" % (

@@ -944,7 +944,7 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply.result, 0)
         self.assertEqual(reply.timestamp, content.timestamp)
         self.assertEqual(reply.total_size, content.total_size)
-        self.assertEqual(reply.file_adler, content.file_adler)
+        self.assertEqual(reply.file_adler32, content.file_adler32)
         self.assertEqual(reply.file_md5, content.file_md5)
         self.assertEqual(reply.userid, content.userid)
         self.assertEqual(reply.groupid, content.groupid)

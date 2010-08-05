@@ -14,7 +14,7 @@ _header_tuple = namedtuple("Header", [
     "result",
     "timestamp",
     "total_size",
-    "file_adler",
+    "file_adler32",
     "file_md5",
     "userid",
     "groupid",
@@ -25,7 +25,7 @@ _header_tuple = namedtuple("Header", [
 # B   - result: 0 = success
 # d - timestamp
 # Q - total_size
-# l - file_adler32
+# l - file_adler3232
 #16s- file_md5
 # H - userid
 # H - groupid
@@ -49,7 +49,7 @@ class StatReply(object):
         result,
         timestamp=0.0,
         total_size=0,
-        file_adler=0,
+        file_adler32=0,
         file_md5="",
         userid=0,
         groupid=0,
@@ -60,7 +60,7 @@ class StatReply(object):
         self.result = result
         self.timestamp = timestamp
         self.total_size = total_size
-        self.file_adler = file_adler
+        self.file_adler32 = file_adler32
         self.file_md5 = file_md5
         self.userid = userid
         self.groupid = groupid
@@ -86,7 +86,7 @@ class StatReply(object):
                 header.result,
                 header.timestamp,
                 header.total_size,
-                header.file_adler,
+                header.file_adler32,
                 header.file_md5,
                 header.userid,
                 header.groupid,
@@ -109,7 +109,7 @@ class StatReply(object):
             self.result,
             self.timestamp,
             self.total_size,
-            self.file_adler,
+            self.file_adler32,
             self.file_md5,
             self.userid,
             self.groupid,

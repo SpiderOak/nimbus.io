@@ -769,6 +769,7 @@ def _handle_stat_request(state, message_body):
         message.request_id,
         StatReply.successful,
         total_size=existing_entry.total_size,
+        timestamp=existing_entry.timestamp,
         file_adler32=existing_entry.file_adler32,
         file_md5=existing_entry.file_md5,
         userid=existing_entry.userid,

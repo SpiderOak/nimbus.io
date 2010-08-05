@@ -35,6 +35,8 @@ from messages.database_key_purge import DatabaseKeyPurge
 from messages.database_key_purge_reply import DatabaseKeyPurgeReply
 from messages.database_listmatch import DatabaseListMatch
 from messages.database_listmatch_reply import DatabaseListMatchReply
+from messages.stat import Stat
+from messages.stat_reply import StatReply
 
 from unit_tests.util import generate_key, generate_database_content
 
@@ -48,7 +50,8 @@ from diyapi_database_server.diyapi_database_server_main import \
         _handle_key_list, _handle_key_destroy, _handle_key_purge, \
         _handle_listmatch, _handle_consistency_check, \
         _handle_avatar_database_request, \
-        _handle_avatar_list_request
+        _handle_avatar_list_request, \
+        _handle_stat_request
 
 _reply_routing_header = "test_database_server"
 
@@ -902,6 +905,51 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply.request_id, request_id)
         reply_avatar_ids = list(reply.get())
         self.assertEqual(reply_avatar_ids[0], avatar_id)
+
+    def test_stat(self):
+        """test requesting stat on a key"""
+        avatar_id = 1001
+        key  = self._key_generator.next()
+        version_number = 0
+        content = generate_database_content()
+
+        reply = self._insert_key(avatar_id, key, content)
+
+        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply.previous_size, 0)
+
+        request_id = uuid.uuid1().hex
+        exchange = "reply-exchange"
+
+        message = Stat(
+            request_id,
+            avatar_id,
+            key,
+            version_number,
+            exchange,
+            _reply_routing_header
+        )
+        marshalled_message = message.marshall()
+
+        state = _create_database_state()
+        replies = _handle_avatar_list_request(state, marshalled_message)
+        self.assertEqual(len(replies), 1)
+        [(reply_exchange, reply_routing_key, reply, ), ] = replies
+        self.assertEqual(reply_exchange, exchange)
+        self.assertEqual(
+            reply_routing_key, 
+            "%s.stat_reply" % (_reply_routing_header, )
+        )
+        self.assertEqual(reply.request_id, request_id)
+        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply.timestamp, content.timestamp)
+        self.assertEqual(reply.total_size, content.total_size)
+        self.assertEqual(reply.file_adler, content.file_adler)
+        self.assertEqual(reply.file_md5, content.file_md5)
+        self.assertEqual(reply.userid, content.userid)
+        self.assertEqual(reply.groupid, content.groupid)
+        self.assertEqual(reply.permissions, content.permissions)
+
 
 if __name__ == "__main__":
     unittest.main()

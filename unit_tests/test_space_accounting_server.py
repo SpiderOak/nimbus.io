@@ -16,6 +16,8 @@ from messages.space_usage import SpaceUsage
 from diyapi_space_accounting_server.diyapi_space_accounting_server_main import \
     _create_state, _floor_hour, _handle_detail, _handle_space_usage, \
     _flush_to_database
+from diyapi_space_accounting_server.space_accounting_database import \
+    SpaceAccountingDatabase
 
 _log_path = "/var/log/pandora/test_space_accounting_server.log"
 _exchange = "reply-exchange"
@@ -75,6 +77,11 @@ class TestSpaceAccountingServer(unittest.TestCase):
         total_bytes_retrieved = 66 * 1024 * 1024 * 25
         state = _create_state()
 
+        # clear out any old stats
+        space_accounting_database = SpaceAccountingDatabase()
+        space_accounting_database.clear_avatar_stats(avatar_id)
+        space_accounting_database.commit()
+
         for _ in xrange(1000):
             _detail(
                 state, 
@@ -90,7 +97,7 @@ class TestSpaceAccountingServer(unittest.TestCase):
                 avatar_id,
                 time.time(),
                 SpaceAccountingDetail.bytes_removed,
-                total_bytes_added / 50
+                total_bytes_removed / 50
             )            
 
         for _ in xrange(25):
@@ -99,7 +106,7 @@ class TestSpaceAccountingServer(unittest.TestCase):
                 avatar_id,
                 time.time(),
                 SpaceAccountingDetail.bytes_retrieved,
-                total_bytes_added / 25
+                total_bytes_retrieved / 25
             )            
 
         hour = _floor_hour(datetime.datetime.now())

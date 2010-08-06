@@ -1253,7 +1253,7 @@ class TestMessages(unittest.TestCase):
         result = 0
         timestamp = time.time()
         total_size = 1024 * 1024 * 1024
-        file_adler = -1
+        file_adler32 = -1
         file_md5 = "ABCDEF0123456789"
         userid = 0001
         groupid = 0002
@@ -1264,7 +1264,7 @@ class TestMessages(unittest.TestCase):
             result,
             timestamp,
             total_size,
-            file_adler,
+            file_adler32,
             file_md5,
             userid,
             groupid,
@@ -1278,7 +1278,7 @@ class TestMessages(unittest.TestCase):
         self.assertEqual(unmarshalled_message.result, result)
         self.assertEqual(unmarshalled_message.timestamp, timestamp)
         self.assertEqual(unmarshalled_message.total_size, total_size)
-        self.assertEqual(unmarshalled_message.file_adler, file_adler)
+        self.assertEqual(unmarshalled_message.file_adler32, file_adler32)
         self.assertEqual(unmarshalled_message.file_md5, file_md5)
         self.assertEqual(unmarshalled_message.userid, userid)
         self.assertEqual(unmarshalled_message.groupid, groupid)

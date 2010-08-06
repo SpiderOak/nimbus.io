@@ -26,6 +26,11 @@ FROM diyapi_space_accounting
 WHERE avatar_id = %s
 """.strip()
 
+_clear_command = """
+DELETE FROM diyapi_space_accounting 
+WHERE avatar_id = %s
+""".strip()
+
 class SpaceAccountingDatabase(object):
     """wrap access to the diyapi_space_accounting_table"""
     def __init__(self, transaction=True):
@@ -68,6 +73,11 @@ class SpaceAccountingDatabase(object):
             raise SpaceAccountingDatabaseAvatarNotFound(str(avatar_id))
         [bytes_added, bytes_removed, bytes_retrieved, ] = result
         return bytes_added, bytes_removed, bytes_retrieved, 
+
+    def clear_avatar_stats(self, avatar_id):
+        """clear all stats for an avatar *** for use in testing ***"""
+        command = _clear_command % (avatar_id, )
+        self._connection.execute(command)
 
 if __name__ == "__main__":
     import datetime

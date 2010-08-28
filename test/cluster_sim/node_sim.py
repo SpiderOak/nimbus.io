@@ -40,6 +40,7 @@ class NodeSim(object):
     def _rabbitmq_env(self):
         return {
             "HOME"                        : os.environ["HOME"],
+            "PATH"                        : os.environ["PATH"],
             "RABBITMQ_NODENAME"           : self._node_name, 
             "RABBITMQ_NODE_IP_ADDRESS"    : _rabbitmq_ip_address,
             "RABBITMQ_NODE_PORT"          : str(self._rabbitmq_port),

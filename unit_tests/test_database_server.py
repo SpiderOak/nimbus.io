@@ -664,7 +664,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
 
         # we expect the request to fail
-        self.assertEqual(reply.result, DatabaseKeyPurgeReply.error_no_such_key)
+        self.assertEqual(reply.result, DatabaseKeyPurgeReply.error_key_not_found)
 
     def test_simple_key_purge(self):
         """test purgeing a key that exists"""
@@ -719,7 +719,7 @@ class TestDatabaseServer(unittest.TestCase):
         )
 
         # we expect the request to fail
-        self.assertEqual(reply.result, DatabaseKeyPurgeReply.error_no_such_key)
+        self.assertEqual(reply.result, DatabaseKeyPurgeReply.error_key_not_found)
 
     def test_listmatch_empty_database(self):
         """test listmach on an empty database"""

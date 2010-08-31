@@ -486,7 +486,7 @@ class TestDataWriter(unittest.TestCase):
         reply = self._purge(
             avatar_id, key, version_number, segment_number, timestamp
         )
-        self.assertEqual(reply.result, PurgeKeyReply.error_no_such_key)
+        self.assertEqual(reply.result, PurgeKeyReply.error_key_not_found)
 
     def test_simple_purge(self):
         """test purgeing a key that exists, with no complicatons"""

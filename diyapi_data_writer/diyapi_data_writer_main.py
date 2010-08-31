@@ -842,8 +842,8 @@ def _handle_key_purge_reply(state, message_body):
             message.error_message,
         ))
 
-        if message.result == DatabaseKeyPurgeReply.error_no_such_key:
-            error_result = PurgeKeyReply.error_no_such_key
+        if message.result == DatabaseKeyPurgeReply.error_key_not_found:
+            error_result = PurgeKeyReply.error_key_not_found
         else:
             error_result = PurgeKeyReply.error_database_error
 

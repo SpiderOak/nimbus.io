@@ -20,7 +20,7 @@ class DatabaseKeyPurgeReply(object):
    
     successful = 0
     error_database_failure = 2
-    error_no_such_key = 3
+    error_key_not_found = 3
 
     def __init__(
         self, request_id, result, total_size=0, error_message=""

@@ -510,7 +510,7 @@ def _handle_key_purge(state, message_body):
         log.error(error_string)
         reply = DatabaseKeyPurgeReply(
             message.request_id,
-            DatabaseKeyPurgeReply.error_no_such_key,
+            DatabaseKeyPurgeReply.error_key_not_found,
             error_message=error_string
         )
         return [(reply_exchange, reply_routing_key, reply, )]
@@ -760,7 +760,7 @@ def _handle_stat_request(state, message_body):
         log.error(error_string)
         reply = StatReply(
             message.request_id,
-            StatReply.error_no_such_key,
+            StatReply.error_key_not_found,
             error_message=error_string
         )
         return [(reply_exchange, reply_routing_key, reply, )]

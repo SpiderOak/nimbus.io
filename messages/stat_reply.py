@@ -41,7 +41,7 @@ class StatReply(object):
 
     successful = 0
     error_database_failure = 1
-    error_no_such_key = 2
+    error_key_not_found = 2
 
     def __init__(
         self,

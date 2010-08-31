@@ -9,4 +9,4 @@ export RABBITMQ_NODENAME="${SPIDEROAK_MULTI_NODE_NAME}"
 export RABBITMQ_NODE_IP_ADDRESS="127.0.0.1"
 export RABBITMQ_NODE_PORT="6001"
 
-sudo rabbitmqctl list_queues -p spideroak_vhost
+$TOOL/sbin/rabbitmqctl list_queues -p spideroak_vhost

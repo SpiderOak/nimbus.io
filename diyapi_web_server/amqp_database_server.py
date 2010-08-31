@@ -74,9 +74,10 @@ class AMQPDatabaseServer(AMQPProcess):
         message = Stat(
             request_id,
             avatar_id,
+            path,
+            0,
             self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            path
+            self.amqp_handler.queue_name
         )
         self.log.debug(
             '%s: '
@@ -90,7 +91,7 @@ class AMQPDatabaseServer(AMQPProcess):
         return dict(
             timestamp=reply.timestamp,
             total_size=reply.total_size,
-            file_adler=reply.file_adler,
+            file_adler32=reply.file_adler32,
             file_md5=reply.file_md5,
             userid=reply.userid,
             groupid=reply.groupid,

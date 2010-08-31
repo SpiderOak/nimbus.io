@@ -98,7 +98,7 @@ class TestAMQPDatabaseServer(unittest.TestCase):
         stat = dict(
             timestamp=util.fake_time(),
             total_size=1235,
-            file_adler=-42,
+            file_adler32=-42,
             file_md5="ffff",
             userid=501,
             groupid=100,
@@ -107,9 +107,10 @@ class TestAMQPDatabaseServer(unittest.TestCase):
         message = Stat(
             request_id,
             avatar_id,
+            path,
+            0,
             self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            path
+            self.amqp_handler.queue_name
         )
         reply = StatReply(
             request_id,

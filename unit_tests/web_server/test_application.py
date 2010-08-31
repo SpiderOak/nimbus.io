@@ -792,7 +792,7 @@ class TestApplication(unittest.TestCase):
             request_id = uuid.UUID(int=i).hex
             reply = StatReply(
                 request_id,
-                StatReply.error_key_not_found,
+                StatReply.error_no_such_key,
                 error_message='key not found',
             )
             self.amqp_handler.replies_to_send_by_exchange[(

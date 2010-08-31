@@ -47,7 +47,7 @@ class TestStatGetter(unittest.TestCase):
         stat = dict(
             timestamp=util.fake_time(),
             total_size=1235,
-            file_adler=-42,
+            file_adler32=-42,
             file_md5="ffff",
             userid=501,
             groupid=100,
@@ -59,9 +59,10 @@ class TestStatGetter(unittest.TestCase):
             message = Stat(
                 request_id,
                 avatar_id,
+                path,
+                0,
                 self.amqp_handler.exchange,
-                self.amqp_handler.queue_name,
-                path
+                self.amqp_handler.queue_name
             )
             reply = StatReply(
                 request_id,
@@ -94,7 +95,7 @@ class TestStatGetter(unittest.TestCase):
         stat1 = dict(
             timestamp=util.fake_time(),
             total_size=1235,
-            file_adler=-42,
+            file_adler32=-42,
             file_md5="ffff",
             userid=501,
             groupid=100,
@@ -103,7 +104,7 @@ class TestStatGetter(unittest.TestCase):
         stat2 = dict(
             timestamp=util.fake_time() + 5,
             total_size=1235,
-            file_adler=-42,
+            file_adler32=-42,
             file_md5="ffff",
             userid=501,
             groupid=100,
@@ -115,9 +116,10 @@ class TestStatGetter(unittest.TestCase):
             message = Stat(
                 request_id,
                 avatar_id,
+                path,
+                0,
                 self.amqp_handler.exchange,
-                self.amqp_handler.queue_name,
-                path
+                self.amqp_handler.queue_name
             )
             reply = StatReply(
                 request_id,

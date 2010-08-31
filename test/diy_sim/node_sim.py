@@ -228,5 +228,6 @@ class NodeSim(object):
             "RABBITMQ_NODENAME"           : self._node_name, 
             "RABBITMQ_NODE_IP_ADDRESS"    : _rabbitmq_ip_address,
             "RABBITMQ_NODE_PORT"          : str(self._rabbitmq_port),
+            "SPIDEROAK_AMQP_PORT"         : str(self._rabbitmq_port),
         }
 

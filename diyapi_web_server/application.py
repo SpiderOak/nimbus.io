@@ -11,6 +11,7 @@ import zlib
 import hashlib
 import json
 from itertools import chain
+from binascii import hexlify
 
 from webob.dec import wsgify
 from webob import exc
@@ -134,7 +135,9 @@ class Application(object):
             stat = getter.stat(avatar_id, path, EXCHANGE_TIMEOUT)
         except (DataReaderDownError, StatFailedError):
             raise exc.HTTPNotFound()
-        return Response('OK')
+        if 'file_md5' in stat:
+            stat['file_md5'] = hexlify(stat['file_md5'])
+        return Response(json.dumps(stat))
 
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):

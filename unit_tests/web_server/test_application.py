@@ -11,6 +11,7 @@ import time
 import zlib
 import hashlib
 import json
+from binascii import hexlify
 
 from webtest import TestApp, TestRequest, StringIO
 
@@ -806,17 +807,28 @@ class TestApplication(unittest.TestCase):
 
     def test_stat(self):
         key = self._key_generator.next()
+        stat = dict(
+            timestamp=util.fake_time(),
+            total_size=1235,
+            file_adler32=-42,
+            file_md5="\xff\xff",
+            userid=501,
+            groupid=100,
+            permissions=0o644,
+        )
         for i, server in enumerate(self.database_servers):
             request_id = uuid.UUID(int=i).hex
             reply = StatReply(
                 request_id,
                 StatReply.successful,
+                **stat
             )
             self.amqp_handler.replies_to_send_by_exchange[(
                 request_id, server.exchange
             )].put(reply)
+        stat['file_md5'] = hexlify(stat['file_md5'])
         resp = self.app.get('/data/' + key, dict(action='stat'))
-        self.assertEqual(resp.body, 'OK')
+        self.assertEqual(json.loads(resp.body), stat)
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ class ProcessStatus(object):
 
     @classmethod
     def unmarshall(cls, data):
-        """return a ArchiveKeyEntire message"""
+        """return a ProcessStatus message"""
         pos = 0
         (timestamp, ) = struct.unpack(
             _header_format, data[pos:pos+_header_size]

@@ -51,6 +51,7 @@ class TestAMQPDataWriter(unittest.TestCase):
         key = 'key'
         version_number = 0
         segment_number = 1
+        total_size = 42
         file_adler32 = 1
         file_md5 = 'ffff'
         segment_adler32 = 1
@@ -66,6 +67,7 @@ class TestAMQPDataWriter(unittest.TestCase):
             key,
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,

@@ -68,6 +68,7 @@ class TestDataReader(unittest.TestCase):
         data_reader_state = dict()
         database_state = {_database_cache : dict()}
 
+        total_size = content_size - 42
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -82,6 +83,7 @@ class TestDataReader(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,

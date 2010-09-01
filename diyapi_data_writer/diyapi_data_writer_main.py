@@ -282,7 +282,7 @@ def _handle_archive_key_entire(state, message_body):
         segment_size=len(message.content),  
         version_number=message.version_number,
         segment_count=1,
-        total_size=len(message.content),  
+        total_size=message.total_size,  
         file_adler32=message.file_adler32, 
         file_md5=message.file_md5 ,
         segment_adler32=message.segment_adler32, 

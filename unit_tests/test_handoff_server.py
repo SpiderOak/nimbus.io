@@ -122,6 +122,7 @@ class TestHandoffServer(unittest.TestCase):
         content_size = 64 * 1024
         content_item = random_string(content_size) 
 
+        total_size = content_size - 42
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -139,6 +140,7 @@ class TestHandoffServer(unittest.TestCase):
             self._key, 
             self._version_number,
             self._segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,

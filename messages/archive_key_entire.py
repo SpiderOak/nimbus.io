@@ -15,6 +15,7 @@ _header_tuple = namedtuple("Header", [
     "timestamp",
     "version_number",
     "segment_number",
+    "total_size",
     "file_adler32",
     "file_md5",
     "segment_adler32",
@@ -26,11 +27,12 @@ _header_tuple = namedtuple("Header", [
 # d   - timestamp
 # I   - version_number
 # B   - segment_number
+# Q   - total_size
 # l   - adler32
 # 16s - md5
 # l   - adler32
 # 16s - md5
-_header_format = "32sQdIBl16sl16s"
+_header_format = "32sQdIBQl16sl16s"
 _header_size = struct.calcsize(_header_format)
 
 class ArchiveKeyEntire(object):
@@ -50,6 +52,7 @@ class ArchiveKeyEntire(object):
         key, 
         version_number,
         segment_number, 
+        total_size,
         file_adler32, 
         file_md5, 
         segment_adler32, 
@@ -64,6 +67,7 @@ class ArchiveKeyEntire(object):
         self.key = key
         self.version_number = version_number
         self.segment_number = segment_number
+        self.total_sze = total_size
         self.file_adler32 = file_adler32
         self.file_md5 = file_md5
         self.segment_adler32 = segment_adler32
@@ -91,6 +95,7 @@ class ArchiveKeyEntire(object):
             key, 
             header.version_number, 
             header.segment_number, 
+            header.total_size,
             header.file_adler32, 
             header.file_md5, 
             header.segment_adler32, 
@@ -107,6 +112,7 @@ class ArchiveKeyEntire(object):
             self.timestamp,
             self.version_number,
             self.segment_number,
+            self.total_size,
             self.file_adler32,
             self.file_md5,
             self.segment_adler32,

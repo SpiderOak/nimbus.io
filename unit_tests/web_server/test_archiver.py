@@ -76,6 +76,7 @@ class TestArchiver(unittest.TestCase):
                 key,
                 0, # version number
                 segment_number,
+                file_size,
                 file_adler32,
                 file_md5,
                 segment_adler32,

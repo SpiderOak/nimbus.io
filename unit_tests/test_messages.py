@@ -574,6 +574,7 @@ class TestMessages(unittest.TestCase):
         key  = "abcdefghijk"
         version_number = 0
         segment_number = 3
+        total_size = 666
         file_adler32 = adler32(content)
         file_md5 = md5(content).digest()
         segment_adler32 = 42
@@ -587,6 +588,7 @@ class TestMessages(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,
@@ -610,6 +612,9 @@ class TestMessages(unittest.TestCase):
         )
         self.assertEqual(
             unmarshalled_message.segment_number, segment_number
+        )
+        self.assertEqual(
+            unmarshalled_message.total_size, total_size
         )
         self.assertEqual(
             unmarshalled_message.file_adler32, file_adler32

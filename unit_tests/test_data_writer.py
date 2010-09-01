@@ -78,6 +78,7 @@ class TestDataWriter(unittest.TestCase):
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
 
+        total_size = content_size - 42
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -92,6 +93,7 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,
@@ -315,6 +317,7 @@ class TestDataWriter(unittest.TestCase):
         archive_timestamp = time.time()
         test_exchange = "test-exchange"
 
+        total_size = content_size - 42
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -332,6 +335,7 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,
@@ -368,6 +372,7 @@ class TestDataWriter(unittest.TestCase):
         segment_number = 4
         test_exchange = "test-exchange"
 
+        total_size = content_size - 43
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -386,6 +391,7 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,
@@ -432,6 +438,7 @@ class TestDataWriter(unittest.TestCase):
         segment_number = 4
         test_exchange = "test-exchange"
 
+        total_size = 10 * content_size
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -450,6 +457,7 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,
@@ -500,6 +508,7 @@ class TestDataWriter(unittest.TestCase):
         archive_timestamp = time.time()
         test_exchange = "test-exchange"
 
+        total_size = content_size * 10
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -517,6 +526,7 @@ class TestDataWriter(unittest.TestCase):
             key, 
             version_number,
             segment_number,
+            total_size,
             file_adler32,
             file_md5,
             segment_adler32,

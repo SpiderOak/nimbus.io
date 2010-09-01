@@ -237,6 +237,31 @@ class TestWebServer(unittest.TestCase):
             )
         self.assertEqual(result, content)
 
+    def test_upload_large_and_stat(self):
+        log = logging.getLogger('test_upload_large_and_stat')
+        log.info('start')
+        content = random_string(1024 * 1024 * 3)
+        key = self._key_generator.next()
+        stat = {
+            'timestamp': time.time(),
+            'total_size': len(content),
+            'userid': 0,
+            'groupid': 0,
+            'permissions': 0,
+            'file_md5': hashlib.md5(content).hexdigest(),
+            'file_adler32': zlib.adler32(content),
+        }
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key + '?action=stat')
+        result = json.loads(result)
+        expected_timestamp = stat.pop('timestamp')
+        actual_timestamp = result.pop('timestamp')
+        self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
+        self.assertEqual(result, stat)
+
     def test_upload_small_then_delete_and_listmatch(self):
         log = logging.getLogger('test_upload_small_then_delete_and_listmatch')
         log.info('start')

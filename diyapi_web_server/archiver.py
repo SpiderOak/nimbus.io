@@ -170,6 +170,7 @@ class Archiver(object):
                         self.key,
                         self.version_number,
                         segment_number,
+                        file_size,
                         file_adler32,
                         file_md5,
                         self._adler32s[segment_number],

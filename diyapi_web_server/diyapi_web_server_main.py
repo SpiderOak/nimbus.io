@@ -24,7 +24,8 @@ from diyapi_web_server.amqp_handler import AMQPHandler
 from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 from diyapi_web_server.amqp_data_reader import AMQPDataReader
 from diyapi_web_server.amqp_database_server import AMQPDatabaseServer
-from diyapi_web_server.amqp_space_accounter import AMQPSpaceAccounter
+from diyapi_web_server.amqp_space_accounting_server import (
+    AMQPSpaceAccountingServer)
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
 
 
@@ -48,7 +49,7 @@ class WebServer(object):
             host=DB_HOST
         )
         authenticator = SqlAuthenticator(db_connection)
-        accounter = AMQPSpaceAccounter(
+        accounting_server = AMQPSpaceAccountingServer(
             self.amqp_handler, space_accounting_exchange_name)
         data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
                         for exchange in EXCHANGES]
@@ -62,7 +63,7 @@ class WebServer(object):
             data_readers,
             database_servers,
             authenticator,
-            accounter
+            accounting_server
         )
         self.wsgi_server = WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()

@@ -4,8 +4,6 @@ amqp_database_server.py
 
 A class that represents a database server in the system.
 """
-import logging
-
 from diyapi_web_server.amqp_process import AMQPProcess
 
 from diyapi_web_server.exceptions import (
@@ -15,7 +13,6 @@ from diyapi_web_server.exceptions import (
 )
 
 from messages.database_listmatch import DatabaseListMatch
-from messages.space_usage import SpaceUsage
 from messages.stat import Stat
 
 
@@ -45,25 +42,6 @@ class AMQPDatabaseServer(AMQPProcess):
             ))
         reply = self._send(message, ListmatchFailedError)
         return reply.key_list
-
-    def get_space_usage(
-        self,
-        request_id,
-        avatar_id
-    ):
-        message = SpaceUsage(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name
-        )
-        self.log.debug(
-            '%s: '
-            'request_id = %s' % (
-                message.__class__.__name__,
-                message.request_id,
-            ))
-        reply = self._send(message, ListmatchFailedError)
 
     def stat(
         self,

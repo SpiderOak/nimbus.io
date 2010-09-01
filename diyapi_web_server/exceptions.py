@@ -31,6 +31,9 @@ class DataReaderDownError(Exception):
 class DatabaseServerDownError(Exception):
     pass
 
+class SpaceAccountingServerDownError(Exception):
+    pass
+
 class StartHandoff(Exception):
     def __init__(self, to):
         super(StartHandoff, self).__init__()

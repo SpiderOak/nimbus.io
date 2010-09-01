@@ -51,14 +51,14 @@ class router(list):
 
 class Application(object):
     def __init__(self, amqp_handler, data_writers, data_readers,
-                 database_servers, authenticator, accounter):
+                 database_servers, authenticator, accounting_server):
         self._log = logging.getLogger("Application")
         self.amqp_handler = amqp_handler
         self.data_writers = data_writers
         self.data_readers = data_readers
         self.database_servers = database_servers
         self.authenticator = authenticator
-        self.accounter = accounter
+        self.accounting_server = accounting_server
 
     routes = router()
 
@@ -109,13 +109,10 @@ class Application(object):
             req.remote_user,
         ))
         avatar_id = req.remote_user
-        getter = SpaceUsageGetter(
-            self.database_servers,
-            8 # TODO: min_segments
-        )
+        getter = SpaceUsageGetter(self.accounting_server)
         try:
             usage = getter.get_space_usage(avatar_id, EXCHANGE_TIMEOUT)
-        except (DataReaderDownError, SpaceUsageFailedError):
+        except (SpaceAccountingServerDownError, SpaceUsageFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         return Response('OK')
@@ -174,7 +171,7 @@ class Application(object):
         except (DataWriterDownError, DestroyFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
-        self.accounter.removed(
+        self.accounting_server.removed(
             avatar_id,
             timestamp,
             size_deleted
@@ -213,7 +210,7 @@ class Application(object):
                 self._log.warning('retrieve failed: avatar_id = %s' % (
                     avatar_id,
                 ))
-            self.accounter.retrieved(
+            self.accounting_server.retrieved(
                 avatar_id,
                 timestamp,
                 sent
@@ -270,12 +267,12 @@ class Application(object):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         if previous_size is not None:
-            self.accounter.removed(
+            self.accounting_server.removed(
                 avatar_id,
                 timestamp,
                 previous_size
             )
-        self.accounter.added(
+        self.accounting_server.added(
             avatar_id,
             timestamp,
             file_size

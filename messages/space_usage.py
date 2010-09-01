@@ -16,7 +16,7 @@ _header_size = struct.calcsize(_header_format)
 class SpaceUsage(object):
     """AMQP message to request space usage information"""
 
-    routing_key = "database_server.space_usage"
+    routing_key = "space-accounting.space_usage"
 
     def __init__(
         self,

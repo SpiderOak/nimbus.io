@@ -4,6 +4,9 @@ from collections import defaultdict
 
 from gevent.queue import Queue
 
+from diyapi_web_server.amqp_space_accounting_server import (
+    AMQPSpaceAccountingServer)
+
 
 class FakeMessage(object):
     def __init__(self, routing_key, body, request_id=None):
@@ -134,8 +137,9 @@ def fake_choice(population):
     return list(population)[0]
 
 
-class FakeAccounter(object):
-    def __init__(self):
+class FakeAccountingServer(AMQPSpaceAccountingServer):
+    def __init__(self, amqp_handler, exchange):
+        super(FakeAccountingServer, self).__init__(amqp_handler, exchange)
         self._added = defaultdict(int)
         self._retrieved = defaultdict(int)
         self._removed = defaultdict(int)

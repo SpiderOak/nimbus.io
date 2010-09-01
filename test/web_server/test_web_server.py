@@ -296,6 +296,12 @@ class TestWebServer(unittest.TestCase):
         else:
             raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
 
+    def test_usage(self):
+        log = logging.getLogger('test_usage')
+        log.info('start')
+        result = self._make_request(_base_url + '/usage')
+        self.assertEqual(result, 'OK')
+
 
 def _load_unit_tests(path):
     dotted_path = '.'.join(path.split('/'))

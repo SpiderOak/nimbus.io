@@ -53,14 +53,17 @@ class TestApplication(unittest.TestCase):
             AMQPDatabaseServer(self.amqp_handler, exchange)
             for exchange in EXCHANGES
         ]
-        self.accounter = util.FakeAccounter()
+        self.accounting_server = util.FakeAccountingServer(
+            self.amqp_handler,
+            EXCHANGES[0]
+        )
         self.app = TestApp(Application(
             self.amqp_handler,
             self.data_writers,
             self.data_readers,
             self.database_servers,
             self.authenticator,
-            self.accounter
+            self.accounting_server
         ))
         self._key_generator = generate_key()
         self._real_uuid1 = uuid.uuid1
@@ -102,15 +105,15 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(len(self.amqp_handler.messages),
                          len(self.data_writers))
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -133,15 +136,15 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(len(self.amqp_handler.messages),
                          len(self.data_writers))
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             len(content)
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -165,15 +168,15 @@ class TestApplication(unittest.TestCase):
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             len(content)
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             old_size_total
         )
 
@@ -210,15 +213,15 @@ class TestApplication(unittest.TestCase):
         resp = self.app.post('/data/' + key, content)
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             len(content)
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -249,15 +252,15 @@ class TestApplication(unittest.TestCase):
         key = self._key_generator.next()
         resp = self.app.post('/data/' + key, content, status=504)
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -300,15 +303,15 @@ class TestApplication(unittest.TestCase):
             )
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             content_length
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -367,15 +370,15 @@ class TestApplication(unittest.TestCase):
             )
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             content_length
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -427,15 +430,15 @@ class TestApplication(unittest.TestCase):
                 status=504
             )
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -464,15 +467,15 @@ class TestApplication(unittest.TestCase):
         resp = self.app.do_request(req, status=None, expect_errors=None)
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             len(content)
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -510,15 +513,15 @@ class TestApplication(unittest.TestCase):
         resp = self.app.get('/data/%s' % (key,),
                             status=404)
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -564,15 +567,15 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             file_size
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -622,15 +625,15 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             file_size
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -699,15 +702,15 @@ class TestApplication(unittest.TestCase):
         self.assertEqual(len(resp.body), file_size)
         self.assertEqual(resp.body, data_content)
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             file_size
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
@@ -729,15 +732,15 @@ class TestApplication(unittest.TestCase):
         resp = self.app.delete('/data/%s' % (key,))
         self.assertEqual(resp.body, 'OK')
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             base_size
         )
 
@@ -762,28 +765,27 @@ class TestApplication(unittest.TestCase):
 
         resp = self.app.delete('/data/%s' % (key,), status=504)
         self.assertEqual(
-            self.accounter._added[avatar_id, timestamp],
+            self.accounting_server._added[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._retrieved[avatar_id, timestamp],
+            self.accounting_server._retrieved[avatar_id, timestamp],
             0
         )
         self.assertEqual(
-            self.accounter._removed[avatar_id, timestamp],
+            self.accounting_server._removed[avatar_id, timestamp],
             0
         )
 
     def test_usage(self):
-        for i, server in enumerate(self.database_servers):
-            request_id = uuid.UUID(int=i).hex
-            reply = SpaceUsageReply(
-                request_id,
-                SpaceUsageReply.successful
-            )
-            self.amqp_handler.replies_to_send_by_exchange[(
-                request_id, server.exchange
-            )].put(reply)
+        request_id = uuid.UUID(int=0).hex
+        reply = SpaceUsageReply(
+            request_id,
+            SpaceUsageReply.successful
+        )
+        self.amqp_handler.replies_to_send_by_exchange[(
+            request_id, self.accounting_server.exchange
+        )].put(reply)
         resp = self.app.get('/usage')
         self.assertEqual(resp.body, 'OK')
 

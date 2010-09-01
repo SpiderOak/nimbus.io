@@ -67,7 +67,7 @@ class ArchiveKeyEntire(object):
         self.key = key
         self.version_number = version_number
         self.segment_number = segment_number
-        self.total_sze = total_size
+        self.total_size = total_size
         self.file_adler32 = file_adler32
         self.file_md5 = file_md5
         self.segment_adler32 = segment_adler32

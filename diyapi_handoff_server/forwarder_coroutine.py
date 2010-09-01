@@ -65,6 +65,7 @@ def forwarder_coroutine(request_id, hint, reply_routing_header):
             hint.key, 
             hint.version_number,
             hint.segment_number, 
+            retrieve_key_start_reply.total_size,
             retrieve_key_start_reply.file_adler32, 
             retrieve_key_start_reply.file_md5, 
             retrieve_key_start_reply.segment_adler32, 

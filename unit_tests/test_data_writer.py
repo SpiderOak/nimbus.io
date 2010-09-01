@@ -78,7 +78,7 @@ class TestDataWriter(unittest.TestCase):
         data_writer_state = dict()
         database_state = {_database_cache : dict()}
 
-        total_size = content_size - 42
+        total_size = 10 * 64 * 1024
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
@@ -359,7 +359,7 @@ class TestDataWriter(unittest.TestCase):
             avatar_id, key, version_number, segment_number, destroy_timestamp
         )
         self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.total_size, content_size)
+        self.assertEqual(reply.total_size, total_size)
 
     def test_destroy_tombstone(self):
         """test destroying a key that has already been destroyed"""
@@ -414,7 +414,7 @@ class TestDataWriter(unittest.TestCase):
             avatar_id, key, version_number, segment_number, destroy_timestamp1
         )
         self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.total_size, content_size)
+        self.assertEqual(reply.total_size, total_size)
 
         # now send the same thing again
         destroy_timestamp2 = destroy_timestamp1 + 1.0

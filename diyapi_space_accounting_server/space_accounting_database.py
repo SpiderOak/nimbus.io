@@ -21,7 +21,9 @@ VALUES(%s, '%s'::timestamp, %s, %s, %s);
 """.strip()
 
 _avatar_query = """
-SELECT SUM(bytes_added), SUM(bytes_removed), SUM(bytes_retrieved)
+SELECT COALESCE(SUM(bytes_added), 0), 
+COALESCE(SUM(bytes_removed), 0), 
+COALESCE(SUM(bytes_retrieved), 0)
 FROM diyapi_space_accounting 
 WHERE avatar_id = %s
 """.strip()

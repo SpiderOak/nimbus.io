@@ -779,15 +779,21 @@ class TestApplication(unittest.TestCase):
 
     def test_usage(self):
         request_id = uuid.UUID(int=0).hex
+        usage = {
+            'bytes_added': 234,
+            'bytes_removed': 6324,
+            'bytes_retrieved': 98108,
+        }
         reply = SpaceUsageReply(
             request_id,
-            SpaceUsageReply.successful
+            SpaceUsageReply.successful,
+            **usage
         )
         self.amqp_handler.replies_to_send_by_exchange[(
             request_id, self.accounting_server.exchange
         )].put(reply)
         resp = self.app.get('/usage')
-        self.assertEqual(resp.body, 'OK')
+        self.assertEqual(json.loads(resp.body), usage)
 
     def test_stat_nonexistent(self):
         key = self._key_generator.next()

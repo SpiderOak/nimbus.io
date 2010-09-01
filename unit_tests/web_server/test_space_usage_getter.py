@@ -43,6 +43,11 @@ class TestSpaceUsageGetter(unittest.TestCase):
         self.log.debug('test_get_space_usage')
         avatar_id = 1001
         request_id = uuid.UUID(int=0).hex
+        usage = {
+            'bytes_added': 234,
+            'bytes_removed': 6324,
+            'bytes_retrieved': 98108,
+        }
         message = SpaceUsage(
             request_id,
             avatar_id,
@@ -51,13 +56,14 @@ class TestSpaceUsageGetter(unittest.TestCase):
         )
         reply = SpaceUsageReply(
             request_id,
-            SpaceUsageReply.successful
+            SpaceUsageReply.successful,
+            **usage
         )
         self.amqp_handler.replies_to_send[request_id].put(reply)
 
         result = self.getter.get_space_usage(avatar_id, 0.1)
 
-        self.assertEqual(result, None)
+        self.assertEqual(result, usage)
 
         actual = (self.amqp_handler.messages[0][0].marshall(),
                   self.amqp_handler.messages[0][1])

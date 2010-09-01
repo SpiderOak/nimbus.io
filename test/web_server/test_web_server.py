@@ -300,7 +300,14 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_usage')
         log.info('start')
         result = self._make_request(_base_url + '/usage')
-        self.assertEqual(result, 'OK')
+        usage = json.loads(result)
+        self.assertEqual(
+            set(usage.keys()),
+            set(['bytes_added', 'bytes_removed', 'bytes_retrieved'])
+        )
+        for key in usage:
+            self.assertTrue(isinstance(usage[key], int),
+                            '%r is not an integer')
 
 
 def _load_unit_tests(path):

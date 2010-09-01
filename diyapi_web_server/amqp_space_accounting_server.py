@@ -69,3 +69,8 @@ class AMQPSpaceAccountingServer(AMQPProcess):
                 message.request_id,
             ))
         reply = self._send(message, SpaceUsageFailedError)
+        return {
+            'bytes_added': reply.bytes_added,
+            'bytes_removed': reply.bytes_removed,
+            'bytes_retrieved': reply.bytes_retrieved,
+        }

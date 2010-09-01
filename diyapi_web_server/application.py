@@ -115,7 +115,7 @@ class Application(object):
         except (SpaceAccountingServerDownError, SpaceUsageFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
-        return Response('OK')
+        return Response(json.dumps(usage))
 
     @routes.add(r'/data/(.+)$', action='stat')
     def stat(self, req, path):

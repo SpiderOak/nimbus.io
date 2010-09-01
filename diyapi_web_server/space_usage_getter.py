@@ -28,7 +28,7 @@ class SpaceUsageGetter(object):
             avatar_id
         )
         try:
-            reply = task.get(timeout=timeout)
+            usage = task.get(timeout=timeout)
         except gevent.Timeout:
             raise SpaceUsageFailedError()
-        return reply
+        return usage

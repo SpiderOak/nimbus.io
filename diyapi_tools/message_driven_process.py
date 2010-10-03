@@ -217,7 +217,8 @@ def main(
             pre_loop_function,
             in_loop_function,
             post_loop_function,
-            exchange_name
+            exchange_name,
+            halt_event
         )
     except Exception, instance:
         log.exception(instance)

@@ -118,11 +118,10 @@ def _run_until_halt(
     pre_loop_function,
     in_loop_function,
     post_loop_function,
-    exchange_name
+    exchange_name,
+    halt_event
 ):
     log = logging.getLogger("_run_until_halt")
-
-    halt_event = Event()
 
     connection = amqp_connection.open_connection()
     channel = connection.channel()
@@ -200,6 +199,7 @@ def main(
     in_loop_function=None,
     post_loop_function=None,
     exchange_name=amqp_connection.local_exchange_name,
+    halt_event = Event(),
 ):
     """main processing entry point"""
     initialize_logging(log_path)

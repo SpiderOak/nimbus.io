@@ -33,7 +33,7 @@ def _create_bindings(
     queue_durable, 
     queue_auto_delete,
     exchange_name,
-    routing_key_binding
+    routing_key_bindings
 ):
     channel.queue_declare(
         queue=queue_name,
@@ -43,11 +43,12 @@ def _create_bindings(
         auto_delete=queue_auto_delete
     )
 
-    channel.queue_bind(
-        queue=queue_name,
-        exchange=exchange_name,
-        routing_key=routing_key_binding 
-    )
+    for routing_key_binding in routing_key_bindings:
+        channel.queue_bind(
+            queue=queue_name,
+            exchange=exchange_name,
+            routing_key=routing_key_binding 
+        )
 
     channel.queue_bind(
         queue=queue_name,
@@ -126,6 +127,8 @@ def _run_until_halt(
     connection = amqp_connection.open_connection()
     channel = connection.channel()
     amqp_connection.create_exchange(channel)
+    if type(routing_key_bindings) in [str, unicode, ]:
+        routing_key_bindings = [routing_key_bindings, ]
     _create_bindings(
         channel, 
         queue_name, 

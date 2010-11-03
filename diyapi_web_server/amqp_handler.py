@@ -175,7 +175,7 @@ class AMQPHandler(object):
             True,   # queue_durable
             False,  # queue_auto_delete
             amqp_connection.local_exchange_name,
-            self.routing_key_binding
+            [self.routing_key_binding,]
         )
 
         # Let AMQP know to send us messages

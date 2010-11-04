@@ -179,7 +179,12 @@ def _find_avatars(state):
 def _handle_key_insert(state, message_body):
     log = logging.getLogger("_handle_key_insert")
     message = DatabaseKeyInsert.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
+        message.avatar_id, 
+        message.key, 
+        message.database_content.version_number,
+        message.database_content.segment_number,
+    ))
 
     reply_exchange = message.reply_exchange
     reply_routing_key = "".join(
@@ -263,7 +268,12 @@ def _handle_key_insert(state, message_body):
 def _handle_key_lookup(state, message_body):
     log = logging.getLogger("_handle_key_lookup")
     message = DatabaseKeyLookup.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
+        message.avatar_id, 
+        message.key, 
+        message.version_number,
+        message.segment_number,
+    ))
 
     reply_exchange = message.reply_exchange
     reply_routing_key = "".join(
@@ -359,7 +369,12 @@ def _handle_key_list(state, message_body):
 def _handle_key_destroy(state, message_body):
     log = logging.getLogger("_handle_key_destroy")
     message = DatabaseKeyDestroy.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
+        message.avatar_id, 
+        message.key, 
+        message.version_number,
+        message.segment_number,
+    ))
 
     reply_exchange = message.reply_exchange
     reply_routing_key = "".join(
@@ -476,7 +491,12 @@ def _handle_key_destroy(state, message_body):
 def _handle_key_purge(state, message_body):
     log = logging.getLogger("_handle_key_purge")
     message = DatabaseKeyPurge.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
+        message.avatar_id, 
+        message.key, 
+        message.version_number,
+        message.segment_number,
+    ))
 
     reply_exchange = message.reply_exchange
     reply_routing_key = "".join(

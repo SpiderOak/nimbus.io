@@ -113,6 +113,7 @@ def _is_request_state((_, value, )):
 def _create_state():
     return {
         "retry-list" : list(),
+        "avatar-ids" : set(),
     }
 
 def _next_poll_interval():

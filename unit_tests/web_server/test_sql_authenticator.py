@@ -86,6 +86,24 @@ class TestSqlAuthenticator(unittest.TestCase):
         self.assertEqual(self.req.remote_user, _test_avatar_id)
         self.assertEqual(self.req.key_id, _test_key_id)
 
+    def test_succeeds_uppercase(self):
+        timestamp = int(util.fake_time())
+        self.req.headers['x-diyapi-timestamp'] = str(timestamp)
+        string_to_sign = '\n'.join((
+            _test_username,
+            self.req.method,
+            self.req.headers['x-diyapi-timestamp'],
+        ))
+        signature = hmac.new(
+            _test_key,
+            string_to_sign,
+            hashlib.sha256
+        ).hexdigest().upper()
+        self.req.authorization = 'DIYAPI %d:%s' % (_test_key_id, signature)
+        self.assertTrue(self.authenticator.authenticate(self.req))
+        self.assertEqual(self.req.remote_user, _test_avatar_id)
+        self.assertEqual(self.req.key_id, _test_key_id)
+
     def test_fails_for_nonexistent_username(self):
         timestamp = int(util.fake_time())
         self.req.headers['x-diyapi-timestamp'] = str(timestamp)

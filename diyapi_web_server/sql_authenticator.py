@@ -7,6 +7,7 @@ Authenticates requests
 import time
 import hmac
 import hashlib
+from binascii import a2b_hex
 
 
 class SqlAuthenticator(object):
@@ -74,7 +75,11 @@ class SqlAuthenticator(object):
             return False
         if abs(time.time() - timestamp) > 600:
             return False
-        expected = hmac.new(key, string_to_sign, hashlib.sha256).hexdigest()
+        try:
+            signature = a2b_hex(signature)
+        except (TypeError, ValueError):
+            return False
+        expected = hmac.new(key, string_to_sign, hashlib.sha256).digest()
         if signature != expected:
             return False
         req.remote_user = int(avatar_id)

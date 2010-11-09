@@ -49,8 +49,12 @@ class DestroyKey(object):
         self.reply_routing_header = reply_routing_header
         self.timestamp = timestamp
         self.key = key
-        self.version_number = version_number
         self.segment_number = segment_number
+        self.version_number = version_number
+
+        # 2010-11-09 dougfort -- note that this is called with the arguments
+        # segment_number, version_number in the opposite order that
+        # DatabaseKeyDestroy has them (version_number, segment_number)
 
     @classmethod
     def unmarshall(cls, data):
@@ -70,8 +74,8 @@ class DestroyKey(object):
             reply_routing_header,
             header.timestamp ,
             key, 
-            header.version_number,
             header.segment_number,
+            header.version_number,
         )
 
     def marshall(self):
@@ -81,8 +85,8 @@ class DestroyKey(object):
             self.request_id,
             self.avatar_id,
             self.timestamp,
-            self.version_number,
             self.segment_number,
+            self.version_number,
         )
 
         packed_reply_exchange =  marshall_string(self.reply_exchange)

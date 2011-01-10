@@ -42,7 +42,12 @@ class LowTrafficThread(Thread):
         while not self._halt_event.is_set():
             self._halt_event.wait(_timeout_interval)
             if time.time() > self._timeout:
-                self._send_timeout_message()
+                # 2011-01-10 dougfort -- if we get any kind of error sending, 
+                # assume it's RabbitMQ trouble and wait for the next pass
+                try:
+                    self._send_timeout_message()
+                except Exception:
+                    self._log.exception("attempting _send_timeout_message")
             self.reset()
 
     def reset(self):

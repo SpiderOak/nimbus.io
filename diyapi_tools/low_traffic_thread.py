@@ -7,6 +7,7 @@ This breaks the pyaqmp socket it of its blocking read, so we can run
 timeout checks, etc.
 """
 import logging
+import os
 from threading import Thread
 import time
 
@@ -15,7 +16,9 @@ import amqplib.client_0_8 as amqp
 from diyapi_tools import amqp_connection
 
 low_traffic_routing_tag = "low_traffic"
-_timeout_interval = 60.0 
+_timeout_interval = float(
+    os.environ.get("SPIDEROAK_LOW_TRAFFIC_INTERVAL", "60.0")
+)
 
 class LowTrafficThread(Thread):
     """A thread which sends a 'low_traffic' message if it doesn't get reset."""

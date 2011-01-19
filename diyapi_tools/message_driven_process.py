@@ -17,13 +17,10 @@ import amqplib.client_0_8 as amqp
 from diyapi_tools import amqp_connection
 from diyapi_tools.standard_logging import initialize_logging
 
-def _create_signal_handler(halt_event, channel, amqp_tag):
-    def cb_handler(signum, frame):
-        # Tell the channel we dont want to consume anymore  
-        try:
-            channel.basic_cancel(amqp_tag)
-        except Exception:
-            pass
+_polling_interval = 1.0
+
+def _create_signal_handler(halt_event):
+    def cb_handler(_signum, _frame):
         halt_event.set()
     return cb_handler
 
@@ -102,13 +99,6 @@ def _process_message_wrapper(state, outgoing_queue, dispatch_table, message):
     except Exception, instance:
         log.exception(instance)
 
-def _callback_closure(state, outgoing_queue, dispatch_table):
-    def __callback(message):
-        _process_message_wrapper(
-            state, outgoing_queue, dispatch_table, message
-        )
-    return __callback
-
 def _run_until_halt(
     queue_name, 
     routing_key_bindings, 
@@ -140,45 +130,28 @@ def _run_until_halt(
 
     outgoing_queue = deque()
 
-    # Let AMQP know to send us messages
-    amqp_tag = channel.basic_consume( 
-        queue=queue_name, 
-        no_ack=True,
-        callback=_callback_closure(state, outgoing_queue, dispatch_table)
-    )
-
-    signal.signal(
-        signal.SIGTERM, 
-        _create_signal_handler(halt_event, channel, amqp_tag)
-    )
+    signal.signal( signal.SIGTERM, _create_signal_handler(halt_event))
 
     if pre_loop_function is not None:
         log.debug("pre_loop_function")
         outgoing_queue.extend(pre_loop_function(halt_event, state))
 
     log.debug("start AMQP loop")
-    # 2010-03-18 dougfort -- channel wait does a blocking read, 
-    # it gets [Errno 4] Interrupted system call on SIGTERM 
     while not halt_event.is_set():
         
-        _process_outgoing_traffic(channel, outgoing_queue)
-
-        try:
-            channel.wait()
-        except (KeyboardInterrupt, SystemExit):
-            log.info("KeyboardInterrupt or SystemExit")
-            halt_event.set()
-        except socket_error, instance:
-            if instance.errno == errno.EINTR:
-                log.warn("Interrupted system call: assuming SIGTERM %s" % (
-                    instance
-                ))
-                halt_event.set()
-            else:
-                raise
-
         if in_loop_function is not None:
             outgoing_queue.extend(in_loop_function(state))
+
+        _process_outgoing_traffic(channel, outgoing_queue)
+
+        message = channel.basic_get(queue=queue_name, no_ack=True)
+
+        if message is None:
+            halt_event.wait(_polling_interval)
+        else:
+            _process_message_wrapper(
+                state, outgoing_queue, dispatch_table, message
+            )
 
     log.debug("end AMQP loop")
 

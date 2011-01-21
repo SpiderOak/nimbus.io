@@ -65,43 +65,47 @@ class Application(object):
     @wsgify
     def __call__(self, req):
         # TODO: test this
-        req.diy_username = util.get_username_from_req(req) or 'test'
-        if not self.authenticator.authenticate(req):
-            raise exc.HTTPUnauthorized()
-        url_matched = False
-        for regex, query_args, methods, func_name in self.routes:
-            url_match = regex.match(req.path)
-            if not url_match:
-                continue
-            args_matched = False
-            for arg, arg_regex in query_args.iteritems():
-                if arg not in req.GET:
-                    break
-                arg_match = arg_regex.match(req.GET[arg])
-                if not arg_match:
-                    break
-            else:
-                args_matched = True
-            if not args_matched:
-                continue
-            url_matched = True
-            if req.method not in methods:
-                continue
-            try:
-                method = getattr(self, func_name)
-            except AttributeError:
-                continue
+        try:
+            req.diy_username = util.get_username_from_req(req) or 'test'
+            if not self.authenticator.authenticate(req):
+                raise exc.HTTPUnauthorized()
+            url_matched = False
+            for regex, query_args, methods, func_name in self.routes:
+                url_match = regex.match(req.path)
+                if not url_match:
+                    continue
+                args_matched = False
+                for arg, arg_regex in query_args.iteritems():
+                    if arg not in req.GET:
+                        break
+                    arg_match = arg_regex.match(req.GET[arg])
+                    if not arg_match:
+                        break
+                else:
+                    args_matched = True
+                if not args_matched:
+                    continue
+                url_matched = True
+                if req.method not in methods:
+                    continue
+                try:
+                    method = getattr(self, func_name)
+                except AttributeError:
+                    continue
 
-            try:
-                result = method(req, *url_match.groups(), **url_match.groupdict())
-                return result
-            except Exception:
-                self._log.exception("%s" % (req.diy_username, ))
-                raise
+                try:
+                    result = method(req, *url_match.groups(), **url_match.groupdict())
+                    return result
+                except Exception:
+                    self._log.exception("%s" % (req.diy_username, ))
+                    raise
 
-        if url_matched:
-            raise exc.HTTPMethodNotAllowed()
-        raise exc.HTTPNotFound()
+            if url_matched:
+                raise exc.HTTPMethodNotAllowed()
+            raise exc.HTTPNotFound()
+        except:
+            self._log.exception('error in __call__')
+            raise
 
     @routes.add(r'/usage$')
     def usage(self, req):

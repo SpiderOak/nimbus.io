@@ -5,10 +5,8 @@ message_driven_process.py
 A framework for process that are driven by AMQP messages
 """
 from collections import deque
-import errno
 import logging
 import signal
-from socket import error as socket_error
 import sys
 from threading import Event
 
@@ -18,6 +16,7 @@ from diyapi_tools import amqp_connection
 from diyapi_tools.standard_logging import initialize_logging
 
 _polling_interval = 1.0
+_rabbitmq_retry_interval = 15.0
 
 def _create_signal_handler(halt_event):
     def cb_handler(_signum, _frame):
@@ -114,7 +113,20 @@ def _run_until_halt(
 ):
     log = logging.getLogger("_run_until_halt")
 
-    connection = amqp_connection.open_connection()
+    # if we can't connect to rbbitmq, try again later
+    connection = None
+    while connection is None:
+        try:
+            connection = amqp_connection.open_connection()
+        except Exception, instance:
+            # log the exception for logsnarfer
+            log.exception("rabbitmq connection failed, retry in %s seconds" % (
+                _rabbitmq_retry_interval,
+            ))
+            halt_event.wait(_rabbitmq_retry_interval)
+    if halt_event.is_set():
+        return
+
     channel = connection.channel()
     amqp_connection.create_exchange(channel)
     if type(routing_key_bindings) in [str, unicode, ]:
@@ -198,12 +210,10 @@ def main(
         )
     except Exception, instance:
         log.exception(instance)
+        halt_event.set()
         print >> sys.stderr, instance.__class__.__name__, str(instance)
         return 12
 
     log.info("normal termination")
     return 0
-
-if __name__ == "__main__":
-    sys.exit(main())
 

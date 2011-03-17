@@ -221,7 +221,7 @@ def _handle_key_insert(state, message, _data):
         try:
             database.delete(str(message["key"]))
         except Exception, instance:
-            log.exception("%s, %s" % (message["avatar_id"], str(message["key"]), ))
+            log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
             reply["result"] = "database-failure"
             reply["error-message"] = str(instance)
             state["xrep-server"].queue_message_for_send(reply)
@@ -295,7 +295,7 @@ def _handle_key_lookup(state, message, _data):
 def _handle_key_list(state, message, _data):
     log = logging.getLogger("_handle_key_list")
     log.info("avatar_id = %s, key = %s" % (
-        message["avatar_id"], str(message["key"]), 
+        message["avatar-id"], str(message["key"]), 
     ))
 
     reply = {
@@ -386,34 +386,34 @@ def _handle_key_destroy(state, message, _data):
         if existing_entry.is_tombstone:
             delete_needed = True
             content = existing_entry
-            if message.timestamp > content.timestamp:
+            if message["timestamp"] > content.timestamp:
                 log.debug("%s %s updating tombstone from %s to %s" % (
                     message["avatar-id"], 
                     str(message["key"]), 
                     format_timestamp(content.timestamp),
-                    format_timestamp(message.timestamp),
+                    format_timestamp(message["timestamp"]),
                 ))
-                content._replace(timestamp=message.timestamp)
+                content._replace(timestamp=message["timestamp"])
             else:
                 log.debug("%s %s keeping existing tombstone %s > %s" % (
                     message["avatar-id"], 
                     str(message["key"]), 
                     format_timestamp(content.timestamp),
-                    format_timestamp(message.timestamp),
+                    format_timestamp(message["timestamp"]),
                 ))
         # if the timestamp on this message is newer than the existing entry
         # then we can overwrite
-        elif message.timestamp > existing_entry.timestamp:
+        elif message["timestamp"] > existing_entry.timestamp:
             delete_needed = True
             log.debug("%s %s creating tombstone %s total_size = %s" % (
                 message["avatar-id"], 
                 str(message["key"]), 
-                format_timestamp(message.timestamp),
+                format_timestamp(message["timestamp"]),
                 existing_entry.total_size
             ))
             total_size = existing_entry.total_size
             content = database_content.create_tombstone(
-                message.timestamp,      
+                message["timestamp"],      
                 message["version-number"],
                 message["segment-number"]
             )
@@ -424,13 +424,13 @@ def _handle_key_destroy(state, message, _data):
                 message["avatar-id"], 
                 str(message["key"]), 
                 format_timestamp(existing_entry.timestamp),
-                format_timestamp(message.timestamp),
+                format_timestamp(message["timestamp"]),
             ))
             error_string = "%s %s database entry %s newer than destory %s" % (
                 message["avatar-id"], 
                 str(message["key"]), 
                 format_timestamp(existing_entry.timestamp),
-                format_timestamp(message.timestamp),
+                format_timestamp(message["timestamp"]),
             )
             reply["result"] = "too-old"
             reply["error-message"] = error_string
@@ -592,7 +592,7 @@ def _handle_consistency_check(state, message, _data):
         while result is not None:
             key, packed_content = result
             (content, _) = database_content.unmarshall(packed_content, 0)
-            if content.timestamp < message.timestamp:
+            if content.timestamp < message["timestamp"]:
                 if content.is_tombstone:
                     content_md5 = "tombstone"
                 else:

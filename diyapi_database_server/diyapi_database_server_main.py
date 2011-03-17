@@ -15,6 +15,7 @@ adler32 of the segment,
 and the md5 of the segment.
 """
 import bsddb3.db
+from collections import deque
 import hashlib
 import logging
 import os
@@ -23,41 +24,26 @@ import subprocess
 import sys
 import time
 
-from diyapi_tools import amqp_connection
+import zmq
+
+from diyapi_tools.zeromq_pollster import ZeroMQPollster
+from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.deque_dispatcher import DequeDispatcher
+from diyapi_tools import time_queue_driven_process
 from diyapi_tools.LRUCache import LRUCache
-from diyapi_tools import message_driven_process as process
 from diyapi_tools import repository
 from diyapi_tools.standard_logging import format_timestamp 
 
 from diyapi_database_server import database_content
 
-from messages.process_status import ProcessStatus
-
-from messages.database_avatar_database_request import \
-    DatabaseAvatarDatabaseRequest
-from messages.database_avatar_database_reply import DatabaseAvatarDatabaseReply
-from messages.database_avatar_list_request import DatabaseAvatarListRequest
-from messages.database_avatar_list_reply import DatabaseAvatarListReply
-from messages.database_consistency_check import DatabaseConsistencyCheck
-from messages.database_consistency_check_reply import \
-    DatabaseConsistencyCheckReply
-from messages.database_key_insert import DatabaseKeyInsert
-from messages.database_key_insert_reply import DatabaseKeyInsertReply
-from messages.database_key_lookup import DatabaseKeyLookup
-from messages.database_key_lookup_reply import DatabaseKeyLookupReply
-from messages.database_key_list import DatabaseKeyList
-from messages.database_key_list_reply import DatabaseKeyListReply
-from messages.database_key_destroy import DatabaseKeyDestroy
-from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
-from messages.database_key_purge import DatabaseKeyPurge
-from messages.database_key_purge_reply import DatabaseKeyPurgeReply
-from messages.database_listmatch import DatabaseListMatch
-from messages.database_listmatch_reply import DatabaseListMatchReply
-from messages.stat import Stat
-from messages.stat_reply import StatReply
-
-_routing_header = "database_server"
-_routing_key_binding = ".".join([_routing_header, "*"])
+_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
+    _local_node_name,
+)
+_database_server_address = os.environ.get(
+    "DIYAPI_DATABASE_SERVER_ADDRESS",
+    "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
+)
 _max_cached_databases = 10
 _database_cache = "open-database-cache"
 _max_listmatch_size = 1024 * 1024 * 1024
@@ -176,55 +162,55 @@ def _find_avatars(state):
         if _content_database_exists(state, avatar_id):
             yield avatar_id
 
-def _handle_key_insert(state, message_body):
+def _handle_key_insert(state, message, _data):
     log = logging.getLogger("_handle_key_insert")
-    message = DatabaseKeyInsert.unmarshall(message_body)
+    content = database_content.factory(**message["database-content"])
     log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
-        message.avatar_id, 
-        message.key, 
-        message.database_content.version_number,
-        message.database_content.segment_number,
+        message["avatar-id"], 
+        str(message["key"]), 
+        content.version_number,
+        content.segment_number,
     ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DatabaseKeyInsertReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "key-insert-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+        "previous-size" : 0,
+    }
 
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         existing_entry = _get_content(
             database, 
-            message.key, 
-            message.database_content.version_number,
-            message.database_content.segment_number
+            str(message["key"]), 
+            content.version_number,
+            content.segment_number
         )
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyInsertReply(
-            message.request_id,
-            DatabaseKeyInsertReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
         
     previous_size = 0L
     if existing_entry is not None:
 
         # 2020-03-21 dougfort -- IRC conversation with Alan. we don't care
         # if it's a tombstone or not: an earlier timestamp is an error
-        if message.database_content.timestamp < existing_entry.timestamp:
+        if content.timestamp < existing_entry.timestamp:
             error_string = "invalid duplicate %s < %s" % (
-                format_timestamp(message.database_content.timestamp),
+                format_timestamp(content.timestamp),
                 format_timestamp(existing_entry.timestamp),
             )
             log.error(error_string)
-            reply = DatabaseKeyInsertReply(
-                message.request_id,
-                DatabaseKeyInsertReply.error_invalid_duplicate,
-                error_message=error_string
-            )
-            return [(reply_exchange, reply_routing_key, reply, )]
+            reply["result"] = "invalid-duplicate"
+            reply["error-message"] = error_string
+            state["xrep-server"].queue_message_for_send(reply)
+            return
 
         if not existing_entry.is_tombstone:
             log.debug("found previous entry, size = %s" % (
@@ -233,179 +219,166 @@ def _handle_key_insert(state, message_body):
             previous_size = existing_entry.total_size
 
         try:
-            database.delete(message.key)
+            database.delete(str(message["key"]))
         except Exception, instance:
-            log.exception("%s, %s" % (message.avatar_id, message.key, ))
-            reply = DatabaseKeyInsertReply(
-                message.request_id,
-                DatabaseKeyInsertReply.error_database_failure,
-                error_message=str(instance)
-            )
-            return [(reply_exchange, reply_routing_key, reply, )]
+            log.exception("%s, %s" % (message["avatar_id"], str(message["key"]), ))
+            reply["result"] = "database-failure"
+            reply["error-message"] = str(instance)
+            state["xrep-server"].queue_message_for_send(reply)
+            return
 
     try:
-        database.put(
-            message.key, database_content.marshall(message.database_content)
-        )
+        database.put(str(message["key"]), database_content.marshall(content))
         database.sync()
         os.fsync(database.fd())
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyInsertReply(
-            message.request_id,
-            DatabaseKeyInsertReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    reply = DatabaseKeyInsertReply(
-        message.request_id,
-        DatabaseKeyInsertReply.successful,
-        previous_size,
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    reply["previous-size"] = previous_size
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_key_lookup(state, message_body):
+def _handle_key_lookup(state, message, _data):
     log = logging.getLogger("_handle_key_lookup")
-    message = DatabaseKeyLookup.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
-        message.avatar_id, 
-        message.key, 
-        message.version_number,
-        message.segment_number,
+        message["avatar-id"], 
+        str(message["key"]), 
+        message["version-number"],
+        message["segment-number"],
     ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DatabaseKeyLookupReply.routing_tag]
-    )
+    reply = {
+        "message-type"      : "key-lookup-reply",
+        "xrep-ident"        : message["xrep-ident"],
+        "request-id"        : message["request-id"],
+        "result"            : None,
+        "error-message"     : None,
+        "database-content"  : None,
+    }
 
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         existing_entry = _get_content(
             database, 
-            message.key, 
-            message.version_number,
-            message.segment_number
+            str(message["key"]), 
+            message["version-number"],
+            message["segment-number"]
         )
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyLookupReply(
-            message.request_id,
-            DatabaseKeyLookupReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     if existing_entry is None:
         error_string = "unknown key: %s, %s %s %s" % (
-            message.avatar_id, 
-            message.key, 
-            message.version_number,
-            message.segment_number
+            message["avatar-id"], 
+            str(message["key"]), 
+            message["version-number"],
+            message["segment-number"]
         )
         log.warn(error_string)
-        reply = DatabaseKeyLookupReply(
-            message.request_id,
-            DatabaseKeyLookupReply.error_unknown_key,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        reply["result"] = "unknown-key"
+        reply["error-message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    reply = DatabaseKeyLookupReply(
-        message.request_id,
-        DatabaseKeyLookupReply.successful,
-        database_content=existing_entry
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    reply["database-content"] = dict(existing_entry._asdict().items())
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_key_list(state, message_body):
+def _handle_key_list(state, message, _data):
     log = logging.getLogger("_handle_key_list")
-    message = DatabaseKeyList.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s" % (
+        message["avatar_id"], str(message["key"]), 
+    ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DatabaseKeyListReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "key-list-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+        "content-list"  : list(),
+    }
 
     try:
-        database = _open_database(state, message.avatar_id)
-        packed_content_list = _list_content(database, message.key)
+        database = _open_database(state, message["avatar-id"])
+        packed_content_list = _list_content(database, str(message["key"]))
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyListReply(
-            message.request_id,
-            DatabaseKeyListReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     if len(packed_content_list) == 0:
         error_string = "unknown key: %s, %s" % (
-            message.avatar_id, message.key
+            message["avatar-id"], str(message["key"])
         )
         log.warn(error_string)
-        reply = DatabaseKeyListReply(
-            message.request_id,
-            DatabaseKeyListReply.error_unknown_key,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        reply["result"] = "unknown-key"
+        reply["error-message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    content_list = []
+    reply["result"] = "success"
     for packed_entry in packed_content_list:
         (content, _) = database_content.unmarshall(packed_entry, 0)
         if not content.is_tombstone:
-            content_list.append(content)
+            reply["content-list"].append(dict(content._asdict()))
+    state["xrep-server"].queue_message_for_send(reply)
 
-    reply = DatabaseKeyListReply(
-        message.request_id,
-        DatabaseKeyListReply.successful,
-        content_list=content_list
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
-
-def _handle_key_destroy(state, message_body):
+def _handle_key_destroy(state, message, _data):
     log = logging.getLogger("_handle_key_destroy")
-    message = DatabaseKeyDestroy.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
-        message.avatar_id, 
-        message.key, 
-        message.version_number,
-        message.segment_number,
+        message["avatar-id"], 
+        str(message["key"]), 
+        message["version-number"],
+        message["segment-number"],
     ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DatabaseKeyDestroyReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "key-destroy-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+        "total-size"    : 0,
+    }
 
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         existing_entry = _get_content(
             database, 
-            message.key, 
-            message.version_number,
-            message.segment_number
+            str(message["key"]), 
+            message["version-number"],
+            message["segment-number"]
         )
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyDestroyReply(
-            message.request_id,
-            DatabaseKeyDestroyReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     total_size = 0
     delete_needed = False
     if existing_entry is None:
         log.warn("%s no such key %s creating tombstone %s" % (
-            message.avatar_id, message.key, format_timestamp(message.timestamp),
+            message["avatar-id"], 
+            str(message["key"]), 
+            format_timestamp(message["timestamp"]),
         ))
         content = database_content.create_tombstone(
-            message.timestamp, message.version_number, message.segment_number
+            message["timestamp"], 
+            message["version-number"], 
+            message["segment-number"]
         )
     else:
         # if the entry is already a tombstone, our mission is accomplished
@@ -415,16 +388,16 @@ def _handle_key_destroy(state, message_body):
             content = existing_entry
             if message.timestamp > content.timestamp:
                 log.debug("%s %s updating tombstone from %s to %s" % (
-                    message.avatar_id, 
-                    message.key, 
+                    message["avatar-id"], 
+                    str(message["key"]), 
                     format_timestamp(content.timestamp),
                     format_timestamp(message.timestamp),
                 ))
                 content._replace(timestamp=message.timestamp)
             else:
                 log.debug("%s %s keeping existing tombstone %s > %s" % (
-                    message.avatar_id, 
-                    message.key, 
+                    message["avatar-id"], 
+                    str(message["key"]), 
                     format_timestamp(content.timestamp),
                     format_timestamp(message.timestamp),
                 ))
@@ -433,149 +406,139 @@ def _handle_key_destroy(state, message_body):
         elif message.timestamp > existing_entry.timestamp:
             delete_needed = True
             log.debug("%s %s creating tombstone %s total_size = %s" % (
-                message.avatar_id, 
-                message.key, 
+                message["avatar-id"], 
+                str(message["key"]), 
                 format_timestamp(message.timestamp),
                 existing_entry.total_size
             ))
             total_size = existing_entry.total_size
             content = database_content.create_tombstone(
                 message.timestamp,      
-                message.version_number,
-                message.segment_number
+                message["version-number"],
+                message["segment-number"]
             )
         # otherwise, we have an entry in the database that is newer than
         # this message, so we should not destroy
         else:
             log.warn("%s %s rejecting destroy %s > %s" % (
-                message.avatar_id, 
-                message.key, 
+                message["avatar-id"], 
+                str(message["key"]), 
                 format_timestamp(existing_entry.timestamp),
                 format_timestamp(message.timestamp),
             ))
             error_string = "%s %s database entry %s newer than destory %s" % (
-                message.avatar_id, 
-                message.key, 
+                message["avatar-id"], 
+                str(message["key"]), 
                 format_timestamp(existing_entry.timestamp),
                 format_timestamp(message.timestamp),
             )
-            reply = DatabaseKeyDestroyReply(
-                message.request_id,
-                DatabaseKeyDestroyReply.error_too_old,
-                error_message=error_string
-            )
-            return [(reply_exchange, reply_routing_key, reply, )]
+            reply["result"] = "too-old"
+            reply["error-message"] = error_string
+            state["xrep-server"].queue_message_for_send(reply)
+            return
 
     try:
         if delete_needed:
-            database.delete(message.key)
-        database.put(message.key, database_content.marshall(content))
+            database.delete(str(message["key"]))
+        database.put(str(message["key"]), database_content.marshall(content))
         database.sync()
         os.fsync(database.fd())
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyDestroyReply(
-            message.request_id,
-            DatabaseKeyDestroyReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    reply = DatabaseKeyDestroyReply(
-        message.request_id,
-        DatabaseKeyDestroyReply.successful,
-        total_size = total_size
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    reply["total-size"] = total_size
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_key_purge(state, message_body):
+def _handle_key_purge(state, message, _data):
     log = logging.getLogger("_handle_key_purge")
-    message = DatabaseKeyPurge.unmarshall(message_body)
     log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
-        message.avatar_id, 
-        message.key, 
-        message.version_number,
-        message.segment_number,
+        message["avatar-id"], 
+        str(message["key"]), 
+        message["version-number"],
+        message["segment-number"],
     ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DatabaseKeyPurgeReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "key-purge-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         existing_entry = _get_content(
             database, 
-            message.key, 
-            message.version_number,
-            message.segment_number
+            str(message["key"]), 
+            message["version-number"],
+            message["segment-number"]
         )
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyPurgeReply(
-            message.request_id,
-            DatabaseKeyPurgeReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     if existing_entry is None:
         error_string = "%s no such key %s %s %s" % (
-            message.avatar_id, 
-            message.key, 
-            message.version_number,
-            message.segment_number
+            message["avatar-id"], 
+            str(message["key"]), 
+            message["version-number"],
+            message["segment-number"]
         )
         log.error(error_string)
-        reply = DatabaseKeyPurgeReply(
-            message.request_id,
-            DatabaseKeyPurgeReply.error_key_not_found,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        reply["result"] = "no-such-key"
+        reply["error-message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
     
     try:
-        database.delete(message.key)
+        database.delete(str(message["key"]))
         database.sync()
         os.fsync(database.fd())
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = DatabaseKeyPurgeReply(
-            message.request_id,
-            DatabaseKeyPurgeReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    reply = DatabaseKeyPurgeReply(
-        message.request_id,
-        DatabaseKeyPurgeReply.successful
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_listmatch(state, message_body):
+def _handle_listmatch(state, message, _data):
     log = logging.getLogger("_handle_listmatch")
-    message = DatabaseListMatch.unmarshall(message_body)
     log.info("avatar_id = %s, prefix = %s" % (
-        message.avatar_id, message.prefix, 
+        message["avatar-id"], message["prefix"], 
     ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DatabaseListMatchReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "key-purge-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+        "is-complete"   : None,
+        "key-list"      : None,
+    }
 
     keys = list()
     key_message_size = 0
     is_complete = True
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         cursor = database.cursor()
-        result = cursor.set_range(message.prefix)
+        result = cursor.set_range(message["prefix"])
         while result is not None:
             (key, packed_entry, ) = result
-            if not key.startswith(message.prefix):
+            if not key.startswith(message["prefix"]):
                 break
             (content, _) = database_content.unmarshall(packed_entry, 0)
             if not content.is_tombstone:
@@ -586,46 +549,44 @@ def _handle_listmatch(state, message_body):
                 keys.append(key)
             result = cursor.next()
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.prefix, ))
-        reply = DatabaseListMatchReply(
-            message.request_id,
-            DatabaseListMatchReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], message["prefix"], ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    reply = DatabaseListMatchReply(
-        message.request_id,
-        DatabaseListMatchReply.successful,
-        is_complete,
-        keys
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]\
+    reply["result"] = "success"
+    reply["is-complete"] = is_complete
+    reply["key-list"] = keys
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_consistency_check(state, message_body):
+def _handle_consistency_check(state, message, _data):
     log = logging.getLogger("_handle_consistency_check")
-    message = DatabaseConsistencyCheck.unmarshall(message_body)
-    log.info("avatar_id = %s" % (message.avatar_id, ))
+    log.info("avatar_id = %s" % (message["avatar-id"], ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = ".".join([
-        message.reply_routing_header, DatabaseConsistencyCheckReply.routing_tag
-    ])
+    reply = {
+        "message-type"  : "consistency-check-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "node-name"     : _local_node_name,
+        "result"        : None,
+        "error-message" : None,
+        "md5-digest"    : None,
+    }
 
-    if not _content_database_exists(state, message.avatar_id):
-        error_message = "no database for avatar_id %s" % (message.avatar_id, )
-        log.error(error_message)
-        reply = DatabaseConsistencyCheckReply(
-            message.request_id,
-            state["node-name"],
-            DatabaseConsistencyCheckReply.error_database_failure,
-            error_message=error_message
+    if not _content_database_exists(state, message["avatar-id"]):
+        error_message = "no database for avatar_id %s" % (
+            message["avatar-id"], 
         )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.error(error_message)
+        reply["result"] = "database-failure"
+        reply["error-message"] = error_message
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     result_list = list()
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         cursor = database.cursor()
         result = cursor.first()
         while result is not None:
@@ -639,14 +600,11 @@ def _handle_consistency_check(state, message_body):
                 result_list.append((key, content.timestamp, content_md5, ))
             result = cursor.next_dup()
     except Exception, instance:
-        log.exception("%s" % (message.avatar_id, ))
-        reply = DatabaseConsistencyCheckReply(
-            message.request_id,
-            state["node-name"],
-            DatabaseConsistencyCheckReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s" % (message["avatar-id"], ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
         
     result_list.sort()
     md5 = hashlib.md5()
@@ -655,209 +613,194 @@ def _handle_consistency_check(state, message_body):
         md5.update(str(timestamp))
         md5.update(content_md5)
 
-    reply = DatabaseConsistencyCheckReply(
-        message.request_id,
-        state["node-name"],
-        DatabaseConsistencyCheckReply.successful,
-        hash_value=md5.hexdigest()
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    reply["md5-digest"] = md5.hexdigest()
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_avatar_database_request(state, message_body):
+def _handle_avatar_database_request(state, message, _data):
     log = logging.getLogger("_handle_avatar_database_request")
-    message = DatabaseAvatarDatabaseRequest.unmarshall(message_body)
-    log.info("reply exchange = %s" % (message.reply_exchange, ))
+    log.info("%s %s %s" % (
+        message["avatar-id"], message["dest-host"], message["dest-dir"], 
+    ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = ".".join([
-        message.reply_routing_header, DatabaseAvatarDatabaseReply.routing_tag
-    ])
+    reply = {
+        "message-type"  : "avatar-database-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "node-name"     : _local_node_name,
+        "result"        : None,
+        "error-message" : None,
+    }
 
-    if not _content_database_exists(state, message.avatar_id):
-        error_message = "no database for avatar_id %s" % (message.avatar_id, )
-        log.error(error_message)
-        reply = DatabaseAvatarDatabaseReply(
-            message.request_id,
-            state["node-name"],
-            DatabaseAvatarDatabaseReply.error_database_failure,
-            error_message=error_message
+    if not _content_database_exists(state, message["avatar-id"]):
+        error_message = "no database for avatar_id %s" % (
+            message["avatar-id"], 
         )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.error(error_message)
+        reply["result"] = "database-failure"
+        reply["error-message"] = error_message
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     send_database_command = _send_database_template % (
-        _content_database_path(state, message.avatar_id),
-        message.dest_host,
-        message.dest_dir,
-        state["node-name"]
+        _content_database_path(state, message["avatar-id"]),
+        message["dest-host"],
+        message["dest-dir"],
+        _local_node_name
     )
 
     try:
         subprocess.check_call(args=send_database_command.split())
     except Exception, instance:
         log.exception(send_database_command)
-        reply = DatabaseAvatarDatabaseReply(
-            message.request_id,
-            state["node-name"],
-            DatabaseAvatarDatabaseReply.error_transmission_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        reply["result"] = "transmission-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    reply = DatabaseAvatarDatabaseReply(
-        message.request_id,
-        state["node-name"], 
-        DatabaseAvatarDatabaseReply.successful
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_avatar_list_request(state, message_body):
+def _handle_avatar_list_request(state, message, _data):
     log = logging.getLogger("_handle_avatar_list_request")
-    message = DatabaseAvatarListRequest.unmarshall(message_body)
-    log.info("reply exchange = %s" % (message.reply_exchange, ))
+    log.info("%s" % (message["request-id"], ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = ".".join([
-        message.reply_routing_header, DatabaseAvatarListReply.routing_tag
-    ])
-    reply = DatabaseAvatarListReply(message.request_id)
-    reply.put(_find_avatars(state))
+    reply = {
+        "message-type"  : "avatar-list-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "avatar-id-list": list(_find_avatars(state)),
+    }
+    state["xrep-server"].queue_message_for_send(reply)
 
-    return [(reply_exchange, reply_routing_key, reply, )]
-
-def _handle_process_status(_state, message_body):
-    log = logging.getLogger("_handle_process_status")
-    message = ProcessStatus.unmarshall(message_body)
-    log.debug("%s %s %s %s" % (
-        message.exchange,
-        message.routing_header,
-        message.status,
-        format_timestamp(message.timestamp),
-    ))
-    return []
-
-def _handle_stat_request(state, message_body):
+def _handle_stat_request(state, message, _data):
     log = logging.getLogger("_handle_stat_request")
-    message = Stat.unmarshall(message_body)
-    log.info("avatar_id = %s" % (message.avatar_id, ))
+    log.info("avatar_id = %s" % (message["avatar-id"], ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = ".".join([
-        message.reply_routing_header, StatReply.routing_tag
-    ])
+    reply = {
+        "message-type"  : "stat-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+        "timestamp"     : 0,
+        "total_size"    : 0,
+        "file_adler32"  : 0,
+        "file_md5"      : 0,
+        "userid"        : 0,
+        "groupid"       : 0,
+        "permissions"   : 0,
+    }
 
-    if not _content_database_exists(state, message.avatar_id):
-        error_message = "no database for avatar_id %s" % (message.avatar_id, )
-        log.error(error_message)
-        reply = StatReply(
-            message.request_id,
-            StatReply.error_database_failure,
-            error_message=error_message
+    if not _content_database_exists(state, message["avatar-id"]):
+        error_message = "no database for avatar_id %s" % (
+            message["avatar-id"], 
         )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.error(error_message)
+        reply["result"] = "database-failure"
+        reply["error-message"] = error_message
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     try:
-        database = _open_database(state, message.avatar_id)
+        database = _open_database(state, message["avatar-id"])
         existing_entry = _get_content_any_segment(
             database, 
-            message.key, 
-            message.version_number
+            str(message["key"]), 
+            message["version-number"]
         )
     except Exception, instance:
-        log.exception("%s, %s" % (message.avatar_id, message.key, ))
-        reply = StatReply(
-            message.request_id,
-            StatReply.error_database_failure,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+        reply["result"] = "database-failure"
+        reply["error-message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     if existing_entry is None:
         error_string = "%s no such key %s %s" % (
-            message.avatar_id, 
-            message.key, 
-            message.version_number
+            message["avatar-id"], 
+            str(message["key"]), 
+            message["version-number"]
         )
         log.error(error_string)
-        reply = StatReply(
-            message.request_id,
-            StatReply.error_key_not_found,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        reply["result"] = "no-such-key"
+        reply["error-message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
     
-    reply = StatReply(
-        message.request_id,
-        StatReply.successful,
-        total_size=existing_entry.total_size,
-        timestamp=existing_entry.timestamp,
-        file_adler32=existing_entry.file_adler32,
-        file_md5=existing_entry.file_md5,
-        userid=existing_entry.userid,
-        groupid=existing_entry.groupid,
-        permissions=existing_entry.permissions,
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    reply["timestamp"] = existing_entry.timestamp,
+    reply["total-size"] = existing_entry.total_size,
+    reply["file-adler32"] = existing_entry.file_adler32,
+    reply["file-md5"] = existing_entry.file_md5,
+    reply["userid"] = existing_entry.userid,
+    reply["groupid"] = existing_entry.groupid,
+    reply["permissions"] = existing_entry.permissions,
+    state["xrep-server"].queue_message_for_send(reply)
 
 _dispatch_table = {
-    DatabaseKeyInsert.routing_key           : _handle_key_insert,
-    DatabaseKeyLookup.routing_key           : _handle_key_lookup,
-    DatabaseKeyList.routing_key             : _handle_key_list,
-    DatabaseKeyDestroy.routing_key          : _handle_key_destroy,
-    DatabaseKeyPurge.routing_key            : _handle_key_purge,
-    DatabaseListMatch.routing_key           : _handle_listmatch,
-    DatabaseConsistencyCheck.routing_key    : _handle_consistency_check,
-    DatabaseAvatarDatabaseRequest.routing_key : \
-        _handle_avatar_database_request,
-    DatabaseAvatarListRequest.routing_key   : _handle_avatar_list_request,
-    Stat.routing_key                        : _handle_stat_request,
-    ProcessStatus.routing_key               : _handle_process_status,
+    "key-insert"                : _handle_key_insert,
+    "key-lookup"                : _handle_key_lookup,
+    "key-list"                  : _handle_key_list,
+    "key-destroy"               : _handle_key_destroy,
+    "key-purge"                 : _handle_key_purge,
+    "listmatch"                 : _handle_listmatch,
+    "consistency-check"         : _handle_consistency_check,
+    "avatar-database-request"   : _handle_avatar_database_request,
+    "avatar-list-request"       : _handle_avatar_list_request,
+    "stat-request"              : _handle_stat_request,
 }
 
-def _startup(_halt_event, _state):
-    message = ProcessStatus(
-        time.time(),
-        amqp_connection.local_exchange_name,
-        _routing_header,
-        ProcessStatus.status_startup
+def _create_state():
+    return {
+        _database_cache         : LRUCache(_max_cached_databases),
+        "zmq-context"           : zmq.Context(),
+        "pollster"              : ZeroMQPollster(),
+        "xrep-server"           : None,
+        "receive-queue"         : deque(),
+        "queue-dispatcher"      : None,
+    }
+
+def _setup(_halt_event, _state):
+    log = logging.getLogger("_setup")
+
+    log.info("binding xrep-server to %s" % (_database_server_address, ))
+    state["xrep-server"] = XREPServer(
+        state["zmq-context"],
+        _database_server_address,
+        state["receive-queue"]
+    )
+    state["xrep-server"].register(state["pollster"])
+
+    state["queue-dispatcher"] = DequeDispatcher(
+        state,
+        state["receive-queue"],
+        _dispatch_table
     )
 
-    exchange = amqp_connection.broadcast_exchange_name
-    routing_key = ProcessStatus.routing_key
+    # hand the pollster and the queue-dispatcher to the time-queue 
+    return [
+        (state["pollster"].run, time.time(), ), 
+        (state["queue-dispatcher"].run, time.time(), ), 
+    ] 
 
-    return [(exchange, routing_key, message, )]
+def _tear_down(_state):
+    log = logging.getLogger("_tear_down")
 
-def _shutdown(_state):
-    message = ProcessStatus(
-        time.time(),
-        amqp_connection.local_exchange_name,
-        _routing_header,
-        ProcessStatus.status_shutdown
-    )
+    log.debug("stopping xrep server")
+    state["xrep-server"].close()
 
-    exchange = amqp_connection.broadcast_exchange_name
-    routing_key = ProcessStatus.routing_key
-
-    return [(exchange, routing_key, message, )]
+    state["zmq-context"].term()
+    log.debug("teardown complete")
 
 if __name__ == "__main__":
-    state = {
-        _database_cache : LRUCache(_max_cached_databases),
-        "node-name"     : os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-    }
-    log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % ( 
-        state["node-name"],
-    )
-    queue_name = "database-server-%s" % (state["node-name"], )
+    state = _create_state()
     sys.exit(
-        process.main(
-            log_path, 
-            queue_name, 
-            _routing_key_binding, 
-            _dispatch_table, 
+        time_queue_driven_process.main(
+            _log_path,
             state,
-            pre_loop_function=_startup,
-            in_loop_function=None,
-            post_loop_function=_shutdown
+            pre_loop_actions=[_setup, ],
+            post_loop_actions=[_tear_down, ]
         )
     )
 

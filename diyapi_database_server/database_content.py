@@ -52,8 +52,14 @@ create_content =  namedtuple(
 )
 
 def factory(**kwdargs):
+    """
+    This turns a dict into DatabaseContent.
+    We can't alway use _make because we may need to build from a non-ordered
+    dict that comes from json.
+    We also need to encode unicode strings from json.
+    """
     return create_content(
-        format_version = _current_format_version,
+        format_version = kwdargs.get("format_version", _current_format_version),
         is_tombstone = kwdargs["is_tombstone"], 
         timestamp = kwdargs["timestamp"], 
         version_number = kwdargs["version_number"],
@@ -62,13 +68,13 @@ def factory(**kwdargs):
         segment_size = kwdargs["segment_size"],
         total_size = kwdargs["total_size"], 
         file_adler32 = kwdargs["file_adler32"],
-        file_md5 = kwdargs["file_md5"],
+        file_md5 = str(kwdargs["file_md5"]),
         segment_adler32 = kwdargs["segment_adler32"],
-        segment_md5 = kwdargs["segment_md5"],
-        file_name = kwdargs["file_name"],
-        userid = 0,
-        groupid = 0,
-        permissions = 0
+        segment_md5 = str(kwdargs["segment_md5"]),
+        file_name = str(kwdargs["file_name"]),
+        userid = kwdargs.get("userid", 0),
+        groupid = kwdargs.get("groupid", 0),
+        permissions = kwdargs.get("permissions", 0)
     )
 
 def create_tombstone(timestamp, version_number, segment_number):

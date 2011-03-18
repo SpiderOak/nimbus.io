@@ -4,12 +4,9 @@ test_database_server.py
 
 test database_server
 """
-import logging
 import os
 import os.path
 import shutil
-import subprocess
-import sys
 import time
 import unittest
 import uuid
@@ -17,7 +14,7 @@ import uuid
 from diyapi_tools.standard_logging import initialize_logging
 
 from unit_tests.util import generate_key, generate_database_content, \
-        identify_program_dir
+        start_database_server, poll_process, terminate_process
 from unit_tests.zeromq_util import send_request_and_get_reply
 
 _log_path = "/var/log/pandora/test_database_server.log"
@@ -29,32 +26,6 @@ _database_server_address = os.environ.get(
     "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
 )
 
-def _start_database_server():
-    log = logging.getLogger("_start_database_server")
-    server_dir = identify_program_dir(u"diyapi_database_server")
-    server_path = os.path.join(server_dir, "diyapi_database_server_main.py")
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : _local_node_name,
-        "DIYAPI_REPOSITORY_PATH"            : _repository_path,
-    }        
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-def _poll_process(process):
-    process.poll()
-    if process.returncode is None:
-        return None
-
-    return (process.returncode, process.stderr.read(), )
-
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
 
@@ -63,24 +34,16 @@ class TestDatabaseServer(unittest.TestCase):
         os.makedirs(_repository_path)
         initialize_logging(_log_path)
         self._key_generator = generate_key()
-        self._database_server_process = _start_database_server()
-        poll_result = _poll_process(self._database_server_process)
+        self._database_server_process = start_database_server(
+            _local_node_name, _repository_path
+        )
+        poll_result = poll_process(self._database_server_process)
         assert poll_result is None, poll_result
 
     def tearDown(self):
         if hasattr(self, "_database_server_process") \
         and self._database_server_process is not None:
-            self._database_server_process.terminate()
-            self._database_server_process.wait()
-            if self._database_server_process.returncode != 0:
-                print >> sys.stderr, " "
-                print >> sys.stderr, "-" * 15
-                print >> sys.stderr, self._database_server_process.returncode
-                print >> sys.stderr, self._database_server_process.stderr.read()
-                print >> sys.stderr, "-" * 15
-                print >> sys.stderr, self._database_server_process.returncode
-            assert self._database_server_process.returncode == 0, \
-                self._database_server_process.returncode
+            terminate_process(self._database_server_process)
             self._database_server_process = None
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)

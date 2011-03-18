@@ -221,7 +221,9 @@ def _handle_key_insert(state, message, _data):
         try:
             database.delete(str(message["key"]))
         except Exception, instance:
-            log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
+            log.exception("%s, %s" % (
+                message["avatar-id"], str(message["key"]), 
+            ))
             reply["result"] = "database-failure"
             reply["error-message"] = str(instance)
             state["xrep-server"].queue_message_for_send(reply)
@@ -535,7 +537,7 @@ def _handle_listmatch(state, message, _data):
     try:
         database = _open_database(state, message["avatar-id"])
         cursor = database.cursor()
-        result = cursor.set_range(message["prefix"])
+        result = cursor.set_range(str(message["prefix"]))
         while result is not None:
             (key, packed_entry, ) = result
             if not key.startswith(message["prefix"]):
@@ -729,13 +731,13 @@ def _handle_stat_request(state, message, _data):
         return
     
     reply["result"] = "success"
-    reply["timestamp"] = existing_entry.timestamp,
-    reply["total-size"] = existing_entry.total_size,
-    reply["file-adler32"] = existing_entry.file_adler32,
-    reply["file-md5"] = existing_entry.file_md5,
-    reply["userid"] = existing_entry.userid,
-    reply["groupid"] = existing_entry.groupid,
-    reply["permissions"] = existing_entry.permissions,
+    reply["timestamp"] = existing_entry.timestamp
+    reply["total-size"] = existing_entry.total_size
+    reply["file-adler32"] = existing_entry.file_adler32
+    reply["file-md5"] = existing_entry.file_md5
+    reply["userid"] = existing_entry.userid
+    reply["groupid"] = existing_entry.groupid
+    reply["permissions"] = existing_entry.permissions
     state["xrep-server"].queue_message_for_send(reply)
 
 _dispatch_table = {

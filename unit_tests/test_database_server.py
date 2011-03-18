@@ -15,7 +15,6 @@ import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
-from diyapi_database_server import database_content
 
 from unit_tests.util import generate_key, generate_database_content, \
         identify_program_dir
@@ -369,12 +368,12 @@ class TestDatabaseServer(unittest.TestCase):
         reply = self._lookup_key(avatar_id, key, version_number, 1)
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self.assertEqual(reply["database-content"], content1)
+        self._test_content(reply["database-content"], content1)
 
         reply = self._lookup_key(avatar_id, key, version_number, 2)
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self.assertEqual(reply["database-content"], content2)
+        self._test_content(reply["database-content"], content2)
 
     def test_simple_key_list(self):
         """test listing data for a key wiht no duplicagte entries"""
@@ -396,7 +395,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(len(reply["content-list"]), 1)
-        self.assertEqual(reply["content-list"][0], content)
+        self._test_content(reply["content-list"][0], content)
 
     def test_duplicate_key_list(self):
         """test listing data for a duplicate key"""
@@ -426,9 +425,10 @@ class TestDatabaseServer(unittest.TestCase):
         reply = self._list_key(avatar_id, key)
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self.assertEqual(
+        for reply_content, original_content in zip(
             sorted(reply["content-list"]), sorted([content1, content2,])
-        )
+        ):
+            self._test_content(reply_content, original_content)
 
     def test_key_destroy_on_nonexistent_key(self):
         """test destroying a key that does not exist"""
@@ -507,7 +507,7 @@ class TestDatabaseServer(unittest.TestCase):
         """test sending a destroy request older than the database content"""
         avatar_id = 1001
         key  = self._key_generator.next()
-        version_number=0
+        version_number = 0
         segment_number = 4
         base_timestamp = time.time()
         content = generate_database_content(
@@ -678,26 +678,14 @@ class TestDatabaseServer(unittest.TestCase):
         avatar_id = 1001
         prefix = "xxx"
         request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
+        message = {
+            "message-type"      : "listmatch",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "prefix"            : prefix,
+        }
 
-        message = DatabaseListMatch(
-            request_id,
-            avatar_id,
-            exchange,
-            _reply_routing_header,
-            prefix
-        )
-        marshalled_message = message.marshall()
-
-        state = _create_database_state()
-        replies = _handle_listmatch(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.database_listmatch_reply" % (_reply_routing_header, )
-        )
+        reply = send_request_and_get_reply(_database_server_address, message)
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["is-complete"], True)
@@ -708,8 +696,7 @@ class TestDatabaseServer(unittest.TestCase):
         avatar_id = 1001
         prefix = "xxx"
         request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
-        key_count = 1000
+        key_count = 100
     
         key_list = ["%s-%05d" % (prefix, i, ) for i in xrange(key_count)]
         for key in key_list:
@@ -721,24 +708,14 @@ class TestDatabaseServer(unittest.TestCase):
             self.assertEqual(reply["result"], "success", reply["error-message"])
             self.assertEqual(reply["previous-size"], 0)
 
-        message = DatabaseListMatch(
-            request_id,
-            avatar_id,
-            exchange,
-            _reply_routing_header,
-            prefix
-        )
-        marshalled_message = message.marshall()
+        message = {
+            "message-type"      : "listmatch",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "prefix"            : prefix,
+        }
 
-        state = _create_database_state()
-        replies = _handle_listmatch(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.database_listmatch_reply" % (_reply_routing_header, )
-        )
+        reply = send_request_and_get_reply(_database_server_address, message)
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["is-complete"], True)
@@ -757,26 +734,15 @@ class TestDatabaseServer(unittest.TestCase):
 
         request_id = uuid.uuid1().hex
         timestamp = time.time()
-        exchange = "reply-exchange"
 
-        message = DatabaseConsistencyCheck(
-            request_id,
-            avatar_id,
-            timestamp,
-            exchange,
-            _reply_routing_header
-        )
-        marshalled_message = message.marshall()
+        message = {
+            "message-type"      : "consistency-check",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : timestamp, 
+        }
 
-        state = _create_database_state()
-        replies = _handle_consistency_check(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.database_consistence_check_reply" % (_reply_routing_header, )
-        )
+        reply = send_request_and_get_reply(_database_server_address, message)
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
@@ -796,27 +762,17 @@ class TestDatabaseServer(unittest.TestCase):
         dest_dir = os.path.join(_repository_path, "dest_dir")
         os.mkdir(dest_dir)
 
-        exchange = "reply-exchange"
+        message = {
+            "message-type"      : "avatar-database-request",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "dest-host"         : dest_host, 
+            "dest-dir"          : dest_dir,
+        }
 
-        message = DatabaseAvatarDatabaseRequest(
-            request_id,
-            avatar_id,
-            dest_host,
-            dest_dir,
-            exchange,
-            _reply_routing_header
-        )
-        marshalled_message = message.marshall()
-
-        state = _create_database_state()
-        replies = _handle_avatar_database_request(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.database_avatar_database_reply" % (_reply_routing_header, )
-        )
+        reply = send_request_and_get_reply(_database_server_address, message)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         dest_list = os.listdir(dest_dir)
@@ -836,25 +792,15 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["previous-size"], 0)
 
         request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
 
-        message = DatabaseAvatarListRequest(
-            request_id,
-            exchange,
-            _reply_routing_header
-        )
-        marshalled_message = message.marshall()
+        message = {
+            "message-type"      : "avatar-list-request",
+            "request-id"        : request_id,
+        }
 
-        state = _create_database_state()
-        replies = _handle_avatar_list_request(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.database_avatar_list_reply" % (_reply_routing_header, )
-        )
+        reply = send_request_and_get_reply(_database_server_address, message)
         self.assertEqual(reply["request-id"], request_id)
+
         reply_avatar_ids = reply["avatar-id-list"]
         self.assertEqual(reply_avatar_ids[0], avatar_id)
 
@@ -871,30 +817,21 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["previous-size"], 0)
 
         request_id = uuid.uuid1().hex
-        exchange = "reply-exchange"
+        message = {
+            "message-type"      : "stat-request",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key, 
+            "version-number"    : version_number,
+        }
 
-        message = Stat(
-            request_id,
-            avatar_id,
-            key,
-            version_number,
-            exchange,
-            _reply_routing_header
-        )
-        marshalled_message = message.marshall()
+        reply = send_request_and_get_reply(_database_server_address, message)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
 
-        state = _create_database_state()
-        replies = _handle_stat_request(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.stat_reply" % (_reply_routing_header, )
-        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success")
-        self.assertEqual(reply["timestamp"], content.timestamp)
+        self.assertEqual(reply["timestamp"], content.timestamp, reply)
         self.assertEqual(reply["total-size"], content.total_size)
         self.assertEqual(reply["file-adler32"], content.file_adler32)
         self.assertEqual(reply["file-md5"], content.file_md5)

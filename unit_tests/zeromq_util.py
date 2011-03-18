@@ -42,6 +42,8 @@ def send_request_and_get_reply_and_data(address, request):
             retry_count += 1
             time.sleep(1.0)
             continue
+        else:
+            break
 
     xreq_client.close()
     context.term()

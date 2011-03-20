@@ -27,11 +27,11 @@ from diyapi_tools.xrep_server import XREPServer
 from diyapi_tools.xreq_client import XREQClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.standard_logging import format_timestamp
 from diyapi_tools.persistent_state import load_state, save_state
 from diyapi_tools import repository
 
 from diyapi_data_writer.state_cleaner import StateCleaner
+from diyapi_data_writer.heartbeater import Heartbeater
 
 from diyapi_database_server import database_content
 
@@ -39,7 +39,7 @@ _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
     _local_node_name,
 )
-_persistent_state_file_name = "data-write-%s" % (local_node_name, )
+_persistent_state_file_name = "data-write-%s" % (_local_node_name, )
 _database_server_address = os.environ.get(
     "DIYAPI_DATABASE_SERVER_ADDRESS",
     "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
@@ -70,119 +70,6 @@ _request_state_tuple = namedtuple("RequestState", [
     "file_name",
 ])
 
-def _next_heartbeat_time():
-    return time.time() + _heartbeat_interval
-
-def _handle_key_insert_timeout(request_id, state):
-    """called when we wait too long for a reply to a KeyInsert message"""
-    log = logging.getLogger("_handle_key_insert_timeout")
-
-    try:
-        request_state = state["active-requests"].pop(request_id)
-    except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
-        return []
-
-    log.error("timeout: %s %s %s" % (
-        request_state.avatar_id,
-        request_state.key,
-        request_id,
-    ))
-
-    # tell the caller that we're not working
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header, 
-         ".", 
-         ArchiveKeyFinalReply.routing_tag]
-    )
-    reply = ArchiveKeyFinalReply(
-        request_id,
-        ArchiveKeyFinalReply.error_timeout_waiting_key_insert,
-        error_message="timeout waiting for database_server"
-    )
-    return [(reply_exchange, reply_routing_key, reply, )] 
-
-def _handle_key_destroy_timeout(request_id, state):
-    """called when we wait too long for a reply to a KeyDestroy message"""
-    log = logging.getLogger("_handle_key_destroy_timeout")
-
-    try:
-        request_state = state["active-requests"].pop(request_id)
-    except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
-        return []
-
-    log.error("timeout: %s %s %s" % (
-        request_state.avatar_id,
-        request_state.key,
-        request_id,
-    ))
-
-    # tell the caller that we're not working
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header, 
-         ".", 
-         DestroyKeyReply.routing_tag]
-    )
-    reply = DestroyKeyReply(
-        request_id,
-        DestroyKeyReply.error_timeout_waiting_key_destroy,
-        error_message="timeout waiting for database_server"
-    )
-    return [(reply_exchange, reply_routing_key, reply, )] 
-
-def _handle_key_purge_timeout(request_id, state):
-    """called when we wait too long for a reply to a KeyPurge message"""
-    log = logging.getLogger("_handle_key_purge_timeout")
-
-    try:
-        request_state = state["active-requests"].pop(request_id)
-    except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
-        return []
-
-    log.error("timeout: %s %s %s" % (
-        request_state.avatar_id,
-        request_state.key,
-        request_id,
-    ))
-
-    # tell the caller that we're not working
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header, 
-         ".", 
-         PurgeKeyReply.routing_tag]
-    )
-    reply = PurgeKeyReply(
-        request_id,
-        PurgeKeyReply.error_timeout_waiting_key_purge,
-        error_message="timeout waiting for database_server"
-    )
-    return [(reply_exchange, reply_routing_key, reply, )] 
-
-def _handle_archive_timeout(request_id, state):
-    """called when we wait too long for a ArchvieKeyNext or ArchiveKeyFinal"""
-    log = logging.getLogger("_handle_archive_timeout")
-
-    try:
-        request_state = state["active-requests"].pop(request_id)
-    except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
-        return []
-
-    log.error("timeout: %s %s %s" % (
-        request_state.avatar_id,
-        request_state.key,
-        request_id,
-    ))
-
-    # we can't send a reply to the caller here because they're the ones who
-    # timed out
-    return []
-
 def _compute_filename(message_request_id):
     """
     compute a unique filename from message attributes
@@ -192,23 +79,26 @@ def _compute_filename(message_request_id):
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
-    message = ArchiveKeyEntire.unmarshall(message, _data)
-    log.info("avatar_id = %s, key = %s" % (message["avatar-id"], message["key"], ))
+    log.info("avatar_id = %s, key = %s" % (
+        message["avatar-id"], message["key"], 
+    ))
 
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", ArchiveKeyFinalReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we already have a state entry for this request_id, something is wrong
     if message["request-id"] in state:
         error_string = "invalid duplicate request_id in ArchiveKeyEntire"
         log.error(error_string)
-        reply = ArchiveKeyFinalReply(
-            message["request-id"],
-            ArchiveKeyFinalReply.error_invalid_duplicate,
-            error_message=error_string
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "invalid-duplicate"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     file_name = _compute_filename(message["request-id"])
 
@@ -224,16 +114,14 @@ def _handle_archive_key_entire(state, message, data):
             os.fsync(content_file.fileno())
     except Exception, instance:
         log.exception("%s %s" % (message["avatar-id"], message["key"], ))
-        reply = ArchiveKeyFinalReply(
-            message["request-id"],
-            ArchiveKeyFinalReply.error_exception,
-            error_message=str(instance)
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"]
+        xrep_ident=message["xrep-ident"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_insert_timeout,
         timeout_message="archive-key-final-reply",
@@ -262,36 +150,37 @@ def _handle_archive_key_entire(state, message, data):
         segment_md5=message["segment-md5"],
         file_name=file_name
     )
-    local_exchange = amqp_connection.local_exchange_name
-    database_request = DatabaseKeyInsert(
-        message["request-id"],
-        message["avatar-id"],
-        local_exchange,
-        _routing_header,
-        message["key"], 
-        database_entry
-    )
-    return [(local_exchange, database_request.routing_key, database_request, )]
+    request = {
+        "message-type"      : "key-insert",
+        "request-id"        : message["request-id"],
+        "avatar-id"         : message["avatar-id"],
+        "key"               : message["key"], 
+        "database-content"  : dict(database_entry._asdict().items())
+    }
+    state["database-client"].queue_message_for_send(request)
 
-def _handle_archive_key_start(state, message, _data):
+def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
-    message = ArchiveKeyStart.unmarshall(message, _data)
-    log.info("avatar_id = %s, key = %s" % (message["avatar-id"], message["key"], ))
+    log.info("avatar_id = %s, key = %s" % (
+        message["avatar-id"], message["key"], 
+    ))
 
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", ArchiveKeyStartReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "archive-key-start-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we already have a state entry for this request_id, something is wrong
     if message["request-id"] in state:
         error_string = "invalid duplicate request_id in ArchiveKeyEntire"
         log.error(error_string)
-        reply = ArchiveKeyStartReply(
-            message["request-id"],
-            ArchiveKeyStartReply.error_invalid_duplicate,
-            error_message=error_string
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "invalid-duplicate"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     file_name = _compute_filename(message["request-id"])
 
@@ -307,16 +196,14 @@ def _handle_archive_key_start(state, message, _data):
             os.fsync(content_file.fileno())
     except Exception, instance:
         log.exception("%s %s" % (message["avatar-id"], message["key"], ))
-        reply = ArchiveKeyStartReply(
-            message["request-id"],
-            ArchiveKeyStartReply.error_exception,
-            error_message=str(instance)
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"]
+        xrep_ident=message["xrep-ident"],
         timestamp=message["timestamp"],
         timeout=time.time()+_archive_timeout,
         timeout_message=None,
@@ -329,15 +216,11 @@ def _handle_archive_key_start(state, message, _data):
         file_name=file_name,
     )
 
-    reply = ArchiveKeyStartReply(
-        message["request-id"],
-        ArchiveKeyStartReply.successful
-    )
-    return [(message.reply_exchange, reply_routing_key, reply, )] 
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply)
 
-def _handle_archive_key_next(state, message, _data):
+def _handle_archive_key_next(state, message, data):
     log = logging.getLogger("_handle_archive_key_next")
-    message = ArchiveKeyNext.unmarshall(message, _data)
 
     try:
         request_state = state["active-requests"].pop(message["request-id"])
@@ -351,12 +234,14 @@ def _handle_archive_key_next(state, message, _data):
         request_state.avatar_id, request_state.key, message["sequence"]
     ))
 
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header, 
-         ".", 
-         ArchiveKeyNextReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "archive-key-next-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
     work_path = repository.content_input_path(
         request_state.avatar_id, request_state.file_name
     ) 
@@ -374,12 +259,10 @@ def _handle_archive_key_next(state, message, _data):
             os.unlink(work_path)
         except Exception:
             log.exception("error")
-        reply = ArchiveKeyNextReply(
-            message["request-id"],
-            ArchiveKeyNextReply.error_out_of_sequence,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "out-of-sequence"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
@@ -391,12 +274,10 @@ def _handle_archive_key_next(state, message, _data):
             os.fsync(content_file.fileno())
     except Exception, instance:
         log.exception("%s %s" % (request_state.avatar_id, request_state.key, ))
-        reply = ArchiveKeyNextReply(
-            message["request-id"],
-            ArchiveKeyNextReply.error_exception,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # save stuff we need to recall in state
     state[message["request-id"]] = request_state._replace(
@@ -404,15 +285,11 @@ def _handle_archive_key_next(state, message, _data):
         timeout=time.time()+_archive_timeout
     )
 
-    reply = ArchiveKeyNextReply(
-        message["request-id"],
-        ArchiveKeyNextReply.successful
-    )
-    return [(reply_exchange, reply_routing_key, reply, )] 
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply)
 
 def _handle_archive_key_final(state, message, data):
     log = logging.getLogger("_handle_archive_key_final")
-    message = ArchiveKeyFinal.unmarshall(message, _data)
 
     try:
         request_state = state["active-requests"].pop(message["request-id"])
@@ -426,12 +303,14 @@ def _handle_archive_key_final(state, message, data):
         request_state.avatar_id, request_state.key, 
     ))
 
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header, 
-         ".", 
-         ArchiveKeyFinalReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
     work_path = repository.content_input_path(
         request_state.avatar_id, request_state.file_name
     ) 
@@ -449,12 +328,10 @@ def _handle_archive_key_final(state, message, data):
             os.unlink(work_path)
         except Exception:
             log.exception("error")
-        reply = ArchiveKeyFinalReply(
-            message["request-id"],
-            ArchiveKeyNextReply.error_out_of_sequence,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "out-of-sequence"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
@@ -466,12 +343,10 @@ def _handle_archive_key_final(state, message, data):
             os.fsync(content_file.fileno())
     except Exception, instance:
         log.exception("%s %s" % (request_state.avatar_id, request_state.key, ))
-        reply = ArchiveKeyFinalReply(
-            message["request-id"],
-            ArchiveKeyNextReply.error_exception,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # save stuff we need to recall in state
     state[message["request-id"]] = request_state._replace(
@@ -495,45 +370,43 @@ def _handle_archive_key_final(state, message, data):
         segment_md5=message["segment-md5"],
         file_name=request_state.file_name
     )
-    local_exchange = amqp_connection.local_exchange_name
-    database_request = DatabaseKeyInsert(
-        message["request-id"],
-        request_state.avatar_id,
-        local_exchange,
-        _routing_header,
-        request_state.key, 
-        database_entry
-    )
-    return [(local_exchange, database_request.routing_key, database_request, )]
+    request = {
+        "message-type"      : "key-insert",
+        "request-id"        : message["request-id"],
+        "avatar-id"         : message["avatar-id"],
+        "key"               : message["key"], 
+        "database-content"  : dict(database_entry._asdict().items())
+    }
+    state["database-client"].queue_message_for_send(request)
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
-    message = DestroyKey.unmarshall(message, _data)
     log.info("avatar_id = %s, key = %s segment = %s" % (
         message["avatar-id"], message["key"], message["segment-number"]
     ))
 
-    local_exchange = amqp_connection.local_exchange_name
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", DestroyKeyReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "destroy-key-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we already have a state entry for this request_id, something is wrong
     if message["request-id"] in state:
         error_string = "invalid duplicate request_id in DestroyKey"
         log.error(error_string)
-        reply = DestroyKeyReply(
-            message["request-id"],
-            DestroyKeyReply.error_invalid_duplicate,
-            error_message=error_string
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "invalid-duplicate"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     file_name = _compute_filename(message["request-id"])
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"]
+        xrep_ident=message["xrep-ident"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_destroy_timeout,
         timeout_message="destroy-key-reply",
@@ -548,46 +421,45 @@ def _handle_destroy_key(state, message, _data):
 
     # send a destroy request to the database, with the reply
     # coming back to us
-    database_request = DatabaseKeyDestroy(
-        message["request-id"],
-        message["avatar-id"],
-        local_exchange,
-        _routing_header,
-        message["timestamp"],
-        message["key"], 
-        message["version-number"],
-        message["segment-number"],
-    )
-    return [(local_exchange, database_request.routing_key, database_request, )]
+    request = {
+        "message-type"      : "key-destroy",
+        "request-id"        : message["request-id"],
+        "avatar-id"         : message["avatar-id"],
+        "key"               : message["key"], 
+        "version-number"    : message["version-number"],
+        "segment-number"    : message["segment-number"],
+        "timestmp"          : message["timestamp"],
+    }
+    state["database-client"].queue_message_for_send(request)
 
 def _handle_purge_key(state, message, _data):
     log = logging.getLogger("_handle_purge_key")
-    message = PurgeKey.unmarshall(message, _data)
     log.info("avatar_id = %s, key = %s segment = %s" % (
         message["avatar-id"], message["key"], message["segment-number"]
     ))
 
-    local_exchange = amqp_connection.local_exchange_name
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", PurgeKeyReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "purge-key-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we already have a state entry for this request_id, something is wrong
     if message["request-id"] in state:
         error_string = "invalid duplicate request_id in PurgeKey"
         log.error(error_string)
-        reply = PurgeKeyReply(
-            message["request-id"],
-            PurgeKeyReply.error_invalid_duplicate,
-            error_message=error_string
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "invalid-duplicate"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     file_name = _compute_filename(message["request-id"])
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"]
+        xrep_ident=message["xrep-ident"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_purge_timeout,
         timeout_message="purge-key-reply",
@@ -602,21 +474,19 @@ def _handle_purge_key(state, message, _data):
 
     # send a purge request to the database, with the reply
     # coming back to us
-    database_request = DatabaseKeyPurge(
-        message["request-id"],
-        message["avatar-id"],
-        local_exchange,
-        _routing_header,
-        message["timestamp"],
-        message["key"], 
-        message["version-number"],
-        message["segment-number"],
-    )
-    return [(local_exchange, database_request.routing_key, database_request, )]
+    request = {
+        "message-type"      : "key-purge",
+        "request-id"        : message["request-id"],
+        "avatar-id"         : message["avatar-id"],
+        "key"               : message["key"], 
+        "version-number"    : message["version-number"],
+        "segment-number"    : message["segment-number"],
+        "timestmp"          : message["timestamp"],
+    }
+    state["database-client"].queue_message_for_send(request)
 
 def _handle_key_insert_reply(state, message, _data):
     log = logging.getLogger("_handle_key_insert_reply")
-    message = DatabaseKeyInsertReply.unmarshall(message, _data)
 
     try:
         request_state = state["active-requests"].pop(message["request-id"])
@@ -626,12 +496,13 @@ def _handle_key_insert_reply(state, message, _data):
         log.error("No state for %r" % (message["request-id"], ))
         return []
 
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header,
-         ".",
-        ArchiveKeyFinalReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     work_path = repository.content_input_path(
         request_state.avatar_id, request_state.file_name
@@ -641,7 +512,7 @@ def _handle_key_insert_reply(state, message, _data):
     ) 
 
     # if we got a database error, heave the data we stored
-    if message["result"] != "success:
+    if message["result"] != "success":
         log.error("%s %s database error: (%s) %s removing %s" % (
             request_state.avatar_id,
             request_state.key,
@@ -655,12 +526,10 @@ def _handle_key_insert_reply(state, message, _data):
             log.exception("%s %s %s" % (
                 request_state.avatar_id, request_state.key, instance
             ))    
-        reply = ArchiveKeyFinalReply(
-            message["request-id"],
-            ArchiveKeyFinalReply.error_database_error,
-            error_message = message["error-message"]
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+        reply["result"] = "database-error"
+        reply["error_message"] = message["error-message"]
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # move the stored message to a permanent location
     try:
@@ -681,24 +550,16 @@ def _handle_key_insert_reply(state, message, _data):
             instance
         )
         log.exception(error_string)
-        reply = ArchiveKeyFinalReply(
-            message["request-id"],
-            ArchiveKeyFinalReply.error_exception,
-            error_message = error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
     
-    reply = ArchiveKeyFinalReply(
-        message["request-id"],
-        ArchiveKeyFinalReply.successful,
-        message["previous-size"],
-    )
-
-    return [(reply_exchange, reply_routing_key, reply, )]      
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply)
 
 def _handle_key_destroy_reply(state, message, _data):
     log = logging.getLogger("_handle_key_destroy_reply")
-    message = DatabaseKeyDestroyReply.unmarshall(message, _data)
 
     try:
         request_state = state["active-requests"].pop(message["request-id"])
@@ -708,12 +569,14 @@ def _handle_key_destroy_reply(state, message, _data):
         log.error("No state for %r" % (message["request-id"], ))
         return []
 
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header,
-         ".",
-        DestroyKeyReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "destroy-key-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+        "total-size"    : None,
+    }
 
     # if we got a database error, DON'T heave the data we stored
     if message["result"] != "success":
@@ -724,17 +587,13 @@ def _handle_key_destroy_reply(state, message, _data):
             message["error-message"],
         ))
 
-        if message["result"] == DatabaseKeyDestroyReply.error_too_old:
-            error_result = DestroyKeyReply.error_too_old
+        if message["result"] == "too-old":
+            reply["result"] = "too-old"
         else:
-            error_result = DestroyKeyReply.error_database_error
-
-        reply = DestroyKeyReply(
-            message["request-id"],
-            error_result,
-            error_message = message["error-message"]
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+            reply["result"] = "database-error"
+        reply["error_message"] = message["error-message"]
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     content_path = repository.content_path(
         request_state.avatar_id, request_state.file_name
@@ -759,23 +618,17 @@ def _handle_key_destroy_reply(state, message, _data):
                 instance
             )
             log.exception(error_string)
-            reply = DestroyKeyReply(
-                message["request-id"],
-                DestroyKeyReply.error_exception,
-                error_message = error_string
-            )
-            return [(reply_exchange, reply_routing_key, reply, )]      
+            reply["result"] = "exception"
+            reply["error_message"] = error_string
+            state["xrep-server"].queue_message_for_send(reply)
+            return
   
-    reply = DestroyKeyReply(
-        message["request-id"],
-        DestroyKeyReply.successful,
-        message["total-size"]
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]      
+    reply["result"] = "success"
+    reply["total-size"] = message["total-size"]
+    state["xrep-server"].queue_message_for_send(reply)
 
 def _handle_key_purge_reply(state, message, _data):
     log = logging.getLogger("_handle_key_purge_reply")
-    message = DatabaseKeyPurgeReply.unmarshall(message, _data)
 
     try:
         request_state = state["active-requests"].pop(message["request-id"])
@@ -785,12 +638,13 @@ def _handle_key_purge_reply(state, message, _data):
         log.error("No state for %r" % (message["request-id"], ))
         return []
 
-    reply_exchange = request_state.reply_exchange
-    reply_routing_key = "".join(
-        [request_state.reply_routing_header,
-         ".",
-        PurgeKeyReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "purge-key-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we got a database error, DON'T heave the data we stored
     if message["result"] != "success":
@@ -801,17 +655,13 @@ def _handle_key_purge_reply(state, message, _data):
             message["error-message"],
         ))
 
-        if message["result"] == DatabaseKeyPurgeReply.error_key_not_found:
-            error_result = PurgeKeyReply.error_key_not_found
+        if message["result"] == "no-such-key":
+            reply["result"] = "no-such-key"
         else:
-            error_result = PurgeKeyReply.error_database_error
-
-        reply = PurgeKeyReply(
-            message["request-id"],
-            error_result,
-            error_message = message["error-message"]
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+            reply["result"] = "database-error"
+        reply["error_message"] = message["error-message"]
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     content_path = repository.content_path(
         request_state.avatar_id, request_state.file_name
@@ -836,89 +686,26 @@ def _handle_key_purge_reply(state, message, _data):
                 instance
             )
             log.exception(error_string)
-            reply = PurgeKeyReply(
-                message["request-id"],
-                PurgeKeyReply.error_exception,
-                error_message = error_string
-            )
-            return [(reply_exchange, reply_routing_key, reply, )]      
+            reply["result"] = "exception"
+            reply["error_message"] = error_string
+            state["xrep-server"].queue_message_for_send(reply)
+            return
   
-    reply = PurgeKeyReply(message["request-id"], PurgeKeyReply.successful)
-    return [(reply_exchange, reply_routing_key, reply, )]      
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply)
 
 _dispatch_table = {
-    ArchiveKeyEntire.routing_key    : _handle_archive_key_entire,
-    ArchiveKeyStart.routing_key     : _handle_archive_key_start,
-    ArchiveKeyNext.routing_key      : _handle_archive_key_next,
-    ArchiveKeyFinal.routing_key     : _handle_archive_key_final,
-    DestroyKey.routing_key          : _handle_destroy_key,
-    PurgeKey.routing_key            : _handle_purge_key,
-    ProcessStatus.routing_key       : _handle_process_status,
-    _key_insert_reply_routing_key   : _handle_key_insert_reply,
-    _key_destroy_reply_routing_key  : _handle_key_destroy_reply,
+    "archive-key-entire"    : _handle_archive_key_entire,
+    "archive-key-start"     : _handle_archive_key_start,
+    "archive-key-next"      : _handle_archive_key_next,
+    "archive-key-final"     : _handle_archive_key_final,
+    "destroy-key"           : _handle_destroy_key,
+    "purge-key"             : _handle_purge_key,
+    "key-insert-reply"      : _handle_key_insert_reply,
+    "key-destroy-reply"     : _handle_key_destroy_reply,
+    "key-purge-reply"       : _handle_key_purge_reply,
 }
 
-def _is_request_state((_, value, )):
-    return value.__class__.__name__ == "ArchiveState"
-
-def _check_time(state):
-    """check request_ids who are waiting for a message"""
-    log = logging.getLogger("_check_time")
-    current_time = time.time()
-
-    for request_id, request_state in filter(_is_request_state, state.items()):
-        if current_time > request_state.timeout:
-            log.warn(
-                "%s timed out waiting message; running timeout function" % (
-                    request_id
-                )
-            )
-            return_list.extend(
-                request_state.timeout_function(request_id, state)
-            )
-
-    if current_time > state["next-heartbeat-time"]:
-        log.debug("sending heartbeat. next heartbeat %s seconds" % (
-            _heartbeat_interval,
-        ))
-        message = ProcessStatus(
-            time.time(),
-            amqp_connection.local_exchange_name,
-            _routing_header,
-            ProcessStatus.status_heartbeat
-        )
-
-        exchange = amqp_connection.broadcast_exchange_name
-        routing_key = ProcessStatus.routing_key
-
-        return_list.append(
-            (exchange, routing_key, message, )
-        )
-
-        state["next-heartbeat-time"] = _next_heartbeat_time()
-
-    return return_list
-
-if __name__ == "__main__":
-    state = dict()
-    pickleable_state = load_state(_queue_name)
-    if pickleable_state is not None:
-        for key, value in pickleable_state:
-            state[key] = _request_state_tuple(**value)
-
-    sys.exit(
-        process.main(
-            _log_path, 
-            _queue_name, 
-            _routing_key_binding, 
-            _dispatch_table, 
-            state,
-            pre_loop_function=_startup,
-            in_loop_function=_check_time,
-            post_loop_function=_shutdown
-        )
-    )
-    
 def _create_state():
     return {
         "zmq-context"           : zmq.Context(),
@@ -926,6 +713,7 @@ def _create_state():
         "xrep-server"           : None,
         "database-client"       : None,
         "state-cleaner"         : None,
+        "heartbeater"           : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
         "active-requests"       : dict(),
@@ -961,12 +749,14 @@ def _setup(_halt_event, state):
     )
 
     state["state-cleaner"] = StateCleaner(state)
+    state["heartbeater"] = Heartbeater(state, _heartbeat_interval)
 
     # hand the pollster and the queue-dispatcher to the time-queue 
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
+        (state["heartbeater"].run, state["heartbeater"].next_run(), ), 
     ] 
 
 def _tear_down(_state):

@@ -5,14 +5,13 @@ state_cleaner.py
 A time queue action to perioidcially clean out the state
 """
 import logging
-import os
 import time
 
 _polling_interval = 10.0
 
 class StateCleaner(object):
     """A time queue action to periodically clean out the state"""
-    def __init__(self, state, start_block_requests):
+    def __init__(self, state):
         self._log = logging.getLogger("StateCleaner")
         self._state = state
 
@@ -37,7 +36,7 @@ class StateCleaner(object):
                 return
 
             request_state = self._state["active-requests"].pop(request_id)
-            log.warn("%s timed out waiting reply %s" % ( 
+            self._log.warn("%s timed out waiting reply %s" % ( 
                 request_id, request_state
             ))
 

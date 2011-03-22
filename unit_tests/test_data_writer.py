@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
+ # -*- coding: utf-8 -*-
 """
 test_data_writer.py
 
 test the data writer process
 """
-import logging
 import os
 import os.path
 import shutil
@@ -13,53 +12,53 @@ import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools import amqp_connection
 
-from unit_tests.util import random_string, generate_key
+from unit_tests.util import random_string, \
+        generate_key, \
+        start_database_server,\
+        start_data_writer, \
+        poll_process, \
+        terminate_process
+from unit_tests.zeromq_util import send_request_and_get_reply
 
 _log_path = "/var/log/pandora/test_data_writer.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
-os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
-
-from messages.archive_key_entire import ArchiveKeyEntire
-from messages.archive_key_start import ArchiveKeyStart
-from messages.archive_key_start_reply import ArchiveKeyStartReply
-from messages.archive_key_next import ArchiveKeyNext
-from messages.archive_key_next_reply import ArchiveKeyNextReply
-from messages.archive_key_final import ArchiveKeyFinal
-from messages.archive_key_final_reply import ArchiveKeyFinalReply
-from messages.destroy_key import DestroyKey
-from messages.destroy_key_reply import DestroyKeyReply
-from messages.database_key_destroy import DatabaseKeyDestroy
-from messages.database_key_destroy_reply import DatabaseKeyDestroyReply
-from messages.purge_key import PurgeKey
-from messages.purge_key_reply import PurgeKeyReply
-from messages.database_key_purge import DatabaseKeyPurge
-from messages.database_key_purge_reply import DatabaseKeyPurgeReply
-
-from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_destroy, _handle_key_purge
-from diyapi_data_writer.diyapi_data_writer_main import \
-        _handle_destroy_key, \
-        _handle_key_destroy_reply, \
-        _handle_purge_key, \
-        _handle_key_purge_reply
-
-from unit_tests.archive_util import archive_coroutine
-
-_reply_routing_header = "test_archive"
+_local_node_name = "node01"
+_data_writer_address = os.environ.get(
+    "DIYAPI_DATA_WRITER_ADDRESS",
+    "ipc:///tmp/diyapi-data-writer-%s/socket" % (_local_node_name, )
+)
 
 class TestDataWriter(unittest.TestCase):
     """test message handling in data writer"""
 
     def setUp(self):
-        logging.root.setLevel(logging.DEBUG)
         self.tearDown()
         os.makedirs(_repository_path)
         self._key_generator = generate_key()
 
+        self._database_server_process = start_database_server(
+            _local_node_name, _repository_path
+        )
+        poll_result = poll_process(self._database_server_process)
+        assert poll_result is None, poll_result
+
+        self._data_writer_process = start_data_writer(
+            _local_node_name, _repository_path
+        )
+        poll_result = poll_process(self._data_writer_process)
+        assert poll_result is None, poll_result
+
     def tearDown(self):
+        if hasattr(self, "_data_writer_process") \
+        and self._data_writer_process is not None:
+            terminate_process(self._data_writer_process)
+            self._data_wrter_process = None
+        if hasattr(self, "_database_server_process") \
+        and self._database_server_process is not None:
+            terminate_process(self._database_server_process)
+            self._database_server_process = None
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
@@ -73,10 +72,7 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 2
         request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
         timestamp = time.time()
-        data_writer_state = dict()
-        database_state = {_database_cache : dict()}
 
         total_size = 10 * 64 * 1024
         file_adler32 = -42
@@ -84,32 +80,27 @@ class TestDataWriter(unittest.TestCase):
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
-        message = ArchiveKeyEntire(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            timestamp,
-            key, 
-            version_number,
-            segment_number,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            content_item
+        message = {
+            "message-type"      : "archive-key-entire",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : timestamp,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : file_md5,
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : segment_md5,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=content_item
         )
-
-        archiver = archive_coroutine(
-            self, data_writer_state, database_state, message
-        )
-
-        reply = archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
 
     def test_large_archive(self):
 
@@ -128,167 +119,99 @@ class TestDataWriter(unittest.TestCase):
         segment_number = 4
         sequence = 0
         request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
         timestamp = time.time()
-        data_writer_state = dict()
-        database_state = {_database_cache : dict()}
 
         file_adler32 = -42
         file_md5 = "ffffffffffffffff"
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
-        message = ArchiveKeyStart(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            timestamp,
-            sequence,
-            key, 
-            version_number,
-            segment_number,
-            segment_size,
-            test_data[0]
+        message = {
+            "message-type"      : "archive-key-start",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : timestamp,
+            "sequence"          : sequence,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "segment-size"      : segment_size,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=test_data[0]
         )
-
-        archiver = archive_coroutine(
-            self, data_writer_state, database_state, message
-        )   
-
-        reply = archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
-        self.assertEqual(reply.result, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-start-reply")
+        self.assertEqual(reply["result"], "success")
 
         for content_item in test_data[1:-1]:
             sequence += 1
-            message = ArchiveKeyNext(
-                request_id,
-                sequence,
-                content_item
+            message = {
+                "message-type"      : "archive-key-next",
+                "request-id"        : request_id,
+                "sequence"          : sequence,
+            }
+            reply = send_request_and_get_reply(
+                _data_writer_address, message, data=content_item
             )
-            reply = archiver.send(message)
-            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
-            self.assertEqual(reply.result, 0)
+            self.assertEqual(reply["request-id"], request_id)
+            self.assertEqual(reply["message-type"], "archive-key-next-reply")
+            self.assertEqual(reply["result"], "success")
         
         sequence += 1
-        message = ArchiveKeyFinal(
-            request_id,
-            sequence,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            test_data[-1]
+        message = {
+            "message-type"      : "archive-key-final",
+            "request-id"        : request_id,
+            "sequence"          : sequence,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : file_md5,
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : segment_md5,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=test_data[-1]
         )
-
-        reply = archiver.send(message)
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
 
     def _destroy(
         self, avatar_id, key, version_number, segment_number, timestamp
     ):
         request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
-        message = DestroyKey(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            timestamp,
-            key, 
-            version_number,
-            segment_number,
-        )
-        marshalled_message = message.marshall()
-
-        data_writer_state = dict()
-        replies = _handle_destroy_key(
-            data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # after a successful write, we expect the data writer to send a
-        # database_key_destroy to the database server
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply_routing_key, DatabaseKeyDestroy.routing_key)
-        self.assertEqual(reply.__class__, DatabaseKeyDestroy)
-        self.assertEqual(reply.request_id, request_id)
-
-        # hand off the reply to the database server
-        marshalled_message = reply.marshall()
-        database_state = {_database_cache : dict()}
-        replies = _handle_key_destroy(database_state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply.request_id, request_id)
-
-        # pass the database server reply back to data_writer
-        # we should get a reply we can send to the web api 
-        marshalled_message = reply.marshall()
-        replies = _handle_key_destroy_reply(
-            data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply.__class__, DestroyKeyReply)
-
+        message = {
+            "message-type"      : "destroy-key",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : timestamp,
+            "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+        }
+        reply = send_request_and_get_reply(_data_writer_address, message)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "destroy-key-reply")
+        
         return reply
 
     def _purge(
         self, avatar_id, key, version_number, segment_number, timestamp
     ):
         request_id = uuid.uuid1().hex
-        test_exchange = "reply-exchange"
-        message = PurgeKey(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            timestamp,
-            key, 
-            version_number,
-            segment_number,
-        )
-        marshalled_message = message.marshall()
-
-        data_writer_state = dict()
-        replies = _handle_purge_key(
-            data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # after a successful write, we expect the data writer to send a
-        # database_key_purge to the database server
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply_routing_key, DatabaseKeyPurge.routing_key)
-        self.assertEqual(reply.__class__, DatabaseKeyPurge)
-        self.assertEqual(reply.request_id, request_id)
-
-        # hand off the reply to the database server
-        marshalled_message = reply.marshall()
-        database_state = {_database_cache : dict()}
-        replies = _handle_key_purge(database_state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply.request_id, request_id)
-
-        # pass the database server reply back to data_writer
-        # we should get a reply we can send to the web api 
-        marshalled_message = reply.marshall()
-        replies = _handle_key_purge_reply(
-            data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply.__class__, PurgeKeyReply)
+        message = {
+            "message-type"      : "purge-key",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : timestamp,
+            "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+        }
+        reply = send_request_and_get_reply(_data_writer_address, message)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "purge-key-reply")
 
         return reply
 
@@ -302,8 +225,8 @@ class TestDataWriter(unittest.TestCase):
         reply = self._destroy(
             avatar_id, key, version_number, segment_number, timestamp
         )
-        self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.total_size, 0)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
+        self.assertEqual(reply["total-size"], 0)
 
     def test_simple_destroy(self):
         """test destroying a key that exists, with no complicatons"""
@@ -315,7 +238,6 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 4
         archive_timestamp = time.time()
-        test_exchange = "test-exchange"
 
         total_size = content_size - 42
         file_adler32 = -42
@@ -323,43 +245,35 @@ class TestDataWriter(unittest.TestCase):
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
-        data_writer_state = dict()
-        database_state = {_database_cache : dict()}
-
-        message = ArchiveKeyEntire(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            archive_timestamp,
-            key, 
-            version_number,
-            segment_number,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            content_item
+        message = {
+            "message-type"      : "archive-key-entire",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : archive_timestamp,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : file_md5,
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : segment_md5,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=content_item
         )
-
-        archiver = archive_coroutine(
-            self, data_writer_state, database_state, message
-        )
-
-        reply = archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
 
         # the normal case is where the destroy mesage comes after the archive
         destroy_timestamp = archive_timestamp + 1.0
         reply = self._destroy(
             avatar_id, key, version_number, segment_number, destroy_timestamp
         )
-        self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.total_size, total_size)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
+        self.assertEqual(reply["total-size"], total_size)
 
     def test_destroy_tombstone(self):
         """test destroying a key that has already been destroyed"""
@@ -370,7 +284,6 @@ class TestDataWriter(unittest.TestCase):
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
-        test_exchange = "test-exchange"
 
         total_size = content_size - 43
         file_adler32 = -42
@@ -379,50 +292,43 @@ class TestDataWriter(unittest.TestCase):
         segment_md5 = "1111111111111111"
 
         archive_timestamp = time.time()
-        data_writer_state = dict()
-        database_state = {_database_cache : dict()}
 
-        message = ArchiveKeyEntire(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            archive_timestamp,
-            key, 
-            version_number,
-            segment_number,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            content_item
+        message = {
+            "message-type"      : "archive-key-entire",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : archive_timestamp,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : file_md5,
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : segment_md5,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=content_item
         )
-
-        archiver = archive_coroutine(
-            self, data_writer_state, database_state, message
-        )
-
-        reply = archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
 
         destroy_timestamp1 = archive_timestamp + 1.0
         reply = self._destroy(
             avatar_id, key, version_number, segment_number, destroy_timestamp1
         )
-        self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.total_size, total_size)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
+        self.assertEqual(reply["total-size"], total_size)
 
         # now send the same thing again
         destroy_timestamp2 = destroy_timestamp1 + 1.0
         reply = self._destroy(
             avatar_id, key, version_number, segment_number, destroy_timestamp2
         )
-        self.assertEqual(reply.result, 0, reply.error_message)
-        self.assertEqual(reply.total_size, 0)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
+        self.assertEqual(reply["total-size"], 0)
 
     def test_old_destroy(self):
         """
@@ -436,7 +342,6 @@ class TestDataWriter(unittest.TestCase):
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 4
-        test_exchange = "test-exchange"
 
         total_size = 10 * content_size
         file_adler32 = -42
@@ -445,44 +350,35 @@ class TestDataWriter(unittest.TestCase):
         segment_md5 = "1111111111111111"
 
         archive_timestamp = time.time()
-        data_writer_state = dict()
-        database_state = {_database_cache : dict()}
 
-        message = ArchiveKeyEntire(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            archive_timestamp,
-            key, 
-            version_number,
-            segment_number,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            content_item
+        message = {
+            "message-type"      : "archive-key-entire",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : archive_timestamp,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : file_md5,
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : segment_md5,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=content_item
         )
-
-        archiver = archive_coroutine(
-            self, data_writer_state, database_state, message
-        )
-
-        reply = archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
 
         # the destroy mesage is older than the archive
         destroy_timestamp = archive_timestamp - 1.0
         reply = self._destroy(
             avatar_id, key, version_number, segment_number, destroy_timestamp
         )
-        self.assertEqual(
-            reply.result, DestroyKeyReply.error_too_old, reply.error_message
-        )
+        self.assertEqual(reply["result"], "too-old", reply["error-message"])
 
     def test_purge_nonexistent_key(self):
         """test purgeing a key that does not exist, with no complicatons"""
@@ -494,7 +390,7 @@ class TestDataWriter(unittest.TestCase):
         reply = self._purge(
             avatar_id, key, version_number, segment_number, timestamp
         )
-        self.assertEqual(reply.result, PurgeKeyReply.error_key_not_found)
+        self.assertEqual(reply["result"], "no-such-key", reply)
 
     def test_simple_purge(self):
         """test purgeing a key that exists, with no complicatons"""
@@ -506,7 +402,6 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 4
         archive_timestamp = time.time()
-        test_exchange = "test-exchange"
 
         total_size = content_size * 10
         file_adler32 = -42
@@ -514,42 +409,34 @@ class TestDataWriter(unittest.TestCase):
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
-        data_writer_state = dict()
-        database_state = {_database_cache : dict()}
-
-        message = ArchiveKeyEntire(
-            request_id,
-            avatar_id,
-            test_exchange,
-            _reply_routing_header,
-            archive_timestamp,
-            key, 
-            version_number,
-            segment_number,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            content_item
+        message = {
+            "message-type"      : "archive-key-entire",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "timestamp"         : archive_timestamp,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : file_md5,
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : segment_md5,
+        }
+        reply = send_request_and_get_reply(
+            _data_writer_address, message, data=content_item
         )
-
-        archiver = archive_coroutine(
-            self, data_writer_state, database_state, message
-        )
-
-        reply = archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
 
         # the normal case is where the purge mesage comes after the archive
         purge_timestamp = archive_timestamp + 1.0
         reply = self._purge(
             avatar_id, key, version_number, segment_number, purge_timestamp
         )
-        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

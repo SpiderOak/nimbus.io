@@ -13,11 +13,11 @@ import zmq
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.xreq_client import XREQClient
 
-def send_request_and_get_reply(address, request):
-    reply, _ = send_request_and_get_reply_and_data(address, request)
+def send_request_and_get_reply(address, request, data=None):
+    reply, _ = send_request_and_get_reply_and_data(address, request, data)
     return reply
 
-def send_request_and_get_reply_and_data(address, request):
+def send_request_and_get_reply_and_data(address, request, data=None):
     context = zmq.Context()
     pollster = ZeroMQPollster()
     receive_queue = deque()
@@ -28,7 +28,7 @@ def send_request_and_get_reply_and_data(address, request):
     )
     xreq_client.register(pollster)
 
-    xreq_client.queue_message_for_send(request)
+    xreq_client.queue_message_for_send(request, data)
 
     halt_event = Event()
     retry_count = 0

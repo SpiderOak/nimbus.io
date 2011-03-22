@@ -57,7 +57,7 @@ _heartbeat_interval = float(
 )
 
 _request_state_tuple = namedtuple("RequestState", [ 
-    "xrep_ident"
+    "xrep_ident",
     "timestamp",
     "timeout",
     "timeout_message",
@@ -280,7 +280,7 @@ def _handle_archive_key_next(state, message, data):
         return
 
     # save stuff we need to recall in state
-    state[message["request-id"]] = request_state._replace(
+    state["active-requests"][message["request-id"]] = request_state._replace(
         sequence=request_state.sequence+1,
         timeout=time.time()+_archive_timeout
     )
@@ -349,7 +349,8 @@ def _handle_archive_key_final(state, message, data):
         return
 
     # save stuff we need to recall in state
-    state[message["request-id"]] = request_state._replace(
+    state["active-requests"][message["request-id"]] = request_state._replace(
+        xrep_ident=message["xrep-ident"],
         sequence=request_state.sequence+1,
         timeout=time.time()+_key_insert_timeout
     )
@@ -373,8 +374,8 @@ def _handle_archive_key_final(state, message, data):
     request = {
         "message-type"      : "key-insert",
         "request-id"        : message["request-id"],
-        "avatar-id"         : message["avatar-id"],
-        "key"               : message["key"], 
+        "avatar-id"         : request_state.avatar_id,
+        "key"               : request_state.key, 
         "database-content"  : dict(database_entry._asdict().items())
     }
     state["database-client"].queue_message_for_send(request)
@@ -428,7 +429,7 @@ def _handle_destroy_key(state, message, _data):
         "key"               : message["key"], 
         "version-number"    : message["version-number"],
         "segment-number"    : message["segment-number"],
-        "timestmp"          : message["timestamp"],
+        "timestamp"         : message["timestamp"],
     }
     state["database-client"].queue_message_for_send(request)
 
@@ -481,7 +482,7 @@ def _handle_purge_key(state, message, _data):
         "key"               : message["key"], 
         "version-number"    : message["version-number"],
         "segment-number"    : message["segment-number"],
-        "timestmp"          : message["timestamp"],
+        "timestamp"         : message["timestamp"],
     }
     state["database-client"].queue_message_for_send(request)
 
@@ -498,10 +499,11 @@ def _handle_key_insert_reply(state, message, _data):
 
     reply = {
         "message-type"  : "archive-key-final-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "xrep-ident"    : request_state.xrep_ident,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
+        "previous-size" : None
     }
 
     work_path = repository.content_input_path(
@@ -556,6 +558,7 @@ def _handle_key_insert_reply(state, message, _data):
         return
     
     reply["result"] = "success"
+    reply["previous-size"] = message["previous-size"]
     state["xrep-server"].queue_message_for_send(reply)
 
 def _handle_key_destroy_reply(state, message, _data):
@@ -571,7 +574,7 @@ def _handle_key_destroy_reply(state, message, _data):
 
     reply = {
         "message-type"  : "destroy-key-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "xrep-ident"    : request_state.xrep_ident,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -640,7 +643,7 @@ def _handle_key_purge_reply(state, message, _data):
 
     reply = {
         "message-type"  : "purge-key-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "xrep-ident"    : request_state.xrep_ident,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,

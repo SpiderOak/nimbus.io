@@ -7,142 +7,90 @@ Looks up pointers to data by querying the database server
 Looks for files in both the hashfanout area 
 Responds with content or "not available"
 """
-from collections import namedtuple
+from collections import deque, namedtuple
 import logging
 import os.path
 import sys
 import time
 
+import zmq
+
 import Statgrabber
 
-from diyapi_tools import amqp_connection
-from diyapi_tools.standard_logging import format_timestamp
-from diyapi_tools.low_traffic_thread import LowTrafficThread, \
-    low_traffic_routing_tag
-from diyapi_tools import message_driven_process as process
+from diyapi_tools.zeromq_pollster import ZeroMQPollster
+from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.xreq_client import XREQClient
+from diyapi_tools.deque_dispatcher import DequeDispatcher
+from diyapi_tools import time_queue_driven_process
 from diyapi_tools.persistent_state import load_state, save_state
 from diyapi_tools import repository
 
-from messages.process_status import ProcessStatus
+from diyapi_data_reader.state_cleaner import StateCleaner
 
-from messages.retrieve_key_start import RetrieveKeyStart
-from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-from messages.retrieve_key_next import RetrieveKeyNext
-from messages.retrieve_key_next_reply import RetrieveKeyNextReply
-from messages.retrieve_key_final import RetrieveKeyFinal
-from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
-from messages.database_key_lookup import DatabaseKeyLookup
-from messages.database_key_lookup_reply import DatabaseKeyLookupReply
-
+_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+    _local_node_name,
 )
-_queue_name = "data-reader-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
-_routing_header = "data_reader"
-_routing_key_binding = ".".join([_routing_header, "*"])
-_key_lookup_reply_routing_key = ".".join([
-    _routing_header,
-    DatabaseKeyLookupReply.routing_tag,
-])
-_low_traffic_routing_key = ".".join([
-    _routing_header, 
-    low_traffic_routing_tag,
-])
+_persistent_state_file_name = "data-reader-%s" % (_local_node_name, )
+_database_server_address = os.environ.get(
+    "DIYAPI_DATABASE_SERVER_ADDRESS",
+    "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
+)
+_data_reader_address = os.environ.get(
+    "DIYAPI_DATA_READER_ADDRESS",
+    "ipc:///tmp/diyapi-data-reader-%s/socket" % (_local_node_name, )
+)
 _key_lookup_timeout = 60.0
 _retrieve_timeout = 30 * 60.0
-
+_heartbeat_interval = float(
+    os.environ.get("DIYAPI_DATA_READER_HEARTBEAT", "60.0")
+)
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
+    "xrep_ident",
     "timeout",
-    "timeout_function",
-    "avatar_id",
+    "timeout_message",
+    "avatar-id",
     "key",
     "version_number",
     "segment_number",
-    "reply_exchange",
-    "reply_routing_header",
     "segment_size",
     "sequence",
     "file_name",
 ])
 
-def _handle_key_lookup_timeout(request_id, state):
-    """called when we wait too long for a reply to a KeyLookup message"""
-    log = logging.getLogger("_handle_key_lookup_timeout")
-
-    try:
-        retrieve_state = state.pop(request_id)
-    except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
-        return []
-
-    log.error("timeout: %s %s %s" % (
-        retrieve_state.avatar_id,
-        retrieve_state.key,
-        request_id,
-    ))
-
-    # tell the caller that we're not working
-    reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = "".join(
-        [retrieve_state.reply_routing_header, 
-         ".", 
-         RetrieveKeyStartReply.routing_tag]
-    )
-    reply = RetrieveKeyStartReply(
-        request_id,
-        RetrieveKeyStartReply.error_timeout_waiting_key_insert,
-        error_message="timeout waiting for database_server"
-    )
-    return [(reply_exchange, reply_routing_key, reply, )] 
-
-def _handle_retrieve_timeout(request_id, state):
-    """called when we wait too long for a RetrieveKeyNext or RetrieveKeyFinal"""
-    log = logging.getLogger("_handle_retrieve_timeout")
-
-    try:
-        retrieve_state = state.pop(request_id)
-    except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
-        return []
-
-    log.error("timeout: %s %s %s" % (
-        retrieve_state.avatar_id,
-        retrieve_state.key,
-        request_id,
-    ))
-
-
-def _handle_retrieve_key_start(state, message_body):
+def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
-    message = RetrieveKeyStart.unmarshall(message_body)
-    log.info("avatar_id = %s, key = %s" % (message.avatar_id, message.key, ))
+    log.info("avatar_id = %s, key = %s" % (
+        message["avatar-id"], message["key"], 
+    ))
 
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", RetrieveKeyStartReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "retrieve-key-start-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we already have a state entry for this request_id, something is wrong
-    if message.request_id in state:
+    if message["request-id"] in state["active-requests"]:
         error_string = "invalid duplicate request_id in RetrieveKeyStart"
         log.error(error_string)
-        reply = RetrieveKeyStartReply(
-            message.request_id,
-            RetrieveKeyStartReply.error_invalid_duplicate,
-            error_message=error_string
-        )
-        return [(message.reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "invalid-duplicate"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # save stuff we need to recall in state
-    state[message.request_id] = _retrieve_state_tuple(
+    state["active-requests"][message["request-id"]] = _retrieve_state_tuple(
+        xrep_ident=message["xrep-ident"],
         timeout=time.time()+_key_lookup_timeout,
-        timeout_function=_handle_key_lookup_timeout,
-        avatar_id = message.avatar_id,
-        key = message.key,
-        version_number=message.version_number,
-        segment_number=message.segment_number,
-        reply_exchange = message.reply_exchange,
-        reply_routing_header = message.reply_routing_header,
+        timeout_message="retrieve-key-start-reply",
+        avatar_id = message["avatar-id"],
+        key = message["key"],
+        version_number=message["version-number"],
+        segment_number=message["segment-number"],
         segment_size = None,
         sequence = None,
         file_name = None
@@ -150,64 +98,59 @@ def _handle_retrieve_key_start(state, message_body):
 
     # send a lookup request to the database, with the reply
     # coming back to us
-    local_exchange = amqp_connection.local_exchange_name
-    database_request = DatabaseKeyLookup(
-        message.request_id,
-        message.avatar_id,
-        local_exchange,
-        _routing_header,
-        message.key,
-        message.version_number,
-        message.segment_number
-    )
-    return [(local_exchange, database_request.routing_key, database_request, )]
+    request = {
+        "message-type"      : "key-lookup",
+        "request-id"        : message["request-id"],
+        "avatar-id"         : message["avatar-id"],
+        "key"               : message["key"], 
+        "version-number"    : message["version-number"],
+        "segment-number"    : message["segment-number"],
+    }
+    state["database-client"].queue_message_for_send(request)
 
-def _handle_retrieve_key_next(state, message_body):
+def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
-    message = RetrieveKeyNext.unmarshall(message_body)
 
     try:
-        retrieve_state = state.pop(message.request_id)
+        retrieve_state = state["active-requests"].pop(message["request-id"])
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message.request_id, ))
+        log.error("No state for %r" % (message["request-id"], ))
         return []
 
     log.info("avatar_id = %s, key = %s sequence = %s" % (
-        retrieve_state.avatar_id, retrieve_state.key, message.sequence
+        retrieve_state.avatar_id, retrieve_state.key, message["sequence"]
     ))
 
-    reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = "".join(
-        [retrieve_state.reply_routing_header, 
-         ".", 
-         RetrieveKeyNextReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "retrieve-key-next-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     if retrieve_state.sequence is None \
-    or message.sequence != retrieve_state.sequence+1:
+    or message["sequence"] != retrieve_state.sequence+1:
         error_string = "%s %s out of sequence %s %s" % (
             retrieve_state.avatar_id, 
             retrieve_state.key,
-            message.sequence,
+            message["sequence"],
             retrieve_state.sequence+1
         )
         log.error(error_string)
-        reply = RetrieveKeyNextReply(
-            message.request_id,
-            message.sequence,
-            RetrieveKeyNextReply.error_out_of_sequence,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "out-of-sequence"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     content_path = repository.content_path(
         retrieve_state.avatar_id, 
         retrieve_state.file_name
     ) 
 
-    offset = message.sequence * retrieve_state.segment_size
+    offset = message["sequence"] * retrieve_state.segment_size
 
     try:
         with open(content_path, "r") as input_file:
@@ -218,76 +161,65 @@ def _handle_retrieve_key_next(state, message_body):
             retrieve_state.avatar_id,
             retrieve_state.key,
         ))
-        reply = RetrieveKeyNextReply(
-            message.request_id,
-            message.sequence,
-            RetrieveKeyNextReply.error_exception,
-            error_message = str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
-    state[message.request_id] = retrieve_state._replace(
+    state["active-requests"][message["request-id"]] = retrieve_state._replace(
+        xrep_ident=None,
         timeout=time.time()+_retrieve_timeout,
-        sequence=message.sequence
+        sequence=message["sequence"]
     )
 
     Statgrabber.accumulate('diy_read_requests', 1)
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
-    reply = RetrieveKeyNextReply(
-        message.request_id,
-        message.sequence,
-        RetrieveKeyNextReply.successful,
-        data_content = data_content
-    )
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply, data=data_content)
 
-    return [(reply_exchange, reply_routing_key, reply, )]      
-
-def _handle_retrieve_key_final(state, message_body):
+def _handle_retrieve_key_final(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_final")
-    message = RetrieveKeyNext.unmarshall(message_body)
 
     try:
-        retrieve_state = state.pop(message.request_id)
+        retrieve_state = state["active-requests"].pop(message["request-id"])
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message.request_id, ))
+        log.error("No state for %r" % (message["request-id"], ))
         return []
 
     log.info("avatar_id = %s, key = %s sequence = %s" % (
-        retrieve_state.avatar_id, retrieve_state.key, message.sequence
+        retrieve_state.avatar_id, retrieve_state.key, message["sequence"]
     ))
 
-    reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = "".join(
-        [retrieve_state.reply_routing_header, 
-         ".", 
-         RetrieveKeyFinalReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "retrieve-key-final-reply",
+        "xrep-ident"    : message["xrep-ident"],
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
-    if message.sequence != retrieve_state.sequence+1:
+    if message["sequence"] != retrieve_state.sequence+1:
         error_string = "%s %s out of sequence %s %s" % (
             retrieve_state.avatar_id, 
             retrieve_state.key,
-            message.sequence,
+            message["sequence"],
             retrieve_state.sequence+1
         )
         log.error(error_string)
-        reply = RetrieveKeyFinalReply(
-            message.request_id,
-            message.sequence,
-            RetrieveKeyFinalReply.error_out_of_sequence,
-            error_message=error_string
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "out-of-sequence"
+        reply["error_message"] = error_string
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     content_path = repository.content_path(
         retrieve_state.avatar_id, 
         retrieve_state.file_name
     ) 
 
-    offset = message.sequence * retrieve_state.segment_size
+    offset = message["sequence"] * retrieve_state.segment_size
 
     try:
         with open(content_path, "r") as input_file:
@@ -298,92 +230,68 @@ def _handle_retrieve_key_final(state, message_body):
             retrieve_state.avatar_id,
             retrieve_state.key,
         ))
-        reply = RetrieveKeyFinalReply(
-            message.request_id,
-            message.sequence,
-            RetrieveKeyFinalReply.error_exception,
-            error_message = str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )] 
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # we don't save the state, because we are done
 
     Statgrabber.accumulate('diy_read_requests', 1)
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
-    reply = RetrieveKeyFinalReply(
-        message.request_id,
-        message.sequence,
-        RetrieveKeyFinalReply.successful,
-        data_content = data_content
-    )
+    reply["result"] = "success"
+    state["xrep-server"].queue_message_for_send(reply, data=data_content)
 
-    return [(reply_exchange, reply_routing_key, reply, )]      
-
-def _handle_process_status(_state, message_body):
-    log = logging.getLogger("_handle_process_status")
-    message = ProcessStatus.unmarshall(message_body)
-    log.debug("%s %s %s %s" % (
-        message.exchange,
-        message.routing_header,
-        message.status,
-        format_timestamp(message.timestamp),
-    ))
-    return []
-
-def _handle_key_lookup_reply(state, message_body):
+def _handle_key_lookup_reply(state, message, _data):
     log = logging.getLogger("_handle_key_lookup_reply")
-    message = DatabaseKeyLookupReply.unmarshall(message_body)
 
     try:
-        retrieve_state = state.pop(message.request_id)
+        retrieve_state = state["active-requests"].pop(message["request-id"])
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message.request_id, ))
+        log.error("No state for %r" % (message["request-id"], ))
         return []
 
-    reply_exchange = retrieve_state.reply_exchange
-    reply_routing_key = "".join(
-        [retrieve_state.reply_routing_header, 
-         ".", 
-         RetrieveKeyStartReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "retrieve-key-start-reply",
+        "xrep-ident"    : retrieve_state.xrep_ident,
+        "request-id"    : message["request-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     # if we got a database error, pass it on 
-    if message.error:
+    if message["result"] != "success":
         log.error("%s %s database error: (%s) %s" % (
             retrieve_state.avatar_id,
             retrieve_state.key,
-            message.result,
-            message.error_message,
+            message["result"],
+            message["error-message"],
         ))
-        reply = RetrieveKeyStartReply(
-            message.request_id,
-            RetrieveKeyStartReply.error_database,
-            error_message = message.error_message
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+        reply["result"] = "database-error"
+        reply["error_message"] = message["error-message"]
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # if this key is a tombstone, treat as an error
-    if message.database_content.is_tombstone:
+    if message["database-content"]["is-tombstone"]:
         log.error("%s %s this record is a tombstone" % (
             retrieve_state.avatar_id,
             retrieve_state.key,
         ))
-        reply = RetrieveKeyStartReply(
-            message.request_id,
-            RetrieveKeyStartReply.error_key_not_found,
-            error_message = "is tombstone"
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+        reply["result"] = "no-such-key"
+        reply["error_message"] = "is tombstone"
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     content_path = repository.content_path(
         retrieve_state.avatar_id, 
-        message.database_content.file_name
+        message["database-content"]["file-name"]
     ) 
-    segment_size = message.database_content.segment_size
-    segment_count = message.database_content.segment_count
+    segment_size = message["database-content"]["segment-size"]
+    segment_count = message["database-content"]["segment-count"]
 
     try:
         with open(content_path, "r") as input_file:
@@ -393,142 +301,120 @@ def _handle_key_lookup_reply(state, message_body):
             retrieve_state.avatar_id,
             retrieve_state.key,
         ))
-        reply = RetrieveKeyStartReply(
-            message.request_id,
-            RetrieveKeyStartReply.error_exception,
-            error_message = str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]      
+        reply["result"] = "exception"
+        reply["error_message"] = str(instance)
+        state["xrep-server"].queue_message_for_send(reply)
+        return
 
     # if we have more than one segment, we need to save the state
     # otherwise this request is done
     if segment_count > 1:
-        state[message.request_id] = retrieve_state._replace(
-            timeout=time.time()+_retrieve_timeout,
-            sequence=0, 
-            segment_size=segment_size,
-            file_name=message.database_content.file_name
-        )
+        state["active-requests"][message["request-id"]] = \
+            retrieve_state._replace(
+                timeout=time.time()+_retrieve_timeout,
+                sequence=0, 
+                segment_size=segment_size,
+                file_name=message["database-content"]["file_name"]
+            )
 
     Statgrabber.accumulate('diy_read_requests', 1)
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
-    reply = RetrieveKeyStartReply(
-        message.request_id,
-        RetrieveKeyStartReply.successful,
-        message.database_content.timestamp,
-        message.database_content.is_tombstone,
-        message.database_content.version_number,
-        message.database_content.segment_number,
-        message.database_content.segment_count,
-        message.database_content.segment_size,
-        message.database_content.total_size,
-        message.database_content.file_adler32,
-        message.database_content.file_md5,
-        message.database_content.segment_adler32,
-        message.database_content.segment_md5,
-        data_content = data_content
-    )
-
-    return [(reply_exchange, reply_routing_key, reply, )]      
-
-def _handle_low_traffic(_state, _message_body):
-    log = logging.getLogger("_handle_low_traffic")
-    log.debug("ignoring low traffic message")
-    return None
+    reply["result"]             = "success"
+    reply["timestamp"]          = message["database-content"]["timestamp"]
+    reply["is-tombstone"]       = message["database-content"]["is-tombstone"]
+    reply["version-number"]     = message["database-content"]["version-number"]
+    reply["segment-number"]     = message["database-content"]["segment-number"]
+    reply["segment-count"]      = message["database-content"]["segment-count"]
+    reply["segment-size"]       = message["database-content"]["segment-size"]
+    reply["total-size"]         = message["database-content"]["total-size"]
+    reply["file-adler32"]       = message["database-content"]["file-adler32"]
+    reply["file-md5"]           = message["database-content"]["file-md5"]
+    reply["segment-adler32"]    = message["database-content"]["segment-adler32"]
+    reply["segment-md5"]        = message["database-content"]["segment-md5"]
+    state["xrep-server"].queue_message_for_send(reply)
 
 _dispatch_table = {
-    RetrieveKeyStart.routing_key    : _handle_retrieve_key_start,
-    RetrieveKeyNext.routing_key     : _handle_retrieve_key_next,
-    RetrieveKeyFinal.routing_key    : _handle_retrieve_key_final,
-    ProcessStatus.routing_key       : _handle_process_status,
-    _key_lookup_reply_routing_key   : _handle_key_lookup_reply,
-    _low_traffic_routing_key        : _handle_low_traffic,
+    "retrieve-key-start"    : _handle_retrieve_key_start,
+    "retrieve-key-next"     : _handle_retrieve_key_next,
+    "retrieve-key-final"    : _handle_retrieve_key_final,
+    "key-lookup-reply"      : _handle_key_lookup_reply,
 }
 
-def _startup(halt_event, state):
-    state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, _routing_header
-    )
-    state["low_traffic_thread"].start()
+def _create_state():
+    return {
+        "zmq-context"           : zmq.Context(),
+        "pollster"              : ZeroMQPollster(),
+        "xrep-server"           : None,
+        "database-client"       : None,
+        "state-cleaner"         : None,
+        "receive-queue"         : deque(),
+        "queue-dispatcher"      : None,
+        "active-requests"       : dict(),
+    }
 
-    message = ProcessStatus(
-        time.time(),
-        amqp_connection.local_exchange_name,
-        _routing_header,
-        ProcessStatus.status_startup
-    )
+def _setup(_halt_event, state):
+    log = logging.getLogger("_setup")
 
-    exchange = amqp_connection.broadcast_exchange_name
-    routing_key = ProcessStatus.routing_key
-
-    return [(exchange, routing_key, message, )]
-
-def _is_retrieve_state((_, value, )):
-    return value.__class__.__name__ == "RetrieveState"
-
-def _check_message_timeout(state):
-    """check request_ids who are waiting for a message"""
-    log = logging.getLogger("_check_message_timeout")
-
-    state["low_traffic_thread"].reset()
-
-    # return a (possibly empty) list of messages to send
-    return_list = list()
-
-    current_time = time.time()
-    for request_id, retrieve_state in filter(_is_retrieve_state, state.items()):
-        if current_time > retrieve_state.timeout:
-            log.warn(
-                "%s timed out waiting message; running timeout function" % (
-                    request_id
-                )
-            )
-            return_list.extend(
-                retrieve_state.timeout_function(request_id, state)
-            )
-
-    return return_list
-
-def _shutdown(state):
-    state["low_traffic_thread"].join()
-    del state["low_traffic_thread"]
-
-    pickleable_state = dict()
-    for key, value in state:
-        pickleable_state[key] = value._asdict()
-
-    save_state(pickleable_state, _queue_name)
-
-    message = ProcessStatus(
-        time.time(),
-        amqp_connection.local_exchange_name,
-        _routing_header,
-        ProcessStatus.status_shutdown
-    )
-
-    exchange = amqp_connection.broadcast_exchange_name
-    routing_key = ProcessStatus.routing_key
-
-    return [(exchange, routing_key, message, )]
-
-if __name__ == "__main__":
-    work_state = dict()
-    pickleable_state = load_state(_queue_name)
+    pickleable_state = load_state(_persistent_state_file_name)
     if pickleable_state is not None:
         for key, value in pickleable_state:
-            work_state[key] = _retrieve_state_tuple(**value)
+            state["active-requests"][key] = _retrieve_state_tuple(**value)
 
+    log.info("binding xrep-server to %s" % (_data_reader_address, ))
+    state["xrep-server"] = XREPServer(
+        state["zmq-context"],
+        _data_reader_address,
+        state["receive-queue"]
+    )
+    state["xrep-server"].register(state["pollster"])
+
+    state["database-client"] = XREQClient(
+        state["zmq-context"],
+        _database_server_address,
+        state["receive-queue"]
+    )
+    state["database-client"].register(state["pollster"])
+
+    state["queue-dispatcher"] = DequeDispatcher(
+        state,
+        state["receive-queue"],
+        _dispatch_table
+    )
+
+    state["state-cleaner"] = StateCleaner(state)
+
+    # hand the pollster and the queue-dispatcher to the time-queue 
+    return [
+        (state["pollster"].run, time.time(), ), 
+        (state["queue-dispatcher"].run, time.time(), ), 
+        (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
+    ] 
+
+def _tear_down(_state):
+    log = logging.getLogger("_tear_down")
+
+    log.debug("stopping xrep server")
+    state["xrep-server"].close()
+
+    state["zmq-context"].term()
+
+    log.info("saving state")
+    pickleable_state = dict()
+    for request_id, request_state in state["active-requests"].items():
+        pickleable_state[request_id] = request_state._asdict()
+
+    save_state(pickleable_state, _persistent_state_file_name)
+    log.debug("teardown complete")
+
+if __name__ == "__main__":
+    state = _create_state()
     sys.exit(
-        process.main(
-            _log_path, 
-            _queue_name, 
-            _routing_key_binding, 
-            _dispatch_table, 
-            work_state,
-            pre_loop_function=_startup,
-            in_loop_function=_check_message_timeout,
-            post_loop_function=_shutdown
+        time_queue_driven_process.main(
+            _log_path,
+            state,
+            pre_loop_actions=[_setup, ],
+            post_loop_actions=[_tear_down, ]
         )
     )
 

@@ -63,7 +63,7 @@ class XREQClient(object):
             self._receive_queue.append((message.control, message.body, ))
             
     def _send_message(self, message):
-        self._log.info("sending message: %s" % (message, ))
+        self._log.info("sending message: %s" % (message.control, ))
         if message.body is not None:
             self._xreq_socket.send_json(message.control, zmq.SNDMORE)
             self._xreq_socket.send(message.body, copy=False)

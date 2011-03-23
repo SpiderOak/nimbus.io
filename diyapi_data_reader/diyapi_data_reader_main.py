@@ -50,7 +50,7 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "xrep_ident",
     "timeout",
     "timeout_message",
-    "avatar-id",
+    "avatar_id",
     "key",
     "version_number",
     "segment_number",
@@ -276,7 +276,7 @@ def _handle_key_lookup_reply(state, message, _data):
         return
 
     # if this key is a tombstone, treat as an error
-    if message["database-content"]["is-tombstone"]:
+    if message["database-content"]["is_tombstone"]:
         log.error("%s %s this record is a tombstone" % (
             retrieve_state.avatar_id,
             retrieve_state.key,
@@ -288,10 +288,10 @@ def _handle_key_lookup_reply(state, message, _data):
 
     content_path = repository.content_path(
         retrieve_state.avatar_id, 
-        message["database-content"]["file-name"]
+        message["database-content"]["file_name"]
     ) 
-    segment_size = message["database-content"]["segment-size"]
-    segment_count = message["database-content"]["segment-count"]
+    segment_size = message["database-content"]["segment_size"]
+    segment_count = message["database-content"]["segment_count"]
 
     try:
         with open(content_path, "r") as input_file:
@@ -322,17 +322,17 @@ def _handle_key_lookup_reply(state, message, _data):
 
     reply["result"]             = "success"
     reply["timestamp"]          = message["database-content"]["timestamp"]
-    reply["is-tombstone"]       = message["database-content"]["is-tombstone"]
-    reply["version-number"]     = message["database-content"]["version-number"]
-    reply["segment-number"]     = message["database-content"]["segment-number"]
-    reply["segment-count"]      = message["database-content"]["segment-count"]
-    reply["segment-size"]       = message["database-content"]["segment-size"]
-    reply["total-size"]         = message["database-content"]["total-size"]
-    reply["file-adler32"]       = message["database-content"]["file-adler32"]
-    reply["file-md5"]           = message["database-content"]["file-md5"]
-    reply["segment-adler32"]    = message["database-content"]["segment-adler32"]
-    reply["segment-md5"]        = message["database-content"]["segment-md5"]
-    state["xrep-server"].queue_message_for_send(reply)
+    reply["is-tombstone"]       = message["database-content"]["is_tombstone"]
+    reply["version-number"]     = message["database-content"]["version_number"]
+    reply["segment-number"]     = message["database-content"]["segment_number"]
+    reply["segment-count"]      = message["database-content"]["segment_count"]
+    reply["segment-size"]       = message["database-content"]["segment_size"]
+    reply["total-size"]         = message["database-content"]["total_size"]
+    reply["file-adler32"]       = message["database-content"]["file_adler32"]
+    reply["file-md5"]           = message["database-content"]["file_md5"]
+    reply["segment-adler32"]    = message["database-content"]["segment_adler32"]
+    reply["segment-md5"]        = message["database-content"]["segment_md5"]
+    state["xrep-server"].queue_message_for_send(reply, data_content)
 
 _dispatch_table = {
     "retrieve-key-start"    : _handle_retrieve_key_start,

@@ -16,119 +16,71 @@ it makes its own dump. This repeats at 15 minutes for the 3rd lowest node, etc.
 Since there are twelve 5 minute segments in an hour, this works for ten nodes 
 without a more complicated election process. :)
 """
+from collections import deque
 import datetime
 import logging
 import os
 import sys
 import time
 
-from diyapi_tools import message_driven_process as process
-from diyapi_tools import amqp_connection
-from diyapi_tools.low_traffic_thread import LowTrafficThread, \
-        low_traffic_routing_tag
+import zmq
 
-from messages.space_accounting_detail import SpaceAccountingDetail
-from messages.space_usage import SpaceUsage
-from messages.space_usage_reply import SpaceUsageReply
+from diyapi_tools.zeromq_pollster import ZeroMQPollster
+from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.deque_dispatcher import DequeDispatcher
+from diyapi_tools import time_queue_driven_process
 
 from diyapi_space_accounting_server.space_accounting_database import \
         SpaceAccountingDatabase, SpaceAccountingDatabaseAvatarNotFound
+from diyapi_space_accounting_server.state_cleaner import StateCleaner
+from diyapi_space_accounting_server.util import floor_hour
 
+_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_space_accounting_server_%s.log" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+    _local_node_name,
 )
-_queue_name = "space-accounting-%s" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"], 
+
+_space_accounting_server_address = os.environ.get(
+    "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS",
+    "ipc:///tmp/diyapi-space-accounting-%s/socket" % (_local_node_name, )
 )
-_routing_header = "space-accounting"
-_routing_key_binding = ".".join([_routing_header, "*"])
-_low_traffic_routing_key = ".".join([
-    _routing_header, 
-    low_traffic_routing_tag,
-])
 
-def _create_state():
-    return {"data" : dict()}
-
-def _floor_hour(raw_datetime):
-    """return a datetime rounded to the floor hour"""
-    return datetime.datetime(
-        year = raw_datetime.year,
-        month = raw_datetime.month,
-        day = raw_datetime.day,
-        hour = raw_datetime.hour,
-        minute = 0,
-        second = 0,
-        microsecond = 0
-    )
-
-def _next_dump_interval():
-    """five minutes past the hour"""
-    log = logging.getLogger("_next_dump_interval")
-    current_time = datetime.datetime.now()
-    next_time = datetime.datetime(
-        year = current_time.year,
-        month = current_time.month,
-        day = current_time.day,
-        hour = current_time.hour,
-        minute = 5,
-        second = 0,
-        microsecond = 0
-    )
-    if current_time.minute >= 5:
-        next_time += datetime.timedelta(hours=1)
-    log.info("next dump time = %s", (next_time, ))
-    return time.mktime(next_time.timetuple())
-
-def _handle_low_traffic(_state, _message_body):
-    log = logging.getLogger("_handle_low_traffic")
-    log.debug("ignoring low traffic message")
-    return None
-
-def _handle_detail(state, message_body):
-    log = logging.getLogger("_handle_detail")
-    message = SpaceAccountingDetail.unmarshall(message_body)
-    message_datetime = datetime.datetime.fromtimestamp(message.timestamp)
-    message_hour = _floor_hour(message_datetime)
+def _handle_space_accounting_detail(state, message, _data):
+    log = logging.getLogger("_handle_space_accounting_detail")
+    message_datetime = datetime.datetime.fromtimestamp(message["timestamp"])
+    message_hour = floor_hour(message_datetime)
     log.info("hour = %s avatar_id = %s, event = %s, value = %s" % (
-        message_hour, message.avatar_id, message.event, message.value
+        message_hour, message["avatar-id"], message["event"], message["value"]
     ))
 
     hour_entry = state["data"].setdefault(message_hour, dict())
-    avatar_entry = hour_entry.setdefault(message.avatar_id, dict())
-    avatar_entry[message.event] = \
-        avatar_entry.setdefault(message.event, 0) + message.value
+    avatar_entry = hour_entry.setdefault(message["avatar-id"], dict())
+    avatar_entry[message["event"]] = \
+        avatar_entry.setdefault(message["event"], 0) + message["value"]
 
-    return []
+def _handle_space_usage_request(state, message, _data):
+    log = logging.getLogger("_handle_space_usage_request")
+    log.info("request for avatar %s" % (message["avatar-id"],))
 
-def _handle_space_usage(state, message_body):
-    log = logging.getLogger("_handle_space_usage")
-    message = SpaceUsage.unmarshall(message_body)
-    log.info("request from %s for avatar %s" % (
-        message.reply_exchange, message.avatar_id,
-    ))
-
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", SpaceUsageReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "space-usage-reply",
+        "request-id"    : message["request-id"],
+        "result"        : None,
+    }
 
     # get sums of stats from the database
     space_accounting_database = SpaceAccountingDatabase(transaction=False)
     try:
         stats = space_accounting_database.retrieve_avatar_stats(
-            message.avatar_id
+            message["avatar-id"]
         )
     except SpaceAccountingDatabaseAvatarNotFound, instance:
         error_message = "avatar not found %s" % (instance, )
         log.warn(error_message)
-
-        reply = SpaceUsageReply(
-            message.request_id,
-            SpaceUsageReply.unknown_avatar,
-            error_message=error_message
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
+        reply["result"] = "unknown-avatar"
+        reply["error-message"] = error_message
+        state["xrep-server"].queue_message_for_send(reply)
+        return
     finally:
         space_accounting_database.close()
 
@@ -136,101 +88,81 @@ def _handle_space_usage(state, message_body):
 
     # increment sums with data from state
     current_time = datetime.datetime.now()
-    current_hour = _floor_hour(current_time)
+    current_hour = floor_hour(current_time)
 
     if current_hour in state["data"]:
-        if message.avatar_id in state["data"][current_hour]:
-            events = state["data"][current_hour][message.avatar_id]
-            bytes_added += events.get(SpaceAccountingDetail.bytes_added, 0)
-            bytes_removed += events.get(SpaceAccountingDetail.bytes_removed, 0)
-            bytes_retrieved += events.get(
-                SpaceAccountingDetail.bytes_retrieved, 0
-            )
+        if message["avatar-id"] in state["data"][current_hour]:
+            events = state["data"][current_hour][message["avatar-id"]]
+            bytes_added += events.get("bytes_added", 0)
+            bytes_removed += events.get("bytes_removed", 0)
+            bytes_retrieved += events.get("bytes_retrieved", 0)
         
-    reply = SpaceUsageReply(
-        message.request_id,
-        SpaceUsageReply.successful,
-        bytes_added,
-        bytes_removed,
-        bytes_retrieved
-    )
-
-    return [(reply_exchange, reply_routing_key, reply, )]
+    reply["result"] = "success"
+    reply["bytes-added"] = bytes_added,
+    reply["bytes-removed"] = bytes_removed,
+    reply["bytes-retieved"] = bytes_retrieved
+    state["xrep-server"].queue_message_for_send(reply)
 
 _dispatch_table = {
-    SpaceAccountingDetail.routing_key   : _handle_detail,
-    SpaceUsage.routing_key              : _handle_space_usage,
-    _low_traffic_routing_key            : _handle_low_traffic,
+    "space-accounting-detail"   : _handle_space_accounting_detail,
+    "space-usage-request"       : _handle_space_usage_request,
 }
 
-def _startup(halt_event, state):
-    state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, 
-        _routing_header,
-        exchange_name=amqp_connection.space_accounting_exchange_name
+def _create_state():
+    return {
+        "zmq-context"           : zmq.Context(),
+        "pollster"              : ZeroMQPollster(),
+        "xrep-server"           : None,
+        "state-cleaner"         : None,
+        "receive-queue"         : deque(),
+        "queue-dispatcher"      : None,
+        "data"                  : dict(),
+    }
+
+def _setup(_halt_event, state):
+    log = logging.getLogger("_setup")
+
+    log.info("binding xrep-server to %s" % (_space_accounting_server_address, ))
+    state["xrep-server"] = XREPServer(
+        state["zmq-context"],
+        _space_accounting_server_address,
+        state["receive-queue"]
     )
-    state["low_traffic_thread"].start()
-    state["next_dump_interval"] = _next_dump_interval()
+    state["xrep-server"].register(state["pollster"])
 
-    return []
+    state["queue-dispatcher"] = DequeDispatcher(
+        state,
+        state["receive-queue"],
+        _dispatch_table
+    )
 
-def _flush_to_database(state, hour):
-    log = logging.getLogger("_flush_to_database")
+    state["state-cleaner"] = StateCleaner(state)
 
-    if hour not in state["data"]:
-        log.warn("no data for %s" % (hour, ))
-        return
+    # hand the pollster and the queue-dispatcher to the time-queue 
+    return [
+        (state["pollster"].run, time.time(), ), 
+        (state["queue-dispatcher"].run, time.time(), ), 
+        (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
+    ] 
 
-    log.info("storing data for %s" % (hour, ))
-    space_accounting_database = SpaceAccountingDatabase()
-    for avatar_id, events in state["data"][hour].items():
-        space_accounting_database.store_avatar_stats(
-            avatar_id,
-            hour,
-            events.get(SpaceAccountingDetail.bytes_added, 0),
-            events.get(SpaceAccountingDetail.bytes_removed, 0),
-            events.get(SpaceAccountingDetail.bytes_retrieved, 0)
-        )
-    space_accounting_database.commit()
+def _tear_down(_state):
+    log = logging.getLogger("_tear_down")
 
-    del state["data"][hour]
+    log.debug("stopping xrep server")
+    state["xrep-server"].close()
 
-def _check_dump_time(state):
-    """dump stats to database, if enough time has elapsed"""
-    state["low_traffic_thread"].reset()
+    state["zmq-context"].term()
 
-    if time.time() < state["next_dump_interval"]:
-        return []
-
-    state["next_dump_interval"] = _next_dump_interval()
-
-    # we want to dump everything for the previous hour
-    current_time = datetime.datetime.now()
-    current_hour = _floor_hour(current_time)
-    prev_hour = current_hour -  datetime.timedelta(hours=1)
-
-    _flush_to_database(state, prev_hour)
-
-    return []
-
-def _shutdown(state):
-    state["low_traffic_thread"].join()
-    del state["low_traffic_thread"]
-    return []
+    log.debug("teardown complete")
 
 if __name__ == "__main__":
     state = _create_state()
     sys.exit(
-        process.main(
-            _log_path, 
-            _queue_name, 
-            _routing_key_binding, 
-            _dispatch_table, 
+        time_queue_driven_process.main(
+            _log_path,
             state,
-            pre_loop_function=_startup,
-            in_loop_function=_check_dump_time,
-            post_loop_function=_shutdown,
-            exchange_name=amqp_connection.space_accounting_exchange_name 
+            pre_loop_actions=[_setup, ],
+            post_loop_actions=[_tear_down, ]
         )
     )
 

@@ -51,7 +51,7 @@ def _run_until_halt(
 
         next_task_delay = time_queue.peek_time() - time.time()
         if next_task_delay > 0.0:
-            time.sleep(next_task_delay)
+            halt_event.wait(next_task_delay)
 
         next_task = time_queue.pop()
         result_list = next_task(halt_event)

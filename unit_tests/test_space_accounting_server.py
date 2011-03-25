@@ -4,33 +4,96 @@ test_space_accounting_server.py
 
 test space accounting
 """
-import datetime
+import logging
+import os
+import os.path
+import subprocess
+import sys
 import time
 import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
-from messages.space_accounting_detail import SpaceAccountingDetail
-from messages.space_usage import SpaceUsage
 
-from diyapi_space_accounting_server.diyapi_space_accounting_server_main import \
-    _create_state, _floor_hour, _handle_detail, _handle_space_usage, \
-    _flush_to_database
 from diyapi_space_accounting_server.space_accounting_database import \
     SpaceAccountingDatabase
 
-_log_path = "/var/log/pandora/test_space_accounting_server.log"
-_exchange = "reply-exchange"
-_reply_routing_header = "test_space_accounting"
+from unit_tests.util import identify_program_dir, \
+        poll_process, \
+        terminate_process
+from unit_tests.zeromq_util import send_to_pipeline, \
+    send_request_and_get_reply
 
-def _detail(state, avatar_id, timestamp, detail_type, detail_bytes):
-    message = SpaceAccountingDetail(
-        avatar_id, 
-        timestamp,
-        detail_type,
-        detail_bytes
+_log_path = "/var/log/pandora/test_space_accounting_server.log"
+_local_node_name = "node01"
+_space_accounting_server_address = os.environ.get(
+    "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS",
+    "ipc:///tmp/diyapi-space-accounting-%s/socket" % (_local_node_name, )
+)
+_space_accounting_pipeline_address = os.environ.get(
+    "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
+    "ipc:///tmp/diyapi-space-accounting-pipeline-%s/socket" % (
+        _local_node_name, 
     )
-    _handle_detail(state, message.marshall())
+)
+
+_avatar_id = 1001
+
+def _start_space_accounting_server(node_name):
+    log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
+    server_dir = identify_program_dir(u"diyapi_space_accounting_server")
+    server_path = os.path.join(
+        server_dir, "diyapi_space_accounting_server_main.py"
+    )
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
+def _detail_generator(
+    total_bytes_added, total_bytes_removed, total_bytes_retrieved
+):
+
+    current_time = time.time()
+
+    for i in xrange(1000):
+        message = {
+            "message-type"  : "space-accounting-detail",
+            "avatar-id"     : _avatar_id,
+            "timestamp"     : current_time+i,
+            "event"         : "bytes_added",
+            "value"         : total_bytes_added / 1000,
+        }
+        yield message, None
+
+    for i in xrange(50):
+        message = {
+            "message-type"  : "space-accounting-detail",
+            "avatar-id"     : _avatar_id,
+            "timestamp"     : current_time+i,
+            "event"         : "bytes_removed",
+            "value"         : total_bytes_removed / 50,
+        }
+        yield message, None
+
+    for i in xrange(25):
+        message = {
+            "message-type"  : "space-accounting-detail",
+            "avatar-id"     : _avatar_id,
+            "timestamp"     : current_time+i,
+            "event"         : "bytes_retrieved",
+            "value"         : total_bytes_retrieved / 25,
+        }
+        yield message, None
 
 
 class TestSpaceAccountingServer(unittest.TestCase):
@@ -40,111 +103,64 @@ class TestSpaceAccountingServer(unittest.TestCase):
         initialize_logging(_log_path)
         self.tearDown()
 
+        # clear out any old stats
+        space_accounting_database = SpaceAccountingDatabase()
+        space_accounting_database.clear_avatar_stats(_avatar_id)
+        space_accounting_database.commit()
+
+        self._space_accounting_server_process = \
+            _start_space_accounting_server(_local_node_name)
+        poll_result = poll_process(self._space_accounting_server_process)
+        self.assertEqual(poll_result, None)
+
     def tearDown(self):
-        pass
-
-    def test_detail(self):
-        """test various forms of SpaceAccountingDetail"""
-        avatar_id = 1001
-        bytes_added = 42
-        timestamp = time.time()
-        state = _create_state()
-
-        _detail(
-            state, 
-            avatar_id,
-            timestamp,
-            SpaceAccountingDetail.bytes_added,
-            bytes_added
-        )            
-
-        hour = _floor_hour(datetime.datetime.fromtimestamp(timestamp))
-        self.assertEqual(state["data"].has_key(hour), True, state)
-        hour_data = state["data"][hour]
-        self.assertEqual(hour_data.has_key(avatar_id), True, state)
-        avatar_data = hour_data[avatar_id]
-        self.assertEqual(avatar_data.has_key("bytes_added"), True, state)
-        self.assertEqual(avatar_data["bytes_added"], bytes_added, state)
-
-        _flush_to_database(state, hour)
+        if hasattr(self, "_space_accounting_server_process") \
+        and self._space_accounting_server_process is not None:
+            terminate_process(self._space_accounting_server_process)
+            self._space_accounting_server_process = None
 
     def test_usage(self):
         """test SpaceUsage"""
-        request_id = uuid.uuid1().hex
-        avatar_id = 1001
         total_bytes_added = 42 * 1024 * 1024 * 1000
         total_bytes_removed = 21  * 1024 * 1024 * 50
         total_bytes_retrieved = 66 * 1024 * 1024 * 25
-        state = _create_state()
+        request_id = uuid.uuid1().hex
 
-        # clear out any old stats
-        space_accounting_database = SpaceAccountingDatabase()
-        space_accounting_database.clear_avatar_stats(avatar_id)
-        space_accounting_database.commit()
+        poll_result = poll_process(self._space_accounting_server_process)
+        self.assertEqual(poll_result, None)
 
-        for _ in xrange(1000):
-            _detail(
-                state, 
-                avatar_id,
-                time.time(),
-                SpaceAccountingDetail.bytes_added,
-                total_bytes_added / 1000
-            )            
-
-        for _ in xrange(50):
-            _detail(
-                state, 
-                avatar_id,
-                time.time(),
-                SpaceAccountingDetail.bytes_removed,
-                total_bytes_removed / 50
-            )            
-
-        for _ in xrange(25):
-            _detail(
-                state, 
-                avatar_id,
-                time.time(),
-                SpaceAccountingDetail.bytes_retrieved,
-                total_bytes_retrieved / 25
-            )            
-
-        hour = _floor_hour(datetime.datetime.now())
-        self.assertEqual(state["data"].has_key(hour), True, state)
-        _flush_to_database(state, hour)
-
-        space_usage_request = SpaceUsage(
-            request_id,
-            avatar_id,
-            _exchange,
-            _reply_routing_header
+        send_to_pipeline(
+            _space_accounting_server_address,
+            _detail_generator(
+                total_bytes_added, total_bytes_removed, total_bytes_retrieved
+            )
         )
-        marshalled_message = space_usage_request.marshall()
 
-        replies = _handle_space_usage(state, marshalled_message)
-        self.assertEqual(len(replies), 1)
-        [(reply_exchange, reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, _exchange)
-        self.assertEqual(
-            reply_routing_key, 
-            "%s.space_usage_reply" % (_reply_routing_header, )
+        request = {
+            "message-type"  : "space-usage-request",
+            "request-id"    : request_id,
+            "avatar-id"     : _avatar_id,
+        }
+        reply = send_request_and_get_reply(
+            _space_accounting_server_address, request
         )
-        self.assertEqual(reply.request_id, request_id)
-        self.assertEqual(reply.result, 0, reply.error_message)
+        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-type"], "space-usage-reply")
+        self.assertEqual(reply["result"], "success")
         self.assertEqual(
-            reply.bytes_added, 
+            reply["bytes-added"], 
             total_bytes_added, 
-            (reply.bytes_added, total_bytes_added, )
+            (reply["bytes-added"], total_bytes_added, )
         )
         self.assertEqual(
-            reply.bytes_removed, 
+            reply["bytes-removed"], 
             total_bytes_removed, 
-            (reply.bytes_removed, total_bytes_removed, )
+            (reply["bytes-removed"], total_bytes_removed, )
         )
         self.assertEqual(
-            reply.bytes_retrieved, 
+            reply["bytes-retrieved"], 
             total_bytes_retrieved, 
-            (reply.bytes_retrieved, total_bytes_retrieved, )
+            (reply["bytes-retrieved"], total_bytes_retrieved, )
         )
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ import zmq
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.xreq_client import XREQClient
+from diyapi_tools.push_client import PUSHClient
 
 def send_request_and_get_reply(address, request, data=None):
     reply, _ = send_request_and_get_reply_and_data(address, request, data)
@@ -48,4 +49,31 @@ def send_request_and_get_reply_and_data(address, request, data=None):
     xreq_client.close()
     context.term()
     return reply, data
+
+def send_to_pipeline(address, message_generator):
+    context = zmq.Context()
+    pollster = ZeroMQPollster()
+    push_client = PUSHClient(
+        context,
+        address,
+    )
+    push_client.register(pollster)
+
+    for message, data in message_generator:    
+        push_client.queue_message_for_send(message, data)
+
+    halt_event = Event()
+    retry_count = 0
+    while retry_count < 10:
+        pollster.run(halt_event)
+        if len(push_client._send_queue) > 0:
+            retry_count += 1
+            time.sleep(1.0)
+            continue
+        else:
+            break
+
+    push_client.close()
+    context.term()
+    assert len(push_client._send_queue) == 0
 

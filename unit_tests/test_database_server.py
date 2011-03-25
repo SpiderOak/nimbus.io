@@ -38,7 +38,7 @@ class TestDatabaseServer(unittest.TestCase):
             _local_node_name, _repository_path
         )
         poll_result = poll_process(self._database_server_process)
-        assert poll_result is None, poll_result
+        self.assertEqual(poll_result, None)
 
     def tearDown(self):
         if hasattr(self, "_database_server_process") \

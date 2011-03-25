@@ -27,6 +27,7 @@ import zmq
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 
@@ -43,6 +44,13 @@ _log_path = u"/var/log/pandora/diyapi_space_accounting_server_%s.log" % (
 _space_accounting_server_address = os.environ.get(
     "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS",
     "ipc:///tmp/diyapi-space-accounting-%s/socket" % (_local_node_name, )
+)
+
+_space_accounting_pipeline_address = os.environ.get(
+    "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
+    "ipc:///tmp/diyapi-space-accounting-pipeline-%s/socket" % (
+        _local_node_name, 
+    )
 )
 
 def _handle_space_accounting_detail(state, message, _data):
@@ -64,6 +72,7 @@ def _handle_space_usage_request(state, message, _data):
 
     reply = {
         "message-type"  : "space-usage-reply",
+        "xrep-ident"    : message["xrep-ident"],
         "request-id"    : message["request-id"],
         "result"        : None,
     }
@@ -98,9 +107,9 @@ def _handle_space_usage_request(state, message, _data):
             bytes_retrieved += events.get("bytes_retrieved", 0)
         
     reply["result"] = "success"
-    reply["bytes-added"] = bytes_added,
-    reply["bytes-removed"] = bytes_removed,
-    reply["bytes-retieved"] = bytes_retrieved
+    reply["bytes-added"] = long(bytes_added)
+    reply["bytes-removed"] = long(bytes_removed)
+    reply["bytes-retrieved"] = long(bytes_retrieved)
     state["xrep-server"].queue_message_for_send(reply)
 
 _dispatch_table = {
@@ -112,6 +121,7 @@ def _create_state():
     return {
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
+        "pull-server"           : None,
         "xrep-server"           : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
@@ -129,6 +139,16 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["xrep-server"].register(state["pollster"])
+
+    log.info("binding pull-server to %s" % (
+        _space_accounting_pipeline_address, 
+    ))
+    state["pull-server"] = PULLServer(
+        state["zmq-context"],
+        _space_accounting_pipeline_address,
+        state["receive-queue"]
+    )
+    state["pull-server"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -150,6 +170,9 @@ def _tear_down(_state):
 
     log.debug("stopping xrep server")
     state["xrep-server"].close()
+
+    log.debug("stopping pull server")
+    state["pull-server"].close()
 
     state["zmq-context"].term()
 

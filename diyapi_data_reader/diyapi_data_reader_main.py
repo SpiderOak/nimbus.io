@@ -34,7 +34,7 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
 _persistent_state_file_name = "data-reader-%s" % (_local_node_name, )
 _database_server_address = os.environ.get(
     "DIYAPI_DATABASE_SERVER_ADDRESS",
-    "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
+    "tcp://127.0.0.1:8000"
 )
 _data_reader_address = os.environ.get(
     "DIYAPI_DATA_READER_ADDRESS",

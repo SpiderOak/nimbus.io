@@ -42,7 +42,7 @@ _log_path = u"/var/log/pandora/diyapi_database_server_%s.log" % (
 )
 _database_server_address = os.environ.get(
     "DIYAPI_DATABASE_SERVER_ADDRESS",
-    "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
+    "tcp://127.0.0.1:8000"
 )
 _max_cached_databases = 10
 _database_cache = "open-database-cache"

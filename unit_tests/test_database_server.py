@@ -23,7 +23,7 @@ _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = os.environ.get(
     "DIYAPI_DATABASE_SERVER_ADDRESS",
-    "ipc:///tmp/diyapi-database-server-%s/socket" % (_local_node_name, )
+    "tcp://127.0.0.1:8000"
 )
 
 class TestDatabaseServer(unittest.TestCase):

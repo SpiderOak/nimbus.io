@@ -10,6 +10,7 @@ import time
 from diyapi_anti_entropy_server.audit_result_database import \
         AuditResultDatabase
 from diyapi_anti_entropy_server.common import retry_interval, \
+        retry_time, \
         retry_entry_tuple, \
         max_retry_count
 
@@ -69,7 +70,7 @@ class StateCleaner(object):
         ))
         self._state["retry-list"].append(
             retry_entry_tuple(
-                retry_time=time.time()+retry_interval, 
+                retry_time=retry_time(), 
                 avatar_id=request_state.avatar_id,
                 row_id=request_state.row_id,
                 retry_count=request_state.retry_count, 

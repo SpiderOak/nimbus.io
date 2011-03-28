@@ -73,7 +73,9 @@ def terminate_process(process):
     assert process.returncode == 0, \
         process.returncode
 
-def start_database_server(node_name, repository_path):
+def start_database_server(
+    node_name, repository_path, address="tcp://127.0.0.1:8000"
+):
     log = logging.getLogger("start_database_server_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_database_server")
     server_path = os.path.join(server_dir, "diyapi_database_server_main.py")
@@ -87,6 +89,7 @@ def start_database_server(node_name, repository_path):
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
+        "DIYAPI_DATABASE_SERVER_ADDRESS"    : address,
     }        
 
     log.info("starting %s %s" % (args, environment, ))

@@ -7,7 +7,7 @@ A time queue action to perioidcially retry consistency checks
 import logging
 import time
 
-from diyapi_anti_entropy_server.common import retry_interval
+_polling_interval = 15 * 50 * 60
 
 class RetryManager(object):
     """A time queue action to periodically retry consistency checks"""
@@ -18,7 +18,7 @@ class RetryManager(object):
 
     @classmethod
     def next_run(cls):
-        return time.time() + retry_interval
+        return time.time() + _polling_interval
 
     def run(self, halt_event):
         if halt_event.is_set():

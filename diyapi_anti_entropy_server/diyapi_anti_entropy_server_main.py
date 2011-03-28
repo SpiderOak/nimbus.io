@@ -34,7 +34,6 @@ from collections import deque, namedtuple
 import datetime
 import logging
 import os
-import random
 import sys
 import time
 import uuid
@@ -45,9 +44,11 @@ from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.xrep_server import XREPServer
 from diyapi_tools.xreq_client import XREQClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
+from diyapi_tools import time_queue_driven_process
 
 from diyapi_anti_entropy_server.common import max_retry_count, \
-        retry_entry_tuple
+        retry_entry_tuple, \
+        retry_time
 from diyapi_anti_entropy_server.audit_result_database import \
         AuditResultDatabase
 from diyapi_anti_entropy_server.avatar_list_requestor import \
@@ -138,8 +139,8 @@ def _handle_anti_entropy_audit_request(state, message, _data):
 
     request = {
         "message-type"  : "consistency-check",
-        "request-id"    : request_id,
-        "avatar-id"     : avatar_id,
+        "request-id"    : message["request-id"],
+        "avatar-id"     : message["avatar-id"],
         "timestamp"     : time.mktime(timestamp.timetuple()),
     }
     for database_client in state["database-clients"]:
@@ -205,7 +206,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
     request_state.replies[message["node-name"]] = hash_value
 
     # not done yet, wait for more replies
-    if len(state["active-requests"][request_id].replies) < len(_exchanges):
+    if len(request_state.replies) < len(state["database-clients"]):
         return
 
     # at this point we should have a reply from every node, so
@@ -257,7 +258,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
             ))
             state["retry-list"].append(
                 retry_entry_tuple(
-                    retry_time=_retry_time(), 
+                    retry_time=retry_time(), 
                     avatar_id=request_state.avatar_id,
                     row_id=request_state.row_id,
                     retry_count=request_state.retry_count, 
@@ -290,7 +291,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
     else:
         state["retry-list"].append(
             retry_entry_tuple(
-                retry_time=_retry_time(), 
+                retry_time=retry_time(), 
                 avatar_id=request_state.avatar_id,
                 row_id=request_state.row_id,
                 retry_count=request_state.retry_count, 
@@ -366,7 +367,7 @@ def _setup(_halt_event, state):
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
-        (state["avatar-list-requestor"].run, time.tim(), ), 
+        (state["avatar-list-requestor"].run, time.time(), ), 
         (state["consistency-check-starter"].run, time.time()+60.0, ), 
         (state["retry-manager"].run, state["retry-manager"].next_run(), ), 
         (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
@@ -378,14 +379,12 @@ def _tear_down(_state):
     log.debug("stopping xrep server")
     state["xrep-server"].close()
 
+    log.debug("stopping database clients")
+    for database_client in state["database-clients"]:
+        database_client.close()
+
     state["zmq-context"].term()
 
-    log.info("saving state")
-    pickleable_state = dict()
-    for request_id, request_state in state["active-requests"].items():
-        pickleable_state[request_id] = request_state._asdict()
-
-    save_state(pickleable_state, _persistent_state_file_name)
     log.debug("teardown complete")
 
 if __name__ == "__main__":
@@ -396,36 +395,6 @@ if __name__ == "__main__":
             state,
             pre_loop_actions=[_setup, ],
             post_loop_actions=[_tear_down, ]
-        )
-    )
-
-def _startup(halt_event, state):
-    state["low_traffic_thread"] = LowTrafficThread(
-        halt_event, 
-        _routing_header
-    )
-    state["low_traffic_thread"].start()
-    state["next_poll_interval"] = _next_poll_interval()
-    state["next_avatar_poll_interval"] = _next_avatar_poll_interval()
-    return _request_avatar_ids()
-
-def _shutdown(state):
-    state["low_traffic_thread"].join()
-    del state["low_traffic_thread"]
-    return []
-
-if __name__ == "__main__":
-    state = _create_state()
-    sys.exit(
-        process.main(
-            _log_path, 
-            _queue_name, 
-            _routing_key_binding, 
-            _dispatch_table, 
-            state,
-            pre_loop_function=_startup,
-            in_loop_function=_check_time,
-            post_loop_function=_shutdown
         )
     )
 

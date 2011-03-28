@@ -6,44 +6,91 @@ test the anti entropy server
 """
 import logging
 import os
+import subprocess
 import time
 import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.amqp_connection import exchange_template
+
+from unit_tests.util import identify_program_dir, \
+        start_database_server,\
+        start_data_writer, \
+        poll_process, \
+        terminate_process
+from unit_tests.zeromq_util import send_request_and_get_reply
 
 _log_path = "/var/log/pandora/test_anti_entropy_server.log"
-
-from messages.anti_entropy_audit_request import AntiEntropyAuditRequest
-from messages.database_consistency_check import DatabaseConsistencyCheck
-from messages.database_consistency_check_reply import \
-    DatabaseConsistencyCheckReply
-
-_node_names = ["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9", "n10",]
-os.environ["DIY_NODE_EXCHANGES"] = " ".join(
-    [exchange_template % (node_name, ) for node_name in _node_names]
+_node_names = " ".join(["node%2d" % (1+i, ) for i in range(10)])
+_local_node_name = _node_names[0]
+_test_dir = os.path.join("/tmp", "test_diy_anti_entropy_server")
+_repository_dirs = [
+    os.path.join(_test_dir, "repository_%s" % (n, )) for n in _node_names
+]
+_anti_entropy_server_address = os.environ.get(
+    "DIYAPI_anti_entropy_server_ADDRESS",
+    "ipc:///tmp/diyapi-anti-entropy-server-%s/socket" % (_local_node_name, )
+)
+_database_server_addresses = " ".join(
+    ["tcp://127.0.0.1:%s" % (8000+i, ) for i in range(10)]
 )
 
-from diyapi_anti_entropy_server.diyapi_anti_entropy_server_main import \
-    _create_state, \
-    _is_request_state, \
-    _start_consistency_check, \
-    _handle_anti_entropy_audit_request, \
-    _handle_database_consistency_check_reply, \
-    _timeout_request
+def _start_anti_entropy_server(node_name):
+    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
+    server_dir = identify_program_dir(u"diyapi_anti_entropy_server")
+    server_path = os.path.join(
+        server_dir, "diyapi_anti_entropy_server_main.py"
+    )
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
 
-_reply_routing_header = "test_archive"
+    environment = {
+        "PYTHONPATH"                                : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME"                 : _local_node_name,
+        "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESSES"  : \
+            _database_server_addresses,
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 class TestAntiEntropyServer(unittest.TestCase):
     """test message handling in anti entropy server"""
 
     def setUp(self):
-        logging.root.setLevel(logging.DEBUG)
         self.tearDown()
+        os.makedirs(_test_dir)
+        for repository_dir in _repository_dirs:
+            os.mkdir(repository_dir)
+        self._database_server_processes = list()
+        for node_name, repository_path, addess in zip(
+            _node_names, _repository_dirs, _database_server_addresses
+        ):
+            database_server_process = start_database_server(
+                node_name, repository_path, address
+            )
+            time.sleep(1.0)
+            poll_result = poll_process(database_server_process)
+            self.assertEqual(poll_result, None)
+        self._database_server_processes.append(database_server_process)
+        self._anti_entropy_server_process = \
+            _start_anti_entropy_server(_local_node_name)
 
     def tearDown(self):
-        pass
+        if hasattr(self, "_anti_entropy_server_process") \
+        and self._anti_entropy_server_process is not None:
+            terminate_process(self._anti_entropy_server_process)
+            self._anti_entropy_server_process = None
+        if hasattr(self, "_database_server_processes") \
+        and self._database_server_processes is not None:
+            for database_server_process in self._database_server_processes:
+                terminate_process(database_server_process)
+            self._database_server_processes = None
+        if os.path.exists(_test_dir):
+            shutil.rmtree(_test_dir)
 
     def test_simple_check(self):
         """test a simple consistency check"""

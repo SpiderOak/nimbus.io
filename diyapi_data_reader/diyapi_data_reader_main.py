@@ -397,6 +397,9 @@ def _tear_down(_state):
     log.debug("stopping xrep server")
     state["xrep-server"].close()
 
+    log.debug("stopping database client")
+    state["database-client"].close()
+
     state["zmq-context"].term()
 
     log.info("saving state")

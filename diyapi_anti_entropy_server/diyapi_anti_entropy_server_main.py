@@ -74,7 +74,7 @@ _request_timeout = 5.0 * 60.0
 _error_hash = "*** error ***"
 
 _request_state_tuple = namedtuple("RequestState", [ 
-    "xrep_ident"
+    "xrep_ident",
     "timestamp",
     "timeout",
     "avatar_id",
@@ -302,7 +302,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
     database.close()
 
 _dispatch_table = {
-    "anti-entropy-audie-request" : _handle_anti_entropy_audit_request,
+    "anti-entropy-audit-request" : _handle_anti_entropy_audit_request,
     "avatar-list-reply"          : _handle_database_avatar_list_reply,
     "consistency-check-reply"    :  _handle_database_consistency_check_reply,
 }

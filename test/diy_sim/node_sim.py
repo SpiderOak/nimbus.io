@@ -7,15 +7,11 @@ simulate one node in a cluster
 import logging
 import os
 import os.path
-import signal
-import subprocess
-import sys
-import time
 
 class SimError(Exception):
     pass
 
-from unit_tests.util import start_database_server,\
+from unit_tests.util import start_database_server, \
         start_data_writer, \
         start_data_reader, \
         start_space_accounting_server, \
@@ -65,31 +61,48 @@ class NodeSim(object):
     def start(self):
         self._log.debug("start")
 
-        process_specs = [
-            ("database_server",     self._start_database_server, ),
-            ("data_writer",         self._start_data_writer, ),
-            ("data_reader",         self._start_data_reader, ),
-            ("handoff_server",      self._start_handoff_server, ),
-        ]
+        self._processes["database_server"] = start_database_server(
+            self._node_name,
+            _database_server_addresses[self._node_index],
+            self._home_dir
+        )
+        self._processes["data_writer"] = start_data_writer(
+            self._node_name,
+            _data_writer_addresses[self._node_index],
+            _database_server_addresses[self._node_index],
+            self._home_dir
+        )
+        self._processes["data_reader"] = start_data_reader(
+            self._node_name,
+            _data_reader_addresses[self._node_index],
+            _database_server_addresses[self._node_index],
+            self._home_dir
+        )
+#        self._processes["handoff_server"] = start_handoff_server(
+#        )
 
         if self._space_accounting:
-            process_specs.append(
-                ("space_accounting", self._start_space_accounting_server, )
-            )
+            self._processes["space_accounting"] = \
+                start_space_accounting_server(
+                    self._node_name,
+                    _space_accounting_server_address,
+                    _space_accounting_pipeline_address
+                )
 
         if self._anti_entropy:
-            process_specs.append(
-                ("anti_entropy", self._start_anti_entropy_server, )
+            self._processes["anti_entropy"] = start_anti_entropy_server(
+                self._node_name,
+                _anti_entropy_server_address,
+                _database_server_addresses
             )
-
-        for process_name, start_function in process_specs:
-            self._processes[process_name] = start_function()
-            time.sleep(1.0)
 
     def stop(self):
         self._log.debug("stop")
         for process_name in self._processes.keys():
-            self._stop_process(process_name)
+            process = self._processes[process_name]
+            if process is not None:
+                terminate_process(process)
+                self._processes[process_name] = None
 
     def poll(self):
         """check the condition of running processes"""
@@ -98,145 +111,14 @@ class NodeSim(object):
         for process_name in self._processes.keys():
             process = self._processes[process_name]
             if process is not None:
-                process.poll()
-                if process.returncode is not None:
+                result = poll_process(process)
+                if result is not None:
+                    returncode, stderr_content = result
                     error_string = "%s terminated abnormally (%s) '%s'" % (
                         process_name,
-                        process.returncode, 
-                        process.stderr.read(),
+                        returncode, 
+                        stderr_content,
                     )
-                    print error_string
                     self._log.error(error_string)
                     self._processes[process_name] = None
-
-    def _stop_process(self, process_name):
-        self._log.info("stopping process %s" % (process_name, ))
-        process = self._processes[process_name]
-        if process is not None:
-            os.kill(process.pid, signal.SIGTERM)
-            process.wait()
-            self._log.debug("process %s returncode = '%s' %s" % (
-                process_name, process.returncode, process.stderr.read(),
-            ))
-            self._processes[process_name] = None
-        else:
-            self._log.warn("Attempt to close nonexistent process %s" % (
-                process_name,
-            ))
-
-    def _start_database_server(self):
-        database_server_dir = _identify_program_dir(u"diyapi_database_server")
-        database_server_path = os.path.join(
-            database_server_dir, u"diyapi_database_server_main.py"
-        )
-        
-        args = [sys.executable, database_server_path, ]
-
-        environment = self._rabbitmq_env()
-        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
-        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
-
-        self._log.info("starting database_server")
-
-        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-    def _start_data_writer(self):
-        data_writer_dir = _identify_program_dir(u"diyapi_data_writer")
-        data_writer_path = os.path.join(
-            data_writer_dir, u"diyapi_data_writer_main.py"
-        )
-        
-        args = [sys.executable, data_writer_path, ]
-
-        environment = self._rabbitmq_env()
-        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
-        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
-
-        self._log.info("starting data_writer")
-
-        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-    def _start_data_reader(self):
-        data_reader_dir = _identify_program_dir(u"diyapi_data_reader")
-        data_reader_path = os.path.join(
-            data_reader_dir, u"diyapi_data_reader_main.py"
-        )
-        
-        args = [sys.executable, data_reader_path, ]
-
-        environment = self._rabbitmq_env()
-        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
-        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
-
-        self._log.info("starting data_reader")
-
-        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-    def _start_handoff_server(self):
-        handoff_server_dir = _identify_program_dir(u"diyapi_handoff_server")
-        handoff_server_path = os.path.join(
-            handoff_server_dir, u"diyapi_handoff_server_main.py"
-        )
-        
-        args = [sys.executable, handoff_server_path, ]
-
-        environment = self._rabbitmq_env()
-        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
-        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["DIYAPI_REPOSITORY_PATH"] = self._home_dir
-
-        self._log.info("starting handoff_server")
-
-        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-    def _start_space_accounting_server(self):
-        space_accounting_server_dir = _identify_program_dir(
-            u"diyapi_space_accounting_server"
-        )
-        space_accounting_server_path = os.path.join(
-            space_accounting_server_dir, 
-            u"diyapi_space_accounting_server_main.py"
-        )
-        
-        args = [sys.executable, space_accounting_server_path, ]
-
-        environment = self._rabbitmq_env()
-        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
-        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-
-        self._log.info("starting space_accoounting_server")
-
-        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-    def _start_anti_entropy_server(self):
-        anti_entropy_server_dir = _identify_program_dir(
-            u"diyapi_anti_entropy_server"
-        )
-        anti_entropy_server_path = os.path.join(
-            anti_entropy_server_dir, 
-            u"diyapi_anti_entropy_server_main.py"
-        )
-        
-        args = [sys.executable, anti_entropy_server_path, ]
-
-        environment = self._rabbitmq_env()
-        environment["PYTHONPATH"] = os.environ["PYTHONPATH"]
-        environment["SPIDEROAK_MULTI_NODE_NAME"] = self._node_name
-        environment["DIY_NODE_EXCHANGES"] = os.environ["DIY_NODE_EXCHANGES"]
-
-        self._log.info("starting anti_entropy_server")
-
-        return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-    def _rabbitmq_env(self):
-        return {
-            "HOME"                        : os.environ["HOME"],
-            "RABBITMQ_NODENAME"           : self._node_name, 
-            "RABBITMQ_NODE_IP_ADDRESS"    : _rabbitmq_ip_address,
-            "RABBITMQ_NODE_PORT"          : str(self._rabbitmq_port),
-            "SPIDEROAK_AMQP_PORT"         : str(self._rabbitmq_port),
-        }
 

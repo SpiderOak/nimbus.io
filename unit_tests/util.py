@@ -108,6 +108,7 @@ def start_data_writer(
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "DIYAPI_DATA_WRITER_ADDRESS"        : address,
         "DIYAPI_DATABASE_SERVER_ADDRESS"    : database_server_address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
     }        
@@ -130,6 +131,7 @@ def start_data_reader(
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "DIYAPI_DATA_READER_ADDRESS"        : address,
         "DIYAPI_DATABASE_SERVER_ADDRESS"    : database_server_address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
     }        

@@ -15,27 +15,37 @@ import time
 class SimError(Exception):
     pass
 
+from unit_tests.util import start_database_server,\
+        start_data_writer, \
+        start_data_reader, \
+        start_space_accounting_server, \
+        start_anti_entropy_server, \
+        poll_process, \
+        terminate_process
+
 def _generate_node_name(node_index):
     return "node-sim-%02d" % (node_index, )
 
 _node_count = 10
-os.environ["DIY_NODE_EXCHANGES"] = " ".join(
-    [_generate_node_name(node_index) for node_index in xrange(_node_count)]
-)
-_rabbitmq_base_port = 6000
-_rabbitmq_ip_address = "127.0.0.1"
+_database_server_base_port = 8000
+_data_writer_base_port = 8100
+_data_reader_base_port = 8200
+_database_server_addresses = [
+    "tcp://127.0.0.1:%s" % (_database_server_base_port+i, ) \
+    for i in range(_node_count)
+]
+_data_writer_addresses = [
+    "tcp://127.0.0.1:%s" % (_data_writer_base_port+i, ) \
+    for i in range(_node_count)
+]
+_data_reader_addresses = [
+    "tcp://127.0.0.1:%s" % (_data_reader_base_port+i, ) \
+    for i in range(_node_count)
+]
+_space_accounting_server_address = "tcp://127.0.0.1:8300"
+_space_accounting_pipeline_address = "tcp://127.0.0.1:8350"
+_anti_entropy_server_address = "tcp://127.0.0.1:8400"
 
-def _identify_program_dir(target_path):
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_path)
-        if os.path.isdir(test_path):
-            return test_path
-
-    raise SimError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_path, python_path, )
-    )
-                
 class NodeSim(object):
     """simulate one node in a cluster"""
 
@@ -44,7 +54,6 @@ class NodeSim(object):
     ):
         self._node_index = node_index
         self._node_name = _generate_node_name(node_index)
-        self._rabbitmq_port = _rabbitmq_base_port + self._node_index 
         self._log = logging.getLogger(self._node_name)
         self._home_dir = os.path.join(test_dir, self._node_name)
         if not os.path.exists(self._home_dir):

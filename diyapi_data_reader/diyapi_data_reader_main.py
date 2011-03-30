@@ -38,7 +38,7 @@ _database_server_address = os.environ.get(
 )
 _data_reader_address = os.environ.get(
     "DIYAPI_DATA_READER_ADDRESS",
-    "ipc:///tmp/diyapi-data-reader-%s/socket" % (_local_node_name, )
+    "tcp://127.0.0.1:8200"
 )
 _key_lookup_timeout = 60.0
 _retrieve_timeout = 30 * 60.0

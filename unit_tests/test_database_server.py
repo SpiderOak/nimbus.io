@@ -21,10 +21,7 @@ _log_path = "/var/log/pandora/test_database_server.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
-_database_server_address = os.environ.get(
-    "DIYAPI_DATABASE_SERVER_ADDRESS",
-    "tcp://127.0.0.1:8000"
-)
+_database_server_address = "tcp://127.0.0.1:8000"
 
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
@@ -35,7 +32,7 @@ class TestDatabaseServer(unittest.TestCase):
         initialize_logging(_log_path)
         self._key_generator = generate_key()
         self._database_server_process = start_database_server(
-            _local_node_name, _repository_path
+            _local_node_name, _database_server_address, _repository_path
         )
         poll_result = poll_process(self._database_server_process)
         self.assertEqual(poll_result, None)

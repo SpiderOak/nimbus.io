@@ -73,9 +73,7 @@ def terminate_process(process):
     assert process.returncode == 0, \
         process.returncode
 
-def start_database_server(
-    node_name, repository_path, address="tcp://127.0.0.1:8000"
-):
+def start_database_server(node_name, address, repository_path):
     log = logging.getLogger("start_database_server_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_database_server")
     server_path = os.path.join(server_dir, "diyapi_database_server_main.py")
@@ -88,14 +86,16 @@ def start_database_server(
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
         "DIYAPI_DATABASE_SERVER_ADDRESS"    : address,
+        "DIYAPI_REPOSITORY_PATH"            : repository_path,
     }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_data_writer(node_name, repository_path):
+def start_data_writer(
+    node_name, address, database_server_address, repository_path
+):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_data_writer")
     server_path = os.path.join(server_dir, "diyapi_data_writer_main.py")
@@ -108,13 +108,16 @@ def start_data_writer(node_name, repository_path):
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "DIYAPI_DATABASE_SERVER_ADDRESS"    : database_server_address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
     }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_data_reader(node_name, repository_path):
+def start_data_reader(
+    node_name, address, database_server_address, repository_path
+):
     log = logging.getLogger("start_data_reader_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_data_reader")
     server_path = os.path.join(server_dir, "diyapi_data_reader_main.py")
@@ -127,7 +130,53 @@ def start_data_reader(node_name, repository_path):
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "DIYAPI_DATABASE_SERVER_ADDRESS"    : database_server_address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
+def start_anti_entropy_server(node_name, address, database_server_addresses):
+    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
+    server_dir = identify_program_dir(u"diyapi_anti_entropy_server")
+    server_path = os.path.join(
+        server_dir, "diyapi_anti_entropy_server_main.py"
+    )
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESS": address,
+        "DIYAPI_DATABASE_SERVER_ADDRESSES"  : \
+            " ".join(database_server_addresses),
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
+def start_space_accounting_server(node_name, address, pipeline_address):
+    log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
+    server_dir = identify_program_dir(u"diyapi_space_accounting_server")
+    server_path = os.path.join(
+        server_dir, "diyapi_space_accounting_server_main.py"
+    )
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
+        "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
     }        
 
     log.info("starting %s %s" % (args, environment, ))

@@ -43,14 +43,12 @@ _log_path = u"/var/log/pandora/diyapi_space_accounting_server_%s.log" % (
 
 _space_accounting_server_address = os.environ.get(
     "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS",
-    "ipc:///tmp/diyapi-space-accounting-%s/socket" % (_local_node_name, )
+    "tcp://127.0.0.1:8300"
 )
 
 _space_accounting_pipeline_address = os.environ.get(
     "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
-    "ipc:///tmp/diyapi-space-accounting-pipeline-%s/socket" % (
-        _local_node_name, 
-    )
+    "tcp://127.0.0.1:8350"
 )
 
 def _handle_space_accounting_detail(state, message, _data):

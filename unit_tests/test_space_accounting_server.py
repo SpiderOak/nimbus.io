@@ -18,7 +18,7 @@ from diyapi_tools.standard_logging import initialize_logging
 from diyapi_space_accounting_server.space_accounting_database import \
     SpaceAccountingDatabase
 
-from unit_tests.util import identify_program_dir, \
+from unit_tests.util import start_space_accounting_server, \
         poll_process, \
         terminate_process
 from unit_tests.zeromq_util import send_to_pipeline, \
@@ -26,38 +26,10 @@ from unit_tests.zeromq_util import send_to_pipeline, \
 
 _log_path = "/var/log/pandora/test_space_accounting_server.log"
 _local_node_name = "node01"
-_space_accounting_server_address = os.environ.get(
-    "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS",
-    "ipc:///tmp/diyapi-space-accounting-%s/socket" % (_local_node_name, )
-)
-_space_accounting_pipeline_address = os.environ.get(
-    "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
-    "ipc:///tmp/diyapi-space-accounting-pipeline-%s/socket" % (
-        _local_node_name, 
-    )
-)
+_space_accounting_server_address = "tcp://127.0.0.1:8300"
+_space_accounting_pipeline_address = "tcp://127.0.0.1:8350"
 
 _avatar_id = 1001
-
-def _start_space_accounting_server(node_name):
-    log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_space_accounting_server")
-    server_path = os.path.join(
-        server_dir, "diyapi_space_accounting_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-    }        
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def _detail_generator(
     total_bytes_added, total_bytes_removed, total_bytes_retrieved
@@ -73,6 +45,8 @@ def _detail_generator(
             "event"         : "bytes_added",
             "value"         : total_bytes_added / 1000,
         }
+        # FIXME: losing messages if we pump them all in w/o delay
+        time.sleep(.01)
         yield message, None
 
     for i in xrange(50):
@@ -109,7 +83,11 @@ class TestSpaceAccountingServer(unittest.TestCase):
         space_accounting_database.commit()
 
         self._space_accounting_server_process = \
-            _start_space_accounting_server(_local_node_name)
+            start_space_accounting_server(
+                _local_node_name,
+                _space_accounting_server_address,
+                _space_accounting_pipeline_address
+            )
         poll_result = poll_process(self._space_accounting_server_process)
         self.assertEqual(poll_result, None)
 

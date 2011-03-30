@@ -67,8 +67,8 @@ _log_path = u"/var/log/pandora/diyapi_anti_entropy_server_%s.log" % (
 _database_server_addresses = \
     os.environ["DIYAPI_DATABASE_SERVER_ADDRESSES"].split()
 _anti_entropy_server_address = os.environ.get(
-    "DIYAPI_anti_entropy_server_ADDRESS",
-    "ipc:///tmp/diyapi-anti-entropy-server-%s/socket" % (_local_node_name, )
+    "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESS",
+    "tcp://127.0.0.1:8400"
 )
 _request_timeout = 5.0 * 60.0
 _error_hash = "*** error ***"

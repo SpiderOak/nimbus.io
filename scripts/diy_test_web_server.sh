@@ -1,6 +1,4 @@
 #!/bin/bash
-export TOOL="/opt/so2.6"
-source ${TOOL}/bin/env.sh
 export SPIDEROAK_DIY="${HOME}/spideroak_diyapi"
 export PYTHONPATH="${SPIDEROAK_DIY}"
 
@@ -36,4 +34,4 @@ if [ ${1:-""} = "-f" ]; then
 else
     TEST_FILE="${SPIDEROAK_DIY}/test/web_server/test_web_server.py"
 fi
-${TOOL}/bin/python "$TEST_FILE" "$@"
+python "$TEST_FILE" "$@"

@@ -27,14 +27,9 @@ _log_path = "/var/log/pandora/test_data_reader.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
-_data_writer_address = os.environ.get(
-    "DIYAPI_DATA_WRITER_ADDRESS",
-    "ipc:///tmp/diyapi-data-writer-%s/socket" % (_local_node_name, )
-)
-_data_reader_address = os.environ.get(
-    "DIYAPI_DATA_READER_ADDRESS",
-    "ipc:///tmp/diyapi-data-reader-%s/socket" % (_local_node_name, )
-)
+_database_server_address = "tcp://127.0.0.1:8000"
+_data_writer_address = "tcp://127.0.0.1:8100"
+_data_reader_address = "tcp://127.0.0.1:8200"
 
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
@@ -45,19 +40,25 @@ class TestDataReader(unittest.TestCase):
         self._key_generator = generate_key()
 
         self._database_server_process = start_database_server(
-            _local_node_name, _repository_path
+            _local_node_name, _database_server_address, _repository_path
         )
         poll_result = poll_process(self._database_server_process)
         self.assertEqual(poll_result, None)
 
         self._data_writer_process = start_data_writer(
-            _local_node_name, _repository_path
+            _local_node_name, 
+            _data_writer_address,
+            _database_server_address,
+            _repository_path
         )
         poll_result = poll_process(self._data_writer_process)
         self.assertEqual(poll_result, None)
 
         self._data_reader_process = start_data_reader(
-            _local_node_name, _repository_path
+            _local_node_name, 
+            _data_reader_address,
+            _database_server_address,
+            _repository_path
         )
         poll_result = poll_process(self._data_reader_process)
         self.assertEqual(poll_result, None)

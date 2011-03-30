@@ -19,6 +19,7 @@ from unit_tests.util import identify_program_dir, \
         generate_key, \
         generate_database_content, \
         start_database_server,\
+        start_anti_entropy_server, \
         poll_process, \
         terminate_process
 from unit_tests.zeromq_util import send_request_and_get_reply
@@ -30,35 +31,11 @@ _test_dir = os.path.join("/tmp", "test_diy_anti_entropy_server")
 _repository_dirs = [
     os.path.join(_test_dir, "repository_%s" % (n, )) for n in _node_names
 ]
-_anti_entropy_server_address = os.environ.get(
-    "DIYAPI_anti_entropy_server_ADDRESS",
-    "ipc:///tmp/diyapi-anti-entropy-server-%s/socket" % (_local_node_name, )
-)
+_anti_entropy_server_address = "tcp://127.0.0.1:8400"
+_database_server_base_port = 8000
 _database_server_addresses = [
-    "tcp://127.0.0.1:%s" % (8000+i, ) for i in range(10)
+    "tcp://127.0.0.1:%s" % (_database_server_base_port+i, ) for i in range(10)
 ]
-
-def _start_anti_entropy_server(node_name):
-    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_anti_entropy_server")
-    server_path = os.path.join(
-        server_dir, "diyapi_anti_entropy_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : _local_node_name,
-        "DIYAPI_DATABASE_SERVER_ADDRESSES"  : \
-            " ".join(_database_server_addresses),
-    }        
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 class TestAntiEntropyServer(unittest.TestCase):
     """test message handling in anti entropy server"""
@@ -70,18 +47,22 @@ class TestAntiEntropyServer(unittest.TestCase):
             os.mkdir(repository_dir)
         self._key_generator = generate_key()
         self._database_server_processes = list()
-        for node_name, repository_path, address in zip(
-            _node_names, _repository_dirs, _database_server_addresses
+        for node_name, address, repository_path in zip(
+            _node_names, _database_server_addresses, _repository_dirs
         ):
             database_server_process = start_database_server(
-                node_name, repository_path, address
+                node_name, address, repository_path
             )
             time.sleep(1.0)
             poll_result = poll_process(database_server_process)
             self.assertEqual(poll_result, None)
             self._database_server_processes.append(database_server_process)
         self._anti_entropy_server_process = \
-            _start_anti_entropy_server(_local_node_name)
+            start_anti_entropy_server(
+                _local_node_name,
+                _anti_entropy_server_address,
+                _database_server_addresses
+            )
 
     def tearDown(self):
         if hasattr(self, "_anti_entropy_server_process") \

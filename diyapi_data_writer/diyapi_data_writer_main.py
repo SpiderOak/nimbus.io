@@ -46,7 +46,7 @@ _database_server_address = os.environ.get(
 )
 _data_writer_address = os.environ.get(
     "DIYAPI_DATA_WRITER_ADDRESS",
-    "ipc:///tmp/diyapi-data-writer-%s/socket" % (_local_node_name, )
+    "tcp://127.0.0.1:8100"
 )
 _key_insert_timeout = 60.0
 _key_destroy_timeout = 60.0

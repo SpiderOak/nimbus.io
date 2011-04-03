@@ -18,8 +18,8 @@ from diyapi_web_server.exceptions import (
 
 class Listmatcher(object):
     """Performs a listmatch query."""
-    def __init__(self, data_readers, agreement_level):
-        self.data_readers = data_readers
+    def __init__(self, database_clients, agreement_level):
+        self.database_clients = database_clients
         self.agreement_level = agreement_level
         self._pending = GreenletSet()
         self._done = []
@@ -38,20 +38,20 @@ class Listmatcher(object):
         if task.successful():
             self._done.append(task)
 
-    def _spawn(self, data_reader, run, *args):
+    def _spawn(self, database_client, run, *args):
         task = self._pending.spawn(run, *args)
         task.link(self._done_link)
-        task.data_reader = data_reader
+        task.database_client = database_client
         return task
 
     def listmatch(self, avatar_id, prefix, timeout=None):
         if self._pending:
             raise AlreadyInProgress()
-        for data_reader in self.data_readers:
+        for database_client in self.database_clients:
             request_id = uuid.uuid1().hex
             self._spawn(
-                data_reader,
-                data_reader.listmatch,
+                database_client,
+                database_client.listmatch,
                 request_id,
                 avatar_id,
                 prefix

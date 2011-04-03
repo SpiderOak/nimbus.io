@@ -67,7 +67,7 @@ class DatabaseClient(object):
             )
 
         delivery_channel = self._xreq_socket.queue_message_for_send(message)
-        reply, data = delivery_channel.get()
+        reply, _data = delivery_channel.get()
         if reply["result"] != "success":
             raise StatFailedError(reply["error-message"])
         

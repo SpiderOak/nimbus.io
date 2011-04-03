@@ -50,13 +50,12 @@ class router(list):
 
 
 class Application(object):
-    def __init__(self, amqp_handler, data_writers, data_readers,
-                 database_servers, authenticator, accounting_server):
+    def __init__(self, data_writers, data_readers,
+                 database_clients, authenticator, accounting_server):
         self._log = logging.getLogger("Application")
-        self.amqp_handler = amqp_handler
         self.data_writers = data_writers
         self.data_readers = data_readers
-        self.database_servers = database_servers
+        self.database_clients = database_clients
         self.authenticator = authenticator
         self.accounting_server = accounting_server
 
@@ -129,7 +128,7 @@ class Application(object):
         ))
         avatar_id = req.remote_user
         getter = StatGetter(
-            self.database_servers,
+            self.database_clients,
             8 # TODO: min_segments
         )
         try:
@@ -149,7 +148,7 @@ class Application(object):
         # TODO: do something with delimiter
         avatar_id = req.remote_user
         matcher = Listmatcher(
-            self.database_servers,
+            self.database_clients,
             8 # TODO: min_segments
         )
         try:

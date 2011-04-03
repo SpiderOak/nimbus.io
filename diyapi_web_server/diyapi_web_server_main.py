@@ -34,6 +34,7 @@ _log_path = "/var/log/pandora/diyapi_web_server.log"
 DB_HOST = os.environ['PANDORA_DATABASE_HOST']
 DB_NAME = 'pandora'
 DB_USER = 'diyapi'
+DB_PASS = os.environ['SPIDEROAK_DB_PW_diyapi']
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 MAX_DOWN_EXCHANGES = 2
@@ -46,6 +47,7 @@ class WebServer(object):
         db_connection = psycopg2.connect(
             database=DB_NAME,
             user=DB_USER,
+            password=DB_PASS,
             host=DB_HOST
         )
         authenticator = SqlAuthenticator(db_connection)

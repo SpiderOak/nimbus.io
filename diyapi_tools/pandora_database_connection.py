@@ -8,11 +8,11 @@ import os
 
 class PandoraDatabaseConnection(object):
     """A connection to the SpiderOak pandora database"""
-    def __init__(self, database_name, database_user, database_host):
+    def __init__(self, database_name, database_user, database_password, database_host):
         """Create an instance of the connection"""
         import psycopg2
         self._connection = psycopg2.connect(
-            database=database_name, user=database_user, host=database_host
+            database=database_name, user=database_user, host=database_host, password=database_password
         )
         
     def fetch_one_row(self, query, *args):
@@ -51,6 +51,7 @@ class PandoraDatabaseConnection(object):
         
 _database_name = "pandora"
 _database_user = "pandora_storage_server"
+_database_password = os.environ['SPIDEROAK_DB_PW_pandora_storage_server']
 
 def get_pandora_database_connection(database_user=_database_user):
     database_host = os.environ.get('PANDORA_DATABASE_HOST', 'localhost')
@@ -59,6 +60,7 @@ def get_pandora_database_connection(database_user=_database_user):
     connection = PandoraDatabaseConnection(
         database_name=_database_name,
         database_user=database_user,
+        database_password=_database_password,
         database_host=database_host
     )
     return connection

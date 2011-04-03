@@ -35,6 +35,7 @@ _log_path = "/var/log/pandora/diyapi_web_server.log"
 DB_HOST = os.environ['PANDORA_DATABASE_HOST']
 DB_NAME = 'pandora'
 DB_USER = 'diyapi'
+DB_PASS = os.environ['SPIDEROAK_DB_PW_diyapi']
 
 NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 LOCAL_NODE_NAME = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
@@ -56,6 +57,7 @@ class WebServer(object):
         db_connection = psycopg2.connect(
             database=DB_NAME,
             user=DB_USER,
+            password=DB_PASS,
             host=DB_HOST
         )
         authenticator = SqlAuthenticator(db_connection)

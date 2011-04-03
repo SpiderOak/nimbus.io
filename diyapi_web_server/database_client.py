@@ -1,23 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-amqp_database_server.py
+database_client.py
 
-A class that represents a database server in the system.
+A class that connects to a specific database server.
 """
-from diyapi_web_server.amqp_process import AMQPProcess
+import logging
 
 from diyapi_web_server.exceptions import (
-    DatabaseServerDownError,
     ListmatchFailedError,
     StatFailedError,
 )
 
-from messages.database_listmatch import DatabaseListMatch
-from messages.stat import Stat
+class DatabaseClient(object):
 
+    def __init__(self, node_name, xreq_socket):
+        self._log = logging.getLogger("DatabaseClient-%s" % (node_name, ))
+        self._xreq_socket = xreq_socket
 
-class AMQPDatabaseServer(AMQPProcess):
-    _downerror_class = DatabaseServerDownError
+    def close(self):
+        self._xreq_socket.close()
 
     def listmatch(
         self,
@@ -25,53 +26,50 @@ class AMQPDatabaseServer(AMQPProcess):
         avatar_id,
         prefix
     ):
-        message = DatabaseListMatch(
-            request_id,
-            avatar_id,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name,
-            prefix
-        )
-        self.log.debug(
-            '%s: '
-            'request_id = %s, '
-            'prefix = %r' % (
-                message.__class__.__name__,
-                message.request_id,
-                prefix,
-            ))
-        reply = self._send(message, ListmatchFailedError)
-        return reply.key_list
+        message = {
+            "message-type"      : "listmatch",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "prefix"            : prefix,
+        }
+        delivery_channel = self._xreq_socket.queue_message_for_send(message)
+        self._log.debug(
+            '%(message-type)s: '
+            'request_id = %(request-id)s, '
+            'prefix = %(prefix)r' % message
+            )
+        reply, _data = delivery_channel.get()
+        if reply["result"] != "success":
+            raise ListmatchFailedError(reply["error-message"])
+        # TODO: need to handle incomplete reply
+        if not reply["is-complete"]:
+            self._log.error("incomplete reply to %s" % (message, ))
+        return reply["key-list"]
 
     def stat(
         self,
         request_id,
         avatar_id,
-        path
+        path,
+        version_number=0,
     ):
-        message = Stat(
-            request_id,
-            avatar_id,
-            path,
-            0,
-            self.amqp_handler.exchange,
-            self.amqp_handler.queue_name
-        )
-        self.log.debug(
-            '%s: '
-            'request_id = %s, '
-            'path = %r' % (
-                message.__class__.__name__,
-                message.request_id,
-                path
-            ))
-        reply = self._send(message, StatFailedError)
-        return dict(
-            timestamp=reply.timestamp,
-            total_size=reply.total_size,
-            file_adler32=reply.file_adler32,
-            file_md5=reply.file_md5,
-            userid=reply.userid,
-            groupid=reply.groupid,
-            permissions=reply.permissions,
-        )
+        message = {
+            "message-type"      : "stat-request",
+            "request-id"        : request_id,
+            "avatar-id"         : avatar_id,
+            "key"               : path, 
+            "version-number"    : version_number,
+        }
+        self._log.debug(
+            '%(message-type)s: '
+            'request_id = %(request-id)s, '
+            'path = %(key)r' % message
+            )
+
+        delivery_channel = self._xreq_socket.queue_message_for_send(message)
+        reply, data = delivery_channel.get()
+        if reply["result"] != "success":
+            raise StatFailedError(reply["error-message"])
+        
+        return reply
+

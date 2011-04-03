@@ -730,11 +730,13 @@ def _handle_stat_request(state, message, _data):
         state["xrep-server"].queue_message_for_send(reply)
         return
     
+    # 2011-04-03 dougfort -- we keep the underscore in the reply
+    # because that's what the web server is used to
     reply["result"] = "success"
     reply["timestamp"] = existing_entry.timestamp
-    reply["total-size"] = existing_entry.total_size
-    reply["file-adler32"] = existing_entry.file_adler32
-    reply["file-md5"] = existing_entry.file_md5
+    reply["total_size"] = existing_entry.total_size
+    reply["file_adler32"] = existing_entry.file_adler32
+    reply["file_md5"] = existing_entry.file_md5
     reply["userid"] = existing_entry.userid
     reply["groupid"] = existing_entry.groupid
     reply["permissions"] = existing_entry.permissions

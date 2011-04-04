@@ -54,6 +54,7 @@ class TestWebServer(unittest.TestCase):
             self.server.stop()
 
     def _auth_headers(self, method, key=None):
+        log = logging.getLogger("_auth_headers")
         if key is None:
             key = _test_key
         timestamp = str(int(time.time()))

@@ -20,13 +20,13 @@ import psycopg2
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
 from diyapi_tools.greenlet_xreq_client import GreenletXREQClient
+from diyapi_tools.greenlet_push_client import GreenletPUSHClient
 
 from diyapi_web_server.application import Application
 #from diyapi_web_server.amqp_data_writer import AMQPDataWriter
 #from diyapi_web_server.amqp_data_reader import AMQPDataReader
 from diyapi_web_server.database_client import DatabaseClient
-#from diyapi_web_server.amqp_space_accounting_server import (
-#    AMQPSpaceAccountingServer)
+from diyapi_web_server.space_accounting_client import SpaceAccountingClient
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
 
 
@@ -37,10 +37,14 @@ DB_NAME = 'pandora'
 DB_USER = 'diyapi'
 
 NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+LOCAL_NODE_NAME = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 DATABASE_SERVER_ADDRESSES = \
     os.environ["DIYAPI_DATABASE_SERVER_ADDRESSES"].split()
+SPACE_ACCOUNTING_SERVER_ADDRESS = \
+    os.environ["DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS"]
+SPACE_ACCOUNTING_PIPELINE_ADDRESS = \
+    os.environ["DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 MAX_DOWN_EXCHANGES = 2
-
 
 class WebServer(object):
     def __init__(self):
@@ -51,6 +55,8 @@ class WebServer(object):
             user=DB_USER,
             host=DB_HOST
         )
+        authenticator = SqlAuthenticator(db_connection)
+
         self._zeromq_context = zmq.context.Context()
         self._pollster = GreenletZeroMQPollster()
         self._database_clients = list()
@@ -67,10 +73,24 @@ class WebServer(object):
                 node_name, xreq_client
             )
             self._database_clients.append(database_client)
-        authenticator = SqlAuthenticator(db_connection)
-#        accounting_server = AMQPSpaceAccountingServer(
-#            self.amqp_handler, space_accounting_exchange_name)
-        accounting_server = None
+        xreq_client = GreenletXREQClient(
+            self._zeromq_context, 
+            LOCAL_NODE_NAME, 
+            SPACE_ACCOUNTING_SERVER_ADDRESS
+        )
+        xreq_client.register(self._pollster)
+        push_client = GreenletPUSHClient(
+            self._zeromq_context, 
+            LOCAL_NODE_NAME, 
+            SPACE_ACCOUNTING_PIPELINE_ADDRESS,
+        )
+        push_client.register(self._pollster)
+        self._accounting_client = SpaceAccountingClient(
+            LOCAL_NODE_NAME,
+            xreq_client,
+            push_client
+        )
+
 #        data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
 #                        for exchange in EXCHANGES]
         data_writers = list()
@@ -82,7 +102,7 @@ class WebServer(object):
             data_readers,
             self._database_clients,
             authenticator,
-            accounting_server
+            self._accounting_client
         )
         self.wsgi_server = WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
@@ -95,6 +115,7 @@ class WebServer(object):
     def stop(self):
         self.wsgi_server.stop()
         self._stopped_event.set()
+        self._accounting_client.close()
         for database_client in self._database_clients:
             database_client.close()
         self._pollster.kill()

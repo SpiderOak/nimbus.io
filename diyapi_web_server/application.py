@@ -51,13 +51,13 @@ class router(list):
 
 class Application(object):
     def __init__(self, data_writers, data_readers,
-                 database_clients, authenticator, accounting_server):
+                 database_clients, authenticator, accounting_client):
         self._log = logging.getLogger("Application")
         self.data_writers = data_writers
         self.data_readers = data_readers
         self.database_clients = database_clients
         self.authenticator = authenticator
-        self.accounting_server = accounting_server
+        self.accounting_client = accounting_client
 
     routes = router()
 
@@ -112,7 +112,7 @@ class Application(object):
             req.remote_user,
         ))
         avatar_id = req.remote_user
-        getter = SpaceUsageGetter(self.accounting_server)
+        getter = SpaceUsageGetter(self.accounting_client)
         try:
             usage = getter.get_space_usage(avatar_id, EXCHANGE_TIMEOUT)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError):
@@ -174,7 +174,7 @@ class Application(object):
         except (DataWriterDownError, DestroyFailedError):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
-        self.accounting_server.removed(
+        self.accounting_client.removed(
             avatar_id,
             timestamp,
             size_deleted
@@ -213,7 +213,7 @@ class Application(object):
                 self._log.warning('retrieve failed: avatar_id = %s' % (
                     avatar_id,
                 ))
-            self.accounting_server.retrieved(
+            self.accounting_client.retrieved(
                 avatar_id,
                 timestamp,
                 sent
@@ -270,12 +270,12 @@ class Application(object):
             # 2010-06-25 dougfort -- Isn't there some better error for this
             raise exc.HTTPGatewayTimeout()
         if previous_size is not None:
-            self.accounting_server.removed(
+            self.accounting_client.removed(
                 avatar_id,
                 timestamp,
                 previous_size
             )
-        self.accounting_server.added(
+        self.accounting_client.added(
             avatar_id,
             timestamp,
             file_size

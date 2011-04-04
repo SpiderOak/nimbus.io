@@ -5,10 +5,8 @@ export PYTHONPATH="${SPIDEROAK_DIY}"
 export PANDORA_DATABASE_HOST="localhost"
 
 export SPIDEROAK_MULTI_NODE_NAME="node-sim-00"
-export RABBITMQ_NODENAME="${SPIDEROAK_MULTI_NODE_NAME}"
-export RABBITMQ_NODE_IP_ADDRESS="127.0.0.1"
-export RABBITMQ_NODE_PORT="6000"
-export SPIDEROAK_AMQP_PORT=$RABBITMQ_NODE_PORT
+export SPIDEROAK_MULTI_NODE_NAME_SEQ="node-sim-00 node-sim-01 node-sim-02 node-sim-02 node-sim-04 node-sim-05 node-sim-06 node-sim-07 node-sim-08 node-sim-09"
+export DIYAPI_DATABASE_SERVER_ADDRESSES="tcp://127.0.0.1:8000 tcp://127.0.0.1:8001 tcp://127.0.0.1:8002 tcp://127.0.0.1:8003 tcp://127.0.0.1:8004 tcp://127.0.0.1:8005 tcp://127.0.0.1:8006 tcp://127.0.0.1:8007 tcp://127.0.0.1:8008 tcp://127.0.0.1:8009" 
 
 if [ -z $DIYAPI_TEST_BASE_URL ]; then
     export DIYAPI_TEST_BASE_URL="https://test.diy.spideroak.com"
@@ -22,8 +20,6 @@ fi
 if [ -z $DIYAPI_TEST_KEY ]; then
     export DIYAPI_TEST_KEY="deadbeef"
 fi
-
-export DIY_NODE_EXCHANGES="node-sim-00-exchange node-sim-01-exchange node-sim-02-exchange node-sim-03-exchange node-sim-04-exchange node-sim-05-exchange node-sim-06-exchange node-sim-07-exchange node-sim-08-exchange node-sim-09-exchange"
 
 rm /var/log/pandora/test_web_server.log
 

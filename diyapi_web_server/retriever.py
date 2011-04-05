@@ -10,11 +10,6 @@ import uuid
 import gevent
 from gevent.pool import GreenletSet
 
-from messages.retrieve_key_start import RetrieveKeyStart
-from messages.retrieve_key_next import RetrieveKeyNext
-from messages.retrieve_key_final import RetrieveKeyFinal
-from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
     RetrieveFailedError,
@@ -78,9 +73,9 @@ class Retriever(object):
                 self.version_number,
                 segment_number
             )
-        self._join(timeout)
-        self.n_slices = self._done[0].value.segment_count
-        yield dict((task.segment_number, task.value.data_content)
+        self._join(timeout)        
+        self.n_slices = self._done[0].value[0] # segment_count
+        yield dict((task.segment_number, task.value[1])
                    for task in self._done[:self.segments_needed])
         self._done = []
         self.sequence_number += 1

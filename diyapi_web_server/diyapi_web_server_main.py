@@ -34,7 +34,7 @@ _log_path = "/var/log/pandora/diyapi_web_server.log"
 DB_HOST = os.environ['PANDORA_DATABASE_HOST']
 DB_NAME = 'pandora'
 DB_USER = 'diyapi'
-DB_PASS = os.environ['SPIDEROAK_DB_PW_diyapi']
+DB_PASS = os.environ['PANDORA_DB_PW_diyapi']
 
 EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
 MAX_DOWN_EXCHANGES = 2

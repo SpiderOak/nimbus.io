@@ -51,7 +51,7 @@ class PandoraDatabaseConnection(object):
         
 _database_name = "pandora"
 _database_user = "pandora_storage_server"
-_database_password = os.environ['SPIDEROAK_DB_PW_pandora_storage_server']
+_database_password = os.environ['PANDORA_DB_PW_pandora_storage_server']
 
 def get_pandora_database_connection(database_user=_database_user):
     database_host = os.environ.get('PANDORA_DATABASE_HOST', 'localhost')

@@ -35,7 +35,7 @@ _log_path = "/var/log/pandora/diyapi_web_server.log"
 DB_HOST = os.environ['PANDORA_DATABASE_HOST']
 DB_NAME = 'pandora'
 DB_USER = 'diyapi'
-DB_PASS = os.environ['SPIDEROAK_DB_PW_diyapi']
+DB_PASS = os.environ['PANDORA_DB_PW_diyapi']
 
 NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 LOCAL_NODE_NAME = os.environ["SPIDEROAK_MULTI_NODE_NAME"]

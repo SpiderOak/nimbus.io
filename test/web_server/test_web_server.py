@@ -4,9 +4,6 @@ test_web_server.py
 
 test diyapi_web_server/diyapi_web_server_main.py
 """
-# importing this monkey-patches socket, putting us in geventland
-from diyapi_web_server.diyapi_web_server_main import WebServer
-
 import os
 import re
 import sys
@@ -76,29 +73,29 @@ class TestWebServer(unittest.TestCase):
             return resp.read()
         return resp
 
-#    def test_unauthorized_when_auth_header_missing(self):
-#        log = logging.getLogger('test_unauthorized_when_auth_header_missing')
-#        log.info('start')
-#        try:
-#            resp = urllib2.urlopen(
-#                _base_url + '/data/test-key?action=listmatch')
-#        except urllib2.HTTPError, err:
-#            self.assertEqual(err.code, 401)
-#        else:
-#            raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
-#
-#    def test_unauthorized_with_bad_credentials(self):
-#        log = logging.getLogger('test_unauthorized_with_bad_credentials')
-#        log.info('start')
-#        try:
-#            resp = self._make_request(
-#                _base_url + '/data/test-key?action=listmatch', key='cafeface',
-#                read_resp=False)
-#        except urllib2.HTTPError, err:
-#            self.assertEqual(err.code, 401)
-#        else:
-#            raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
-#
+    def test_unauthorized_when_auth_header_missing(self):
+        log = logging.getLogger('test_unauthorized_when_auth_header_missing')
+        log.info('start')
+        try:
+            resp = urllib2.urlopen(
+                _base_url + '/data/test-key?action=listmatch')
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 401)
+        else:
+            raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
+
+    def test_unauthorized_with_bad_credentials(self):
+        log = logging.getLogger('test_unauthorized_with_bad_credentials')
+        log.info('start')
+        try:
+            resp = self._make_request(
+                _base_url + '/data/test-key?action=listmatch', key='cafeface',
+                read_resp=False)
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 401)
+        else:
+            raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
+
     def test_upload_0_bytes(self):
         log = logging.getLogger('test_upload_0_bytes')
         log.info('start')
@@ -108,223 +105,223 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/' + key, content)
         self.assertEqual(result, 'OK')
 
-#    def test_upload_0_bytes_and_listmatch(self):
-#        log = logging.getLogger('test_upload_0_bytes_and_listmatch')
-#        log.info('start')
-#        content = ''
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('listmatch')
-#        result = self._make_request(
-#            _base_url + '/data/test-key?action=listmatch')
-#        self.assertEqual(json.loads(result), [key])
-#
-#    def test_upload_0_bytes_and_retrieve(self):
-#        log = logging.getLogger('test_upload_0_bytes_and_retrieve')
-#        log.info('start')
-#        content = ''
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('retrieve')
-#        result = self._make_request(
-#            _base_url + '/data/' + key)
-#        self.assertEqual(len(result), len(content))
-#        self.assertEqual(result, content)
-#
-#    def test_upload_small(self):
-#        log = logging.getLogger('test_upload_small')
-#        log.info('start')
-#        content = random_string(64 * 1024)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        self.assertEqual(result, 'OK')
-#
-#    def test_upload_small_and_listmatch(self):
-#        log = logging.getLogger('test_upload_small_and_listmatch')
-#        log.info('start')
-#        content = random_string(64 * 1024)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('listmatch')
-#        result = self._make_request(
-#            _base_url + '/data/test-key?action=listmatch')
-#        self.assertEqual(json.loads(result), [key])
-#
-#    def test_upload_small_and_retrieve(self):
-#        log = logging.getLogger('test_upload_small_and_retrieve')
-#        log.info('start')
-#        content = random_string(64 * 1024)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('retrieve')
-#        result = self._make_request(
-#            _base_url + '/data/' + key)
-#        self.assertEqual(len(result), len(content))
-#        self.assertEqual(result, content)
-#
-#    def test_upload_small_and_stat(self):
-#        log = logging.getLogger('test_upload_small_and_stat')
-#        log.info('start')
-#        content = random_string(64 * 1024)
-#        key = self._key_generator.next()
-#        stat = {
-#            'timestamp': time.time(),
-#            'total_size': len(content),
-#            'userid': 0,
-#            'groupid': 0,
-#            'permissions': 0,
-#            'file_md5': hashlib.md5(content).hexdigest(),
-#            'file_adler32': zlib.adler32(content),
-#        }
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('retrieve')
-#        result = self._make_request(
-#            _base_url + '/data/' + key + '?action=stat')
-#        result = json.loads(result)
-#        expected_timestamp = stat.pop('timestamp')
-#        actual_timestamp = result.pop('timestamp')
-#        self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
-#        self.assertEqual(result, stat)
-#
-#    def test_retrieve_nonexistent_key(self):
-#        log = logging.getLogger('test_retrieve_nonexistent_key')
-#        log.info('start')
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/%s?action=delete' % (key,), '')
-#        log.info('retrieve')
-#        try:
-#            resp = self._make_request(
-#                _base_url + '/data/' + key, read_resp=False)
-#        except urllib2.HTTPError, err:
-#            self.assertEqual(err.code, 404)
-#        else:
-#            raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
-#
-#    def test_upload_large(self):
-#        log = logging.getLogger('test_upload_large')
-#        log.info('start')
-#        content = random_string(1024 * 1024 * 3)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        self.assertEqual(result, 'OK')
-#
-#    def test_upload_large_and_retrieve(self):
-#        log = logging.getLogger('test_upload_large_and_retrieve')
-#        log.info('start')
-#        content = random_string(1024 * 1024 * 3)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('retrieve')
-#        result = self._make_request(
-#            _base_url + '/data/' + key)
-#        self.assertEqual(len(result), len(content))
-#        if result != content:
-#            diffs = filter(lambda (i, (r, c)): r != c, enumerate(zip(result, content)))
-#            raise AssertionError(
-#                'result differs from expected: '
-#                'start=%d, end=%d' % (
-#                    diffs[0][0],
-#                    diffs[-1][0]
-#                )
-#            )
-#        self.assertEqual(result, content)
-#
-#    def test_upload_large_and_stat(self):
-#        log = logging.getLogger('test_upload_large_and_stat')
-#        log.info('start')
-#        content = random_string(1024 * 1024 * 3)
-#        key = self._key_generator.next()
-#        stat = {
-#            'timestamp': time.time(),
-#            'total_size': len(content),
-#            'userid': 0,
-#            'groupid': 0,
-#            'permissions': 0,
-#            'file_md5': hashlib.md5(content).hexdigest(),
-#            'file_adler32': zlib.adler32(content),
-#        }
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('retrieve')
-#        result = self._make_request(
-#            _base_url + '/data/' + key + '?action=stat')
-#        result = json.loads(result)
-#        expected_timestamp = stat.pop('timestamp')
-#        actual_timestamp = result.pop('timestamp')
-#        self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
-#        self.assertEqual(result, stat)
-#
-#    def test_upload_small_then_delete_and_listmatch(self):
-#        log = logging.getLogger('test_upload_small_then_delete_and_listmatch')
-#        log.info('start')
-#        content = random_string(64 * 1024)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('delete')
-#        result = self._make_request(
-#            _base_url + '/data/%s?action=delete' % (key,), '')
-#        log.info('listmatch')
-#        result = self._make_request(
-#            _base_url + '/data/test-key?action=listmatch')
-#        self.assertEqual(json.loads(result), [])
-#
-#    def test_upload_small_then_delete_and_retrieve(self):
-#        log = logging.getLogger('test_upload_small_then_delete_and_retrieve')
-#        log.info('start')
-#        content = random_string(64 * 1024)
-#        key = self._key_generator.next()
-#        result = self._make_request(
-#            _base_url + '/data/' + key, content)
-#        log.info('delete')
-#        result = self._make_request(
-#            _base_url + '/data/%s?action=delete' % (key,), '')
-#        log.info('retrieve')
-#        try:
-#            resp = self._make_request(
-#                _base_url + '/data/' + key, read_resp=False)
-#        except urllib2.HTTPError, err:
-#            self.assertEqual(err.code, 404)
-#        else:
-#            raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
-#
-#    def test_usage(self):
-#        log = logging.getLogger('test_usage')
-#        log.info('start')
-#        result = self._make_request(_base_url + '/usage')
-#        usage = json.loads(result)
-#        self.assertEqual(
-#            set(usage.keys()),
-#            set(['bytes_added', 'bytes_removed', 'bytes_retrieved'])
-#        )
-#        for key in usage:
-#            self.assertTrue(isinstance(usage[key], int),
-#                            '%r is not an integer')
-#
-#
-#def _load_unit_tests(path):
-#    dotted_path = '.'.join(path.split('/'))
-#    _test_re = re.compile("test_.+?\.py$", re.IGNORECASE)
-#    _filename_to_module = lambda f: ('%s.%s' % (dotted_path,
-#                                                os.path.splitext(f)[0]))
-#    _load = unittest.defaultTestLoader.loadTestsFromModule
-#    files = os.listdir(path)
-#    files = filter(_test_re.search, files)
-#    module_names = map(_filename_to_module, files)
-#    for name in module_names:
-#        __import__(name)
-#    modules = [sys.modules[name] for name in module_names]
-#    return map(_load, modules)
-#
+    def test_upload_0_bytes_and_listmatch(self):
+        log = logging.getLogger('test_upload_0_bytes_and_listmatch')
+        log.info('start')
+        content = ''
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('listmatch')
+        result = self._make_request(
+            _base_url + '/data/test-key?action=listmatch')
+        self.assertEqual(json.loads(result), [key])
+
+    def test_upload_0_bytes_and_retrieve(self):
+        log = logging.getLogger('test_upload_0_bytes_and_retrieve')
+        log.info('start')
+        content = ''
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key)
+        self.assertEqual(len(result), len(content))
+        self.assertEqual(result, content)
+
+    def test_upload_small(self):
+        log = logging.getLogger('test_upload_small')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        self.assertEqual(result, 'OK')
+
+    def test_upload_small_and_listmatch(self):
+        log = logging.getLogger('test_upload_small_and_listmatch')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('listmatch')
+        result = self._make_request(
+            _base_url + '/data/test-key?action=listmatch')
+        self.assertEqual(json.loads(result), [key])
+
+    def test_upload_small_and_retrieve(self):
+        log = logging.getLogger('test_upload_small_and_retrieve')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key)
+        self.assertEqual(len(result), len(content))
+        self.assertEqual(result, content)
+
+    def test_upload_small_and_stat(self):
+        log = logging.getLogger('test_upload_small_and_stat')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        stat = {
+            'timestamp': time.time(),
+            'total_size': len(content),
+            'userid': 0,
+            'groupid': 0,
+            'permissions': 0,
+            'file_md5': hashlib.md5(content).hexdigest(),
+            'file_adler32': zlib.adler32(content),
+        }
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key + '?action=stat')
+        result = json.loads(result)
+        expected_timestamp = stat.pop('timestamp')
+        actual_timestamp = result.pop('timestamp')
+        self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
+        self.assertEqual(result, stat)
+
+    def test_retrieve_nonexistent_key(self):
+        log = logging.getLogger('test_retrieve_nonexistent_key')
+        log.info('start')
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/%s?action=delete' % (key,), '')
+        log.info('retrieve')
+        try:
+            resp = self._make_request(
+                _base_url + '/data/' + key, read_resp=False)
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 404)
+        else:
+            raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
+
+    def test_upload_large(self):
+        log = logging.getLogger('test_upload_large')
+        log.info('start')
+        content = random_string(1024 * 1024 * 3)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        self.assertEqual(result, 'OK')
+
+    def test_upload_large_and_retrieve(self):
+        log = logging.getLogger('test_upload_large_and_retrieve')
+        log.info('start')
+        content = random_string(1024 * 1024 * 3)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key)
+        self.assertEqual(len(result), len(content))
+        if result != content:
+            diffs = filter(lambda (i, (r, c)): r != c, enumerate(zip(result, content)))
+            raise AssertionError(
+                'result differs from expected: '
+                'start=%d, end=%d' % (
+                    diffs[0][0],
+                    diffs[-1][0]
+                )
+            )
+        self.assertEqual(result, content)
+
+    def test_upload_large_and_stat(self):
+        log = logging.getLogger('test_upload_large_and_stat')
+        log.info('start')
+        content = random_string(1024 * 1024 * 3)
+        key = self._key_generator.next()
+        stat = {
+            'timestamp': time.time(),
+            'total_size': len(content),
+            'userid': 0,
+            'groupid': 0,
+            'permissions': 0,
+            'file_md5': hashlib.md5(content).hexdigest(),
+            'file_adler32': zlib.adler32(content),
+        }
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('retrieve')
+        result = self._make_request(
+            _base_url + '/data/' + key + '?action=stat')
+        result = json.loads(result)
+        expected_timestamp = stat.pop('timestamp')
+        actual_timestamp = result.pop('timestamp')
+        self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
+        self.assertEqual(result, stat)
+
+    def test_upload_small_then_delete_and_listmatch(self):
+        log = logging.getLogger('test_upload_small_then_delete_and_listmatch')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('delete')
+        result = self._make_request(
+            _base_url + '/data/%s?action=delete' % (key,), '')
+        log.info('listmatch')
+        result = self._make_request(
+            _base_url + '/data/test-key?action=listmatch')
+        self.assertEqual(json.loads(result), [])
+
+    def test_upload_small_then_delete_and_retrieve(self):
+        log = logging.getLogger('test_upload_small_then_delete_and_retrieve')
+        log.info('start')
+        content = random_string(64 * 1024)
+        key = self._key_generator.next()
+        result = self._make_request(
+            _base_url + '/data/' + key, content)
+        log.info('delete')
+        result = self._make_request(
+            _base_url + '/data/%s?action=delete' % (key,), '')
+        log.info('retrieve')
+        try:
+            resp = self._make_request(
+                _base_url + '/data/' + key, read_resp=False)
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 404)
+        else:
+            raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
+
+    def test_usage(self):
+        log = logging.getLogger('test_usage')
+        log.info('start')
+        result = self._make_request(_base_url + '/usage')
+        usage = json.loads(result)
+        self.assertEqual(
+            set(usage.keys()),
+            set(['bytes_added', 'bytes_removed', 'bytes_retrieved'])
+        )
+        for key in usage:
+            self.assertTrue(isinstance(usage[key], int),
+                            '%r is not an integer')
+
+
+def _load_unit_tests(path):
+    dotted_path = '.'.join(path.split('/'))
+    _test_re = re.compile("test_.+?\.py$", re.IGNORECASE)
+    _filename_to_module = lambda f: ('%s.%s' % (dotted_path,
+                                                os.path.splitext(f)[0]))
+    _load = unittest.defaultTestLoader.loadTestsFromModule
+    files = os.listdir(path)
+    files = filter(_test_re.search, files)
+    module_names = map(_filename_to_module, files)
+    for name in module_names:
+        __import__(name)
+    modules = [sys.modules[name] for name in module_names]
+    return map(_load, modules)
+
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

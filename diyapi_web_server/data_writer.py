@@ -4,6 +4,7 @@ data_writer.py
 
 A class that represents a data writer in the system.
 """
+from base64 import b64encode
 import os
 import logging
 
@@ -48,9 +49,9 @@ class DataWriter(object):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         delivery_channel = self._xreq_socket.queue_message_for_send(
             message, data=segment
@@ -63,6 +64,7 @@ class DataWriter(object):
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
         self._log.debug('previous_size = %(previous-size)r' % reply)
         return reply["previous-size"]
@@ -100,6 +102,7 @@ class DataWriter(object):
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
 
     def archive_key_next(
@@ -123,6 +126,7 @@ class DataWriter(object):
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
 
     def archive_key_final(
@@ -142,9 +146,9 @@ class DataWriter(object):
             "sequence"          : sequence_number,
             "total-size"        : file_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         delivery_channel = self._xreq_socket.queue_message_for_send(
             message, data=segment
@@ -155,6 +159,7 @@ class DataWriter(object):
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
         self._log.debug('previous_size = %(previous-size)r' % reply)
         return reply["previous-size"]
@@ -186,6 +191,7 @@ class DataWriter(object):
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise DestroyFailedError(reply["error-message"])
         self._log.debug('total_size = %(total-size)r' % reply)
         return reply["total-size"]

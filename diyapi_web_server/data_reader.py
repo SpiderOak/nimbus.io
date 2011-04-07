@@ -39,6 +39,7 @@ class DataReader(object):
             )
         reply, data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise RetrieveFailedError(reply["error-message"])
         return reply["segment-count"], data
 
@@ -60,6 +61,7 @@ class DataReader(object):
             )
         reply, data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise RetrieveFailedError(reply["error-message"])
         return data
 
@@ -81,6 +83,7 @@ class DataReader(object):
             )
         reply, data = delivery_channel.get()
         if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
             raise RetrieveFailedError(reply["error-message"])
         return data
 

@@ -72,9 +72,15 @@ class DatabaseClient(object):
         if reply["result"] != "success":
             raise StatFailedError(reply["error-message"])
 
-        # we encode the md5 digest, because json doesn't like the raw string
-        if reply["file_md5"] is not None:
-            reply["file_md5"] = b64decode(reply["file_md5"])
-        
-        return reply
+        # the caller compares these things for equality, so only give him
+        # what he asked for
+        return {
+            "timestamp"     : reply["timestamp"],
+            "total_size"    : reply["total_size"],
+            "file_adler32"  : reply["file_adler32"],
+            "file_md5"      : b64decode(reply["file_md5"]),
+            "userid"        : reply["userid"],
+            "groupid"       : reply["groupid"],
+            "permissions"   : reply["permissions"],
+        }
 

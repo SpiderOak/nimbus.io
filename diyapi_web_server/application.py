@@ -134,6 +134,7 @@ class Application(object):
         try:
             stat = getter.stat(avatar_id, path, EXCHANGE_TIMEOUT)
         except (DataReaderDownError, StatFailedError):
+            self._log.exception(path)
             raise exc.HTTPNotFound()
         if 'file_md5' in stat:
             stat['file_md5'] = hexlify(stat['file_md5'])

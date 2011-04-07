@@ -157,6 +157,8 @@ def start_anti_entropy_server(node_name, address, database_server_addresses):
         "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESS": address,
         "DIYAPI_DATABASE_SERVER_ADDRESSES"  : \
             " ".join(database_server_addresses),
+        "PANDORA_DB_PW_pandora_storage_server" : \
+            os.environ["PANDORA_DB_PW_pandora_storage_server"],
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -177,6 +179,8 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
+        "PANDORA_DB_PW_pandora_storage_server" : \
+            os.environ["PANDORA_DB_PW_pandora_storage_server"],
         "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
         "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
     }        

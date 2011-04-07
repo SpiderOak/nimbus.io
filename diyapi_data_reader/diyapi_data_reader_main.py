@@ -7,6 +7,7 @@ Looks up pointers to data by querying the database server
 Looks for files in both the hashfanout area 
 Responds with content or "not available"
 """
+from base64 import b64encode
 from collections import deque, namedtuple
 import logging
 import os.path
@@ -330,9 +331,9 @@ def _handle_key_lookup_reply(state, message, data):
     reply["segment-size"]       = database_entry.segment_size
     reply["total-size"]         = database_entry.total_size
     reply["file-adler32"]       = database_entry.file_adler32
-    reply["file-md5"]           = database_entry.file_md5
+    reply["file-md5"]           = b64encode(database_entry.file_md5)
     reply["segment-adler32"]    = database_entry.segment_adler32
-    reply["segment-md5"]        = database_entry.segment_md5
+    reply["segment-md5"]        = b64encode(database_entry.segment_md5)
     state["xrep-server"].queue_message_for_send(reply, data_content)
 
 _dispatch_table = {

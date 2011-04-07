@@ -66,7 +66,11 @@ class XREQClient(object):
         self._log.info("sending message: %s" % (message.control, ))
         if message.body is not None:
             self._xreq_socket.send_json(message.control, zmq.SNDMORE)
-            self._xreq_socket.send(message.body, copy=False)
+            if type(message.body) not in [list, tuple, ]:
+                message = message._replace(body=[message.body, ])
+            for segment in message.body[:-1]:
+                self._xreq_socket.send(segment, zmq.SNDMORE)
+            self._xreq_socket.send(message.body[-1])
         else:
             self._xreq_socket.send_json(message.control)
 
@@ -79,10 +83,16 @@ class XREQClient(object):
                 return None
             raise
 
-        if self._xreq_socket.rcvmore():
-            body = self._xreq_socket.recv()
-        else:
+        body = []
+        while self._xreq_socket.rcvmore():
+            body.append(self._xreq_socket.recv())
+
+        # 2011-04-06 dougfort -- if someone is expecting a list and we only get
+        # one segment, they are going to have to deal with it.
+        if len(body) == 0:
             body = None
+        elif len(body) == 1:
+            body = body[0]
 
         return _message_format(control=control, body=body)
 

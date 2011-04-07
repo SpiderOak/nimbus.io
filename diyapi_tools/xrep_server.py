@@ -82,7 +82,11 @@ class XREPServer(object):
         self._xrep_socket.send(message.ident, zmq.SNDMORE)
         if message.body is not None:
             self._xrep_socket.send_json(message.control, zmq.SNDMORE)
-            self._xrep_socket.send(message.body, copy=False)
+            if type(message.body) not in [list, tuple, ]:
+                message = message._replace(body=[message.body, ])
+            for segment in message.body[:-1]:
+                self._xrep_socket.send(segment, zmq.SNDMORE)
+            self._xrep_socket.send(message.body[-1])
         else:
             self._xrep_socket.send_json(message.control)
 
@@ -99,10 +103,16 @@ class XREPServer(object):
             "Unexpected missing message control part."
         control = self._xrep_socket.recv_json()
 
-        if self._xrep_socket.rcvmore():
-            body = self._xrep_socket.recv()
-        else:
+        body = []
+        while self._xrep_socket.rcvmore():
+            body.append(self._xrep_socket.recv())
+
+        # 2011-04-06 dougfort -- if someone is expecting a list and we only get
+        # one segment, they are going to have to deal with it.
+        if len(body) == 0:
             body = None
+        elif len(body) == 1:
+            body = body[0]
 
         return _message_format(ident=ident, control=control, body=body)
 

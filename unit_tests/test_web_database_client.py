@@ -18,6 +18,7 @@ from gevent_zeromq import zmq
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
 from diyapi_tools.greenlet_xreq_client import GreenletXREQClient
+from diyapi_database_server import database_content
 from diyapi_web_server.database_client import DatabaseClient
 
 from diyapi_web_server.exceptions import StatFailedError
@@ -100,10 +101,11 @@ class TestWebDatabaseClient(unittest.TestCase):
             "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "database-content"  : dict(content._asdict().items())
         }
 
-        delivery_channel = self._xreq_client.queue_message_for_send(message)
+        delivery_channel = self._xreq_client.queue_message_for_send(
+            message, database_content.marshall(content)
+        )
         reply, _data = delivery_channel.get()
         self.assertEqual(reply["request-id"], request_id)
 

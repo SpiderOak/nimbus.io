@@ -4,6 +4,7 @@ test_data_reader.py
 
 test the data reader process
 """
+from base64 import b64encode
 import os
 import os.path
 import shutil
@@ -106,9 +107,9 @@ class TestDataReader(unittest.TestCase):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=content_item
@@ -193,9 +194,9 @@ class TestDataReader(unittest.TestCase):
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=test_data[sequence]
@@ -317,9 +318,9 @@ class TestDataReader(unittest.TestCase):
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=test_data[sequence]
@@ -439,9 +440,9 @@ class TestDataReader(unittest.TestCase):
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=test_data[sequence]

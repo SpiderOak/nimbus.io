@@ -12,6 +12,7 @@ sends message to the database server to record key as stored.
 ACK back to to requestor includes size (from the database server) 
 of any previous key this key supersedes (for space accounting.)
 """
+from base64 import b64decode
 from collections import deque, namedtuple
 import logging
 import os
@@ -145,9 +146,9 @@ def _handle_archive_key_entire(state, message, data):
         segment_count=1,
         total_size=message["total-size"],  
         file_adler32=message["file-adler32"], 
-        file_md5=message["file-md5"] ,
+        file_md5=b64decode(message["file-md5"]),
         segment_adler32=message["segment-adler32"], 
-        segment_md5=message["segment-md5"],
+        segment_md5=b64decode(message["segment-md5"]),
         file_name=file_name
     )
     request = {
@@ -155,9 +156,10 @@ def _handle_archive_key_entire(state, message, data):
         "request-id"        : message["request-id"],
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
-        "database-content"  : dict(database_entry._asdict().items())
     }
-    state["database-client"].queue_message_for_send(request)
+    state["database-client"].queue_message_for_send(
+        request, data=database_content.marshall(database_entry)
+    )
 
 def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
@@ -366,9 +368,9 @@ def _handle_archive_key_final(state, message, data):
         segment_count=message["sequence"]+1,
         total_size=message["total-size"],  
         file_adler32=message["file-adler32"], 
-        file_md5=message["file-md5"],
+        file_md5=b64decode(message["file-md5"]),
         segment_adler32=message["segment-adler32"], 
-        segment_md5=message["segment-md5"],
+        segment_md5=b64decode(message["segment-md5"]),
         file_name=request_state.file_name
     )
     request = {
@@ -376,9 +378,10 @@ def _handle_archive_key_final(state, message, data):
         "request-id"        : message["request-id"],
         "avatar-id"         : request_state.avatar_id,
         "key"               : request_state.key, 
-        "database-content"  : dict(database_entry._asdict().items())
     }
-    state["database-client"].queue_message_for_send(request)
+    state["database-client"].queue_message_for_send(
+        request, data=database_content.marshall(database_entry)
+    )
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")

@@ -4,6 +4,7 @@ database_client.py
 
 A class that connects to a specific database server.
 """
+from base64 import b64decode
 import logging
 
 from diyapi_web_server.exceptions import (
@@ -70,6 +71,10 @@ class DatabaseClient(object):
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
             raise StatFailedError(reply["error-message"])
+
+        # we encode the md5 digest, because json doesn't like the raw string
+        if reply["file_md5"] is not None:
+            reply["file_md5"] = b64decode(reply["file_md5"])
         
         return reply
 

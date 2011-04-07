@@ -36,7 +36,7 @@ def generate_database_content(
         segment_count=1,
         total_size=4200,  
         file_adler32=345, 
-        file_md5="ffffffffffffffff",
+        file_md5='\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1',
         segment_adler32=123, 
         segment_md5="1111111111111111",
         file_name="aaa"

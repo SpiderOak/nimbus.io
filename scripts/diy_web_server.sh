@@ -11,6 +11,7 @@ export DIYAPI_DATA_WRITER_ADDRESSES="tcp://127.0.0.1:8100 tcp://127.0.0.1:8101 t
 export DIYAPI_DATA_READER_ADDRESSES="tcp://127.0.0.1:8200 tcp://127.0.0.1:8201 tcp://127.0.0.1:8202 tcp://127.0.0.1:8203 tcp://127.0.0.1:8204 tcp://127.0.0.1:8205 tcp://127.0.0.1:8206 tcp://127.0.0.1:8207 tcp://127.0.0.1:8208 tcp://127.0.0.1:8209" 
 export DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS="tcp://127.0.0.1:8300"
 export DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS="tcp://127.0.0.1:8350"
+export PANDORA_DB_PW_diyapi="0.332009188365191"
 
 rm /var/log/pandora/diyapi_web_server.log
 python "${SPIDEROAK_DIY}/diyapi_web_server/diyapi_web_server_main.py" "$@"

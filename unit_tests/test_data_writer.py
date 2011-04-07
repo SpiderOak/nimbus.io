@@ -4,6 +4,7 @@ test_data_writer.py
 
 test the data writer process
 """
+from base64 import b64encode
 import os
 import os.path
 import shutil
@@ -77,7 +78,7 @@ class TestDataWriter(unittest.TestCase):
 
         total_size = 10 * 64 * 1024
         file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
+        file_md5 = '\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1'
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
@@ -91,9 +92,9 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=content_item
@@ -123,7 +124,7 @@ class TestDataWriter(unittest.TestCase):
         timestamp = time.time()
 
         file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
+        file_md5 = '\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1'
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
@@ -166,9 +167,9 @@ class TestDataWriter(unittest.TestCase):
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=test_data[-1]
@@ -242,7 +243,7 @@ class TestDataWriter(unittest.TestCase):
 
         total_size = content_size - 42
         file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
+        file_md5 = '\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1'
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
@@ -256,9 +257,9 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=content_item
@@ -288,7 +289,7 @@ class TestDataWriter(unittest.TestCase):
 
         total_size = content_size - 43
         file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
+        file_md5 = '\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1'
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
@@ -304,9 +305,9 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=content_item
@@ -346,7 +347,7 @@ class TestDataWriter(unittest.TestCase):
 
         total_size = 10 * content_size
         file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
+        file_md5 = '\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1'
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
@@ -362,9 +363,9 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=content_item
@@ -406,7 +407,7 @@ class TestDataWriter(unittest.TestCase):
 
         total_size = content_size * 10
         file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
+        file_md5 = '\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1'
         segment_adler32 = 32
         segment_md5 = "1111111111111111"
 
@@ -420,9 +421,9 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : file_md5,
+            "file-md5"          : b64encode(file_md5),
             "segment-adler32"   : segment_adler32,
-            "segment-md5"       : segment_md5,
+            "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
             _data_writer_address, message, data=content_item

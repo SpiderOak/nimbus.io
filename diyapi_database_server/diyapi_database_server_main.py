@@ -14,6 +14,7 @@ the combined size of the assembled segments and decoded segments,
 adler32 of the segment, 
 and the md5 of the segment.
 """
+from base64 import b64encode
 import bsddb3.db
 from collections import deque
 import hashlib
@@ -162,9 +163,9 @@ def _find_avatars(state):
         if _content_database_exists(state, avatar_id):
             yield avatar_id
 
-def _handle_key_insert(state, message, _data):
+def _handle_key_insert(state, message, data):
     log = logging.getLogger("_handle_key_insert")
-    content = database_content.factory(**message["database-content"])
+    content, _ = database_content.unmarshall(data, 0)
     log.info("avatar_id = %s, key = %s version = %s segment = %s" % (
         message["avatar-id"], 
         str(message["key"]), 
@@ -259,7 +260,6 @@ def _handle_key_lookup(state, message, _data):
         "request-id"        : message["request-id"],
         "result"            : None,
         "error-message"     : None,
-        "database-content"  : None,
     }
 
     try:
@@ -291,8 +291,9 @@ def _handle_key_lookup(state, message, _data):
         return
 
     reply["result"] = "success"
-    reply["database-content"] = dict(existing_entry._asdict().items())
-    state["xrep-server"].queue_message_for_send(reply)
+    state["xrep-server"].queue_message_for_send(
+        reply, database_content.marshall(existing_entry)
+    )
 
 def _handle_key_list(state, message, _data):
     log = logging.getLogger("_handle_key_list")
@@ -306,7 +307,6 @@ def _handle_key_list(state, message, _data):
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
-        "content-list"  : list(),
     }
 
     try:
@@ -330,11 +330,12 @@ def _handle_key_list(state, message, _data):
         return
 
     reply["result"] = "success"
+    reply_content_list = list()
     for packed_entry in packed_content_list:
         (content, _) = database_content.unmarshall(packed_entry, 0)
         if not content.is_tombstone:
-            reply["content-list"].append(dict(content._asdict()))
-    state["xrep-server"].queue_message_for_send(reply)
+            reply_content_list.append(database_content.marshall(content))
+    state["xrep-server"].queue_message_for_send(reply, reply_content_list)
 
 def _handle_key_destroy(state, message, _data):
     log = logging.getLogger("_handle_key_destroy")
@@ -685,13 +686,13 @@ def _handle_stat_request(state, message, _data):
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
-        "timestamp"     : 0,
-        "total_size"    : 0,
-        "file_adler32"  : 0,
-        "file_md5"      : 0,
-        "userid"        : 0,
-        "groupid"       : 0,
-        "permissions"   : 0,
+        "timestamp"     : None,
+        "total_size"    : None,
+        "file_adler32"  : None,
+        "file_md5"      : None,
+        "userid"        : None,
+        "groupid"       : None,
+        "permissions"   : None,
     }
 
     if not _content_database_exists(state, message["avatar-id"]):
@@ -736,7 +737,7 @@ def _handle_stat_request(state, message, _data):
     reply["timestamp"] = existing_entry.timestamp
     reply["total_size"] = existing_entry.total_size
     reply["file_adler32"] = existing_entry.file_adler32
-    reply["file_md5"] = existing_entry.file_md5
+    reply["file_md5"] = b64encode(existing_entry.file_md5)
     reply["userid"] = existing_entry.userid
     reply["groupid"] = existing_entry.groupid
     reply["permissions"] = existing_entry.permissions

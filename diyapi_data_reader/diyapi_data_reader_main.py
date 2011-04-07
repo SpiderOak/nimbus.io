@@ -25,6 +25,7 @@ from diyapi_tools import time_queue_driven_process
 from diyapi_tools.persistent_state import load_state, save_state
 from diyapi_tools import repository
 
+from diyapi_database_server import database_content
 from diyapi_data_reader.state_cleaner import StateCleaner
 
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
@@ -243,7 +244,7 @@ def _handle_retrieve_key_final(state, message, _data):
     reply["result"] = "success"
     state["xrep-server"].queue_message_for_send(reply, data=data_content)
 
-def _handle_key_lookup_reply(state, message, _data):
+def _handle_key_lookup_reply(state, message, data):
     log = logging.getLogger("_handle_key_lookup_reply")
 
     try:
@@ -275,8 +276,10 @@ def _handle_key_lookup_reply(state, message, _data):
         state["xrep-server"].queue_message_for_send(reply)
         return
 
+    database_entry, _ = database_content.unmarshall(data, 0)
+
     # if this key is a tombstone, treat as an error
-    if message["database-content"]["is_tombstone"]:
+    if database_entry.is_tombstone:
         log.error("%s %s this record is a tombstone" % (
             retrieve_state.avatar_id,
             retrieve_state.key,
@@ -288,14 +291,12 @@ def _handle_key_lookup_reply(state, message, _data):
 
     content_path = repository.content_path(
         retrieve_state.avatar_id, 
-        message["database-content"]["file_name"]
+        database_entry.file_name
     ) 
-    segment_size = message["database-content"]["segment_size"]
-    segment_count = message["database-content"]["segment_count"]
 
     try:
         with open(content_path, "r") as input_file:
-            data_content = input_file.read(segment_size)
+            data_content = input_file.read(database_entry.segment_size)
     except Exception, instance:
         log.exception("%s %s" % (
             retrieve_state.avatar_id,
@@ -308,30 +309,30 @@ def _handle_key_lookup_reply(state, message, _data):
 
     # if we have more than one segment, we need to save the state
     # otherwise this request is done
-    if segment_count > 1:
+    if database_entry.segment_count > 1:
         state["active-requests"][message["request-id"]] = \
             retrieve_state._replace(
                 timeout=time.time()+_retrieve_timeout,
                 sequence=0, 
-                segment_size=segment_size,
-                file_name=message["database-content"]["file_name"]
+                segment_size=database_entry.segment_size,
+                file_name=database_entry.file_name
             )
 
     Statgrabber.accumulate('diy_read_requests', 1)
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
     reply["result"]             = "success"
-    reply["timestamp"]          = message["database-content"]["timestamp"]
-    reply["is-tombstone"]       = message["database-content"]["is_tombstone"]
-    reply["version-number"]     = message["database-content"]["version_number"]
-    reply["segment-number"]     = message["database-content"]["segment_number"]
-    reply["segment-count"]      = message["database-content"]["segment_count"]
-    reply["segment-size"]       = message["database-content"]["segment_size"]
-    reply["total-size"]         = message["database-content"]["total_size"]
-    reply["file-adler32"]       = message["database-content"]["file_adler32"]
-    reply["file-md5"]           = message["database-content"]["file_md5"]
-    reply["segment-adler32"]    = message["database-content"]["segment_adler32"]
-    reply["segment-md5"]        = message["database-content"]["segment_md5"]
+    reply["timestamp"]          = database_entry.timestamp
+    reply["is-tombstone"]       = database_entry.is_tombstone
+    reply["version-number"]     = database_entry.version_number
+    reply["segment-number"]     = database_entry.segment_number
+    reply["segment-count"]      = database_entry.segment_count
+    reply["segment-size"]       = database_entry.segment_size
+    reply["total-size"]         = database_entry.total_size
+    reply["file-adler32"]       = database_entry.file_adler32
+    reply["file-md5"]           = database_entry.file_md5
+    reply["segment-adler32"]    = database_entry.segment_adler32
+    reply["segment-md5"]        = database_entry.segment_md5
     state["xrep-server"].queue_message_for_send(reply, data_content)
 
 _dispatch_table = {

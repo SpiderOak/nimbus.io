@@ -182,7 +182,7 @@ class DataWriter(object):
             '%s(message-type): '
             'request_id = %(request-id)s, '
             'key = %(key)r '
-            'segment_number = %d(segment-number)' % message
+            'segment_number = %(segment-number)d' % message
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":

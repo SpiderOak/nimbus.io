@@ -4,6 +4,7 @@ test_database_server.py
 
 test database_server
 """
+from base64 import b64decode
 import os
 import os.path
 import shutil
@@ -12,10 +13,12 @@ import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
+from diyapi_database_server import database_content
 
 from unit_tests.util import generate_key, generate_database_content, \
         start_database_server, poll_process, terminate_process
-from unit_tests.zeromq_util import send_request_and_get_reply
+from unit_tests.zeromq_util import send_request_and_get_reply, \
+        send_request_and_get_reply_and_data
 
 _log_path = "/var/log/pandora/test_database_server.log"
 _test_dir = os.path.join("/tmp", "test_dir")
@@ -52,10 +55,13 @@ class TestDatabaseServer(unittest.TestCase):
             "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "database-content"  : dict(content._asdict().items())
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            message, 
+            data=database_content.marshall(content)
+        )
         self.assertEqual(reply["request-id"], request_id)
 
         return reply
@@ -71,10 +77,16 @@ class TestDatabaseServer(unittest.TestCase):
             "segment-number"    : segment_number,
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply, data = send_request_and_get_reply_and_data(
+            _database_server_address, message
+        )
         self.assertEqual(reply["request-id"], request_id)
+        if reply["result"] == "success":
+            reply_content, _ = database_content.unmarshall(data, 0)
+        else:
+            reply_content = None
 
-        return reply
+        return reply, reply_content
 
     def _list_key(self, avatar_id, key):
         request_id = uuid.uuid1().hex
@@ -85,10 +97,24 @@ class TestDatabaseServer(unittest.TestCase):
             "key"               : key, 
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply, data = send_request_and_get_reply_and_data(
+            _database_server_address, message
+        )
         self.assertEqual(reply["request-id"], request_id)
+        if reply["result"] != "success":
+            data_list = []
+        elif data is None:
+            data_list = []
+        elif type(data) != list:
+            reply_content, _ = database_content.unmarshall(data, 0)
+            data_list = [reply_content]
+        else:
+            data_list = list()
+            for data_entry in data:
+                reply_content, _ = database_content.unmarshall(data_entry, 0)
+                data_list.append(reply_content)
 
-        return reply
+        return reply, data_list
 
     def _destroy_key(
         self, avatar_id, key, version_number, segment_number, timestamp
@@ -295,10 +321,12 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        reply = self._lookup_key(avatar_id, key, version_number, segment_number)
+        reply, reply_content = self._lookup_key(
+            avatar_id, key, version_number, segment_number
+        )
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self._test_content(reply["database-content"], content)
+        self._test_content(reply_content, content)
 
     def test_duplicate_key_lookup(self):
         """test retrieving data for a duplicate key"""
@@ -325,15 +353,19 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        reply = self._lookup_key(avatar_id, key, version_number, 1)
+        reply, reply_content = self._lookup_key(
+            avatar_id, key, version_number, 1
+        )
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self._test_content(reply["database-content"], content1)
+        self._test_content(reply_content, content1)
 
-        reply = self._lookup_key(avatar_id, key, version_number, 2)
+        reply, reply_content = self._lookup_key(
+            avatar_id, key, version_number, 2
+        )
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self._test_content(reply["database-content"], content2)
+        self._test_content(reply_content, content2)
 
     def test_simple_key_list(self):
         """test listing data for a key wiht no duplicagte entries"""
@@ -351,11 +383,11 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        reply = self._list_key(avatar_id, key)
+        reply, content_list = self._list_key(avatar_id, key)
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self.assertEqual(len(reply["content-list"]), 1)
-        self._test_content(reply["content-list"][0], content)
+        self.assertEqual(len(content_list), 1)
+        self._test_content(content_list[0], content)
 
     def test_duplicate_key_list(self):
         """test listing data for a duplicate key"""
@@ -382,11 +414,11 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        reply = self._list_key(avatar_id, key)
+        reply, content_list = self._list_key(avatar_id, key)
 
         self.assertEqual(reply["result"], "success", reply["error-message"])
         for reply_content, original_content in zip(
-            sorted(reply["content-list"]), sorted([content1, content2,])
+            sorted(content_list), sorted([content1, content2,])
         ):
             self._test_content(reply_content, original_content)
 
@@ -792,17 +824,18 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["timestamp"], content.timestamp, reply)
-        self.assertEqual(reply["total-size"], content.total_size)
-        self.assertEqual(reply["file-adler32"], content.file_adler32)
-        self.assertEqual(reply["file-md5"], content.file_md5)
+        self.assertEqual(reply["total_size"], content.total_size)
+        self.assertEqual(reply["file_adler32"], content.file_adler32)
+        self.assertEqual(b64decode(reply["file_md5"]), content.file_md5)
         self.assertEqual(reply["userid"], content.userid)
         self.assertEqual(reply["groupid"], content.groupid)
         self.assertEqual(reply["permissions"], content.permissions)
 
     def _test_content(self, reply_content, original_content):
-        content_dict = original_content._asdict()
-        for key in content_dict.keys():            
-            self.assertEqual(reply_content[key], content_dict[key])
+        reply_dict = reply_content._asdict()
+        original_dict = original_content._asdict()
+        for key in original_dict.keys():            
+            self.assertEqual(reply_dict[key], original_dict[key])
 
 if __name__ == "__main__":
     unittest.main()

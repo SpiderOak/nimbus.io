@@ -30,7 +30,7 @@ class SpaceAccountingClient(object):
             "event"         : "bytes_added",
             "value"         : bytes_added,
         }
-        self._push_socket.queue_message_for_send(message)
+        self._push_socket.send(message)
 
     def retrieved(self, avatar_id, timestamp, bytes_retrieved):
         message = {
@@ -40,7 +40,7 @@ class SpaceAccountingClient(object):
             "event"         : "bytes_retrieved",
             "value"         : bytes_retrieved,
         }
-        self._push_socket.queue_message_for_send(message)
+        self._push_socket.send(message)
 
     def removed(self, avatar_id, timestamp, bytes_removed):
         message = {
@@ -50,7 +50,7 @@ class SpaceAccountingClient(object):
             "event"         : "bytes_removed",
             "value"         : bytes_removed,
         }
-        self._push_socket.queue_message_for_send(message)
+        self._push_socket.send(message)
 
     def get_space_usage(
         self,
@@ -62,7 +62,7 @@ class SpaceAccountingClient(object):
             "request-id"    : request_id,
             "avatar-id"     : avatar_id,
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(request)
+        delivery_channel = self._xreq_socket.send(request)
 
         self._log.debug(
             '%(message-type)s: '

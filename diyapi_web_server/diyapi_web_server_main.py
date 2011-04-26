@@ -123,7 +123,6 @@ class WebServer(object):
             LOCAL_NODE_NAME, 
             SPACE_ACCOUNTING_PIPELINE_ADDRESS,
         )
-        push_client.register(self._pollster)
 
         self._accounting_client = SpaceAccountingClient(
             LOCAL_NODE_NAME,

@@ -24,20 +24,16 @@ _test_server_address = os.environ.get(
     "tcp://127.0.0.1:8000"
 )
 
-def _handle_test_message(state, message, _data):
-    log = logging.getLogger("_handle_test_message")
+def _handle_echo_request(state, message, _data):
+    log = logging.getLogger("_handle_echo_request")
     log.info("received %s" % (message, ))
+    
+    message["message-type"]  = "echo-reply"
 
-    reply = {
-        "message-type"  : "test-message-reply",
-        "request-id"    : message["request-id"],
-        "client-tag"    : message["client-tag"],
-    }
-
-    state["test-server"].send_reply(reply)
+    state["test-server"].send_reply(message)
 
 _dispatch_table = {
-    "test-message"              : _handle_test_message,
+    "echo-request"              : _handle_echo_request,
 }
 
 def _create_state():

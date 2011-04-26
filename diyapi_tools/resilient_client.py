@@ -92,6 +92,7 @@ class ResilientClient(object):
             
     def _send_message(self, message):
         self._log.info("sending message: %s" % (message.control, ))
+        message.control["client-tag"] = self._client_tag
         if message.body is not None:
             self._xreq_socket.send_json(message.control, zmq.SNDMORE)
             if type(message.body) not in [list, tuple, ]:

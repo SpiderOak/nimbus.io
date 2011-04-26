@@ -13,7 +13,7 @@ from diyapi_tools.zeromq_util import prepare_ipc_path
 from diyapi_tools.push_client import PUSHClient
 
 # our internal message format
-_message_format = namedtuple("Message", "ident, control body")
+_message_format = namedtuple("Message", "ident control body")
 
 class ResilientServer(object):
     """
@@ -52,6 +52,8 @@ class ResilientServer(object):
 
     def close(self):
         self._xrep_socket.close()
+        for client in self._active_clients.values():
+            client.close()
 
     def send_reply(self, message, data=None):
         """
@@ -60,7 +62,7 @@ class ResilientServer(object):
         try:
             client = self._active_clients[message["client-tag"]]
         except KeyError:
-            self._log.error("No active client %s message discarded" % (
+            self._log.error("send: No active client %s message discarded" % (
                 message["client-tag"]
             ))
         else:
@@ -80,17 +82,28 @@ class ResilientServer(object):
         # we handle our own message traffic, only feed the receive queue
         # if we don't handle it
         if message.control["message-type"] in self._dispatch_table:
-            self._dispatch_table[message.control["message-type"]](message)
+            self._dispatch_table[message.control["message-type"]](
+                message.control, message.body
+            )
+            self._send_ack(message.ident, message.control["request-id"])
         else:
-            self._receive_queue.append((message.control, message.body, ))
-            
+            if message.control["client-tag"] in self._active_clients:
+                self._receive_queue.append((message.control, message.body, ))
+                self._send_ack(message.ident, message.control["request-id"])
+            else:
+                self._log.error(
+                    "receive: No active client %s message discarded" % (
+                        message.control["client-tag"]
+                    )
+                )
+
+    def _send_ack(self, message_ident, request_id):            
         # send an immediate ack, zeromq sockets seem to always be writable
-        assert writable
         ack_message = {
             "message-type" : "resilient-server-ack",
-            "request-id"   : message["request-id"],
+            "request-id"   : request_id,
         }
-        self._xrep_socket.send(message.ident, zmq.SNDMORE)
+        self._xrep_socket.send(message_ident, zmq.SNDMORE)
         self._xrep_socket.send_json(ack_message)
 
     def _receive_message(self):
@@ -119,7 +132,7 @@ class ResilientServer(object):
 
         return _message_format(ident=ident, control=control, body=body)
 
-    def _handle_resilient_server_handshake(self, message):
+    def _handle_resilient_server_handshake(self, message, _data):
         log = logging.getLogger("_handle_resilient_server_handshake")
         log.info("%(client-tag)s %(client-address)s" % message)
 
@@ -132,7 +145,7 @@ class ResilientServer(object):
             message["client-address"]
         )
         
-    def _handle_resilient_server_signoff(self, message):
+    def _handle_resilient_server_signoff(self, message, data):
         log = logging.getLogger("_handle_resilient_server_signoff")
         try:
             client = self._active_clients.pop(message["client-tag"])

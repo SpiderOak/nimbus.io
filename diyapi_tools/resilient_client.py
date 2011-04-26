@@ -36,6 +36,9 @@ class ResilientClient(object):
         self._pending_ack = None
         self._pending_ack_start_time = None
 
+
+        self._send_handshake()
+
     def register(self, pollster):
         pollster.register_read(
             self._xreq_socket, self._pollster_callback

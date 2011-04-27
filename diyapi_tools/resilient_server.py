@@ -137,7 +137,7 @@ class ResilientServer(object):
         log.info("%(client-tag)s %(client-address)s" % message)
 
         if message["client-tag"] in self._active_clients:
-            log.warn("replacing existing client %(client-tg)s" % message) 
+            log.warn("replacing existing client %(client-tag)s" % message) 
             self._active_clients[message["client-tag"]].close()
 
         self._active_clients[message["client-tag"]] = PUSHClient(

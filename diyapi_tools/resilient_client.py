@@ -14,11 +14,19 @@ import zmq
 
 # our internal message format
 _message_format = namedtuple("Message", "control body")
+_ack_timeout = 10.0
+_handshake_retry_interval = 60.0
+
+_status_handshaking = 1
+_status_connected = 2
+_status_disconnected = 3
 
 class ResilientClient(object):
     """
     a class that manages a zeromq XREQ socket as a client
     """
+    polling_interval = 3.0
+
     def __init__(self, context, server_address, client_tag, client_address):
         self._log = logging.getLogger("ResilientClient-%s" % (
             server_address, 
@@ -33,9 +41,11 @@ class ResilientClient(object):
         self._client_tag = client_tag
         self._client_address = client_address
 
-        self._pending_ack = None
-        self._pending_ack_start_time = None
+        self._pending_message = None
+        self._pending_message_start_time = None
 
+        self._status = _status_disconnected
+        self._status_time = time.time()
 
         self._send_handshake()
 
@@ -51,17 +61,14 @@ class ResilientClient(object):
         self._xreq_socket.close()
 
     def queue_message_for_send(self, message_control, data=None):
-        if self._pending_ack is None:
-            self._send_message(
-                _message_format(control=message_control, body=data)
-            )
+        message = _message_format(control=message_control, body=data)
+        if self._status is _status_connected and self._pending_message is None:
+            self._send_message(message)
         else:
-            self._send_queue.append(
-                _message_format(control=message_control, body=data)
-            )
+            self._send_queue.append(message)
 
     def _send_handshake(self):
-        assert self._pending_ack is None
+        self._log.info("sending handshake")
         message = {
             "message-type"      : "resilient-server-handshake",
             "request-id"        : uuid.uuid1().hex,
@@ -69,6 +76,8 @@ class ResilientClient(object):
             "client-address"    : self._client_address,
         }
         self._send_message(_message_format(control=message, body=None))
+        self._status = _status_handshaking
+        self._status_time = time.time()
 
     def _pollster_callback(self, _active_socket, readable, writable):
         message = self._receive_message()     
@@ -78,13 +87,26 @@ class ResilientClient(object):
         if message is None:
             return None
 
-        assert self._pending_ack is not None
-        if message["request-id"] != self._pending_ack:
-            self._log.error("unknown ack %s" %(message, ))
+        if self._pending_message is None:
+            self._log.error("Unexpected message: %s" % (message.control, ))
             return
 
-        self._pending_ack = None
-        self._pending_ack_start_time = None
+        expected_request_id = self._pending_message.control["request-id"]
+        if message["request-id"] != expected_request_id:
+            self._log.error("unknown ack %s expecting %s" %(
+                message, self._pending_message 
+            ))
+            return
+
+        # if we got and ack to a handshake request, we are connected
+        if self._pending_message.control["message-type"] == \
+            "resilient-server-handshake":
+            assert self._status == _status_handshaking, self._status
+            self._status = _status_connected
+            self._status_time = time.time()
+
+        self._pending_message = None
+        self._pending_message_start_time = None
 
         try:
             message_to_send = self._send_queue.popleft()
@@ -106,8 +128,8 @@ class ResilientClient(object):
         else:
             self._xreq_socket.send_json(message.control)
 
-        self._pending_ack = message.control["request-id"]
-        self._pending_ack_start_time = time.time()
+        self._pending_message = message
+        self._pending_message_start_time = time.time()
 
     def _receive_message(self):
         # we should only be receiving ack, so we don't
@@ -119,4 +141,45 @@ class ResilientClient(object):
                 self._log.warn("socket would have blocked")
                 return None
             raise
+
+    def run(self, halt_event):
+        """
+        time_queue task to check for timeouts and retries
+        """
+        if halt_event.is_set():
+            self._log.info("halt event is set")
+            return []
+
+        if self._status == _status_connected:
+            if  self._pending_message is not None:
+                elapsed_time = time.time() - self._pending_message_start_time
+                if elapsed_time > _ack_timeout:
+                    self._log.warn(
+                        "timeout waiting ack: treating as disconnect %s" % (
+                            self._pending_message,
+                        )
+                    )
+                    self._status = _status_disconnected
+                    self._status_time = time.time()
+                    # put the message at the head of the send queue 
+                    self._send_queue.appendleft(self._pending_message)
+                    self._pending_message = None
+                    self._pending_message_start_time = None
+        elif self._status == _status_disconnected:
+            elapsed_time = time.time() - self._status_time 
+            if elapsed_time > _handshake_retry_interval:
+                self._send_handshake()
+        elif self._status == _status_handshaking:
+            assert self._pending_message is not None
+            elapsed_time = time.time() - self._pending_message_start_time
+            if elapsed_time > _ack_timeout:
+                self._log.warn("timeout waiting handshake ack")
+                self._status = _status_disconnected
+                self._status_time = time.time()
+                self._pending_message = None
+                self._pending_message_start_time = None
+        else:
+            self._log.error("unknown status '%s'" % (self._status, ))
+
+        return [(self.run, time.time() + self.polling_interval, ), ]
 

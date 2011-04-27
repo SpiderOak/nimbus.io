@@ -112,6 +112,8 @@ def _setup(_halt_event, _state):
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
+        (state["test-client"].run, 
+         time.time() + ResilientClient.polling_interval),
         (state["sender"].run, time.time() + EchoRequestSender.interval, ), 
     ] 
 

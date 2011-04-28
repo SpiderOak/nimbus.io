@@ -62,7 +62,7 @@ class SpaceAccountingClient(object):
             "request-id"    : request_id,
             "avatar-id"     : avatar_id,
         }
-        delivery_channel = self._xreq_socket.send(request)
+        delivery_channel = self._xreq_socket.queue_message_for_send(request)
 
         self._log.debug(
             '%(message-type)s: '

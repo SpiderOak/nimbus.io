@@ -10,8 +10,6 @@ import logging
 
 from gevent_zeromq import zmq
 
-_message_format = namedtuple("Message", "control body")
-
 class GreenletPUSHClient(object):
     """
     a class that manages a zeromq PUSH socket as a client,
@@ -28,9 +26,7 @@ class GreenletPUSHClient(object):
         self._push_socket.close()
 
     def send(self, message, data=None):
-        self._log.info("sending message: %s" % (
-            message.control,  
-        ))
+        self._log.info("sending message: %s" % (message))
         if data is not None:
             self._push_socket.send_json(message, zmq.SNDMORE)
             self._push_socket.send(data, copy=False)

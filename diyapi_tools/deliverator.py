@@ -7,6 +7,7 @@ the replies that come over a resilient connection
 """
 
 from gevent.queue import Queue
+from gevent.coros import RLock
 
 class Deliverator(object):
     """
@@ -15,17 +16,22 @@ class Deliverator(object):
     """
     def __init__(self):
         self._active_requests = dict()
+        self._lock = RLock()
 
     def add_request(self, request_id):
         """
         Add a request_id
         return a channel that will deliver the reply message 
         """
-        if request_id in self._active_requests:
-            raise ValueError("Duplicate request '%s'" % (request_id, ))
-
         channel = Queue(maxsize=0)
-        self._active_requests[request_id] = channel
+
+        self._lock.acquire()
+        try:
+            if request_id in self._active_requests:
+                raise ValueError("Duplicate request '%s'" % (request_id, ))
+            self._active_requests[request_id] = channel
+        finally:
+            self._lock.release()
 
         return channel
 
@@ -35,6 +41,11 @@ class Deliverator(object):
         And discard the channel
         raise KeyError if there is no channel for the request
         """
-        channel = self._active_requests.pop(message["request_id"])
+        self._lock.acquire()
+        try:
+            channel = self._active_requests.pop(message["request_id"])
+        finally:
+            self._lock.release()
+
         channel.put(message)
 

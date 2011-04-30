@@ -40,7 +40,7 @@ class _GreenletResilientClientState(object):
         self._send_queue = deque()
         self._pending_message = None
         self._pending_message_start_time = None
-        self._send_queue_lock = RLock()
+        self._lock = RLock()
         self._status = _status_disconnected
         # set the status time low so we fire off a handshake
         self._status_time = 0.0
@@ -56,11 +56,11 @@ class _GreenletResilientClientState(object):
         check for timeouts based on current state
         may return a handshake message to send
         """
-        self._send_queue.lock.acquire()
+        self._lock.acquire()
         try:
             return self._dispatch_table[self._status]()
         finally:
-            self._send_queue.lock.release()
+            self._lock.release()
 
     def queue_message_for_send(self, message):
         """
@@ -71,7 +71,7 @@ class _GreenletResilientClientState(object):
             add the message to the queue
             return True
         """
-        self._send_queue.lock.acquire()
+        self._lock.acquire()
         try:
             if self._status is _status_connected \
             and self._pending_message is None:
@@ -79,11 +79,11 @@ class _GreenletResilientClientState(object):
                 self._pending_message_start_time = time.time()
                 return False
         
-            self._send_queue.put(message)
+            self._send_queue.append(message)
             return True
 
         finally:
-            self._send_queue.lock.release()
+            self._lock.release()
 
     def test_incoming_message(self, message):
         """
@@ -94,7 +94,7 @@ class _GreenletResilientClientState(object):
         and we can pop a message from the send queue
             return that message
         """
-        self._send_queue.lock.acquire()
+        self._lock.acquire()
         try:
             if self._pending_message is None:
                 self._log.error("Unexpected message: %s" % (message.control, ))
@@ -127,7 +127,7 @@ class _GreenletResilientClientState(object):
 
             return message_to_send
         finally:
-            self._send_queue.lock.release()
+            self._lock.release()
 
     def _handle_status_disconnected(self):
         elapsed_time = time.time() - self._status_time 

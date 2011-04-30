@@ -17,7 +17,9 @@ from gevent_zeromq import zmq
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
-from diyapi_tools.greenlet_xreq_client import GreenletXREQClient
+from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
+from diyapi_tools.greenlet_pull_server import GreenletPULLServer
+from diyapi_tools.deliverator import Deliverator
 from diyapi_database_server import database_content
 from diyapi_web_server.database_client import DatabaseClient
 
@@ -31,6 +33,7 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
+_client_pull_server_address = "tcp://127.0.01:8001"
 
 class TestWebDatabaseClient(unittest.TestCase):
     """test message handling between DatabaseClient and database server"""
@@ -51,14 +54,26 @@ class TestWebDatabaseClient(unittest.TestCase):
 
         self._zeromq_context = zmq.context.Context()
         self._pollster = GreenletZeroMQPollster()
-        self._xreq_client = GreenletXREQClient(
+        self._deliverator = Deliverator()
+
+        self._pull_server = GreenletPULLServer(
             self._zeromq_context, 
-            _local_node_name, 
-            _database_server_address
+            _client_pull_server_address,
+            self._deliverator
         )
-        self._xreq_client.register(self._pollster)
+        self._pull_server.register(self._pollster)
+
+        self._client = GreenletResilientClient(
+            self._zeromq_context, 
+            _database_server_address,
+            _local_node_name, 
+            _client_pull_server_address,
+            self._deliverator
+        )
+        self._client.register(self._pollster)
+
         self._database_client = DatabaseClient(
-            _local_node_name, self._xreq_client
+            _local_node_name, self._client
         )
         self._pollster.start()
 
@@ -72,6 +87,11 @@ class TestWebDatabaseClient(unittest.TestCase):
         and self._database_client is not None:
             self._database_client.close()
             self._database_client = None
+
+        if hasattr(self, "_pull_server") \
+        and self._pull_server is not None:
+            self._pull_server.close()
+            self._pull_server = None
 
         if hasattr(self, "_pollster") \
         and self._pollster is not None:
@@ -103,7 +123,7 @@ class TestWebDatabaseClient(unittest.TestCase):
             "key"               : key, 
         }
 
-        delivery_channel = self._xreq_client.queue_message_for_send(
+        delivery_channel = self._client.queue_message_for_send(
             message, database_content.marshall(content)
         )
         reply, _data = delivery_channel.get()

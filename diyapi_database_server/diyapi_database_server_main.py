@@ -28,7 +28,7 @@ import time
 import zmq
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.resilient_server import ResilientServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.LRUCache import LRUCache
@@ -175,7 +175,7 @@ def _handle_key_insert(state, message, data):
 
     reply = {
         "message-type"  : "key-insert-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -194,7 +194,7 @@ def _handle_key_insert(state, message, data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
         
     previous_size = 0L
@@ -210,7 +210,7 @@ def _handle_key_insert(state, message, data):
             log.error(error_string)
             reply["result"] = "invalid-duplicate"
             reply["error-message"] = error_string
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
             return
 
         if not existing_entry.is_tombstone:
@@ -227,7 +227,7 @@ def _handle_key_insert(state, message, data):
             ))
             reply["result"] = "database-failure"
             reply["error-message"] = str(instance)
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
             return
 
     try:
@@ -238,12 +238,12 @@ def _handle_key_insert(state, message, data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
     reply["previous-size"] = previous_size
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_key_lookup(state, message, _data):
     log = logging.getLogger("_handle_key_lookup")
@@ -256,7 +256,7 @@ def _handle_key_lookup(state, message, _data):
 
     reply = {
         "message-type"      : "key-lookup-reply",
-        "xrep-ident"        : message["xrep-ident"],
+        "client-tag"        : message["client-tag"],
         "request-id"        : message["request-id"],
         "result"            : None,
         "error-message"     : None,
@@ -274,7 +274,7 @@ def _handle_key_lookup(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     if existing_entry is None:
@@ -287,11 +287,11 @@ def _handle_key_lookup(state, message, _data):
         log.warn(error_string)
         reply["result"] = "unknown-key"
         reply["error-message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(
+    state["resilient-server"].send_reply(
         reply, database_content.marshall(existing_entry)
     )
 
@@ -303,7 +303,7 @@ def _handle_key_list(state, message, _data):
 
     reply = {
         "message-type"  : "key-list-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -316,7 +316,7 @@ def _handle_key_list(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     if len(packed_content_list) == 0:
@@ -326,7 +326,7 @@ def _handle_key_list(state, message, _data):
         log.warn(error_string)
         reply["result"] = "unknown-key"
         reply["error-message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
@@ -335,7 +335,7 @@ def _handle_key_list(state, message, _data):
         (content, _) = database_content.unmarshall(packed_entry, 0)
         if not content.is_tombstone:
             reply_content_list.append(database_content.marshall(content))
-    state["xrep-server"].queue_message_for_send(reply, reply_content_list)
+    state["resilient-server"].send_reply(reply, reply_content_list)
 
 def _handle_key_destroy(state, message, _data):
     log = logging.getLogger("_handle_key_destroy")
@@ -348,7 +348,7 @@ def _handle_key_destroy(state, message, _data):
 
     reply = {
         "message-type"  : "key-destroy-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -367,7 +367,7 @@ def _handle_key_destroy(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     total_size = 0
@@ -437,7 +437,7 @@ def _handle_key_destroy(state, message, _data):
             )
             reply["result"] = "too-old"
             reply["error-message"] = error_string
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
             return
 
     try:
@@ -450,12 +450,12 @@ def _handle_key_destroy(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
     reply["total-size"] = total_size
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_key_purge(state, message, _data):
     log = logging.getLogger("_handle_key_purge")
@@ -468,7 +468,7 @@ def _handle_key_purge(state, message, _data):
 
     reply = {
         "message-type"  : "key-purge-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -486,7 +486,7 @@ def _handle_key_purge(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     if existing_entry is None:
@@ -499,7 +499,7 @@ def _handle_key_purge(state, message, _data):
         log.error(error_string)
         reply["result"] = "no-such-key"
         reply["error-message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
     
     try:
@@ -510,11 +510,11 @@ def _handle_key_purge(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_listmatch(state, message, _data):
     log = logging.getLogger("_handle_listmatch")
@@ -524,7 +524,7 @@ def _handle_listmatch(state, message, _data):
 
     reply = {
         "message-type"  : "key-purge-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -555,13 +555,13 @@ def _handle_listmatch(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], message["prefix"], ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
     reply["is-complete"] = is_complete
     reply["key-list"] = keys
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_consistency_check(state, message, _data):
     log = logging.getLogger("_handle_consistency_check")
@@ -569,7 +569,7 @@ def _handle_consistency_check(state, message, _data):
 
     reply = {
         "message-type"  : "consistency-check-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "node-name"     : _local_node_name,
         "result"        : None,
@@ -584,7 +584,7 @@ def _handle_consistency_check(state, message, _data):
         log.error(error_message)
         reply["result"] = "database-failure"
         reply["error-message"] = error_message
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     result_list = list()
@@ -606,7 +606,7 @@ def _handle_consistency_check(state, message, _data):
         log.exception("%s" % (message["avatar-id"], ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
         
     result_list.sort()
@@ -618,7 +618,7 @@ def _handle_consistency_check(state, message, _data):
 
     reply["result"] = "success"
     reply["md5-digest"] = md5.hexdigest()
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_avatar_database_request(state, message, _data):
     log = logging.getLogger("_handle_avatar_database_request")
@@ -628,7 +628,7 @@ def _handle_avatar_database_request(state, message, _data):
 
     reply = {
         "message-type"  : "avatar-database-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "node-name"     : _local_node_name,
         "result"        : None,
@@ -642,7 +642,7 @@ def _handle_avatar_database_request(state, message, _data):
         log.error(error_message)
         reply["result"] = "database-failure"
         reply["error-message"] = error_message
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     send_database_command = _send_database_template % (
@@ -658,11 +658,11 @@ def _handle_avatar_database_request(state, message, _data):
         log.exception(send_database_command)
         reply["result"] = "transmission-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_avatar_list_request(state, message, _data):
     log = logging.getLogger("_handle_avatar_list_request")
@@ -670,11 +670,11 @@ def _handle_avatar_list_request(state, message, _data):
 
     reply = {
         "message-type"  : "avatar-list-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "avatar-id-list": list(_find_avatars(state)),
     }
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_stat_request(state, message, _data):
     log = logging.getLogger("_handle_stat_request")
@@ -682,7 +682,7 @@ def _handle_stat_request(state, message, _data):
 
     reply = {
         "message-type"  : "stat-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -702,7 +702,7 @@ def _handle_stat_request(state, message, _data):
         log.error(error_message)
         reply["result"] = "database-failure"
         reply["error-message"] = error_message
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     try:
@@ -716,7 +716,7 @@ def _handle_stat_request(state, message, _data):
         log.exception("%s, %s" % (message["avatar-id"], str(message["key"]), ))
         reply["result"] = "database-failure"
         reply["error-message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     if existing_entry is None:
@@ -728,7 +728,7 @@ def _handle_stat_request(state, message, _data):
         log.error(error_string)
         reply["result"] = "no-such-key"
         reply["error-message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
     
     # 2011-04-03 dougfort -- we keep the underscore in the reply
@@ -741,7 +741,7 @@ def _handle_stat_request(state, message, _data):
     reply["userid"] = existing_entry.userid
     reply["groupid"] = existing_entry.groupid
     reply["permissions"] = existing_entry.permissions
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 _dispatch_table = {
     "key-insert"                : _handle_key_insert,
@@ -761,7 +761,7 @@ def _create_state():
         _database_cache         : LRUCache(_max_cached_databases),
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
-        "xrep-server"           : None,
+        "resilient-server"           : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
     }
@@ -769,13 +769,13 @@ def _create_state():
 def _setup(_halt_event, _state):
     log = logging.getLogger("_setup")
 
-    log.info("binding xrep-server to %s" % (_database_server_address, ))
-    state["xrep-server"] = XREPServer(
+    log.info("binding resilient-server to %s" % (_database_server_address, ))
+    state["resilient-server"] = ResilientServer(
         state["zmq-context"],
         _database_server_address,
         state["receive-queue"]
     )
-    state["xrep-server"].register(state["pollster"])
+    state["resilient-server"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -793,7 +793,7 @@ def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
     log.debug("stopping xrep server")
-    state["xrep-server"].close()
+    state["resilient-server"].close()
 
     state["zmq-context"].term()
     log.debug("teardown complete")

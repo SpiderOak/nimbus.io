@@ -14,12 +14,12 @@ from diyapi_web_server.exceptions import (
 
 class DatabaseClient(object):
 
-    def __init__(self, node_name, xreq_socket):
+    def __init__(self, node_name, resilient_client):
         self._log = logging.getLogger("DatabaseClient-%s" % (node_name, ))
-        self._xreq_socket = xreq_socket
+        self._resilient_client = resilient_client
 
     def close(self):
-        self._xreq_socket.close()
+        self._resilient_client.close()
 
     def listmatch(
         self,
@@ -33,7 +33,9 @@ class DatabaseClient(object):
             "avatar-id"         : avatar_id,
             "prefix"            : prefix,
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(message)
+        delivery_channel = self._resilient_client.queue_message_for_send(
+            message
+        )
         self._log.debug(
             '%(message-type)s: '
             'request_id = %(request-id)s, '
@@ -67,7 +69,9 @@ class DatabaseClient(object):
             'path = %(key)r' % message
             )
 
-        delivery_channel = self._xreq_socket.queue_message_for_send(message)
+        delivery_channel = self._resilient_client.queue_message_for_send(
+            message
+        )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
             raise StatFailedError(reply["error-message"])

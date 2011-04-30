@@ -43,7 +43,7 @@ class Deliverator(object):
         """
         self._lock.acquire()
         try:
-            channel = self._active_requests.pop(message["request_id"])
+            channel = self._active_requests.pop(message.control["request-id"])
         finally:
             self._lock.release()
 

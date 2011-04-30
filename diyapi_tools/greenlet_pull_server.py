@@ -19,7 +19,7 @@ class GreenletPULLServer(object):
     a class that manages a zeromq PULL socket as a server,
     to multiple PUSH clients
     """
-    def __init__(self, context, address, receive_queue):
+    def __init__(self, context, address, deliverator):
         self._log = logging.getLogger("PULLServer-%s" % (address, ))
 
         # we need a valid path for IPC sockets
@@ -30,7 +30,7 @@ class GreenletPULLServer(object):
         self._log.debug("binding")
         self._pull_socket.bind(address)
 
-        self._receive_queue = receive_queue
+        self._deliverator = deliverator
 
     def register(self, pollster):
         pollster.register_read(self._pull_socket, self._pollster_callback)
@@ -42,12 +42,14 @@ class GreenletPULLServer(object):
         self._pull_socket.close()
 
     def _pollster_callback(self, _active_socket, readable, writable):
-        message = self._receive_message()      
+        message = self._receive_message() 
+
         # if we get None, that means the socket would have blocked
         # go back and wait for more
         if message is None:
             return None
-        self._receive_queue.append(message)
+
+        self._deliverator.deliver_reply(message)
             
     def _receive_message(self):
         try:
@@ -58,10 +60,16 @@ class GreenletPULLServer(object):
                 return None
             raise
 
-        if self._pull_socket.rcvmore():
-            body = self._pull_socket.recv()
-        else:
+        body = []
+        while self._pull_socket.rcvmore():
+            body.append(self._pull_socket.recv())
+
+        # 2011-04-06 dougfort -- if someone is expecting a list and we only get
+        # one segment, they are going to have to deal with it.
+        if len(body) == 0:
             body = None
+        elif len(body) == 1:
+            body = body[0]
 
         return _message_format(control=control, body=body)
 

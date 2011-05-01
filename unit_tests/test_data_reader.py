@@ -21,7 +21,7 @@ from unit_tests.util import random_string, \
         start_data_reader, \
         poll_process, \
         terminate_process
-from unit_tests.zeromq_util import send_request_and_get_reply_and_data, \
+from unit_tests.gevent_zeromq_util import send_request_and_get_reply_and_data, \
         send_request_and_get_reply
 
 _log_path = "/var/log/pandora/test_data_reader.log"
@@ -31,6 +31,7 @@ _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
 _data_writer_address = "tcp://127.0.0.1:8100"
 _data_reader_address = "tcp://127.0.0.1:8200"
+_client_address = "tcp://127.0.0.1:8900"
 
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
@@ -112,7 +113,11 @@ class TestDataReader(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=content_item
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=content_item
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -129,7 +134,10 @@ class TestDataReader(unittest.TestCase):
             "segment-number"    : segment_number
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
@@ -167,7 +175,11 @@ class TestDataReader(unittest.TestCase):
             "segment-size"      : segment_size,
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[sequence]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[sequence]
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
@@ -181,7 +193,11 @@ class TestDataReader(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
-                _data_writer_address, message, data=content_item
+                _data_writer_address, 
+                _local_node_name,
+                _client_address,
+                message, 
+                data=content_item
             )
             self.assertEqual(reply["request-id"], archive_request_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
@@ -199,7 +215,11 @@ class TestDataReader(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[sequence]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[sequence]
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -216,7 +236,10 @@ class TestDataReader(unittest.TestCase):
             "segment-number"    : segment_number
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
@@ -233,7 +256,10 @@ class TestDataReader(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply, data = send_request_and_get_reply_and_data(
-                _data_reader_address, message
+                _data_reader_address, 
+                _local_node_name,
+                _client_address,
+                message
             )
             self.assertEqual(reply["request-id"], request_id)
             self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
@@ -248,7 +274,10 @@ class TestDataReader(unittest.TestCase):
             "sequence"          : sequence,
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
@@ -291,7 +320,11 @@ class TestDataReader(unittest.TestCase):
             "segment-size"      : segment_size,
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[sequence]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[sequence]
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
@@ -305,7 +338,11 @@ class TestDataReader(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
-                _data_writer_address, message, data=content_item
+                _data_writer_address, 
+                _local_node_name,
+                _client_address,
+                message, 
+                data=content_item
             )
             self.assertEqual(reply["request-id"], archive_request_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
@@ -323,7 +360,11 @@ class TestDataReader(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[sequence]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[sequence]
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -340,7 +381,10 @@ class TestDataReader(unittest.TestCase):
             "segment-number"    : segment_number
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
@@ -357,7 +401,10 @@ class TestDataReader(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply, data = send_request_and_get_reply_and_data(
-                _data_reader_address, message
+                _data_reader_address, 
+                _local_node_name,
+                _client_address,
+                message
             )
             self.assertEqual(reply["request-id"], request_id)
             self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
@@ -372,7 +419,10 @@ class TestDataReader(unittest.TestCase):
             "sequence"          : sequence,
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
@@ -413,7 +463,11 @@ class TestDataReader(unittest.TestCase):
             "segment-size"      : segment_size,
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[sequence]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[sequence]
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
@@ -427,7 +481,11 @@ class TestDataReader(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
-                _data_writer_address, message, data=content_item
+                _data_writer_address, 
+                _local_node_name,
+                _client_address,
+                message, 
+                data=content_item
             )
             self.assertEqual(reply["request-id"], archive_request_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
@@ -445,7 +503,11 @@ class TestDataReader(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[sequence]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[sequence]
         )
         self.assertEqual(reply["request-id"], archive_request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -462,7 +524,10 @@ class TestDataReader(unittest.TestCase):
             "segment-number"    : segment_number
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
@@ -479,7 +544,10 @@ class TestDataReader(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply, data = send_request_and_get_reply_and_data(
-                _data_reader_address, message
+                _data_reader_address, 
+                _local_node_name,
+                _client_address,
+                message
             )
             self.assertEqual(reply["request-id"], request_id)
             self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
@@ -494,7 +562,10 @@ class TestDataReader(unittest.TestCase):
             "sequence"          : sequence,
         }
         reply, data = send_request_and_get_reply_and_data(
-            _data_reader_address, message
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "retrieve-key-final-reply")

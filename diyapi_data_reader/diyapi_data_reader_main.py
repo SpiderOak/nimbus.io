@@ -19,8 +19,9 @@ import zmq
 import Statgrabber
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.xrep_server import XREPServer
-from diyapi_tools.xreq_client import XREQClient
+from diyapi_tools.resilient_server import ResilientServer
+from diyapi_tools.resilient_client import ResilientClient
+from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.persistent_state import load_state, save_state
@@ -34,6 +35,7 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
     _local_node_name,
 )
 _persistent_state_file_name = "data-reader-%s" % (_local_node_name, )
+_client_tag = "data-reader-%s" % (_local_node_name, )
 _database_server_address = os.environ.get(
     "DIYAPI_DATABASE_SERVER_ADDRESS",
     "tcp://127.0.0.1:8000"
@@ -42,14 +44,15 @@ _data_reader_address = os.environ.get(
     "DIYAPI_DATA_READER_ADDRESS",
     "tcp://127.0.0.1:8200"
 )
+_data_reader_pipeline_address = os.environ.get(
+    "DIYAPI_DATA_READER_PIPELINE_ADDRESS",
+    "tcp://127.0.0.1:8201"
+)
 _key_lookup_timeout = 60.0
 _retrieve_timeout = 30 * 60.0
-_heartbeat_interval = float(
-    os.environ.get("DIYAPI_DATA_READER_HEARTBEAT", "60.0")
-)
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
-    "xrep_ident",
+    "client_tag",
     "timeout",
     "timeout_message",
     "avatar_id",
@@ -69,7 +72,7 @@ def _handle_retrieve_key_start(state, message, _data):
 
     reply = {
         "message-type"  : "retrieve-key-start-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -81,12 +84,12 @@ def _handle_retrieve_key_start(state, message, _data):
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _retrieve_state_tuple(
-        xrep_ident=message["xrep-ident"],
+        client_tag=message["client-tag"],
         timeout=time.time()+_key_lookup_timeout,
         timeout_message="retrieve-key-start-reply",
         avatar_id = message["avatar-id"],
@@ -127,7 +130,7 @@ def _handle_retrieve_key_next(state, message, _data):
 
     reply = {
         "message-type"  : "retrieve-key-next-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -144,7 +147,7 @@ def _handle_retrieve_key_next(state, message, _data):
         log.error(error_string)
         reply["result"] = "out-of-sequence"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     content_path = repository.content_path(
@@ -165,11 +168,11 @@ def _handle_retrieve_key_next(state, message, _data):
         ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     state["active-requests"][message["request-id"]] = retrieve_state._replace(
-        xrep_ident=None,
+        client_tag=None,
         timeout=time.time()+_retrieve_timeout,
         sequence=message["sequence"]
     )
@@ -178,7 +181,7 @@ def _handle_retrieve_key_next(state, message, _data):
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply, data=data_content)
+    state["resilient-server"].send_reply(reply, data=data_content)
 
 def _handle_retrieve_key_final(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_final")
@@ -197,7 +200,7 @@ def _handle_retrieve_key_final(state, message, _data):
 
     reply = {
         "message-type"  : "retrieve-key-final-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -213,7 +216,7 @@ def _handle_retrieve_key_final(state, message, _data):
         log.error(error_string)
         reply["result"] = "out-of-sequence"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     content_path = repository.content_path(
@@ -234,7 +237,7 @@ def _handle_retrieve_key_final(state, message, _data):
         ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # we don't save the state, because we are done
@@ -243,7 +246,7 @@ def _handle_retrieve_key_final(state, message, _data):
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply, data=data_content)
+    state["resilient-server"].send_reply(reply, data=data_content)
 
 def _handle_key_lookup_reply(state, message, data):
     log = logging.getLogger("_handle_key_lookup_reply")
@@ -258,7 +261,7 @@ def _handle_key_lookup_reply(state, message, data):
 
     reply = {
         "message-type"  : "retrieve-key-start-reply",
-        "xrep-ident"    : retrieve_state.xrep_ident,
+        "client-tag"    : retrieve_state.client_tag,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -274,7 +277,7 @@ def _handle_key_lookup_reply(state, message, data):
         ))
         reply["result"] = "database-error"
         reply["error_message"] = message["error-message"]
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     database_entry, _ = database_content.unmarshall(data, 0)
@@ -287,7 +290,7 @@ def _handle_key_lookup_reply(state, message, data):
         ))
         reply["result"] = "no-such-key"
         reply["error_message"] = "is tombstone"
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     content_path = repository.content_path(
@@ -305,7 +308,7 @@ def _handle_key_lookup_reply(state, message, data):
         ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # if we have more than one segment, we need to save the state
@@ -334,7 +337,7 @@ def _handle_key_lookup_reply(state, message, data):
     reply["file-md5"]           = b64encode(database_entry.file_md5)
     reply["segment-adler32"]    = database_entry.segment_adler32
     reply["segment-md5"]        = b64encode(database_entry.segment_md5)
-    state["xrep-server"].queue_message_for_send(reply, data_content)
+    state["resilient-server"].send_reply(reply, data_content)
 
 _dispatch_table = {
     "retrieve-key-start"    : _handle_retrieve_key_start,
@@ -347,7 +350,8 @@ def _create_state():
     return {
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
-        "xrep-server"           : None,
+        "resilient-server"      : None,
+        "pull-server"           : None,
         "database-client"       : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
@@ -363,18 +367,27 @@ def _setup(_halt_event, state):
         for key, value in pickleable_state:
             state["active-requests"][key] = _retrieve_state_tuple(**value)
 
-    log.info("binding xrep-server to %s" % (_data_reader_address, ))
-    state["xrep-server"] = XREPServer(
+    log.info("binding resilient-server to %s" % (_data_reader_address, ))
+    state["resilient-server"] = ResilientServer(
         state["zmq-context"],
         _data_reader_address,
         state["receive-queue"]
     )
-    state["xrep-server"].register(state["pollster"])
+    state["resilient-server"].register(state["pollster"])
 
-    state["database-client"] = XREQClient(
+    log.info("binding pull-server to %s" % (_data_reader_pipeline_address, ))
+    state["pull-server"] = PULLServer(
+        state["zmq-context"],
+        _data_reader_pipeline_address,
+        state["receive-queue"]
+    )
+    state["pull-server"].register(state["pollster"])
+    
+    state["database-client"] = ResilientClient(
         state["zmq-context"],
         _database_server_address,
-        state["receive-queue"]
+        _client_tag,
+        _data_reader_pipeline_address
     )
     state["database-client"].register(state["pollster"])
 
@@ -397,9 +410,10 @@ def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
     log.debug("stopping xrep server")
-    state["xrep-server"].close()
+    state["resilient-server"].close()
 
     log.debug("stopping database client")
+    state["pull-server"].close()
     state["database-client"].close()
 
     state["zmq-context"].term()

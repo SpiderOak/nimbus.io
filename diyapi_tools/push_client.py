@@ -25,12 +25,14 @@ class PUSHClient(object):
         self._push_socket.close()
 
     def send(self, message, data=None):
-        self._log.info("sending message: %s" % (
-            message,  
-        ))
+        self._log.info("sending message: %s" % (message,  ))
         if data is not None:
             self._push_socket.send_json(message, zmq.SNDMORE)
-            self._push_socket.send(data, copy=False)
+            if type(data) not in [list, tuple, ]:
+                data = [data, ]
+            for segment in data[:-1]:
+                self._push_socket.send(segment, zmq.SNDMORE)
+            self._push_socket.send(data[-1])
         else:
             self._push_socket.send_json(message)
 

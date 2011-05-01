@@ -180,7 +180,7 @@ class _GreenletResilientClientState(object):
         self._pending_message = None
         self._pending_message_start_time = None
 
-class GreenletResilientClentStateWatcher(Greenlet):
+class _GreenletResilientClentStateWatcher(Greenlet):
     """
     A class to watch the mustable state of a resilient client and handle 
     various timeouts
@@ -227,7 +227,7 @@ class GreenletResilientClient(object):
         self._deliverator = deliverator
 
         self._state = _GreenletResilientClientState(client_tag, client_address)
-        self._state_watcher = GreenletResilientClentStateWatcher(
+        self._state_watcher = _GreenletResilientClentStateWatcher(
             client_tag, self._state, self._send_message
         )
         self._state_watcher.start()

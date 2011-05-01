@@ -17,7 +17,7 @@ from diyapi_database_server import database_content
 
 from unit_tests.util import generate_key, generate_database_content, \
         start_database_server, poll_process, terminate_process
-from unit_tests.zeromq_util import send_request_and_get_reply, \
+from unit_tests.gevent_zeromq_util import send_request_and_get_reply, \
         send_request_and_get_reply_and_data
 
 _log_path = "/var/log/pandora/test_database_server.log"
@@ -25,6 +25,7 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
+_client_address = "tcp://127.0.0.1:8001"
 
 class TestDatabaseServer(unittest.TestCase):
     """test message handling in database server"""
@@ -59,6 +60,8 @@ class TestDatabaseServer(unittest.TestCase):
 
         reply = send_request_and_get_reply(
             _database_server_address, 
+            _local_node_name,
+            _client_address,
             message, 
             data=database_content.marshall(content)
         )
@@ -78,7 +81,10 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply, data = send_request_and_get_reply_and_data(
-            _database_server_address, message
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         if reply["result"] == "success":
@@ -98,7 +104,10 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply, data = send_request_and_get_reply_and_data(
-            _database_server_address, message
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
         )
         self.assertEqual(reply["request-id"], request_id)
         if reply["result"] != "success":
@@ -130,7 +139,12 @@ class TestDatabaseServer(unittest.TestCase):
             "timestamp"         : timestamp
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
 
         return reply
@@ -149,7 +163,12 @@ class TestDatabaseServer(unittest.TestCase):
             "timestamp"         : timestamp
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
 
         return reply
@@ -677,7 +696,12 @@ class TestDatabaseServer(unittest.TestCase):
             "prefix"            : prefix,
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["is-complete"], True)
@@ -707,7 +731,12 @@ class TestDatabaseServer(unittest.TestCase):
             "prefix"            : prefix,
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["is-complete"], True)
@@ -734,7 +763,12 @@ class TestDatabaseServer(unittest.TestCase):
             "timestamp"         : timestamp, 
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
@@ -762,7 +796,12 @@ class TestDatabaseServer(unittest.TestCase):
             "dest-dir"          : dest_dir,
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["request-id"], request_id)
@@ -790,7 +829,12 @@ class TestDatabaseServer(unittest.TestCase):
             "request-id"        : request_id,
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
 
         reply_avatar_ids = reply["avatar-id-list"]
@@ -817,7 +861,12 @@ class TestDatabaseServer(unittest.TestCase):
             "version-number"    : version_number,
         }
 
-        reply = send_request_and_get_reply(_database_server_address, message)
+        reply = send_request_and_get_reply(
+            _database_server_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 

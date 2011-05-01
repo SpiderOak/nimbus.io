@@ -24,8 +24,9 @@ import zmq
 import Statgrabber
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.xrep_server import XREPServer
-from diyapi_tools.xreq_client import XREQClient
+from diyapi_tools.resilient_server import ResilientServer
+from diyapi_tools.resilient_client import ResilientClient
+from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.persistent_state import load_state, save_state
@@ -49,6 +50,14 @@ _data_writer_address = os.environ.get(
     "DIYAPI_DATA_WRITER_ADDRESS",
     "tcp://127.0.0.1:8100"
 )
+_data_writer_pipeline_address = os.environ.get(
+    "DIYAPI_DATA_WRITER_PIPELINE_ADDRESS",
+    "tcp://127.0.0.1:8101"
+)
+_data_writer_pub_address = os.environ.get(
+    "DIYAPI_DATA_WRITER_PUB_ADDRESS",
+    "tcp://127.0.0.1:8102"
+)
 _key_insert_timeout = 60.0
 _key_destroy_timeout = 60.0
 _key_purge_timeout = 60.0
@@ -58,7 +67,7 @@ _heartbeat_interval = float(
 )
 
 _request_state_tuple = namedtuple("RequestState", [ 
-    "xrep_ident",
+    "client_tag",
     "timestamp",
     "timeout",
     "timeout_message",
@@ -86,7 +95,7 @@ def _handle_archive_key_entire(state, message, data):
 
     reply = {
         "message-type"  : "archive-key-final-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -98,7 +107,7 @@ def _handle_archive_key_entire(state, message, data):
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     file_name = _compute_filename(message["request-id"])
@@ -117,12 +126,12 @@ def _handle_archive_key_entire(state, message, data):
         log.exception("%s %s" % (message["avatar-id"], message["key"], ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"],
+        client_tag=message["client-tag"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_insert_timeout,
         timeout_message="archive-key-final-reply",
@@ -169,7 +178,7 @@ def _handle_archive_key_start(state, message, data):
 
     reply = {
         "message-type"  : "archive-key-start-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -181,7 +190,7 @@ def _handle_archive_key_start(state, message, data):
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     file_name = _compute_filename(message["request-id"])
@@ -200,12 +209,12 @@ def _handle_archive_key_start(state, message, data):
         log.exception("%s %s" % (message["avatar-id"], message["key"], ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"],
+        client_tag=message["client-tag"],
         timestamp=message["timestamp"],
         timeout=time.time()+_archive_timeout,
         timeout_message=None,
@@ -219,7 +228,7 @@ def _handle_archive_key_start(state, message, data):
     )
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_next(state, message, data):
     log = logging.getLogger("_handle_archive_key_next")
@@ -238,7 +247,7 @@ def _handle_archive_key_next(state, message, data):
 
     reply = {
         "message-type"  : "archive-key-next-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -263,7 +272,7 @@ def _handle_archive_key_next(state, message, data):
             log.exception("error")
         reply["result"] = "out-of-sequence"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     Statgrabber.accumulate('diy_write_requests', 1)
@@ -278,7 +287,7 @@ def _handle_archive_key_next(state, message, data):
         log.exception("%s %s" % (request_state.avatar_id, request_state.key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
@@ -288,7 +297,7 @@ def _handle_archive_key_next(state, message, data):
     )
 
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_final(state, message, data):
     log = logging.getLogger("_handle_archive_key_final")
@@ -307,7 +316,7 @@ def _handle_archive_key_final(state, message, data):
 
     reply = {
         "message-type"  : "archive-key-final-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -332,7 +341,7 @@ def _handle_archive_key_final(state, message, data):
             log.exception("error")
         reply["result"] = "out-of-sequence"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     Statgrabber.accumulate('diy_write_requests', 1)
@@ -347,12 +356,12 @@ def _handle_archive_key_final(state, message, data):
         log.exception("%s %s" % (request_state.avatar_id, request_state.key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = request_state._replace(
-        xrep_ident=message["xrep-ident"],
+        client_tag=message["client-tag"],
         sequence=request_state.sequence+1,
         timeout=time.time()+_key_insert_timeout
     )
@@ -391,7 +400,7 @@ def _handle_destroy_key(state, message, _data):
 
     reply = {
         "message-type"  : "destroy-key-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -403,14 +412,14 @@ def _handle_destroy_key(state, message, _data):
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     file_name = _compute_filename(message["request-id"])
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"],
+        client_tag=message["client-tag"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_destroy_timeout,
         timeout_message="destroy-key-reply",
@@ -444,7 +453,7 @@ def _handle_purge_key(state, message, _data):
 
     reply = {
         "message-type"  : "purge-key-reply",
-        "xrep-ident"    : message["xrep-ident"],
+        "client-tag"    : message["client-tag"],
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -456,14 +465,14 @@ def _handle_purge_key(state, message, _data):
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     file_name = _compute_filename(message["request-id"])
 
     # save stuff we need to recall in state
     state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"],
+        client_tag=message["client-tag"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_purge_timeout,
         timeout_message="purge-key-reply",
@@ -502,7 +511,7 @@ def _handle_key_insert_reply(state, message, _data):
 
     reply = {
         "message-type"  : "archive-key-final-reply",
-        "xrep-ident"    : request_state.xrep_ident,
+        "client-tag"    : request_state.client_tag,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -533,7 +542,7 @@ def _handle_key_insert_reply(state, message, _data):
             ))    
         reply["result"] = "database-error"
         reply["error_message"] = message["error-message"]
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     # move the stored message to a permanent location
@@ -557,12 +566,12 @@ def _handle_key_insert_reply(state, message, _data):
         log.exception(error_string)
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
     
     reply["result"] = "success"
     reply["previous-size"] = message["previous-size"]
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_key_destroy_reply(state, message, _data):
     log = logging.getLogger("_handle_key_destroy_reply")
@@ -577,7 +586,7 @@ def _handle_key_destroy_reply(state, message, _data):
 
     reply = {
         "message-type"  : "destroy-key-reply",
-        "xrep-ident"    : request_state.xrep_ident,
+        "client-tag"    : request_state.client_tag,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -598,7 +607,7 @@ def _handle_key_destroy_reply(state, message, _data):
         else:
             reply["result"] = "database-error"
         reply["error_message"] = message["error-message"]
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     content_path = repository.content_path(
@@ -626,12 +635,12 @@ def _handle_key_destroy_reply(state, message, _data):
             log.exception(error_string)
             reply["result"] = "exception"
             reply["error_message"] = error_string
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
             return
   
     reply["result"] = "success"
     reply["total-size"] = message["total-size"]
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 def _handle_key_purge_reply(state, message, _data):
     log = logging.getLogger("_handle_key_purge_reply")
@@ -646,7 +655,7 @@ def _handle_key_purge_reply(state, message, _data):
 
     reply = {
         "message-type"  : "purge-key-reply",
-        "xrep-ident"    : request_state.xrep_ident,
+        "client-tag"    : request_state.client_tag,
         "request-id"    : message["request-id"],
         "result"        : None,
         "error-message" : None,
@@ -666,7 +675,7 @@ def _handle_key_purge_reply(state, message, _data):
         else:
             reply["result"] = "database-error"
         reply["error_message"] = message["error-message"]
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     content_path = repository.content_path(
@@ -694,11 +703,11 @@ def _handle_key_purge_reply(state, message, _data):
             log.exception(error_string)
             reply["result"] = "exception"
             reply["error_message"] = error_string
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
             return
   
     reply["result"] = "success"
-    state["xrep-server"].queue_message_for_send(reply)
+    state["resilient-server"].send_reply(reply)
 
 _dispatch_table = {
     "archive-key-entire"    : _handle_archive_key_entire,
@@ -716,8 +725,10 @@ def _create_state():
     return {
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
-        "xrep-server"           : None,
+        "resilient-server"      : None,
+        "pull-server"           : None,
         "database-client"       : None,
+        "pub-server"            : None,
         "state-cleaner"         : None,
         "heartbeater"           : None,
         "receive-queue"         : deque(),
@@ -733,18 +744,27 @@ def _setup(_halt_event, state):
         for key, value in pickleable_state:
             state["active-requests"][key] = _request_state_tuple(**value)
 
-    log.info("binding xrep-server to %s" % (_data_writer_address, ))
-    state["xrep-server"] = XREPServer(
+    log.info("binding resilient-server to %s" % (_data_writer_address, ))
+    state["resilient-server"] = ResilientServer(
         state["zmq-context"],
         _data_writer_address,
         state["receive-queue"]
     )
-    state["xrep-server"].register(state["pollster"])
+    state["resilient-server"].register(state["pollster"])
 
-    state["database-client"] = XREQClient(
+    log.info("binding pull-server to %s" % (_data_writer_pipeline_address, ))
+    state["pull-server"] = PULLServer(
+        state["zmq-context"],
+        _data_writer_pipeline_address,
+        state["receive-queue"]
+    )
+    state["pull-server"].register(state["pollster"])
+
+    state["database-client"] = ResilientClient(
         state["zmq-context"],
         _database_server_address,
-        state["receive-queue"]
+        _local_node_name,
+        _data_writer_pipeline_address
     )
     state["database-client"].register(state["pollster"])
 
@@ -755,7 +775,11 @@ def _setup(_halt_event, state):
     )
 
     state["state-cleaner"] = StateCleaner(state)
-    state["heartbeater"] = Heartbeater(state, _heartbeat_interval)
+    state["heartbeater"] = Heartbeater(
+        state, 
+        _heartbeat_interval,
+        state["pub-server"]
+    )
 
     # hand the pollster and the queue-dispatcher to the time-queue 
     return [
@@ -768,11 +792,15 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
-    log.debug("stopping xrep server")
-    state["xrep-server"].close()
+    log.debug("stopping resilient server")
+    state["resilient-server"].close()
 
     log.debug("stopping database client")
+    state["pull-server"].close()
     state["database-client"].close()
+
+    log.debug("stopping (heartbeat) pub server")
+    #state["pub-server"].close()
 
     state["zmq-context"].term()
 

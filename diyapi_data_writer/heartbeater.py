@@ -9,10 +9,11 @@ import time
 
 class Heartbeater(object):
     """A time queue action to periodically send a heartbeat"""
-    def __init__(self, state, heartbeat_interval):
+    def __init__(self, state, heartbeat_interval, pub_server):
         self._log = logging.getLogger("Heartbeater")
         self._state = state
         self._heartbeat_interval = heartbeat_interval
+        self._pub_server = pub_server
 
     def next_run(self):
         return time.time() + self._heartbeat_interval

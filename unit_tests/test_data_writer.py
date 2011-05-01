@@ -20,7 +20,7 @@ from unit_tests.util import random_string, \
         start_data_writer, \
         poll_process, \
         terminate_process
-from unit_tests.zeromq_util import send_request_and_get_reply
+from unit_tests.gevent_zeromq_util import send_request_and_get_reply
 
 _log_path = "/var/log/pandora/test_data_writer.log"
 _test_dir = os.path.join("/tmp", "test_dir")
@@ -28,6 +28,7 @@ _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
 _data_writer_address = "tcp://127.0.0.1:8100"
+_client_address = "tcp://127.0.0.1:8900"
 
 class TestDataWriter(unittest.TestCase):
     """test message handling in data writer"""
@@ -97,7 +98,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=content_item
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=content_item
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -140,7 +145,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-size"      : segment_size,
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[0]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[0]
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
@@ -154,7 +163,11 @@ class TestDataWriter(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
-                _data_writer_address, message, data=content_item
+                _data_writer_address, 
+                _local_node_name,
+                _client_address,
+                message, 
+                data=content_item
             )
             self.assertEqual(reply["request-id"], request_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
@@ -172,7 +185,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=test_data[-1]
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[-1]
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -192,7 +209,12 @@ class TestDataWriter(unittest.TestCase):
             "version-number"    : version_number,
             "segment-number"    : segment_number,
         }
-        reply = send_request_and_get_reply(_data_writer_address, message)
+        reply = send_request_and_get_reply(
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "destroy-key-reply")
         
@@ -211,7 +233,12 @@ class TestDataWriter(unittest.TestCase):
             "version-number"    : version_number,
             "segment-number"    : segment_number,
         }
-        reply = send_request_and_get_reply(_data_writer_address, message)
+        reply = send_request_and_get_reply(
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message
+        )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "purge-key-reply")
 
@@ -262,7 +289,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=content_item
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=content_item
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -310,7 +341,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=content_item
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=content_item
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -368,7 +403,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=content_item
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=content_item
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
@@ -426,7 +465,11 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
-            _data_writer_address, message, data=content_item
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=content_item
         )
         self.assertEqual(reply["request-id"], request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")

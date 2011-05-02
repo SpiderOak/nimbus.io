@@ -742,7 +742,7 @@ def _setup(_halt_event, state):
 
     pickleable_state = load_state(_persistent_state_file_name)
     if pickleable_state is not None:
-        for key, value in pickleable_state:
+        for key, value in pickleable_state.items():
             state["active-requests"][key] = _request_state_tuple(**value)
 
     log.info("binding resilient-server to %s" % (_data_writer_address, ))

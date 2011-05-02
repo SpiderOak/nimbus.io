@@ -5,7 +5,6 @@ retriever.py
 A class that retrieves data from data readers.
 """
 import logging
-import uuid
 
 import gevent
 from gevent.pool import GreenletSet
@@ -29,7 +28,6 @@ class Retriever(object):
         self.segments_needed = segments_needed
         self.sequence_number = 0
         self.n_slices = None
-        self._request_ids = {}
         self._pending = GreenletSet()
         self._done = []
 
@@ -62,12 +60,10 @@ class Retriever(object):
             raise AlreadyInProgress()
         for i, data_reader in enumerate(self.data_readers):
             segment_number = i + 1
-            self._request_ids[segment_number] = uuid.uuid1().hex
             self._spawn(
                 segment_number,
                 data_reader,
                 data_reader.retrieve_key_start,
-                self._request_ids[segment_number],
                 self.avatar_id,
                 self.key,
                 self.version_number,
@@ -87,7 +83,6 @@ class Retriever(object):
                     segment_number,
                     data_reader,
                     data_reader.retrieve_key_next,
-                    self._request_ids[segment_number],
                     self.sequence_number
                 )
             self._join(timeout)
@@ -104,10 +99,10 @@ class Retriever(object):
                 segment_number,
                 data_reader,
                 data_reader.retrieve_key_final,
-                self._request_ids[segment_number],
                 self.sequence_number
             )
         self._join(timeout)
         yield dict((task.segment_number, task.value)
                    for task in self._done[:self.segments_needed])
         self._done = []
+

@@ -23,13 +23,11 @@ class DatabaseClient(object):
 
     def listmatch(
         self,
-        request_id,
         avatar_id,
         prefix
     ):
         message = {
             "message-type"      : "listmatch",
-            "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "prefix"            : prefix,
         }
@@ -38,7 +36,6 @@ class DatabaseClient(object):
         )
         self._log.debug(
             '%(message-type)s: '
-            'request_id = %(request-id)s, '
             'prefix = %(prefix)r' % message
             )
         reply, _data = delivery_channel.get()
@@ -51,21 +48,18 @@ class DatabaseClient(object):
 
     def stat(
         self,
-        request_id,
         avatar_id,
         path,
         version_number=0,
     ):
         message = {
             "message-type"      : "stat-request",
-            "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "key"               : path, 
             "version-number"    : version_number,
         }
         self._log.debug(
             '%(message-type)s: '
-            'request_id = %(request-id)s, '
             'path = %(key)r' % message
             )
 

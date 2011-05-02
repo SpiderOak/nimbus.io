@@ -20,13 +20,12 @@ from diyapi_web_server.exceptions import (
 
 class DataWriter(object):
 
-    def __init__(self, node_name, xreq_socket):
+    def __init__(self, node_name, resilient_client):
         self._log = logging.getLogger("DataWriter-%s" % (node_name, ))
-        self._xreq_socket = xreq_socket
+        self._resilient_client = resilient_client
 
     def archive_key_entire(
         self,
-        request_id,
         avatar_id,
         timestamp,
         key,
@@ -41,7 +40,6 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key, 
@@ -53,12 +51,11 @@ class DataWriter(object):
             "segment-adler32"   : segment_adler32,
             "segment-md5"       : b64encode(segment_md5),
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(
+        delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
         self._log.debug(
             '%(message-type)s: '
-            'request_id = %(request-id)s, '
             'key = %(key)r '
             'segment_number = %(segment-number)d' % message
             )
@@ -71,7 +68,6 @@ class DataWriter(object):
 
     def archive_key_start(
         self,
-        request_id,
         avatar_id,
         timestamp,
         sequence_number,
@@ -82,7 +78,6 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-start",
-            "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "sequence"          : sequence_number,
@@ -91,12 +86,11 @@ class DataWriter(object):
             "segment-number"    : segment_number,
             "segment-size"      : len(segment)
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(
+        delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
         self._log.debug(
             '%(message-type)s: '
-            'request_id = %(request-id)s, '
             'key = %(key)r '
             'segment_number = %(segment-number)d' % message
             )
@@ -107,21 +101,18 @@ class DataWriter(object):
 
     def archive_key_next(
         self,
-        request_id,
         sequence_number,
         segment
     ):
         message = {
             "message-type"      : "archive-key-next",
-            "request-id"        : request_id,
             "sequence"          : sequence_number,
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(
+        delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
         self._log.debug(
             '%s(message-type): '
-            'request_id = %(request-id)s '
             'sequence = %(sequence)s' % message
             )
         reply, _data = delivery_channel.get()
@@ -131,7 +122,6 @@ class DataWriter(object):
 
     def archive_key_final(
         self,
-        request_id,
         sequence_number,
         file_size,
         file_adler32,
@@ -142,7 +132,6 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-final",
-            "request-id"        : request_id,
             "sequence"          : sequence_number,
             "total-size"        : file_size,
             "file-adler32"      : file_adler32,
@@ -150,12 +139,11 @@ class DataWriter(object):
             "segment-adler32"   : segment_adler32,
             "segment-md5"       : b64encode(segment_md5),
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(
+        delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
         self._log.debug(
             '%(message-type)s: '
-            'request_id = %(request-id)s' % message
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
@@ -166,7 +154,6 @@ class DataWriter(object):
 
     def destroy_key(
         self,
-        request_id,
         avatar_id,
         timestamp,
         key,
@@ -175,17 +162,15 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "destroy-key",
-            "request-id"        : request_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key,
             "version-number"    : version_number,
             "segment-number"    : segment_number,
         }
-        delivery_channel = self._xreq_socket.queue_message_for_send(message)
+        delivery_channel = self._resilient_client.queue_message_for_send(message)
         self._log.debug(
             '%s(message-type): '
-            'request_id = %(request-id)s, '
             'key = %(key)r '
             'segment_number = %(segment-number)d' % message
             )
@@ -198,7 +183,6 @@ class DataWriter(object):
 
 #    def hinted_handoff(
 #        self,
-#        request_id,
 #        avatar_id,
 #        timestamp,
 #        key,
@@ -207,7 +191,6 @@ class DataWriter(object):
 #        dest_exchange
 #    ):
 #        message = HintedHandoff(
-#            request_id,
 #            avatar_id,
 #            self.amqp_handler.exchange,
 #            self.amqp_handler.queue_name,
@@ -219,9 +202,7 @@ class DataWriter(object):
 #        )
 #        self._log.debug(
 #            '%s: '
-#            'request_id = %s' % (
 #                message.__class__.__name__,
-#                message.request_id,
 #            ))
 #        reply = self._send(message, HandoffFailedError)
 #        self._log.debug(

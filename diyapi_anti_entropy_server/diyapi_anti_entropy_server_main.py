@@ -42,7 +42,8 @@ import zmq
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.xrep_server import XREPServer
-from diyapi_tools.xreq_client import XREQClient
+from diyapi_tools.pull_server import PULLServer
+from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 
@@ -64,11 +65,16 @@ _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_anti_entropy_server_%s.log" % (
     _local_node_name,
 )
+_client_tag = "anti-entropy-server-%s" % (_local_node_name, )
 _database_server_addresses = \
     os.environ["DIYAPI_DATABASE_SERVER_ADDRESSES"].split()
 _anti_entropy_server_address = os.environ.get(
     "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESS",
-    "tcp://127.0.0.1:8400"
+    "tcp://127.0.0.1:8600"
+)
+_anti_entropy_server_pipeline_address = os.environ.get(
+    "DIYAPI_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS",
+    "tcp://127.0.0.1:8650"
 )
 _request_timeout = 5.0 * 60.0
 _error_hash = "*** error ***"
@@ -312,6 +318,7 @@ def _create_state():
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
         "xrep-server"               : None,
+        "pull-server"               : None,
         "database-clients"          : None,
         "avatar-list-requestor"     : None,
         "consistency-check-starter" : None,
@@ -335,15 +342,26 @@ def _setup(_halt_event, state):
     )
     state["xrep-server"].register(state["pollster"])
 
+    log.info("binding pull-server to %s" % (
+        _anti_entropy_server_pipeline_address, 
+    ))
+    state["pull-server"] = PULLServer(
+        state["zmq-context"],
+        _anti_entropy_server_pipeline_address,
+        state["receive-queue"]
+    )
+    state["pull-server"].register(state["pollster"])
+
     state["database-clients"] = list()
     for database_server_address in _database_server_addresses:
-        database_client = XREQClient(
+        resilient_client = ResilientClient(
                 state["zmq-context"],
                 database_server_address,
-                state["receive-queue"]
+                _client_tag,
+                _anti_entropy_server_pipeline_address
             )
-        database_client.register(state["pollster"])
-        state["database-clients"].append(database_client)
+        resilient_client.register(state["pollster"])
+        state["database-clients"].append(resilient_client)
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -380,6 +398,7 @@ def _tear_down(_state):
     state["xrep-server"].close()
 
     log.debug("stopping database clients")
+    state["pull-server"].close()
     for database_client in state["database-clients"]:
         database_client.close()
 

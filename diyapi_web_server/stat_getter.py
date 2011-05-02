@@ -4,7 +4,6 @@ stat_getter.py
 
 A class that performs a stat query.
 """
-import uuid
 from collections import defaultdict
 
 import gevent
@@ -14,7 +13,6 @@ from diyapi_web_server.exceptions import (
     AlreadyInProgress,
     StatFailedError,
 )
-
 
 class StatGetter(object):
     """Performs a stat query."""
@@ -48,11 +46,9 @@ class StatGetter(object):
         if self._pending:
             raise AlreadyInProgress()
         for database_client in self.database_clients:
-            request_id = uuid.uuid1().hex
             self._spawn(
                 database_client,
                 database_client.stat,
-                request_id,
                 avatar_id,
                 path
             )
@@ -64,3 +60,4 @@ class StatGetter(object):
             if result[key] >= self.agreement_level:
                 return task.value
         raise StatFailedError()
+

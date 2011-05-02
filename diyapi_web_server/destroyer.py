@@ -5,7 +5,6 @@ destroyer.py
 A class that performs a destroy query on all data writers.
 """
 import logging
-import uuid
 
 import gevent
 from gevent.pool import GreenletSet
@@ -51,12 +50,10 @@ class Destroyer(object):
             raise AlreadyInProgress()
         for i, data_writer in enumerate(self.data_writers):
             segment_number = i + 1
-            request_id = uuid.uuid1().hex
             self._spawn(
                 segment_number,
                 data_writer,
                 data_writer.destroy_key,
-                request_id,
                 avatar_id,
                 timestamp,
                 key,
@@ -67,3 +64,4 @@ class Destroyer(object):
         result = min([task.value for task in self._done])
         self._done = []
         return result
+

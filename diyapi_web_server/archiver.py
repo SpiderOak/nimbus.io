@@ -8,7 +8,6 @@ import sys
 import logging
 import hashlib
 import zlib
-import uuid
 from collections import defaultdict
 
 import gevent
@@ -34,7 +33,6 @@ class Archiver(object):
         self.version_number = 0
         self.timestamp = timestamp
         self.sequence_number = 0
-        self._request_ids = {}
         self._adler32s = {}
         self._md5s = defaultdict(hashlib.md5)
         self._handoff_writers = defaultdict(list)
@@ -88,7 +86,6 @@ class Archiver(object):
                     segment_number,
                     data_writer,
                     data_writer.hinted_handoff,
-                    self._request_ids[segment_number],
                     self.avatar_id,
                     self.timestamp,
                     self.key,
@@ -113,13 +110,11 @@ class Archiver(object):
             else:
                 data_writers = [self.data_writers[i]]
             if self.sequence_number == 0:
-                self._request_ids[segment_number] = uuid.uuid1().hex
                 for data_writer in data_writers:
                     self._spawn(
                         segment_number,
                         data_writer,
                         data_writer.archive_key_start,
-                        self._request_ids[segment_number],
                         self.avatar_id,
                         self.timestamp,
                         self.sequence_number,
@@ -134,7 +129,6 @@ class Archiver(object):
                         segment_number,
                         data_writer,
                         data_writer.archive_key_next,
-                        self._request_ids[segment_number],
                         self.sequence_number,
                         segment
                     )
@@ -158,13 +152,11 @@ class Archiver(object):
             else:
                 data_writers = [self.data_writers[i]]
             if self.sequence_number == 0:
-                self._request_ids[segment_number] = uuid.uuid1().hex
                 for data_writer in data_writers:
                     self._spawn(
                         segment_number,
                         data_writer,
                         data_writer.archive_key_entire,
-                        self._request_ids[segment_number],
                         self.avatar_id,
                         self.timestamp,
                         self.key,
@@ -183,7 +175,6 @@ class Archiver(object):
                         segment_number,
                         data_writer,
                         data_writer.archive_key_final,
-                        self._request_ids[segment_number],
                         self.sequence_number,
                         file_size,
                         file_adler32,

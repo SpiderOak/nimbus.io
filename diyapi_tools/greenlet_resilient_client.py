@@ -158,7 +158,7 @@ class _GreenletResilientClientState(object):
 
         self._log.warn(
             "timeout waiting ack: treating as disconnect %s" % (
-                self._pending_message,
+                self._pending_message.control,
             )
         )
         self._status = _status_disconnected

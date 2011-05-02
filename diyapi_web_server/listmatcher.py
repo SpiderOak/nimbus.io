@@ -4,7 +4,6 @@ listmatcher.py
 
 A class that performs a listmatch query.
 """
-import uuid
 from collections import defaultdict
 
 import gevent
@@ -48,11 +47,9 @@ class Listmatcher(object):
         if self._pending:
             raise AlreadyInProgress()
         for database_client in self.database_clients:
-            request_id = uuid.uuid1().hex
             self._spawn(
                 database_client,
                 database_client.listmatch,
-                request_id,
                 avatar_id,
                 prefix
             )
@@ -63,3 +60,4 @@ class Listmatcher(object):
                 result[key] += 1
         return [key for key in sorted(result)
                 if result[key] >= self.agreement_level]
+

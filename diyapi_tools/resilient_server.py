@@ -86,6 +86,10 @@ class ResilientServer(object):
                 message.control, message.body
             )
             self._send_ack(message.ident, message.control["request-id"])
+        elif not "client-tag" in message.control:
+            self._log.error("receive: invalid message '%s'" % (
+                message.control, 
+            ))
         else:
             if message.control["client-tag"] in self._active_clients:
                 self._receive_queue.append((message.control, message.body, ))

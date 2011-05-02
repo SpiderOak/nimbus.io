@@ -20,6 +20,9 @@ import psycopg2
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
 from diyapi_tools.greenlet_xreq_client import GreenletXREQClient
+from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
+from diyapi_tools.greenlet_pull_server import GreenletPULLServer
+from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.greenlet_push_client import GreenletPUSHClient
 
 from diyapi_web_server.application import Application
@@ -39,6 +42,9 @@ DB_PASS = os.environ['PANDORA_DB_PW_diyapi']
 
 NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 LOCAL_NODE_NAME = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+CLIENT_TAG = "web-server-%s" % (LOCAL_NODE_NAME, )
+WEB_SERVER_PIPELINE_ADDRESS = \
+    os.environ["DIYAPI_WEB_SERVER_PIPELINE_ADDRESS"]
 DATA_READER_ADDRESSES = \
     os.environ["DIYAPI_DATA_READER_ADDRESSES"].split()
 DATA_WRITER_ADDRESSES = \
@@ -62,22 +68,33 @@ class WebServer(object):
         )
         authenticator = SqlAuthenticator(db_connection)
 
+        self._deliverator = Deliverator()
+
         self._zeromq_context = zmq.context.Context()
 
         self._pollster = GreenletZeroMQPollster()
+
+        self._pull_server = GreenletPULLServer(
+            self._zeromq_context, 
+            WEB_SERVER_PIPELINE_ADDRESS,
+            self._deliverator
+        )
+        self._pull_server.register(self._pollster)
 
         self._data_writers = list()
         for node_name, data_writer_address in zip(
             NODE_NAMES, DATA_WRITER_ADDRESSES
         ):
-            xreq_client = GreenletXREQClient(
+            resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
-                node_name, 
-                data_writer_address
+                data_writer_address,
+                CLIENT_TAG,
+                WEB_SERVER_PIPELINE_ADDRESS,
+                self._deliverator
             )
-            xreq_client.register(self._pollster)
+            resilient_client.register(self._pollster)
             data_writer = DataWriter(
-                node_name, xreq_client
+                node_name, resilient_client
             )
             self._data_writers.append(data_writer)
 
@@ -85,14 +102,16 @@ class WebServer(object):
         for node_name, data_reader_address in zip(
             NODE_NAMES, DATA_READER_ADDRESSES
         ):
-            xreq_client = GreenletXREQClient(
+            resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
-                node_name, 
-                data_reader_address
+                data_reader_address,
+                CLIENT_TAG,
+                WEB_SERVER_PIPELINE_ADDRESS,
+                self._deliverator
             )
-            xreq_client.register(self._pollster)
+            resilient_client.register(self._pollster)
             data_reader = DataReader(
-                node_name, xreq_client
+                node_name, resilient_client
             )
             self._data_readers.append(data_reader)
 
@@ -100,14 +119,16 @@ class WebServer(object):
         for node_name, database_server_address in zip(
             NODE_NAMES, DATABASE_SERVER_ADDRESSES
         ):
-            xreq_client = GreenletXREQClient(
+            resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
-                node_name, 
-                database_server_address
+                database_server_address,
+                CLIENT_TAG,
+                WEB_SERVER_PIPELINE_ADDRESS,
+                self._deliverator
             )
-            xreq_client.register(self._pollster)
+            resilient_client.register(self._pollster)
             database_client = DatabaseClient(
-                node_name, xreq_client
+                node_name, resilient_client
             )
             self._database_clients.append(database_client)
 
@@ -155,7 +176,9 @@ class WebServer(object):
             data_reader.close()
         for database_client in self._database_clients:
             database_client.close()
+        self._pull_server.close()
         self._pollster.kill()
+        self._pollster.join(timeout=3.0)
         self._zeromq_context.term()
 
     def serve_forever(self):

@@ -54,20 +54,16 @@ class SpaceAccountingClient(object):
 
     def get_space_usage(
         self,
-        request_id,
         avatar_id
     ):
         request = {
             "message-type"  : "space-usage-request",
-            "request-id"    : request_id,
             "avatar-id"     : avatar_id,
         }
         delivery_channel = self._xreq_socket.queue_message_for_send(request)
 
         self._log.debug(
-            '%(message-type)s: '
-            'request_id = %(request-id)s' % request
-            
+            '%(message-type)s: ' % request            
         )
 
         reply, _data = delivery_channel.get()

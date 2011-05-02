@@ -176,7 +176,7 @@ def _handle_key_insert(state, message, data):
     reply = {
         "message-type"  : "key-insert-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
         "previous-size" : 0,
@@ -257,7 +257,7 @@ def _handle_key_lookup(state, message, _data):
     reply = {
         "message-type"      : "key-lookup-reply",
         "client-tag"        : message["client-tag"],
-        "request-id"        : message["request-id"],
+        "message-id"        : message["message-id"],
         "result"            : None,
         "error-message"     : None,
     }
@@ -304,7 +304,7 @@ def _handle_key_list(state, message, _data):
     reply = {
         "message-type"  : "key-list-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
@@ -349,7 +349,7 @@ def _handle_key_destroy(state, message, _data):
     reply = {
         "message-type"  : "key-destroy-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
         "total-size"    : 0,
@@ -469,7 +469,7 @@ def _handle_key_purge(state, message, _data):
     reply = {
         "message-type"  : "key-purge-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
@@ -525,7 +525,7 @@ def _handle_listmatch(state, message, _data):
     reply = {
         "message-type"  : "key-purge-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
         "is-complete"   : None,
@@ -570,7 +570,7 @@ def _handle_consistency_check(state, message, _data):
     reply = {
         "message-type"  : "consistency-check-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "node-name"     : _local_node_name,
         "result"        : None,
         "error-message" : None,
@@ -629,7 +629,7 @@ def _handle_avatar_database_request(state, message, _data):
     reply = {
         "message-type"  : "avatar-database-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "node-name"     : _local_node_name,
         "result"        : None,
         "error-message" : None,
@@ -666,12 +666,12 @@ def _handle_avatar_database_request(state, message, _data):
 
 def _handle_avatar_list_request(state, message, _data):
     log = logging.getLogger("_handle_avatar_list_request")
-    log.info("%s" % (message["request-id"], ))
+    log.info("%s" % (message["message-id"], ))
 
     reply = {
         "message-type"  : "avatar-list-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "avatar-id-list": list(_find_avatars(state)),
     }
     state["resilient-server"].send_reply(reply)
@@ -683,7 +683,7 @@ def _handle_stat_request(state, message, _data):
     reply = {
         "message-type"  : "stat-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
         "timestamp"     : None,

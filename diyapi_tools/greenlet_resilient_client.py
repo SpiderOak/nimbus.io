@@ -107,8 +107,8 @@ class _GreenletResilientClientState(object):
                 self._log.error("Unexpected message: %s" % (message.control, ))
                 return
 
-            expected_request_id = self._pending_message.control["request-id"]
-            if message["request-id"] != expected_request_id:
+            expected_message_id = self._pending_message.control["message-id"]
+            if message["message-id"] != expected_message_id:
                 self._log.error("unknown ack %s expecting %s" %(
                     message, self._pending_message 
                 ))
@@ -116,7 +116,7 @@ class _GreenletResilientClientState(object):
 
             message_type = self._pending_message.control["message-type"]
             self._log.debug("received ack: %s %s" % (
-                message_type, message["request-id"],
+                message_type, message["message-id"],
             ))
 
             # if we got an ack to a handshake request, we are connected
@@ -159,7 +159,7 @@ class _GreenletResilientClientState(object):
 
         message = {
             "message-type"      : "resilient-server-handshake",
-            "request-id"        : uuid.uuid1().hex,
+            "message-id"        : uuid.uuid1().hex,
             "client-tag"        : self._client_tag,
             "client-address"    : self._client_address,
         }
@@ -275,11 +275,11 @@ class GreenletResilientClient(object):
 
     def queue_message_for_send(self, message_control, data=None):
 
-        if not "request-id" in message_control:
-            message_control["request-id"] = uuid.uuid1().hex
+        if not "message-id" in message_control:
+            message_control["message-id"] = uuid.uuid1().hex
 
-        request_id = message_control["request-id"]
-        delivery_channel = self._deliverator.add_request(request_id)
+        message_id = message_control["message-id"]
+        delivery_channel = self._deliverator.add_request(message_id)
 
         message = _message_format(control=message_control, body=data)
 

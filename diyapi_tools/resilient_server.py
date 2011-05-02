@@ -85,7 +85,7 @@ class ResilientServer(object):
             self._dispatch_table[message.control["message-type"]](
                 message.control, message.body
             )
-            self._send_ack(message.ident, message.control["request-id"])
+            self._send_ack(message.ident, message.control["message-id"])
         elif not "client-tag" in message.control:
             self._log.error("receive: invalid message '%s'" % (
                 message.control, 
@@ -93,7 +93,7 @@ class ResilientServer(object):
         else:
             if message.control["client-tag"] in self._active_clients:
                 self._receive_queue.append((message.control, message.body, ))
-                self._send_ack(message.ident, message.control["request-id"])
+                self._send_ack(message.ident, message.control["message-id"])
             else:
                 self._log.error(
                     "receive: No active client %s message discarded" % (
@@ -101,11 +101,11 @@ class ResilientServer(object):
                     )
                 )
 
-    def _send_ack(self, message_ident, request_id):            
+    def _send_ack(self, message_ident, message_id):            
         # send an immediate ack, zeromq sockets seem to always be writable
         ack_message = {
             "message-type" : "resilient-server-ack",
-            "request-id"   : request_id,
+            "message-id"   : message_id,
         }
         self._xrep_socket.send(message_ident, zmq.SNDMORE)
         self._xrep_socket.send_json(ack_message)

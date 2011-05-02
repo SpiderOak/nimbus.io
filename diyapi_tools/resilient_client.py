@@ -71,7 +71,7 @@ class ResilientClient(object):
         self._log.info("sending handshake")
         message = {
             "message-type"      : "resilient-server-handshake",
-            "request-id"        : uuid.uuid1().hex,
+            "message-id"        : uuid.uuid1().hex,
             "client-tag"        : self._client_tag,
             "client-address"    : self._client_address,
         }
@@ -91,8 +91,8 @@ class ResilientClient(object):
             self._log.error("Unexpected message: %s" % (message.control, ))
             return
 
-        expected_request_id = self._pending_message.control["request-id"]
-        if message["request-id"] != expected_request_id:
+        expected_message_id = self._pending_message.control["message-id"]
+        if message["message-id"] != expected_message_id:
             self._log.error("unknown ack %s expecting %s" %(
                 message, self._pending_message 
             ))

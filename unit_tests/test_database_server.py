@@ -50,10 +50,10 @@ class TestDatabaseServer(unittest.TestCase):
             shutil.rmtree(_test_dir)
 
     def _insert_key(self, avatar_id, key, content):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "key-insert",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
         }
@@ -65,15 +65,15 @@ class TestDatabaseServer(unittest.TestCase):
             message, 
             data=database_content.marshall(content)
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
 
         return reply
 
     def _lookup_key(self, avatar_id, key, version_number, segment_number):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "key-lookup",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
             "version-number"    : version_number,
@@ -86,7 +86,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         if reply["result"] == "success":
             reply_content, _ = database_content.unmarshall(data, 0)
         else:
@@ -95,10 +95,10 @@ class TestDatabaseServer(unittest.TestCase):
         return reply, reply_content
 
     def _list_key(self, avatar_id, key):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "key-list",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
         }
@@ -109,7 +109,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         if reply["result"] != "success":
             data_list = []
         elif data is None:
@@ -128,10 +128,10 @@ class TestDatabaseServer(unittest.TestCase):
     def _destroy_key(
         self, avatar_id, key, version_number, segment_number, timestamp
     ):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "key-destroy",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
             "version-number"    : version_number,
@@ -145,17 +145,17 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
 
         return reply
 
     def _purge_key(
         self, avatar_id, key, version_number, segment_number, timestamp
     ):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "key-purge",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
             "version-number"    : version_number,
@@ -169,7 +169,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
 
         return reply
 
@@ -688,10 +688,10 @@ class TestDatabaseServer(unittest.TestCase):
         """test listmach on an empty database"""
         avatar_id = 1001
         prefix = "xxx"
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "listmatch",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "prefix"            : prefix,
         }
@@ -702,7 +702,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["is-complete"], True)
         self.assertEqual(reply["key-list"], [])
@@ -711,7 +711,7 @@ class TestDatabaseServer(unittest.TestCase):
         """test listmach wiht multiple keys"""
         avatar_id = 1001
         prefix = "xxx"
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         key_count = 100
     
         key_list = ["%s-%05d" % (prefix, i, ) for i in xrange(key_count)]
@@ -726,7 +726,7 @@ class TestDatabaseServer(unittest.TestCase):
 
         message = {
             "message-type"      : "listmatch",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "prefix"            : prefix,
         }
@@ -737,7 +737,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["is-complete"], True)
         self.assertEqual(reply["key-list"], key_list)
@@ -753,12 +753,12 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         message = {
             "message-type"      : "consistency-check",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp, 
         }
@@ -769,7 +769,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def test_avatar_database_request(self):
@@ -783,14 +783,14 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         dest_host = "127.0.0.1"
         dest_dir = os.path.join(_repository_path, "dest_dir")
         os.mkdir(dest_dir)
 
         message = {
             "message-type"      : "avatar-database-request",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "dest-host"         : dest_host, 
             "dest-dir"          : dest_dir,
@@ -802,9 +802,9 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
         dest_list = os.listdir(dest_dir)
         # check that we got something, hoping database_server sent the right
@@ -822,11 +822,11 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
 
         message = {
             "message-type"      : "avatar-list-request",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
         }
 
         reply = send_request_and_get_reply(
@@ -835,7 +835,7 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
 
         reply_avatar_ids = reply["avatar-id-list"]
         self.assertEqual(reply_avatar_ids[0], avatar_id)
@@ -852,10 +852,10 @@ class TestDatabaseServer(unittest.TestCase):
         self.assertEqual(reply["result"], "success", reply["error-message"])
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "stat-request",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
             "version-number"    : version_number,
@@ -867,10 +867,10 @@ class TestDatabaseServer(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["timestamp"], content.timestamp, reply)
         self.assertEqual(reply["total_size"], content.total_size)

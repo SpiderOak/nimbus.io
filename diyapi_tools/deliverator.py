@@ -18,18 +18,18 @@ class Deliverator(object):
         self._active_requests = dict()
         self._lock = RLock()
 
-    def add_request(self, request_id):
+    def add_request(self, message_id):
         """
-        Add a request_id
+        Add a message_id
         return a channel that will deliver the reply message 
         """
         channel = Queue(maxsize=0)
 
         self._lock.acquire()
         try:
-            if request_id in self._active_requests:
-                raise ValueError("Duplicate request '%s'" % (request_id, ))
-            self._active_requests[request_id] = channel
+            if message_id in self._active_requests:
+                raise ValueError("Duplicate request '%s'" % (message_id, ))
+            self._active_requests[message_id] = channel
         finally:
             self._lock.release()
 
@@ -37,13 +37,13 @@ class Deliverator(object):
 
     def deliver_reply(self, message):
         """
-        Deliver the reply nessage over the channel for its request-id
+        Deliver the reply nessage over the channel for its message-id
         And discard the channel
         raise KeyError if there is no channel for the request
         """
         self._lock.acquire()
         try:
-            channel = self._active_requests.pop(message.control["request-id"])
+            channel = self._active_requests.pop(message.control["message-id"])
         finally:
             self._lock.release()
 

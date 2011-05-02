@@ -44,19 +44,19 @@ class GreenletXREQClient(object):
     def queue_message_for_send(self, message_control, data=None):
         """
         message control must be a dict 
-        If the caller includes a 'request-id' key we will use it,
+        If the caller includes a 'message-id' key we will use it,
         otherwise, we will supply one.
         return: a gevent queue (zero size Queue) the the reply will
         be deliverd.
         """
-        if not "request-id" in message_control:
-            message_control["request-id"] = uuid.uuid1().hex
-        self._delivery_queues[message_control["request-id"]] = \
+        if not "message-id" in message_control:
+            message_control["message-id"] = uuid.uuid1().hex
+        self._delivery_queues[message_control["message-id"]] = \
             Queue(maxsize=None)
         self._send_queue.put(
             _message_format(control=message_control, body=data)
         )
-        return self._delivery_queues[message_control["request-id"]]
+        return self._delivery_queues[message_control["message-id"]]
 
     def _pollster_callback(self, _active_socket, readable, writable):
         # push our output first
@@ -72,14 +72,14 @@ class GreenletXREQClient(object):
             # go back and wait for more
             if message is None:
                 return None
-            if not "request-id" in message.control:
-                self._log.error("message has no 'request-id' %s" % (
+            if not "message-id" in message.control:
+                self._log.error("message has no 'message-id' %s" % (
                     message.control
                 ))
             else:
                 try:
                     delivery_queue = self._delivery_queues.pop(
-                        message.control["request-id"]
+                        message.control["message-id"]
                     )
                 except KeyError:
                     self._log.error("No delivery queue for %s" % (

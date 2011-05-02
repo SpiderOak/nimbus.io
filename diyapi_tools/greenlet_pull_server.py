@@ -49,6 +49,8 @@ class GreenletPULLServer(object):
         if message is None:
             return None
 
+        self._log.debug("received: %s" % (message.control, ))
+
         self._deliverator.deliver_reply(message)
             
     def _receive_message(self):

@@ -20,10 +20,17 @@ _message_format = namedtuple("Message", "control body")
 _polling_interval = 3.0
 _ack_timeout = 10.0
 _handshake_retry_interval = 60.0
+_reporting_interval = 60.0
 
 _status_handshaking = 1
 _status_connected = 2
 _status_disconnected = 3
+
+_status_name = {
+    _status_handshaking     : "handshake",
+    _status_connected       : "connected",
+    _status_disconnected    : "disconnected",
+}
 
 class _GreenletResilientClientState(object):
     """
@@ -107,12 +114,16 @@ class _GreenletResilientClientState(object):
                 ))
                 return
 
-            # if we got and ack to a handshake request, we are connected
-            if self._pending_message.control["message-type"] == \
-                "resilient-server-handshake":
+            message_type = self._pending_message.control["message-type"]
+            self._log.debug("received ack: %s %s" % (
+                message_type, message["request-id"],
+            ))
+
+            # if we got an ack to a handshake request, we are connected
+            if message_type == "resilient-server-handshake":
                 assert self._status == _status_handshaking, self._status
                 self._status = _status_connected
-                self._status_time = time.time()
+                self._status_time = time.time()                
 
             self._pending_message = None
             self._pending_message_start_time = None
@@ -126,6 +137,18 @@ class _GreenletResilientClientState(object):
             self._pending_message_start_time = time.time()
 
             return message_to_send
+        finally:
+            self._lock.release()
+
+    def report_current_status(self):
+        self._lock.acquire()
+        try:
+            elapsed_time = time.time() - self._status_time
+            self._log.info("%s %d seconds; send queue size = %s" % (
+                _status_name[self._status], 
+                elapsed_time, 
+                len(self._send_queue)
+            ))
         finally:
             self._lock.release()
 
@@ -191,12 +214,17 @@ class _GreenletResilientClentStateWatcher(Greenlet):
         self._state = state
         self._send_function = send_function
         self._log = logging.getLogger(str(self))
+        self._prev_report_time = time.time()
 
     def _run(self):
         while True:
             message_to_send = self._state.test_current_status()
             if message_to_send is not None:
                 self._send_function(message_to_send)
+            elapsed_time = time.time() - self._prev_report_time
+            if elapsed_time >= _reporting_interval:
+                self._state.report_current_status()
+                self._prev_report_time = time.time()
             gevent.sleep(_polling_interval)
 
     def __str__(self):

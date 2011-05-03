@@ -53,10 +53,9 @@ _retrieve_timeout = 30 * 60.0
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
     "client_tag",
+    "message_id",
     "timeout",
     "timeout_message",
-    "avatar_id",
-    "key",
     "version_number",
     "segment_number",
     "segment_size",
@@ -64,23 +63,30 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "file_name",
 ])
 
+def _compute_state_key(message):
+    """
+    compute a key to the state for this message
+    """
+    return (message["avatar-id"], message["key"], )
+
 def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
-    log.info("avatar_id = %s, key = %s" % (
-        message["avatar-id"], message["key"], 
-    ))
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     reply = {
         "message-type"  : "retrieve-key-start-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
+        "avatar-id"     : message["avatar-id"],
+        "key"           : message["key"],
         "result"        : None,
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request_id, something is wrong
-    if message["request-id"] in state["active-requests"]:
-        error_string = "invalid duplicate request_id in RetrieveKeyStart"
+    # if we already have a state entry for this request, something is wrong
+    if state_key in state["active-requests"]:
+        error_string = "invalid duplicate request in RetrieveKeyStart"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
@@ -88,12 +94,11 @@ def _handle_retrieve_key_start(state, message, _data):
         return
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = _retrieve_state_tuple(
+    state["active-requests"][state_key] = _retrieve_state_tuple(
         client_tag=message["client-tag"],
+        message_id=message["message-id"],
         timeout=time.time()+_key_lookup_timeout,
         timeout_message="retrieve-key-start-reply",
-        avatar_id = message["avatar-id"],
-        key = message["key"],
         version_number=message["version-number"],
         segment_number=message["segment-number"],
         segment_size = None,
@@ -105,7 +110,6 @@ def _handle_retrieve_key_start(state, message, _data):
     # coming back to us
     request = {
         "message-type"      : "key-lookup",
-        "request-id"        : message["request-id"],
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
         "version-number"    : message["version-number"],
@@ -115,32 +119,35 @@ def _handle_retrieve_key_start(state, message, _data):
 
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     try:
-        retrieve_state = state["active-requests"].pop(message["request-id"])
+        retrieve_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
 
     log.info("avatar_id = %s, key = %s sequence = %s" % (
-        retrieve_state.avatar_id, retrieve_state.key, message["sequence"]
+        message["avatar-id"], message["key"], message["sequence"]
     ))
 
     reply = {
         "message-type"  : "retrieve-key-next-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
+        "avatar-id"     : message["avatar-id"],
+        "key"           : message["key"], 
         "result"        : None,
         "error-message" : None,
     }
 
     if retrieve_state.sequence is None \
     or message["sequence"] != retrieve_state.sequence+1:
-        error_string = "%s %s out of sequence %s %s" % (
-            retrieve_state.avatar_id, 
-            retrieve_state.key,
+        error_string = "%s out of sequence %s %s" % (
+            state_key, 
             message["sequence"],
             retrieve_state.sequence+1
         )
@@ -151,7 +158,7 @@ def _handle_retrieve_key_next(state, message, _data):
         return
 
     content_path = repository.content_path(
-        retrieve_state.avatar_id, 
+        message["avatar-id"], 
         retrieve_state.file_name
     ) 
 
@@ -162,17 +169,13 @@ def _handle_retrieve_key_next(state, message, _data):
             input_file.seek(offset)
             data_content = input_file.read(retrieve_state.segment_size)
     except Exception, instance:
-        log.exception("%s %s" % (
-            retrieve_state.avatar_id,
-            retrieve_state.key,
-        ))
+        log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
-    state["active-requests"][message["request-id"]] = retrieve_state._replace(
-        client_tag=None,
+    state["active-requests"][state_key] = retrieve_state._replace(
         timeout=time.time()+_retrieve_timeout,
         sequence=message["sequence"]
     )
@@ -185,31 +188,31 @@ def _handle_retrieve_key_next(state, message, _data):
 
 def _handle_retrieve_key_final(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_final")
+    state_key = _compute_state_key(message)
+    log.info("%s sequence =%s" % (state_key, message["sequence"], ))
 
     try:
-        retrieve_state = state["active-requests"].pop(message["request-id"])
+        retrieve_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
-
-    log.info("avatar_id = %s, key = %s sequence = %s" % (
-        retrieve_state.avatar_id, retrieve_state.key, message["sequence"]
-    ))
 
     reply = {
         "message-type"  : "retrieve-key-final-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
+        "avatar-id"     : message["avatar-id"],
+        "key"           : message["key"], 
         "result"        : None,
         "error-message" : None,
     }
 
     if message["sequence"] != retrieve_state.sequence+1:
         error_string = "%s %s out of sequence %s %s" % (
-            retrieve_state.avatar_id, 
-            retrieve_state.key,
+            message["avatar-id"], 
+            message["key"],
             message["sequence"],
             retrieve_state.sequence+1
         )
@@ -220,7 +223,7 @@ def _handle_retrieve_key_final(state, message, _data):
         return
 
     content_path = repository.content_path(
-        retrieve_state.avatar_id, 
+        message["avatar-id"], 
         retrieve_state.file_name
     ) 
 
@@ -232,8 +235,8 @@ def _handle_retrieve_key_final(state, message, _data):
             data_content = input_file.read(retrieve_state.segment_size)
     except Exception, instance:
         log.exception("%s %s" % (
-            retrieve_state.avatar_id,
-            retrieve_state.key,
+            message["avatar-id"],
+            message["key"],
         ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
@@ -250,19 +253,23 @@ def _handle_retrieve_key_final(state, message, _data):
 
 def _handle_key_lookup_reply(state, message, data):
     log = logging.getLogger("_handle_key_lookup_reply")
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     try:
-        retrieve_state = state["active-requests"].pop(message["request-id"])
+        retrieve_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
 
     reply = {
         "message-type"  : "retrieve-key-start-reply",
         "client-tag"    : retrieve_state.client_tag,
-        "request-id"    : message["request-id"],
+        "message-id"    : retrieve_state.message_id,
+        "avatar-id"     : message["avatar-id"],
+        "key"           : message["key"], 
         "result"        : None,
         "error-message" : None,
     }
@@ -270,8 +277,8 @@ def _handle_key_lookup_reply(state, message, data):
     # if we got a database error, pass it on 
     if message["result"] != "success":
         log.error("%s %s database error: (%s) %s" % (
-            retrieve_state.avatar_id,
-            retrieve_state.key,
+            message["avatar-id"],
+            message["key"],
             message["result"],
             message["error-message"],
         ))
@@ -285,8 +292,8 @@ def _handle_key_lookup_reply(state, message, data):
     # if this key is a tombstone, treat as an error
     if database_entry.is_tombstone:
         log.error("%s %s this record is a tombstone" % (
-            retrieve_state.avatar_id,
-            retrieve_state.key,
+            message["avatar-id"],
+            message["key"],
         ))
         reply["result"] = "no-such-key"
         reply["error_message"] = "is tombstone"
@@ -294,7 +301,7 @@ def _handle_key_lookup_reply(state, message, data):
         return
 
     content_path = repository.content_path(
-        retrieve_state.avatar_id, 
+        message["avatar-id"], 
         database_entry.file_name
     ) 
 
@@ -303,8 +310,8 @@ def _handle_key_lookup_reply(state, message, data):
             data_content = input_file.read(database_entry.segment_size)
     except Exception, instance:
         log.exception("%s %s" % (
-            retrieve_state.avatar_id,
-            retrieve_state.key,
+            message["avatar-id"],
+            message["key"],
         ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
@@ -314,7 +321,7 @@ def _handle_key_lookup_reply(state, message, data):
     # if we have more than one segment, we need to save the state
     # otherwise this request is done
     if database_entry.segment_count > 1:
-        state["active-requests"][message["request-id"]] = \
+        state["active-requests"][state_key] = \
             retrieve_state._replace(
                 timeout=time.time()+_retrieve_timeout,
                 sequence=0, 

@@ -30,7 +30,9 @@ _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
 _data_writer_address = "tcp://127.0.0.1:8100"
+_data_writer_pipeline_address = "tcp://127.0.0.1:8101"
 _data_reader_address = "tcp://127.0.0.1:8200"
+_data_reader_pipeline_address = "tcp://127.0.0.1:8201"
 _client_address = "tcp://127.0.0.1:8900"
 
 class TestDataReader(unittest.TestCase):
@@ -50,6 +52,7 @@ class TestDataReader(unittest.TestCase):
         self._data_writer_process = start_data_writer(
             _local_node_name, 
             _data_writer_address,
+            _data_writer_pipeline_address,
             _database_server_address,
             _repository_path
         )
@@ -59,6 +62,7 @@ class TestDataReader(unittest.TestCase):
         self._data_reader_process = start_data_reader(
             _local_node_name, 
             _data_reader_address,
+            _data_reader_pipeline_address,
             _database_server_address,
             _repository_path
         )
@@ -89,7 +93,7 @@ class TestDataReader(unittest.TestCase):
         segment_number = 5
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        archive_request_id = uuid.uuid1().hex
+        archive_message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         total_size = content_size - 42
@@ -100,7 +104,7 @@ class TestDataReader(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key, 
@@ -119,15 +123,15 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "retrieve-key-start",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key,
             "version-number"    : version_number,
@@ -139,7 +143,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, content_item)
@@ -155,7 +159,7 @@ class TestDataReader(unittest.TestCase):
         version_number = 0
         segment_number = 5
         sequence = 0
-        archive_request_id = uuid.uuid1().hex
+        archive_message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         file_adler32 = -42
@@ -165,7 +169,7 @@ class TestDataReader(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-start",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "sequence"          : sequence,
@@ -181,7 +185,7 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=test_data[sequence]
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
         self.assertEqual(reply["result"], "success")
 
@@ -189,7 +193,9 @@ class TestDataReader(unittest.TestCase):
             sequence += 1
             message = {
                 "message-type"      : "archive-key-next",
-                "request-id"        : archive_request_id,
+                "message-id"        : archive_message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key,
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
@@ -199,14 +205,16 @@ class TestDataReader(unittest.TestCase):
                 message, 
                 data=content_item
             )
-            self.assertEqual(reply["request-id"], archive_request_id)
+            self.assertEqual(reply["message-id"], archive_message_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
             self.assertEqual(reply["result"], "success")
         
         sequence += 1
         message = {
             "message-type"      : "archive-key-final",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
@@ -221,15 +229,15 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=test_data[sequence]
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "retrieve-key-start",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key,
             "version-number"    : version_number,
@@ -241,7 +249,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, test_data[0])
@@ -252,7 +260,9 @@ class TestDataReader(unittest.TestCase):
         for sequence in range(1, segment_count-1):
             message = {
                 "message-type"      : "retrieve-key-next",
-                "request-id"        : request_id,
+                "message-id"        : message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key,
                 "sequence"          : sequence,
             }
             reply, data = send_request_and_get_reply_and_data(
@@ -261,7 +271,7 @@ class TestDataReader(unittest.TestCase):
                 _client_address,
                 message
             )
-            self.assertEqual(reply["request-id"], request_id)
+            self.assertEqual(reply["message-id"], message_id)
             self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
             self.assertEqual(reply["result"], "success")
             self.assertEqual(data, test_data[sequence])
@@ -270,7 +280,9 @@ class TestDataReader(unittest.TestCase):
         sequence = segment_count - 1
         message = {
             "message-type"      : "retrieve-key-final",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence,
         }
         reply, data = send_request_and_get_reply_and_data(
@@ -279,7 +291,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, test_data[sequence])
@@ -300,7 +312,7 @@ class TestDataReader(unittest.TestCase):
         version_number = 0
         segment_number = 5
         sequence = 0
-        archive_request_id = uuid.uuid1().hex
+        archive_message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         file_adler32 = -42
@@ -310,7 +322,7 @@ class TestDataReader(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-start",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "sequence"          : sequence,
@@ -326,7 +338,7 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=test_data[sequence]
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
         self.assertEqual(reply["result"], "success")
 
@@ -334,7 +346,9 @@ class TestDataReader(unittest.TestCase):
             sequence += 1
             message = {
                 "message-type"      : "archive-key-next",
-                "request-id"        : archive_request_id,
+                "message-id"        : archive_message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key,
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
@@ -344,14 +358,16 @@ class TestDataReader(unittest.TestCase):
                 message, 
                 data=content_item
             )
-            self.assertEqual(reply["request-id"], archive_request_id)
+            self.assertEqual(reply["message-id"], archive_message_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
             self.assertEqual(reply["result"], "success")
         
         sequence += 1
         message = {
             "message-type"      : "archive-key-final",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
@@ -366,15 +382,15 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=test_data[sequence]
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "retrieve-key-start",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key,
             "version-number"    : version_number,
@@ -386,7 +402,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, test_data[0])
@@ -397,7 +413,9 @@ class TestDataReader(unittest.TestCase):
         for sequence in range(1, segment_count-1):
             message = {
                 "message-type"      : "retrieve-key-next",
-                "request-id"        : request_id,
+                "message-id"        : message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key,
                 "sequence"          : sequence,
             }
             reply, data = send_request_and_get_reply_and_data(
@@ -406,7 +424,7 @@ class TestDataReader(unittest.TestCase):
                 _client_address,
                 message
             )
-            self.assertEqual(reply["request-id"], request_id)
+            self.assertEqual(reply["message-id"], message_id)
             self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
             self.assertEqual(reply["result"], "success")
             self.assertEqual(data, test_data[sequence])
@@ -415,7 +433,9 @@ class TestDataReader(unittest.TestCase):
         sequence = segment_count - 1
         message = {
             "message-type"      : "retrieve-key-final",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence,
         }
         reply, data = send_request_and_get_reply_and_data(
@@ -424,7 +444,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, test_data[sequence])
@@ -443,7 +463,7 @@ class TestDataReader(unittest.TestCase):
         version_number = 0
         segment_number = 5
         sequence = 0
-        archive_request_id = uuid.uuid1().hex
+        archive_message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         file_adler32 = -42
@@ -453,7 +473,7 @@ class TestDataReader(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-start",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "sequence"          : sequence,
@@ -469,7 +489,7 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=test_data[sequence]
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
         self.assertEqual(reply["result"], "success")
 
@@ -477,7 +497,9 @@ class TestDataReader(unittest.TestCase):
             sequence += 1
             message = {
                 "message-type"      : "archive-key-next",
-                "request-id"        : archive_request_id,
+                "message-id"        : archive_message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key,
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
@@ -487,14 +509,16 @@ class TestDataReader(unittest.TestCase):
                 message, 
                 data=content_item
             )
-            self.assertEqual(reply["request-id"], archive_request_id)
+            self.assertEqual(reply["message-id"], archive_message_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
             self.assertEqual(reply["result"], "success")
         
         sequence += 1
         message = {
             "message-type"      : "archive-key-final",
-            "request-id"        : archive_request_id,
+            "message-id"        : archive_message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
@@ -509,15 +533,15 @@ class TestDataReader(unittest.TestCase):
             message, 
             data=test_data[sequence]
         )
-        self.assertEqual(reply["request-id"], archive_request_id)
+        self.assertEqual(reply["message-id"], archive_message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "retrieve-key-start",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key,
             "version-number"    : version_number,
@@ -529,7 +553,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, test_data[0])
@@ -540,7 +564,9 @@ class TestDataReader(unittest.TestCase):
         for sequence in range(1, segment_count-1):
             message = {
                 "message-type"      : "retrieve-key-next",
-                "request-id"        : request_id,
+                "message-id"        : message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key,
                 "sequence"          : sequence,
             }
             reply, data = send_request_and_get_reply_and_data(
@@ -549,7 +575,7 @@ class TestDataReader(unittest.TestCase):
                 _client_address,
                 message
             )
-            self.assertEqual(reply["request-id"], request_id)
+            self.assertEqual(reply["message-id"], message_id)
             self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
             self.assertEqual(reply["result"], "success")
             self.assertEqual(data, test_data[sequence])
@@ -558,7 +584,9 @@ class TestDataReader(unittest.TestCase):
         sequence = segment_count - 1
         message = {
             "message-type"      : "retrieve-key-final",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence,
         }
         reply, data = send_request_and_get_reply_and_data(
@@ -567,7 +595,7 @@ class TestDataReader(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(data, test_data[sequence])

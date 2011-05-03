@@ -361,7 +361,6 @@ def _handle_archive_key_final(state, message, data):
 
     # save stuff we need to recall in state
     state["active-requests"][state_key] = request_state._replace(
-        client_tag=message["client-tag"],
         sequence=request_state.sequence+1,
         timeout=time.time()+_key_insert_timeout
     )

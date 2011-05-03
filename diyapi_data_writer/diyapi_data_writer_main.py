@@ -14,6 +14,7 @@ of any previous key this key supersedes (for space accounting.)
 """
 from base64 import b64decode
 from collections import deque, namedtuple
+from hashlib import md5
 import logging
 import os
 import sys
@@ -69,11 +70,10 @@ _heartbeat_interval = float(
 
 _request_state_tuple = namedtuple("RequestState", [ 
     "client_tag",
+    "message_id",
     "timestamp",
     "timeout",
     "timeout_message",
-    "avatar_id",
-    "key",
     "sequence",
     "version_number",
     "segment_number",
@@ -81,37 +81,45 @@ _request_state_tuple = namedtuple("RequestState", [
     "file_name",
 ])
 
-def _compute_filename(message_request_id):
+def _compute_filename(message):
     """
     compute a unique filename from message attributes
-    to begin with, let's just use request_id
+    to begin with, let's just use a hash of avatar-id and key
     """
-    return message_request_id
+    hasher = md5()
+    hasher.update(str(message["avatar-id"]))
+    hasher.update(message["key"])
+    return hasher.hexdigest()
+
+def _compute_state_key(message):
+    """
+    compute a key to the state for this message
+    """
+    return (message["avatar-id"], message["key"], )
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
-    log.info("avatar_id = %s, key = %s" % (
-        message["avatar-id"], message["key"], 
-    ))
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     reply = {
         "message-type"  : "archive-key-final-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request_id, something is wrong
-    if message["request-id"] in state:
-        error_string = "invalid duplicate request_id in ArchiveKeyEntire"
+    # if we already have a state entry for this request, something is wrong
+    if state_key in state["active-requests"]:
+        error_string = "invalid duplicate in ArchiveKeyEntire"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
-    file_name = _compute_filename(message["request-id"])
+    file_name = _compute_filename(message)
 
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
@@ -124,20 +132,19 @@ def _handle_archive_key_entire(state, message, data):
             content_file.flush()
             os.fsync(content_file.fileno())
     except Exception, instance:
-        log.exception("%s %s" % (message["avatar-id"], message["key"], ))
+        log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = _request_state_tuple(
+    state["active-requests"][state_key] = _request_state_tuple(
         client_tag=message["client-tag"],
+        message_id=message["message-id"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_insert_timeout,
         timeout_message="archive-key-final-reply",
-        avatar_id=message["avatar-id"],
-        key=message["key"],
         sequence=0,
         version_number=message["version-number"],
         segment_number=message["segment-number"],
@@ -163,7 +170,6 @@ def _handle_archive_key_entire(state, message, data):
     )
     request = {
         "message-type"      : "key-insert",
-        "request-id"        : message["request-id"],
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
     }
@@ -173,28 +179,27 @@ def _handle_archive_key_entire(state, message, data):
 
 def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
-    log.info("avatar_id = %s, key = %s" % (
-        message["avatar-id"], message["key"], 
-    ))
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     reply = {
         "message-type"  : "archive-key-start-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request_id, something is wrong
-    if message["request-id"] in state:
-        error_string = "invalid duplicate request_id in ArchiveKeyEntire"
+    # if we already have a state entry for this request, something is wrong
+    if state_key in state["active-requests"]:
+        error_string = "invalid duplicate in ArchiveKeyEntire"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
-    file_name = _compute_filename(message["request-id"])
+    file_name = _compute_filename(message)
 
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
@@ -207,20 +212,19 @@ def _handle_archive_key_start(state, message, data):
             content_file.flush()
             os.fsync(content_file.fileno())
     except Exception, instance:
-        log.exception("%s %s" % (message["avatar-id"], message["key"], ))
+        log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = _request_state_tuple(
+    state["active-requests"][state_key] = _request_state_tuple(
         client_tag=message["client-tag"],
+        message_id=message["message-id"],
         timestamp=message["timestamp"],
         timeout=time.time()+_archive_timeout,
         timeout_message=None,
-        avatar_id=message["avatar-id"],
-        key=message["key"],
         sequence=message["sequence"],
         version_number=message["version-number"],
         segment_number=message["segment-number"],
@@ -233,36 +237,34 @@ def _handle_archive_key_start(state, message, data):
 
 def _handle_archive_key_next(state, message, data):
     log = logging.getLogger("_handle_archive_key_next")
+    state_key = _compute_state_key(message)
+    log.info("%s sequence %s" % (state_key, message["sequence"], ))
 
     try:
-        request_state = state["active-requests"].pop(message["request-id"])
+        request_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
-
-    log.info("avatar_id = %s, key = %s sequence = %s" % (
-        request_state.avatar_id, request_state.key, message["sequence"]
-    ))
 
     reply = {
         "message-type"  : "archive-key-next-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
 
     work_path = repository.content_input_path(
-        request_state.avatar_id, request_state.file_name
+        message["avatar-id"], request_state.file_name
     ) 
 
     # is this message is out of sequence, give up on the whole thing 
     if message["sequence"] != request_state.sequence+1:
         error_string = "%s %s message out of sequence %s %s" % (
-            request_state.avatar_id,
-            request_state.key,
+            message["avatar-id"],
+            message["key"],
             message["sequence"],
             request_state.sequence
         )
@@ -285,14 +287,14 @@ def _handle_archive_key_next(state, message, data):
             content_file.flush()
             os.fsync(content_file.fileno())
     except Exception, instance:
-        log.exception("%s %s" % (request_state.avatar_id, request_state.key, ))
+        log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = request_state._replace(
+    state["active-requests"][state_key] = request_state._replace(
         sequence=request_state.sequence+1,
         timeout=time.time()+_archive_timeout
     )
@@ -302,36 +304,33 @@ def _handle_archive_key_next(state, message, data):
 
 def _handle_archive_key_final(state, message, data):
     log = logging.getLogger("_handle_archive_key_final")
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     try:
-        request_state = state["active-requests"].pop(message["request-id"])
+        request_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
-
-    log.info("avatar_id = %s, key = %s" % (
-        request_state.avatar_id, request_state.key, 
-    ))
 
     reply = {
         "message-type"  : "archive-key-final-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
 
     work_path = repository.content_input_path(
-        request_state.avatar_id, request_state.file_name
+        message["avatar-id"], request_state.file_name
     ) 
 
     # is this message is out of sequence, give up on the whole thing 
     if message["sequence"] != request_state.sequence+1:
-        error_string = "%s %s message out of sequence %s %s" % (
-            request_state.avatar_id,
-            request_state.key,
+        error_string = "%s message out of sequence %s %s" % (
+            state_key,
             message["sequence"],
             request_state.sequence
         )
@@ -354,14 +353,14 @@ def _handle_archive_key_final(state, message, data):
             content_file.flush()
             os.fsync(content_file.fileno())
     except Exception, instance:
-        log.exception("%s %s" % (request_state.avatar_id, request_state.key, ))
+        log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
         reply["error_message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = request_state._replace(
+    state["active-requests"][state_key] = request_state._replace(
         client_tag=message["client-tag"],
         sequence=request_state.sequence+1,
         timeout=time.time()+_key_insert_timeout
@@ -385,9 +384,8 @@ def _handle_archive_key_final(state, message, data):
     )
     request = {
         "message-type"      : "key-insert",
-        "request-id"        : message["request-id"],
-        "avatar-id"         : request_state.avatar_id,
-        "key"               : request_state.key, 
+        "avatar-id"         : message["avatar-id"],
+        "key"               : message["key"], 
     }
     state["database-client"].queue_message_for_send(
         request, data=database_content.marshall(database_entry)
@@ -395,37 +393,35 @@ def _handle_archive_key_final(state, message, data):
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
-    log.info("avatar_id = %s, key = %s segment = %s" % (
-        message["avatar-id"], message["key"], message["segment-number"]
-    ))
+    state_key = _compute_state_key(message)
+    log.info("%s segment %s" % (state_key, message["segment-number"], ))
 
     reply = {
         "message-type"  : "destroy-key-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request_id, something is wrong
-    if message["request-id"] in state:
-        error_string = "invalid duplicate request_id in DestroyKey"
+    # if we already have a state entry for this request, something is wrong
+    if state_key in state["active-requests"]:
+        error_string = "invalid duplicate in DestroyKey"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
-    file_name = _compute_filename(message["request-id"])
+    file_name = _compute_filename(message)
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = _request_state_tuple(
+    state["active-requests"][state_key] = _request_state_tuple(
         client_tag=message["client-tag"],
+        message_id=message["message-id"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_destroy_timeout,
         timeout_message="destroy-key-reply",
-        avatar_id=message["avatar-id"],
-        key=message["key"],
         sequence=0,
         version_number=0,
         segment_number=0,
@@ -437,7 +433,6 @@ def _handle_destroy_key(state, message, _data):
     # coming back to us
     request = {
         "message-type"      : "key-destroy",
-        "request-id"        : message["request-id"],
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
         "version-number"    : message["version-number"],
@@ -448,37 +443,35 @@ def _handle_destroy_key(state, message, _data):
 
 def _handle_purge_key(state, message, _data):
     log = logging.getLogger("_handle_purge_key")
-    log.info("avatar_id = %s, key = %s segment = %s" % (
-        message["avatar-id"], message["key"], message["segment-number"]
-    ))
+    state_key = _compute_state_key(message)
+    log.info("%s segment = %s" % (state_key, message["segment-number"], ))
 
     reply = {
         "message-type"  : "purge-key-reply",
         "client-tag"    : message["client-tag"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request_id, something is wrong
-    if message["request-id"] in state:
-        error_string = "invalid duplicate request_id in PurgeKey"
+    # if we already have a state entry for this request, something is wrong
+    if state_key in state["active-requests"]:
+        error_string = "invalid duplicate request in PurgeKey"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
         reply["error_message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
-    file_name = _compute_filename(message["request-id"])
+    file_name = _compute_filename(message)
 
     # save stuff we need to recall in state
-    state["active-requests"][message["request-id"]] = _request_state_tuple(
+    state["active-requests"][state_key] = _request_state_tuple(
         client_tag=message["client-tag"],
+        message_id=message["message-id"],
         timestamp=message["timestamp"],
         timeout=time.time()+_key_purge_timeout,
         timeout_message="purge-key-reply",
-        avatar_id=message["avatar-id"],
-        key=message["key"],
         sequence=0,
         version_number=0,
         segment_number=0,
@@ -490,7 +483,6 @@ def _handle_purge_key(state, message, _data):
     # coming back to us
     request = {
         "message-type"      : "key-purge",
-        "request-id"        : message["request-id"],
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
         "version-number"    : message["version-number"],
@@ -501,36 +493,37 @@ def _handle_purge_key(state, message, _data):
 
 def _handle_key_insert_reply(state, message, _data):
     log = logging.getLogger("_handle_key_insert_reply")
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     try:
-        request_state = state["active-requests"].pop(message["request-id"])
+        request_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
 
     reply = {
         "message-type"  : "archive-key-final-reply",
         "client-tag"    : request_state.client_tag,
-        "request-id"    : message["request-id"],
+        "message-id"    : request_state.message_id,
         "result"        : None,
         "error-message" : None,
         "previous-size" : None
     }
 
     work_path = repository.content_input_path(
-        request_state.avatar_id, request_state.file_name
+        message["avatar-id"], request_state.file_name
     ) 
     content_path = repository.content_path(
-        request_state.avatar_id, request_state.file_name
+        message["avatar-id"], request_state.file_name
     ) 
 
     # if we got a database error, heave the data we stored
     if message["result"] != "success":
-        log.error("%s %s database error: (%s) %s removing %s" % (
-            request_state.avatar_id,
-            request_state.key,
+        log.error("%s database error: (%s) %s removing %s" % (
+            state_key,
             message["result"],
             message["error-message"],
             work_path
@@ -538,9 +531,8 @@ def _handle_key_insert_reply(state, message, _data):
         try:
             os.unlink(work_path)
         except Exception, instance:
-            log.exception("%s %s %s" % (
-                request_state.avatar_id, request_state.key, instance
-            ))    
+            log.exception("%s %s" % (state_key, instance))    
+
         reply["result"] = "database-error"
         reply["error_message"] = message["error-message"]
         state["resilient-server"].send_reply(reply)
@@ -557,9 +549,8 @@ def _handle_key_insert_reply(state, message, _data):
         finally:
             os.close(dirno)    
     except Exception, instance:
-        error_string = "%s %s renaming %s to %s %s" % (
-            request_state.avatar_id,
-            request_state.key,
+        error_string = "%s renaming %s to %s %s" % (
+            state_key,
             work_path,
             content_path,
             instance
@@ -576,19 +567,21 @@ def _handle_key_insert_reply(state, message, _data):
 
 def _handle_key_destroy_reply(state, message, _data):
     log = logging.getLogger("_handle_key_destroy_reply")
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     try:
-        request_state = state["active-requests"].pop(message["request-id"])
+        request_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
 
     reply = {
         "message-type"  : "destroy-key-reply",
         "client-tag"    : request_state.client_tag,
-        "request-id"    : message["request-id"],
+        "message-id"    : request_state.message_id,
         "result"        : None,
         "error-message" : None,
         "total-size"    : None,
@@ -596,9 +589,8 @@ def _handle_key_destroy_reply(state, message, _data):
 
     # if we got a database error, DON'T heave the data we stored
     if message["result"] != "success":
-        log.error("%s %s database error: (%s) %s" % (
-            request_state.avatar_id,
-            request_state.key,
+        log.error("%s database error: (%s) %s" % (
+            state_key,
             message["result"],
             message["error-message"],
         ))
@@ -612,7 +604,7 @@ def _handle_key_destroy_reply(state, message, _data):
         return
 
     content_path = repository.content_path(
-        request_state.avatar_id, request_state.file_name
+        message["avatar-id"], request_state.file_name
     ) 
 
     # now heave the stored data, if it exists
@@ -627,9 +619,8 @@ def _handle_key_destroy_reply(state, message, _data):
             finally:
                 os.close(dirno)    
         except Exception, instance:
-            error_string = "%s %s unlinking %s %s" % (
-                request_state.avatar_id,
-                request_state.key,
+            error_string = "%s unlinking %s %s" % (
+                state_key,
                 content_path,
                 instance
             )
@@ -645,28 +636,29 @@ def _handle_key_destroy_reply(state, message, _data):
 
 def _handle_key_purge_reply(state, message, _data):
     log = logging.getLogger("_handle_key_purge_reply")
+    state_key = _compute_state_key(message)
+    log.info("%s" % (state_key, ))
 
     try:
-        request_state = state["active-requests"].pop(message["request-id"])
+        request_state = state["active-requests"].pop(state_key)
     except KeyError:
         # if we don't have any state for this message body, there's nobody we 
         # can complain too
-        log.error("No state for %r" % (message["request-id"], ))
+        log.error("No state for %r" % (state_key, ))
         return []
 
     reply = {
         "message-type"  : "purge-key-reply",
         "client-tag"    : request_state.client_tag,
-        "request-id"    : message["request-id"],
+        "message-id"    : request_state.message_id,
         "result"        : None,
         "error-message" : None,
     }
 
     # if we got a database error, DON'T heave the data we stored
     if message["result"] != "success":
-        log.error("%s %s database error: (%s) %s" % (
-            request_state.avatar_id,
-            request_state.key,
+        log.error("%s database error: (%s) %s" % (
+            state_key,
             message["result"],
             message["error-message"],
         ))
@@ -680,7 +672,7 @@ def _handle_key_purge_reply(state, message, _data):
         return
 
     content_path = repository.content_path(
-        request_state.avatar_id, request_state.file_name
+        message["avatar-id"], request_state.file_name
     ) 
 
     # now heave the stored data, if it exists
@@ -695,9 +687,8 @@ def _handle_key_purge_reply(state, message, _data):
             finally:
                 os.close(dirno)    
         except Exception, instance:
-            error_string = "%s %s unlinking %s %s" % (
-                request_state.avatar_id,
-                request_state.key,
+            error_string = "%s unlinking %s %s" % (
+                state_key,
                 content_path,
                 instance
             )
@@ -807,8 +798,8 @@ def _tear_down(_state):
 
     log.info("saving state")
     pickleable_state = dict()
-    for request_id, request_state in state["active-requests"].items():
-        pickleable_state[request_id] = request_state._asdict()
+    for state_key, request_state in state["active-requests"].items():
+        pickleable_state[state_key] = request_state._asdict()
 
     save_state(pickleable_state, _persistent_state_file_name)
     log.debug("teardown complete")

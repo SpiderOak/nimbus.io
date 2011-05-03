@@ -28,6 +28,7 @@ _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
 _data_writer_address = "tcp://127.0.0.1:8100"
+_data_writer_pipeline_address = "tcp://127.0.0.1:8101"
 _client_address = "tcp://127.0.0.1:8900"
 
 class TestDataWriter(unittest.TestCase):
@@ -47,6 +48,7 @@ class TestDataWriter(unittest.TestCase):
         self._data_writer_process = start_data_writer(
             _local_node_name, 
             _data_writer_address, 
+            _data_writer_pipeline_address,
             _database_server_address,
             _repository_path
         )
@@ -69,12 +71,12 @@ class TestDataWriter(unittest.TestCase):
         """test archiving all data for a key in a single message"""
         segment_size = 64 * 1024
         content_item = random_string(segment_size) 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
         segment_number = 2
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         total_size = 10 * 64 * 1024
@@ -85,7 +87,7 @@ class TestDataWriter(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key, 
@@ -104,7 +106,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
@@ -125,7 +127,7 @@ class TestDataWriter(unittest.TestCase):
         version_number = 0
         segment_number = 4
         sequence = 0
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         file_adler32 = -42
@@ -135,7 +137,7 @@ class TestDataWriter(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-start",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "sequence"          : sequence,
@@ -151,7 +153,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=test_data[0]
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
         self.assertEqual(reply["result"], "success")
 
@@ -159,7 +161,9 @@ class TestDataWriter(unittest.TestCase):
             sequence += 1
             message = {
                 "message-type"      : "archive-key-next",
-                "request-id"        : request_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key, 
+                "message-id"        : message_id,
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
@@ -169,14 +173,16 @@ class TestDataWriter(unittest.TestCase):
                 message, 
                 data=content_item
             )
-            self.assertEqual(reply["request-id"], request_id)
+            self.assertEqual(reply["message-id"], message_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
             self.assertEqual(reply["result"], "success")
         
         sequence += 1
         message = {
             "message-type"      : "archive-key-final",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key, 
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,
@@ -191,7 +197,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=test_data[-1]
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
@@ -199,10 +205,10 @@ class TestDataWriter(unittest.TestCase):
     def _destroy(
         self, avatar_id, key, version_number, segment_number, timestamp
     ):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "destroy-key",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key,
@@ -215,7 +221,7 @@ class TestDataWriter(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "destroy-key-reply")
         
         return reply
@@ -223,10 +229,10 @@ class TestDataWriter(unittest.TestCase):
     def _purge(
         self, avatar_id, key, version_number, segment_number, timestamp
     ):
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "purge-key",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key,
@@ -239,7 +245,7 @@ class TestDataWriter(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "purge-key-reply")
 
         return reply
@@ -261,7 +267,7 @@ class TestDataWriter(unittest.TestCase):
         """test destroying a key that exists, with no complicatons"""
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
@@ -276,7 +282,7 @@ class TestDataWriter(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : archive_timestamp,
             "key"               : key, 
@@ -295,7 +301,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
@@ -312,7 +318,7 @@ class TestDataWriter(unittest.TestCase):
         """test destroying a key that has already been destroyed"""
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
@@ -328,7 +334,7 @@ class TestDataWriter(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : archive_timestamp,
             "key"               : key, 
@@ -347,7 +353,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
@@ -374,7 +380,7 @@ class TestDataWriter(unittest.TestCase):
         """
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
@@ -390,7 +396,7 @@ class TestDataWriter(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : archive_timestamp,
             "key"               : key, 
@@ -409,7 +415,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
@@ -437,7 +443,7 @@ class TestDataWriter(unittest.TestCase):
         """test purgeing a key that exists, with no complicatons"""
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        request_id = uuid.uuid1().hex
+        message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
         version_number = 0
@@ -452,7 +458,7 @@ class TestDataWriter(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "request-id"        : request_id,
+            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : archive_timestamp,
             "key"               : key, 
@@ -471,7 +477,7 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)

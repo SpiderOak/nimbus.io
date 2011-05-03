@@ -25,34 +25,37 @@ class StateCleaner(object):
                 
         current_time = time.time()
         overdue_requests = list()
-        for request_id, request_state in self._state["active-requests"].items():
+        for state_key, request_state in self._state["active-requests"].items():
             if halt_event.is_set():
                 return
             if current_time > request_state.timeout:
-                overdue_requests.append(request_id)
+                overdue_requests.append(state_key)
 
-        for request_id in overdue_requests:        
+        for state_key in overdue_requests:        
             if halt_event.is_set():
                 return
 
-            request_state = self._state["active-requests"].pop(request_id)
+            request_state = self._state["active-requests"].pop(state_key)
             self._log.warn("%s timed out waiting reply %s" % ( 
-                request_id, request_state
+                state_key, request_state
             ))
 
             if request_state.timeout_message is not None:
-                self._send_timeout_message(request_id, request_state)
+                self._send_timeout_message(state_key, request_state)
 
         return [(self.run, self.next_run(), )]
 
 
-    def _send_timeout_message(self, request_id, request_state):
+    def _send_timeout_message(self, state_key, request_state):
+        avatar_id, key = state_key
         reply = {
             "message-type"  : request_state.timeout_message,
-            "xrep-ident"    : request_state.xrep_ident,
-            "request-id"    : request_id,
+            "message-id"    : request_state.message_id,
+            "avatar-id"     : avatar_id,
+            "key"           : key,
             "result"        : "timed-out",
             "error-message" : "timed out waiting for message reply",
         }
-        self._state["xrep-server"].queue_message_for_send(reply)
+        self._state["resilient-server"].send_reply(reply)
+
 

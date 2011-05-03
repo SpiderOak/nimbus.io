@@ -61,6 +61,14 @@ class ResilientClient(object):
         self._xreq_socket.close()
 
     def queue_message_for_send(self, message_control, data=None):
+        """
+        queue a message for send (unless we can send it immediately)
+        if the message does not contain a message-id, we will supply one.
+        """
+
+        if not "message-id" in message_control:
+            message_control["message-id"] = uuid.uuid1().hex
+
         message = _message_format(control=message_control, body=data)
         if self._status is _status_connected and self._pending_message is None:
             self._send_message(message)

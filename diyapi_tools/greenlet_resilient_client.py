@@ -7,6 +7,8 @@ to a resilient server
 """
 from collections import deque, namedtuple
 import logging
+import os
+import random
 import time
 import uuid
 
@@ -18,7 +20,7 @@ from gevent_zeromq import zmq
 # our internal message format
 _message_format = namedtuple("Message", "control body")
 _polling_interval = 3.0
-_ack_timeout = 10.0
+_ack_timeout = float(os.environ.get("SPIDEROAK_DIYAPI_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
 _reporting_interval = 60.0
 
@@ -32,24 +34,69 @@ _status_name = {
     _status_disconnected    : "disconnected",
 }
 
-class _GreenletResilientClientState(object):
+class _GreenletResilientClientWatcher(Greenlet):
     """
-    a class that controls access to the mutable state of a resilient client.
+    A class to watch a resilient client and handle various timeouts
     """
-    def __init__(self, client_tag, client_address):
-        self._log = logging.getLogger("resilient-client-state-%s" % (
-            client_tag, 
+    def __init__(self, client):
+        Greenlet.__init__(self)
+        self._client = client
+        self._log = logging.getLogger(str(self))
+        self._prev_report_time = time.time()
+
+    def _run(self):
+
+        # start after a random interval so all watcher's aren't waking up at the
+        # same time.
+        gevent.sleep(_polling_interval * random.random())
+
+        while True:
+            self._client.test_current_status()
+
+            elapsed_time = time.time() - self._prev_report_time
+            if elapsed_time >= _reporting_interval:
+                self._client.report_current_status()
+                self._prev_report_time = time.time()
+
+            gevent.sleep(_polling_interval)
+
+    def __str__(self):
+        return "watcher-%s" % (self._client._server_address, )
+
+class GreenletResilientClient(object):
+    """
+    a class that manages a zeromq XREQ socket as a client
+    """
+    def __init__(
+        self, 
+        context, 
+        pollster,
+        server_address, 
+        client_tag, 
+        client_address,
+        deliverator
+    ):
+        self._log = logging.getLogger("ResilientClient-%s" % (
+            server_address, 
         ))
+
+        self._context = context
+        self._pollster = pollster
+        self._server_address = server_address
+
+        self._xreq_socket = None
+
         self._client_tag = client_tag
         self._client_address = client_address
-        # note that we treat pending_message as en extension of the queue
-        # it should be locked whenever the queue is locked
+        self._deliverator = deliverator
+
         self._send_queue = deque()
         self._pending_message = None
         self._pending_message_start_time = None
         self._lock = RLock()
-        self._status = _status_disconnected
+
         # set the status time low so we fire off a handshake
+        self._status = _status_disconnected
         self._status_time = 0.0
 
         self._dispatch_table = {
@@ -57,6 +104,10 @@ class _GreenletResilientClientState(object):
             _status_connected       : self._handle_status_connected,            
             _status_handshaking     : self._handle_status_handshaking,  
         }
+
+        self._watcher = _GreenletResilientClientWatcher(self)
+
+        self._watcher.start()
 
     def test_current_status(self):
         """
@@ -69,40 +120,133 @@ class _GreenletResilientClientState(object):
         finally:
             self._lock.release()
 
-    def queue_message_for_send(self, message):
-        """
-        If we are in a state such that the message can be sent immediately,
-            don't queue it
-            return False
-        otherwise
-            add the message to the queue
-            return True
-        """
+    def report_current_status(self):
+        self._lock.acquire()
+        try:
+            elapsed_time = time.time() - self._status_time
+            self._log.info("%s %d seconds; send queue size = %s" % (
+                _status_name[self._status], 
+                elapsed_time, 
+                len(self._send_queue)
+            ))
+        finally:
+            self._lock.release()
+
+    def _handle_status_disconnected(self):
+        elapsed_time = time.time() - self._status_time 
+        if elapsed_time < _handshake_retry_interval:
+            return
+
+        assert self._xreq_socket is None
+        self._xreq_socket = self._context.socket(zmq.XREQ)
+        self._log.debug("connecting to server")
+        self._xreq_socket.connect(self._server_address)
+        self._pollster.register_read(
+            self._xreq_socket, self._pollster_callback
+        )
+
+        message = {
+            "message-type"      : "resilient-server-handshake",
+            "message-id"        : uuid.uuid1().hex,
+            "client-tag"        : self._client_tag,
+            "client-address"    : self._client_address,
+        }
+        message = _message_format(control=message, body=None)
+        self._pending_message = message
+        self._pending_message_start_time = time.time()
+        self._status = _status_handshaking
+        self._status_time = time.time()
+
+        self._send_message(message)
+
+    def _handle_status_connected(self):
+        if  self._pending_message is None:
+            return
+
+        elapsed_time = time.time() - self._pending_message_start_time
+        if elapsed_time < _ack_timeout:
+            return
+
+        self._log.warn(
+            "timeout waiting ack: treating as disconnect %s" % (
+                self._pending_message.control,
+            )
+        )
+
+        assert self._xreq_socket is not None
+        self._pollster.unregister(self._xreq_socket)
+        self._xreq_socket.close()
+        self._xreq_socket = None
+
+        self._status = _status_disconnected
+        self._status_time = time.time()
+
+        # put the message at the head of the send queue 
+        self._send_queue.appendleft(self._pending_message)
+        self._pending_message = None
+        self._pending_message_start_time = None
+
+    def _handle_status_handshaking(self):    
+        assert self._pending_message is not None
+        elapsed_time = time.time() - self._pending_message_start_time
+        if elapsed_time < _ack_timeout:
+            return
+
+        self._log.warn("timeout waiting handshake ack")
+
+        self._pollster.unregister(self._xreq_socket)
+        assert self._xreq_socket is not None
+        self._xreq_socket.close()
+        self._xreq_socket = None
+
+        self._status = _status_disconnected
+        self._status_time = time.time()
+        self._pending_message = None
+        self._pending_message_start_time = None
+
+    def close(self):
+        self._watcher.kill()
+        self._watcher.join()
+        if self._xreq_socket is not None:
+            self._pollster.unregister(self._xreq_socket)
+            self._xreq_socket.close()
+
+    def queue_message_for_send(self, message_control, data=None):
+
+        if not "message-id" in message_control:
+            message_control["message-id"] = uuid.uuid1().hex
+
+        message_id = message_control["message-id"]
+        delivery_channel = self._deliverator.add_request(message_id)
+
+        message = _message_format(control=message_control, body=data)
+
+        # if we don't queue the message, that means we can send it right now
         self._lock.acquire()
         try:
             if self._status is _status_connected \
             and self._pending_message is None:
                 self._pending_message = message
                 self._pending_message_start_time = time.time()
-                return False
-        
-            self._send_queue.append(message)
-            return True
+                self._send_message(message)
+            else:
+                self._send_queue.append(message)
 
         finally:
             self._lock.release()
 
-    def test_incoming_message(self, message):
-        """
-        if this is an ack to an internal (handshake) message
-            set status to connected
+        return delivery_channel
 
-        if this message is the ack we are expecting
-        and we can pop a message from the send queue
-            return that message
-        """
+    def _pollster_callback(self, _active_socket, readable, writable):
         self._lock.acquire()
         try:
+            message = self._receive_message()     
+
+            # if we get None, that means the socket would have blocked
+            # go back and wait for more
+            if message is None:
+                return None
+
             if self._pending_message is None:
                 self._log.error("Unexpected message: %s" % (message.control, ))
                 return
@@ -136,184 +280,28 @@ class _GreenletResilientClientState(object):
             self._pending_message = message_to_send
             self._pending_message_start_time = time.time()
 
-            return message_to_send
-        finally:
-            self._lock.release()
-
-    def report_current_status(self):
-        self._lock.acquire()
-        try:
-            elapsed_time = time.time() - self._status_time
-            self._log.info("%s %d seconds; send queue size = %s" % (
-                _status_name[self._status], 
-                elapsed_time, 
-                len(self._send_queue)
-            ))
-        finally:
-            self._lock.release()
-
-    def _handle_status_disconnected(self):
-        elapsed_time = time.time() - self._status_time 
-        if elapsed_time < _handshake_retry_interval:
-            return
-
-        message = {
-            "message-type"      : "resilient-server-handshake",
-            "message-id"        : uuid.uuid1().hex,
-            "client-tag"        : self._client_tag,
-            "client-address"    : self._client_address,
-        }
-        message = _message_format(control=message, body=None)
-        self._pending_message = message
-        self._pending_message_start_time = time.time()
-        self._status = _status_handshaking
-        self._status_time = time.time()
-
-        return message
-
-    def _handle_status_connected(self):
-        if  self._pending_message is None:
-            return
-
-        elapsed_time = time.time() - self._pending_message_start_time
-        if elapsed_time < _ack_timeout:
-            return
-
-        self._log.warn(
-            "timeout waiting ack: treating as disconnect %s" % (
-                self._pending_message.control,
-            )
-        )
-        self._status = _status_disconnected
-        self._status_time = time.time()
-        # put the message at the head of the send queue 
-        self._send_queue.appendleft(self._pending_message)
-        self._pending_message = None
-        self._pending_message_start_time = None
-
-    def _handle_status_handshaking(self):    
-        assert self._pending_message is not None
-        elapsed_time = time.time() - self._pending_message_start_time
-        if elapsed_time < _ack_timeout:
-            return
-
-        self._log.warn("timeout waiting handshake ack")
-        self._status = _status_disconnected
-        self._status_time = time.time()
-        self._pending_message = None
-        self._pending_message_start_time = None
-
-class _GreenletResilientClentStateWatcher(Greenlet):
-    """
-    A class to watch the mustable state of a resilient client and handle 
-    various timeouts
-    """
-    def __init__(self, client_tag, state, send_function):
-        Greenlet.__init__(self)
-        self._client_tag = client_tag
-        self._state = state
-        self._send_function = send_function
-        self._log = logging.getLogger(str(self))
-        self._prev_report_time = time.time()
-
-    def _run(self):
-        while True:
-            message_to_send = self._state.test_current_status()
-            if message_to_send is not None:
-                self._send_function(message_to_send)
-            elapsed_time = time.time() - self._prev_report_time
-            if elapsed_time >= _reporting_interval:
-                self._state.report_current_status()
-                self._prev_report_time = time.time()
-            gevent.sleep(_polling_interval)
-
-    def __str__(self):
-        return "state-watcher-%s" % (self._client_tag, )
-
-class GreenletResilientClient(object):
-    """
-    a class that manages a zeromq XREQ socket as a client
-    """
-    def __init__(
-        self, 
-        context, 
-        server_address, 
-        client_tag, 
-        client_address,
-        deliverator
-    ):
-        self._log = logging.getLogger("ResilientClient-%s" % (
-            server_address, 
-        ))
-
-        self._xreq_socket = context.socket(zmq.XREQ)
-        self._log.debug("connecting")
-        self._xreq_socket.connect(server_address)
-
-        self._client_tag = client_tag
-        self._client_address = client_address
-        self._deliverator = deliverator
-
-        self._state = _GreenletResilientClientState(client_tag, client_address)
-        self._state_watcher = _GreenletResilientClentStateWatcher(
-            client_tag, self._state, self._send_message
-        )
-        self._state_watcher.start()
-
-    def register(self, pollster):
-        pollster.register_read(
-            self._xreq_socket, self._pollster_callback
-        )
-
-    def unregister(self, pollster):
-        pollster.unregister(self._xreq_socket)
-
-    def close(self):
-        self._state_watcher.kill()
-        self._state_watcher.join()
-        self._xreq_socket.close()
-
-    def queue_message_for_send(self, message_control, data=None):
-
-        if not "message-id" in message_control:
-            message_control["message-id"] = uuid.uuid1().hex
-
-        message_id = message_control["message-id"]
-        delivery_channel = self._deliverator.add_request(message_id)
-
-        message = _message_format(control=message_control, body=data)
-
-        # if we don't queue the message, that means we can send it right now
-        if not self._state.queue_message_for_send(message):
-            self._send_message(message)
-
-        return delivery_channel
-
-    def _pollster_callback(self, _active_socket, readable, writable):
-        message = self._receive_message()     
-
-        # if we get None, that means the socket would have blocked
-        # go back and wait for more
-        if message is None:
-            return None
-
-        message_to_send = self._state.test_incoming_message(message)
-
-        if message_to_send is not None:
             self._send_message(message_to_send)
+        finally:
+            self._lock.release()
 
     def _send_message(self, message):
         self._log.info("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
-        if message.body is not None:
-            self._xreq_socket.send_json(message.control, zmq.SNDMORE)
-            if type(message.body) not in [list, tuple, ]:
+
+        # don't send a zero size body 
+        if type(message.body) not in [list, tuple, type(None), ]:
+            if len(message.body) == 0:
+                message = message._replace(body=None)
+            else:
                 message = message._replace(body=[message.body, ])
+
+        if message.body is None:
+            self._xreq_socket.send_json(message.control)
+        else:
+            self._xreq_socket.send_json(message.control, zmq.SNDMORE)
             for segment in message.body[:-1]:
                 self._xreq_socket.send(segment, zmq.SNDMORE)
             self._xreq_socket.send(message.body[-1])
-        else:
-            self._xreq_socket.send_json(message.control)
 
     def _receive_message(self):
         # we should only be receiving ack, so we don't
@@ -325,4 +313,6 @@ class GreenletResilientClient(object):
                 self._log.warn("socket would have blocked")
                 return None
             raise
+
+        assert not self._xreq_socket.rcvmore()
 

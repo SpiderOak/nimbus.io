@@ -87,12 +87,12 @@ class WebServer(object):
         ):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
+                self._pollster,
                 data_writer_address,
                 CLIENT_TAG,
                 WEB_SERVER_PIPELINE_ADDRESS,
                 self._deliverator
             )
-            resilient_client.register(self._pollster)
             data_writer = DataWriter(
                 node_name, resilient_client
             )
@@ -104,12 +104,12 @@ class WebServer(object):
         ):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
+                self._pollster,
                 data_reader_address,
                 CLIENT_TAG,
                 WEB_SERVER_PIPELINE_ADDRESS,
                 self._deliverator
             )
-            resilient_client.register(self._pollster)
             data_reader = DataReader(
                 node_name, resilient_client
             )
@@ -121,12 +121,12 @@ class WebServer(object):
         ):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
+                self._pollster,
                 database_server_address,
                 CLIENT_TAG,
                 WEB_SERVER_PIPELINE_ADDRESS,
                 self._deliverator
             )
-            resilient_client.register(self._pollster)
             database_client = DatabaseClient(
                 node_name, resilient_client
             )

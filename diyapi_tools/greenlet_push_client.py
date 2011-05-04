@@ -5,7 +5,6 @@ greenlet_push_client.py
 a class that manages a zeromq PUSH socket as a client,
 The purpose is to have multiple clients pushing to a single PULL server
 """
-from collections import namedtuple
 import logging
 
 from gevent_zeromq import zmq
@@ -27,13 +26,19 @@ class GreenletPUSHClient(object):
 
     def send(self, message, data=None):
         self._log.info("sending message: %s" % (message))
-        if data is not None:
-            self._push_socket.send_json(message, zmq.SNDMORE)
-            if type(data) not in [list, tuple, ]:
+
+        # don't send a zero size body 
+        if type(data) not in [list, tuple, type(None), ]:
+            if len(data) == 0:
+                data = None
+            else:
                 data = [data, ]
+
+        if data is None:
+            self._push_socket.send_json(message)
+        else:
+            self._push_socket.send_json(message, zmq.SNDMORE)
             for segment in data[:-1]:
                 self._push_socket.send(segment, zmq.SNDMORE)
             self._push_socket.send(data[-1])
-        else:
-            self._push_socket.send_json(message)
 

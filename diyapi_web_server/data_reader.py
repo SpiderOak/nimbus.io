@@ -28,9 +28,10 @@ class DataReader(object):
             "version-number"    : version_number,
             "segment-number"    : segment_number
         }
-        delivery_channel = self._resilient_client.queue_message_for_send(message)
+        delivery_channel = \
+                self._resilient_client.queue_message_for_send(message)
         self._log.debug(
-            '%(message-type)s: '
+            '%(message-type)s: %(avatar-id)s '
             'key = %(key)r '
             'segment_number = %(segment-number)d' % message
             )
@@ -42,15 +43,20 @@ class DataReader(object):
 
     def retrieve_key_next(
         self,
+        avatar_id,
+        key,
         sequence_number
     ):
         message = {
             "message-type"      : "retrieve-key-next",
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence_number,
         }
-        delivery_channel = self._resilient_client.queue_message_for_send(message)
+        delivery_channel = \
+                self._resilient_client.queue_message_for_send(message)
         self._log.debug(
-            '%(message-type)s: '
+            '%(message-type)s: %(avatar-id)s %(key)s '
             'sequence_number = %(sequence)d' % message
             )
         reply, data = delivery_channel.get()
@@ -61,15 +67,20 @@ class DataReader(object):
 
     def retrieve_key_final(
         self,
+        avatar_id,
+        key,
         sequence_number
     ):
         message = {
             "message-type"      : "retrieve-key-final",
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence_number,
         }
-        delivery_channel = self._resilient_client.queue_message_for_send(message)
+        delivery_channel = \
+                self._resilient_client.queue_message_for_send(message)
         self._log.debug(
-            '%(message-type)s: '
+            '%(message-type)s: %(avatar-id)s %(key)s '
             'sequence_number = %(sequence)d' % message
             )
         reply, data = delivery_channel.get()

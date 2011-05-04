@@ -112,10 +112,10 @@ def _handle_archive_key_entire(state, message, data):
 
     # if we already have a state entry for this request, something is wrong
     if state_key in state["active-requests"]:
-        error_string = "invalid duplicate in ArchiveKeyEntire"
+        error_string = "invalid duplicate in archive-key-entire"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -134,7 +134,7 @@ def _handle_archive_key_entire(state, message, data):
     except Exception, instance:
         log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
@@ -192,10 +192,10 @@ def _handle_archive_key_start(state, message, data):
 
     # if we already have a state entry for this request, something is wrong
     if state_key in state["active-requests"]:
-        error_string = "invalid duplicate in ArchiveKeyEntire"
+        error_string = "invalid duplicate in archive-key-start"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -214,7 +214,7 @@ def _handle_archive_key_start(state, message, data):
     except Exception, instance:
         log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
@@ -274,7 +274,7 @@ def _handle_archive_key_next(state, message, data):
         except Exception:
             log.exception("error")
         reply["result"] = "out-of-sequence"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -289,7 +289,7 @@ def _handle_archive_key_next(state, message, data):
     except Exception, instance:
         log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
@@ -340,7 +340,7 @@ def _handle_archive_key_final(state, message, data):
         except Exception:
             log.exception("error")
         reply["result"] = "out-of-sequence"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -355,12 +355,13 @@ def _handle_archive_key_final(state, message, data):
     except Exception, instance:
         log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
     # save stuff we need to recall in state
     state["active-requests"][state_key] = request_state._replace(
+        message_id=message["message-id"],
         sequence=request_state.sequence+1,
         timeout=time.time()+_key_insert_timeout
     )
@@ -405,10 +406,10 @@ def _handle_destroy_key(state, message, _data):
 
     # if we already have a state entry for this request, something is wrong
     if state_key in state["active-requests"]:
-        error_string = "invalid duplicate in DestroyKey"
+        error_string = "invalid duplicate in destroy-key"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -455,10 +456,10 @@ def _handle_purge_key(state, message, _data):
 
     # if we already have a state entry for this request, something is wrong
     if state_key in state["active-requests"]:
-        error_string = "invalid duplicate request in PurgeKey"
+        error_string = "invalid duplicate request in purge-key"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -533,7 +534,7 @@ def _handle_key_insert_reply(state, message, _data):
             log.exception("%s %s" % (state_key, instance))    
 
         reply["result"] = "database-error"
-        reply["error_message"] = message["error-message"]
+        reply["error-message"] = message["error-message"]
         state["resilient-server"].send_reply(reply)
         return
 
@@ -556,7 +557,7 @@ def _handle_key_insert_reply(state, message, _data):
         )
         log.exception(error_string)
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
     
@@ -598,7 +599,7 @@ def _handle_key_destroy_reply(state, message, _data):
             reply["result"] = "too-old"
         else:
             reply["result"] = "database-error"
-        reply["error_message"] = message["error-message"]
+        reply["error-message"] = message["error-message"]
         state["resilient-server"].send_reply(reply)
         return
 
@@ -625,7 +626,7 @@ def _handle_key_destroy_reply(state, message, _data):
             )
             log.exception(error_string)
             reply["result"] = "exception"
-            reply["error_message"] = error_string
+            reply["error-message"] = error_string
             state["resilient-server"].send_reply(reply)
             return
   
@@ -666,7 +667,7 @@ def _handle_key_purge_reply(state, message, _data):
             reply["result"] = "no-such-key"
         else:
             reply["result"] = "database-error"
-        reply["error_message"] = message["error-message"]
+        reply["error-message"] = message["error-message"]
         state["resilient-server"].send_reply(reply)
         return
 
@@ -693,7 +694,7 @@ def _handle_key_purge_reply(state, message, _data):
             )
             log.exception(error_string)
             reply["result"] = "exception"
-            reply["error_message"] = error_string
+            reply["error-message"] = error_string
             state["resilient-server"].send_reply(reply)
             return
   

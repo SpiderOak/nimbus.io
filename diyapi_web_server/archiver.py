@@ -4,7 +4,6 @@ archiver.py
 
 A class that sends data segments to data writers.
 """
-import sys
 import logging
 import hashlib
 import zlib
@@ -129,6 +128,8 @@ class Archiver(object):
                         segment_number,
                         data_writer,
                         data_writer.archive_key_next,
+                        self.avatar_id,
+                        self.key,
                         self.sequence_number,
                         segment
                     )
@@ -136,8 +137,14 @@ class Archiver(object):
         self._done = []
         self.sequence_number += 1
 
-    def archive_final(self, file_size, file_adler32, file_md5,
-                      segments, timeout=None):
+    def archive_final(
+        self, 
+        file_size, 
+        file_adler32, 
+        file_md5,
+        segments, 
+        timeout=None
+    ):
         if self._pending:
             raise AlreadyInProgress()
         for i, segment in enumerate(segments):
@@ -175,6 +182,8 @@ class Archiver(object):
                         segment_number,
                         data_writer,
                         data_writer.archive_key_final,
+                        self.avatar_id,
+                        self.key,
                         self.sequence_number,
                         file_size,
                         file_adler32,
@@ -188,3 +197,4 @@ class Archiver(object):
         result = sum([task.value for task in self._done])
         self._done = []
         return result
+

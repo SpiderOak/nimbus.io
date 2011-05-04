@@ -83,6 +83,8 @@ class Retriever(object):
                     segment_number,
                     data_reader,
                     data_reader.retrieve_key_next,
+                    self.avatar_id,
+                    self.key,
                     self.sequence_number
                 )
             self._join(timeout)
@@ -99,6 +101,8 @@ class Retriever(object):
                 segment_number,
                 data_reader,
                 data_reader.retrieve_key_final,
+                self._avatar_id,
+                self.key,
                 self.sequence_number
             )
         self._join(timeout)

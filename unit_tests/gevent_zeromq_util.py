@@ -50,12 +50,12 @@ def send_request_and_get_reply_and_data(
 
     resilient_client = GreenletResilientClient(
         context,
+        pollster,
         server_address,
         client_tag,
         client_address,
         deliverator,
     )
-    resilient_client.register(pollster)
 
     pollster.start()
 

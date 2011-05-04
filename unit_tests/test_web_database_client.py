@@ -65,12 +65,12 @@ class TestWebDatabaseClient(unittest.TestCase):
 
         self._client = GreenletResilientClient(
             self._zeromq_context, 
+            self._pollster,
             _database_server_address,
             _local_node_name, 
             _client_pull_server_address,
             self._deliverator
         )
-        self._client.register(self._pollster)
 
         self._database_client = DatabaseClient(
             _local_node_name, self._client

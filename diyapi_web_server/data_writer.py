@@ -5,7 +5,6 @@ data_writer.py
 A class that represents a data writer in the system.
 """
 from base64 import b64encode
-import os
 import logging
 
 import gevent
@@ -101,18 +100,22 @@ class DataWriter(object):
 
     def archive_key_next(
         self,
+        avatar_id,
+        key,
         sequence_number,
         segment
     ):
         message = {
             "message-type"      : "archive-key-next",
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence_number,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
         self._log.debug(
-            '%s(message-type): '
+            '%(message-type)s: %(avatar-id)s $(key)s '
             'sequence = %(sequence)s' % message
             )
         reply, _data = delivery_channel.get()
@@ -122,6 +125,8 @@ class DataWriter(object):
 
     def archive_key_final(
         self,
+        avatar_id,
+        key,
         sequence_number,
         file_size,
         file_adler32,
@@ -132,6 +137,8 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-final",
+            "avatar-id"         : avatar_id,
+            "key"               : key,
             "sequence"          : sequence_number,
             "total-size"        : file_size,
             "file-adler32"      : file_adler32,
@@ -142,13 +149,12 @@ class DataWriter(object):
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
-        self._log.debug(
-            '%(message-type)s: '
-            )
+        self._log.debug('%(message-type)s: %(avatar-id)s %(key)s' % message)
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
+
         self._log.debug('previous_size = %(previous-size)r' % reply)
         return reply["previous-size"]
 
@@ -168,9 +174,11 @@ class DataWriter(object):
             "version-number"    : version_number,
             "segment-number"    : segment_number,
         }
-        delivery_channel = self._resilient_client.queue_message_for_send(message)
+        delivery_channel = \
+                self._resilient_client.queue_message_for_send(message)
+
         self._log.debug(
-            '%s(message-type): '
+            '%(message-type)s: '
             'key = %(key)r '
             'segment_number = %(segment-number)d' % message
             )

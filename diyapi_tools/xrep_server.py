@@ -80,15 +80,21 @@ class XREPServer(object):
     def _send_message(self, message):
         self._log.info("sending message: %s" % (message.control, ))
         self._xrep_socket.send(message.ident, zmq.SNDMORE)
-        if message.body is not None:
-            self._xrep_socket.send_json(message.control, zmq.SNDMORE)
-            if type(message.body) not in [list, tuple, ]:
+
+        # don't send a zero size body 
+        if type(message.body) not in [list, tuple, type(None), ]:
+            if len(message.body) == 0:
+                message = message._replace(body=None)
+            else:
                 message = message._replace(body=[message.body, ])
+
+        if message.body is None:
+            self._xrep_socket.send_json(message.control)
+        else:
+            self._xrep_socket.send_json(message.control, zmq.SNDMORE)
             for segment in message.body[:-1]:
                 self._xrep_socket.send(segment, zmq.SNDMORE)
             self._xrep_socket.send(message.body[-1])
-        else:
-            self._xrep_socket.send_json(message.control)
 
     def _receive_message(self):
         try:

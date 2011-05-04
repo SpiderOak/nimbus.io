@@ -89,7 +89,7 @@ def _handle_retrieve_key_start(state, message, _data):
         error_string = "invalid duplicate request in RetrieveKeyStart"
         log.error(error_string)
         reply["result"] = "invalid-duplicate"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -153,7 +153,7 @@ def _handle_retrieve_key_next(state, message, _data):
         )
         log.error(error_string)
         reply["result"] = "out-of-sequence"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -171,7 +171,7 @@ def _handle_retrieve_key_next(state, message, _data):
     except Exception, instance:
         log.exception("%s" % (state_key, ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
@@ -218,7 +218,7 @@ def _handle_retrieve_key_final(state, message, _data):
         )
         log.error(error_string)
         reply["result"] = "out-of-sequence"
-        reply["error_message"] = error_string
+        reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
 
@@ -239,7 +239,7 @@ def _handle_retrieve_key_final(state, message, _data):
             message["key"],
         ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 
@@ -283,7 +283,7 @@ def _handle_key_lookup_reply(state, message, data):
             message["error-message"],
         ))
         reply["result"] = "database-error"
-        reply["error_message"] = message["error-message"]
+        reply["error-message"] = message["error-message"]
         state["resilient-server"].send_reply(reply)
         return
 
@@ -296,7 +296,7 @@ def _handle_key_lookup_reply(state, message, data):
             message["key"],
         ))
         reply["result"] = "no-such-key"
-        reply["error_message"] = "is tombstone"
+        reply["error-message"] = "is tombstone"
         state["resilient-server"].send_reply(reply)
         return
 
@@ -314,7 +314,7 @@ def _handle_key_lookup_reply(state, message, data):
             message["key"],
         ))
         reply["result"] = "exception"
-        reply["error_message"] = str(instance)
+        reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
         return
 

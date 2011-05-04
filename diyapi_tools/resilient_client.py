@@ -102,7 +102,7 @@ class ResilientClient(object):
         expected_message_id = self._pending_message.control["message-id"]
         if message["message-id"] != expected_message_id:
             self._log.error("unknown ack %s expecting %s" %(
-                message, self._pending_message 
+                message.control, self._pending_message.control 
             ))
             return
 
@@ -126,15 +126,21 @@ class ResilientClient(object):
     def _send_message(self, message):
         self._log.info("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
-        if message.body is not None:
-            self._xreq_socket.send_json(message.control, zmq.SNDMORE)
-            if type(message.body) not in [list, tuple, ]:
+
+        # don't send a zero size body 
+        if type(message.body) not in [list, tuple, type(None), ]:
+            if len(message.body) == 0:
+                message = message._replace(body=None)
+            else:
                 message = message._replace(body=[message.body, ])
+
+        if message.body is None:
+            self._xreq_socket.send_json(message.control)
+        else:
+            self._xreq_socket.send_json(message.control, zmq.SNDMORE)
             for segment in message.body[:-1]:
                 self._xreq_socket.send(segment, zmq.SNDMORE)
             self._xreq_socket.send(message.body[-1])
-        else:
-            self._xreq_socket.send_json(message.control)
 
         self._pending_message = message
         self._pending_message_start_time = time.time()
@@ -149,6 +155,8 @@ class ResilientClient(object):
                 self._log.warn("socket would have blocked")
                 return None
             raise
+
+        assert not self._xreq_socket.rcvmore()
 
     def run(self, halt_event):
         """

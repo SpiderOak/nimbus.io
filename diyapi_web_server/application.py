@@ -33,6 +33,7 @@ from diyapi_web_server.retriever import Retriever
 # we don't want anything tming out until we straighten out handoffs
 EXCHANGE_TIMEOUT = 60 * 60  # sec
 SLICE_SIZE = 1024 * 1024    # 1MB
+MIN_SEGMENTS = 10
 
 
 class router(list):
@@ -129,7 +130,7 @@ class Application(object):
         avatar_id = req.remote_user
         getter = StatGetter(
             self.database_clients,
-            8 # TODO: min_segments
+            MIN_SEGMENTS
         )
         try:
             stat = getter.stat(avatar_id, path, EXCHANGE_TIMEOUT)
@@ -150,7 +151,7 @@ class Application(object):
         avatar_id = req.remote_user
         matcher = Listmatcher(
             self.database_clients,
-            8 # TODO: min_segments
+            MIN_SEGMENTS
         )
         try:
             keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
@@ -190,13 +191,13 @@ class Application(object):
         avatar_id = req.remote_user
         timestamp = time.time()
         segmenter = ZfecSegmenter(
-            8, # TODO: min_segments
+            8,
             len(self.data_readers))
         retriever = Retriever(
             self.data_readers,
             avatar_id,
             key,
-            8 # TODO: min_segments
+            MIN_SEGMENTS
         )
         retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)
         try:
@@ -237,7 +238,7 @@ class Application(object):
             timestamp
         )
         segmenter = ZfecSegmenter(
-            8, # TODO: min_segments
+            8,
             len(self.data_writers))
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()

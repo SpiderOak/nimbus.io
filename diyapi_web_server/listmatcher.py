@@ -7,7 +7,7 @@ A class that performs a listmatch query.
 from collections import defaultdict
 
 import gevent
-from gevent.pool import GreenletSet
+import gevent.pool
 
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
@@ -20,7 +20,7 @@ class Listmatcher(object):
     def __init__(self, database_clients, agreement_level):
         self.database_clients = database_clients
         self.agreement_level = agreement_level
-        self._pending = GreenletSet()
+        self._pending = gevent.pool.Group()
         self._done = []
 
     def _join(self, timeout):

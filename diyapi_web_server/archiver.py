@@ -10,7 +10,7 @@ import zlib
 from collections import defaultdict
 
 import gevent
-from gevent.pool import GreenletSet
+import gevent.pool
 
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
@@ -35,7 +35,7 @@ class Archiver(object):
         self._adler32s = {}
         self._md5s = defaultdict(hashlib.md5)
         self._handoff_writers = defaultdict(list)
-        self._pending = GreenletSet()
+        self._pending = gevent.pool.Group()
         self._done = []
 
     def _join(self, timeout, handoff=False):

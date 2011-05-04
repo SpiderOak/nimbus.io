@@ -7,7 +7,7 @@ A class that retrieves data from data readers.
 import logging
 
 import gevent
-from gevent.pool import GreenletSet
+import gevent.pool
 
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
@@ -28,7 +28,7 @@ class Retriever(object):
         self.segments_needed = segments_needed
         self.sequence_number = 0
         self.n_slices = None
-        self._pending = GreenletSet()
+        self._pending = gevent.pool.Group()
         self._done = []
 
     def _join(self, timeout):

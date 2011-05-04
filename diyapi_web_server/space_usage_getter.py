@@ -6,7 +6,6 @@ A class that performs a space_usage query.
 """
 
 import gevent
-from gevent.pool import GreenletSet
 
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,

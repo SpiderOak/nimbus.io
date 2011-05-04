@@ -7,7 +7,7 @@ A class that performs a destroy query on all data writers.
 import logging
 
 import gevent
-from gevent.pool import GreenletSet
+import gevent.pool
 
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
@@ -20,7 +20,7 @@ class Destroyer(object):
     def __init__(self, data_writers):
         self.log = logging.getLogger('Destroyer()')
         self.data_writers = data_writers
-        self._pending = GreenletSet()
+        self._pending = gevent.pool.Group()
         self._done = []
 
     def _join(self, timeout, handoff=False):

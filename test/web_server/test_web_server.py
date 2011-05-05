@@ -73,7 +73,7 @@ class TestWebServer(unittest.TestCase):
             return resp.read()
         return resp
 
-    def xxxtest_unauthorized_when_auth_header_missing(self):
+    def test_unauthorized_when_auth_header_missing(self):
         log = logging.getLogger('test_unauthorized_when_auth_header_missing')
         log.info('start')
         try:
@@ -84,7 +84,7 @@ class TestWebServer(unittest.TestCase):
         else:
             raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
 
-    def xxxtest_unauthorized_with_bad_credentials(self):
+    def test_unauthorized_with_bad_credentials(self):
         log = logging.getLogger('test_unauthorized_with_bad_credentials')
         log.info('start')
         try:
@@ -96,7 +96,7 @@ class TestWebServer(unittest.TestCase):
         else:
             raise AssertionError('was expecting a 401 but got %d: %r' % (resp.code, resp.read()))
 
-    def xxxtest_upload_0_bytes(self):
+    def test_upload_0_bytes(self):
         log = logging.getLogger('test_upload_0_bytes')
         log.info('start')
         content = ''
@@ -105,7 +105,7 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/' + key, content)
         self.assertEqual(result, 'OK')
 
-    def xxxtest_upload_0_bytes_and_listmatch(self):
+    def test_upload_0_bytes_and_listmatch(self):
         log = logging.getLogger('test_upload_0_bytes_and_listmatch')
         log.info('start')
         content = ''
@@ -117,7 +117,7 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/test-key?action=listmatch')
         self.assertEqual(json.loads(result), [key])
 
-    def xxxtest_upload_0_bytes_and_retrieve(self):
+    def test_upload_0_bytes_and_retrieve(self):
         log = logging.getLogger('test_upload_0_bytes_and_retrieve')
         log.info('start')
         content = ''
@@ -130,7 +130,7 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
-    def xxxtest_upload_small(self):
+    def test_upload_small(self):
         log = logging.getLogger('test_upload_small')
         log.info('start')
         content = random_string(64 * 1024)
@@ -139,7 +139,7 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/' + key, content)
         self.assertEqual(result, 'OK')
 
-    def xxxtest_upload_small_and_listmatch(self):
+    def test_upload_small_and_listmatch(self):
         log = logging.getLogger('test_upload_small_and_listmatch')
         log.info('start')
         content = random_string(64 * 1024)
@@ -151,7 +151,7 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/test-key?action=listmatch')
         self.assertEqual(json.loads(result), [key])
 
-    def xxxtest_upload_small_and_retrieve(self):
+    def test_upload_small_and_retrieve(self):
         log = logging.getLogger('test_upload_small_and_retrieve')
         log.info('start')
         content = random_string(64 * 1024)
@@ -164,7 +164,7 @@ class TestWebServer(unittest.TestCase):
         self.assertEqual(len(result), len(content))
         self.assertEqual(result, content)
 
-    def xxxtest_upload_small_and_stat(self):
+    def test_upload_small_and_stat(self):
         log = logging.getLogger('test_upload_small_and_stat')
         log.info('start')
         content = random_string(64 * 1024)
@@ -189,7 +189,7 @@ class TestWebServer(unittest.TestCase):
         self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
         self.assertEqual(result, stat)
 
-    def xxxtest_retrieve_nonexistent_key(self):
+    def test_retrieve_nonexistent_key(self):
         log = logging.getLogger('test_retrieve_nonexistent_key')
         log.info('start')
         key = self._key_generator.next()
@@ -204,7 +204,7 @@ class TestWebServer(unittest.TestCase):
         else:
             raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
 
-    def xxxtest_upload_large(self):
+    def test_upload_large(self):
         log = logging.getLogger('test_upload_large')
         log.info('start')
         content = random_string(1024 * 1024 * 3)
@@ -235,7 +235,7 @@ class TestWebServer(unittest.TestCase):
             )
         self.assertEqual(result, content)
 
-    def xxxtest_upload_large_and_stat(self):
+    def test_upload_large_and_stat(self):
         log = logging.getLogger('test_upload_large_and_stat')
         log.info('start')
         content = random_string(1024 * 1024 * 3)
@@ -260,7 +260,7 @@ class TestWebServer(unittest.TestCase):
         self.assertAlmostEqual(actual_timestamp, expected_timestamp, 0)
         self.assertEqual(result, stat)
 
-    def xxxtest_upload_small_then_delete_and_listmatch(self):
+    def test_upload_small_then_delete_and_listmatch(self):
         log = logging.getLogger('test_upload_small_then_delete_and_listmatch')
         log.info('start')
         content = random_string(64 * 1024)
@@ -275,7 +275,7 @@ class TestWebServer(unittest.TestCase):
             _base_url + '/data/test-key?action=listmatch')
         self.assertEqual(json.loads(result), [])
 
-    def xxxtest_upload_small_then_delete_and_retrieve(self):
+    def test_upload_small_then_delete_and_retrieve(self):
         log = logging.getLogger('test_upload_small_then_delete_and_retrieve')
         log.info('start')
         content = random_string(64 * 1024)
@@ -294,7 +294,7 @@ class TestWebServer(unittest.TestCase):
         else:
             raise AssertionError('was expecting a 404 but got %d: %r' % (resp.code, resp.read()))
 
-    def xxxtest_usage(self):
+    def test_usage(self):
         log = logging.getLogger('test_usage')
         log.info('start')
         result = self._make_request(_base_url + '/usage')

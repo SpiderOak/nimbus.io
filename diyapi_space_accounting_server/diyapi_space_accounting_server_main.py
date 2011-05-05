@@ -71,7 +71,7 @@ def _handle_space_usage_request(state, message, _data):
     reply = {
         "message-type"  : "space-usage-reply",
         "xrep-ident"    : message["xrep-ident"],
-        "request-id"    : message["request-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
     }
 

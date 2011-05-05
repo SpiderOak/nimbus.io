@@ -33,7 +33,7 @@ from diyapi_web_server.retriever import Retriever
 # we don't want anything tming out until we straighten out handoffs
 EXCHANGE_TIMEOUT = 60 * 60  # sec
 SLICE_SIZE = 1024 * 1024    # 1MB
-MIN_SEGMENTS = 10
+MIN_SEGMENTS = 8
 
 
 class router(list):

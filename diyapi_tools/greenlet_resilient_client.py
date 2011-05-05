@@ -123,6 +123,8 @@ class GreenletResilientClient(object):
     def report_current_status(self):
         self._lock.acquire()
         try:
+            if self._status == _status_connected:
+                return
             elapsed_time = time.time() - self._status_time
             self._log.info("%s %d seconds; send queue size = %s" % (
                 _status_name[self._status], 

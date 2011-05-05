@@ -32,7 +32,7 @@ class Retriever(object):
         self._done = []
 
     def _join(self, timeout):
-        self._pending.join(timeout)
+        self._pending.join(timeout, raise_error=True)
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)
         if self._pending:
@@ -69,8 +69,10 @@ class Retriever(object):
                 self.version_number,
                 segment_number
             )
+        self.log.debug("joining retrieve_key_start %s" % (self.sequence_number, ))
         self._join(timeout)        
         self.n_slices = self._done[0].value[0] # segment_count
+        self.log.debug("yielding %s" % (len(self._done), ))
         yield dict((task.segment_number, task.value[1])
                    for task in self._done[:self.segments_needed])
         self._done = []
@@ -87,24 +89,31 @@ class Retriever(object):
                     self.key,
                     self.sequence_number
                 )
+            self.log.debug("joining retrieve_key_next %s" % (self.sequence_number, ))
             self._join(timeout)
+            self.log.debug("yielding %s" % (len(self._done), ))
             yield dict((task.segment_number, task.value)
                        for task in self._done[:self.segments_needed])
             self._done = []
             self.sequence_number += 1
 
         if self.sequence_number >= self.n_slices:
+            self.log.debug("self.sequence_number (%s) >= self.n_slices (%s)" % (
+                self.sequence_number, self.n_slices,
+            ))
             return
+
         for i, data_reader in enumerate(self.data_readers):
             segment_number = i + 1
             self._spawn(
                 segment_number,
                 data_reader,
                 data_reader.retrieve_key_final,
-                self._avatar_id,
+                self.avatar_id,
                 self.key,
                 self.sequence_number
             )
+        self.log.debug("joining retrieve_key_final %s" % (self.sequence_number, ))
         self._join(timeout)
         yield dict((task.segment_number, task.value)
                    for task in self._done[:self.segments_needed])

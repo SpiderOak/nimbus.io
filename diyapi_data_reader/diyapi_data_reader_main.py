@@ -36,9 +36,11 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
 )
 _persistent_state_file_name = "data-reader-%s" % (_local_node_name, )
 _client_tag = "data-reader-%s" % (_local_node_name, )
-_database_server_address = os.environ.get(
-    "DIYAPI_DATABASE_SERVER_ADDRESS",
-    "tcp://127.0.0.1:8000"
+_database_server_local_address = os.environ.get(
+    "DIYAPI_DATABASE_SERVER_LOCAL_ADDRESS",
+    "ipc:///tmp/spideroak-diyapi-database-server-%s/socket" % (
+        _local_node_name,
+    )
 )
 _data_reader_address = os.environ.get(
     "DIYAPI_DATA_READER_ADDRESS",
@@ -46,7 +48,9 @@ _data_reader_address = os.environ.get(
 )
 _data_reader_pipeline_address = os.environ.get(
     "DIYAPI_DATA_READER_PIPELINE_ADDRESS",
-    "tcp://127.0.0.1:8201"
+    "ipc:///tmp/spideroak-diyapi-data-reader-pipeline-%s/socket" % (
+        _local_node_name,
+    )
 )
 _key_lookup_timeout = 60.0
 _retrieve_timeout = 30 * 60.0
@@ -392,7 +396,7 @@ def _setup(_halt_event, state):
     
     state["database-client"] = ResilientClient(
         state["zmq-context"],
-        _database_server_address,
+        _database_server_local_address,
         _client_tag,
         _data_reader_pipeline_address
     )

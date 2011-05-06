@@ -24,14 +24,21 @@ class ResilientServer(object):
         self._log = logging.getLogger("ResilientServer-%s" % (address, ))
 
         self._context = context
-
-        # we need a valid path for IPC sockets
-        if address.startswith("ipc://"):
-            prepare_ipc_path(address)
-
         self._xrep_socket = context.socket(zmq.XREP)
-        self._log.debug("binding")
-        self._xrep_socket.bind(address)
+
+        # a server can bind to multiple zeromq addresses
+        if type(address) in [list, tuple, ]:
+            addresses = address
+        else:
+            addresses = [address, ]
+
+        for bind_address in addresses:
+            # we need a valid path for IPC sockets
+            if bind_address.startswith("ipc://"):
+                prepare_ipc_path(bind_address)
+
+            self._log.debug("binding to %s" % (bind_address, ))
+            self._xrep_socket.bind(bind_address)
 
         self._receive_queue = receive_queue
 
@@ -158,7 +165,7 @@ class ResilientServer(object):
             message["client-address"]
         )
         
-    def _handle_resilient_server_signoff(self, message, data):
+    def _handle_resilient_server_signoff(self, message, _data):
         log = logging.getLogger("_handle_resilient_server_signoff")
         try:
             client = self._active_clients.pop(message["client-tag"])

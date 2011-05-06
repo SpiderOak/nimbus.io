@@ -29,10 +29,20 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "node01"
 _database_server_address = "tcp://127.0.0.1:8000"
+_database_server_local_address = \
+    "ipc:///tmp/spideroak-diyapi-database-server-%s/socket" % (
+        _local_node_name,
+    )    
 _data_writer_address = "tcp://127.0.0.1:8100"
-_data_writer_pipeline_address = "tcp://127.0.0.1:8101"
+_data_writer_pipeline_address = \
+    "ipc:///tmp/spideroak-diyapi-data-writer-pipeline-%s/socket" % (
+        _local_node_name,
+    )
 _data_reader_address = "tcp://127.0.0.1:8200"
-_data_reader_pipeline_address = "tcp://127.0.0.1:8201"
+_data_reader_pipeline_address = \
+    "ipc:///tmp/spideroak-diyapi-data-reader-pipeline-%s/socket" % (
+        _local_node_name,
+    )
 _client_address = "tcp://127.0.0.1:8900"
 
 class TestDataReader(unittest.TestCase):
@@ -44,7 +54,10 @@ class TestDataReader(unittest.TestCase):
         self._key_generator = generate_key()
 
         self._database_server_process = start_database_server(
-            _local_node_name, _database_server_address, _repository_path
+            _local_node_name, 
+            _database_server_address, 
+            _database_server_local_address, 
+            _repository_path
         )
         poll_result = poll_process(self._database_server_process)
         self.assertEqual(poll_result, None)

@@ -45,6 +45,15 @@ _database_server_address = os.environ.get(
     "DIYAPI_DATABASE_SERVER_ADDRESS",
     "tcp://127.0.0.1:8000"
 )
+_database_server_local_address = os.environ.get(
+    "DIYAPI_DATABASE_SERVER_LOCAL_ADDRESS",
+    "ipc:///tmp/spideroak-diyapi-database-server-%s/socket" % (
+        _local_node_name,
+    )
+)
+database_server_addresses = [
+    _database_server_address, _database_server_local_address,
+]
 _max_cached_databases = 10
 _database_cache = "open-database-cache"
 _max_listmatch_size = 1024 * 1024 * 1024
@@ -781,10 +790,10 @@ def _create_state():
 def _setup(_halt_event, _state):
     log = logging.getLogger("_setup")
 
-    log.info("binding resilient-server to %s" % (_database_server_address, ))
+    log.info("binding resilient-server to %s" % (database_server_addresses, ))
     state["resilient-server"] = ResilientServer(
         state["zmq-context"],
-        _database_server_address,
+        database_server_addresses,
         state["receive-queue"]
     )
     state["resilient-server"].register(state["pollster"])

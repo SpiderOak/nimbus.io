@@ -23,6 +23,10 @@ class DataWriter(object):
         self._log = logging.getLogger("DataWriter-%s" % (node_name, ))
         self._resilient_client = resilient_client
 
+    @property
+    def connected(self):
+        return self._resilient_client.connected
+
     def archive_key_entire(
         self,
         avatar_id,

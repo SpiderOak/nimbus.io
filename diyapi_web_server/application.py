@@ -33,7 +33,10 @@ from diyapi_web_server.retriever import Retriever
 # we don't want anything tming out until we straighten out handoffs
 EXCHANGE_TIMEOUT = 60 * 60  # sec
 SLICE_SIZE = 1024 * 1024    # 1MB
+MIN_CONNECTED_CLIENTS = 8
 MIN_SEGMENTS = 8
+MAX_SEGMENTS = 10
+DATABASE_AGREEMENT_LEVEL = 8
 
 
 class router(list):
@@ -49,6 +52,8 @@ class router(list):
             return func
         return dec
 
+def _connected_clients(clients):
+    return [client for client in clients if client.connected]
 
 class Application(object):
     def __init__(self, data_writers, data_readers,
@@ -116,9 +121,8 @@ class Application(object):
         getter = SpaceUsageGetter(self.accounting_client)
         try:
             usage = getter.get_space_usage(avatar_id, EXCHANGE_TIMEOUT)
-        except (SpaceAccountingServerDownError, SpaceUsageFailedError):
-            # 2010-06-25 dougfort -- Isn't there some better error for this
-            raise exc.HTTPGatewayTimeout()
+        except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
+            raise exc.HTTPServiceUnavailable(str(e))
         return Response(json.dumps(usage))
 
     @routes.add(r'/data/(.+)$', action='stat')
@@ -127,10 +131,17 @@ class Application(object):
             req.remote_user,
             path
         ))
+        connected_database_clients = _connected_clients(self.database_clients)
+
+        if len(connected_database_clients) < MIN_CONNECTED_CLIENTS:
+            raise exc.HTTPServiceUnavailable("Too few connected clients %s" % (
+                len(connected_database_clients),
+            ))
+
         avatar_id = req.remote_user
         getter = StatGetter(
-            self.database_clients,
-            MIN_SEGMENTS
+            connected_database_clients,
+            DATABASE_AGREEMENT_LEVEL
         )
         try:
             stat = getter.stat(avatar_id, path, EXCHANGE_TIMEOUT)
@@ -146,18 +157,24 @@ class Application(object):
         self._log.debug("listmatch: avatar_id = %s prefix = '%s'" % (
             req.remote_user, prefix
         ))
+        connected_database_clients = _connected_clients(self.database_clients)
+
+        if len(connected_database_clients) < MIN_CONNECTED_CLIENTS:
+            raise exc.HTTPServiceUnavailable("Too few connected clients %s" % (
+                len(connected_database_clients),
+            ))
+
         delimiter = req.GET.get('delimiter', '/')
         # TODO: do something with delimiter
         avatar_id = req.remote_user
         matcher = Listmatcher(
-            self.database_clients,
-            MIN_SEGMENTS
+            connected_database_clients,
+            DATABASE_AGREEMENT_LEVEL
         )
         try:
             keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
-        except (DataReaderDownError, ListmatchFailedError):
-            # 2010-06-25 dougfort -- Isn't there some better error for this
-            raise exc.HTTPGatewayTimeout()
+        except (DataReaderDownError, ListmatchFailedError), e:
+            raise exc.HTTPInternalServerError(str(e))
         # TODO: break up large (>1mb) listmatch response
         return Response(json.dumps(keys))
 
@@ -167,15 +184,22 @@ class Application(object):
         self._log.debug("destroy: avatar_id = %s key = %s" % (
             req.remote_user, key,
         ))
+        connected_data_writers = _connected_clients(self.data_writers)
+
+        # TODO: add handoffs here
+        if len(connected_data_writers) < 10:
+            raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
+                len(connected_data_writers),
+            ))
+
         avatar_id = req.remote_user
         timestamp = time.time()
-        destroyer = Destroyer(self.data_writers)
+        destroyer = Destroyer(connected_data_writers)
         try:
             size_deleted = destroyer.destroy(
                 avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
-        except (DataWriterDownError, DestroyFailedError):
-            # 2010-06-25 dougfort -- Isn't there some better error for this
-            raise exc.HTTPGatewayTimeout()
+        except (DataWriterDownError, DestroyFailedError), e:
+            raise exc.HTTPInternalServerError(str(e))
         self.accounting_client.removed(
             avatar_id,
             timestamp,
@@ -188,13 +212,20 @@ class Application(object):
         self._log.debug("retrieve: avatar_id = %s key = %s" % (
             req.remote_user, key
         ))
+        connected_data_readers = _connected_clients(self.data_readers)
+
+        if len(connected_data_readers) < MIN_CONNECTED_CLIENTS:
+            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
+                len(connected_data_readers),
+            ))
+
         avatar_id = req.remote_user
         timestamp = time.time()
         segmenter = ZfecSegmenter(
-            8,
-            len(self.data_readers))
+            MIN_SEGMENTS,
+            MAX_SEGMENTS)
         retriever = Retriever(
-            self.data_readers,
+            connected_data_readers,
             avatar_id,
             key,
             MIN_SEGMENTS
@@ -229,10 +260,18 @@ class Application(object):
                 req.remote_user, key, req.content_length
             )
         )
+        connected_data_writers = _connected_clients(self.data_writers)
+
+        # TODO: add handoffs here
+        if len(connected_data_writers) < 10:
+            raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
+                len(connected_data_writers),
+            ))
+
         avatar_id = req.remote_user
         timestamp = time.time()
         archiver = Archiver(
-            self.data_writers,
+            connected_data_writers,
             avatar_id,
             key,
             timestamp
@@ -268,9 +307,8 @@ class Application(object):
                 segments,
                 EXCHANGE_TIMEOUT
             )
-        except (DataWriterDownError, HandoffFailedError, ArchiveFailedError):
-            # 2010-06-25 dougfort -- Isn't there some better error for this
-            raise exc.HTTPGatewayTimeout()
+        except (HandoffFailedError, ArchiveFailedError), e:
+            raise exc.HTTPInternalServerError(str(e))
         if previous_size is not None:
             self.accounting_client.removed(
                 avatar_id,

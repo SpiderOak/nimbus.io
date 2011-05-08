@@ -18,6 +18,10 @@ class DatabaseClient(object):
         self._log = logging.getLogger("DatabaseClient-%s" % (node_name, ))
         self._resilient_client = resilient_client
 
+    @property
+    def connected(self):
+        return self._resilient_client.connected
+
     def close(self):
         self._resilient_client.close()
 

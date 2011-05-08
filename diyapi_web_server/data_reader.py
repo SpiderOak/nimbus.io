@@ -14,6 +14,10 @@ class DataReader(object):
         self._log = logging.getLogger("DataReader-%s" % (node_name, ))
         self._resilient_client = resilient_client
 
+    @property
+    def connected(self):
+        return self._resilient_client
+
     def retrieve_key_start(
         self,
         avatar_id,

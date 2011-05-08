@@ -109,6 +109,10 @@ class GreenletResilientClient(object):
 
         self._watcher.start()
 
+    @property
+    def connected(self):
+        return self._status == _status_connected
+
     def test_current_status(self):
         """
         check for timeouts based on current state
@@ -169,7 +173,7 @@ class GreenletResilientClient(object):
         if elapsed_time < _ack_timeout:
             return
 
-        self._log.warn(
+        self._log.error(
             "timeout waiting ack: treating as disconnect %s" % (
                 self._pending_message.control,
             )
@@ -183,8 +187,18 @@ class GreenletResilientClient(object):
         self._status = _status_disconnected
         self._status_time = time.time()
 
-        # put the message at the head of the send queue 
-        self._send_queue.appendleft(self._pending_message)
+        # deliver a failure reply to whoever is waiting for this message
+        reply = {
+            "message-type"  : "ack-timeout-reply",
+            "message-id"    : self._pending_message.control["message-id"],
+            "result"        : "ack timeout",
+            "error-message" : "timeout waiting ack: treating as disconnect",
+        }
+
+        message = _message_format(control=reply, body=None)
+        self._deliverator.deliver_reply(message)
+
+        # heave the message; we're heaving the whole request
         self._pending_message = None
         self._pending_message_start_time = None
 

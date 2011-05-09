@@ -5,7 +5,9 @@ application.py
 The diyapi wsgi application
 """
 import logging
+import os
 import re
+import random
 import time
 import zlib
 import hashlib
@@ -18,7 +20,19 @@ from webob import exc
 from webob import Response
 
 from diyapi_web_server import util
-from diyapi_web_server.exceptions import *
+from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
+        SpaceUsageFailedError, \
+        DataReaderDownError, \
+        StatFailedError, \
+        DataReaderDownError, \
+        ListmatchFailedError, \
+        DataWriterDownError, \
+        RetrieveFailedError, \
+        ArchiveFailedError, \
+        DestroyFailedError
+from diyapi_web_server.data_writer_handoff_client import \
+        DataWriterHandoffClient
+from diyapi_web_server.data_writer import DataWriter
 from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_web_server.archiver import Archiver
@@ -28,16 +42,16 @@ from diyapi_web_server.space_usage_getter import SpaceUsageGetter
 from diyapi_web_server.stat_getter import StatGetter
 from diyapi_web_server.retriever import Retriever
 
-
-# 2010-06-23 dougfort -- jacked up the timeout to an hour
-# we don't want anything tming out until we straighten out handoffs
-EXCHANGE_TIMEOUT = 60 * 60  # sec
+NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+REPLY_TIMEOUT = float(
+    os.environ.get("SPIDEROAK_DIYAPI_REPLY_TIMEOUT",  str(5 * 60.0))
+)
 SLICE_SIZE = 1024 * 1024    # 1MB
 MIN_CONNECTED_CLIENTS = 8
 MIN_SEGMENTS = 8
 MAX_SEGMENTS = 10
 DATABASE_AGREEMENT_LEVEL = 8
-
+HANDOFF_COUNT = 2
 
 class router(list):
     # TODO: document and test this
@@ -55,11 +69,48 @@ class router(list):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
+def _create_data_writers(clients, handoff_client):
+    data_writers = list()
+    connected_clients = list()
+    disconnected_clients = list()
+
+    for node_name, client in zip(NODE_NAMES, clients):
+        if client.connected:
+            connected_clients.append((node_name, client))
+        else:
+            disconnected_clients.append((node_name, client))
+
+    if len(connected_clients) < MIN_CONNECTED_CLIENTS:
+        raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
+            len(connected_clients),
+        ))
+
+    for node_name, client in connected_clients:
+        data_writers.append(DataWriter(node_name, client))
+
+    for node_name, client in disconnected_clients:
+        data_writer_handoff_client = DataWriterHandoffClient(
+            client._server_address,
+            random.sample(HANDOFF_COUNT, connected_clients),
+            handoff_client
+        )
+        data_writers.append(DataWriter(node_name, data_writer_handoff_client))
+
+    return data_writers
+
 class Application(object):
-    def __init__(self, data_writers, data_readers,
-                 database_clients, authenticator, accounting_client):
+    def __init__(
+        self, 
+        data_writer_clients, 
+        handoff_client,
+        data_readers,
+        database_clients, 
+        authenticator, 
+        accounting_client
+    ):
         self._log = logging.getLogger("Application")
-        self.data_writers = data_writers
+        self._data_writer_clients = data_writer_clients
+        self._handoff_client = handoff_client
         self.data_readers = data_readers
         self.database_clients = database_clients
         self.authenticator = authenticator
@@ -99,7 +150,9 @@ class Application(object):
                     continue
 
                 try:
-                    result = method(req, *url_match.groups(), **url_match.groupdict())
+                    result = method(
+                        req, *url_match.groups(), **url_match.groupdict()
+                    )
                     return result
                 except Exception:
                     self._log.exception("%s" % (req.diy_username, ))
@@ -120,7 +173,7 @@ class Application(object):
         avatar_id = req.remote_user
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(avatar_id, EXCHANGE_TIMEOUT)
+            usage = getter.get_space_usage(avatar_id, REPLY_TIMEOUT)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
         return Response(json.dumps(usage))
@@ -144,7 +197,7 @@ class Application(object):
             DATABASE_AGREEMENT_LEVEL
         )
         try:
-            stat = getter.stat(avatar_id, path, EXCHANGE_TIMEOUT)
+            stat = getter.stat(avatar_id, path, REPLY_TIMEOUT)
         except (DataReaderDownError, StatFailedError):
             self._log.exception(path)
             raise exc.HTTPNotFound()
@@ -172,7 +225,7 @@ class Application(object):
             DATABASE_AGREEMENT_LEVEL
         )
         try:
-            keys = matcher.listmatch(avatar_id, prefix, EXCHANGE_TIMEOUT)
+            keys = matcher.listmatch(avatar_id, prefix, REPLY_TIMEOUT)
         except (DataReaderDownError, ListmatchFailedError), e:
             raise exc.HTTPInternalServerError(str(e))
         # TODO: break up large (>1mb) listmatch response
@@ -184,20 +237,16 @@ class Application(object):
         self._log.debug("destroy: avatar_id = %s key = %s" % (
             req.remote_user, key,
         ))
-        connected_data_writers = _connected_clients(self.data_writers)
-
-        # TODO: add handoffs here
-        if len(connected_data_writers) < 10:
-            raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
-                len(connected_data_writers),
-            ))
+        data_writers = _create_data_writers(
+            self._data_writer_clients, self._handoff_client
+        )
 
         avatar_id = req.remote_user
         timestamp = time.time()
-        destroyer = Destroyer(connected_data_writers)
+        destroyer = Destroyer(data_writers)
         try:
             size_deleted = destroyer.destroy(
-                avatar_id, key, timestamp, EXCHANGE_TIMEOUT)
+                avatar_id, key, timestamp, REPLY_TIMEOUT)
         except (DataWriterDownError, DestroyFailedError), e:
             raise exc.HTTPInternalServerError(str(e))
         self.accounting_client.removed(
@@ -230,7 +279,7 @@ class Application(object):
             key,
             MIN_SEGMENTS
         )
-        retrieved = retriever.retrieve(EXCHANGE_TIMEOUT)
+        retrieved = retriever.retrieve(REPLY_TIMEOUT)
         try:
             first_segments = retrieved.next()
         except (DataWriterDownError, RetrieveFailedError):
@@ -260,25 +309,22 @@ class Application(object):
                 req.remote_user, key, req.content_length
             )
         )
-        connected_data_writers = _connected_clients(self.data_writers)
-
-        # TODO: add handoffs here
-        if len(connected_data_writers) < 10:
-            raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
-                len(connected_data_writers),
-            ))
+        data_writers = _create_data_writers(
+            self._data_writer_clients, self._handoff_client
+        )
 
         avatar_id = req.remote_user
         timestamp = time.time()
         archiver = Archiver(
-            connected_data_writers,
+            data_writers,
             avatar_id,
             key,
             timestamp
         )
         segmenter = ZfecSegmenter(
             8,
-            len(self.data_writers))
+            len(data_writers)
+        )
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
@@ -291,7 +337,7 @@ class Application(object):
                 if segments:
                     archiver.archive_slice(
                         segments,
-                        EXCHANGE_TIMEOUT
+                        REPLY_TIMEOUT
                     )
                     segments = None
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
@@ -305,9 +351,9 @@ class Application(object):
                 file_adler32,
                 file_md5.digest(),
                 segments,
-                EXCHANGE_TIMEOUT
+                REPLY_TIMEOUT
             )
-        except (HandoffFailedError, ArchiveFailedError), e:
+        except (ArchiveFailedError), e:
             raise exc.HTTPInternalServerError(str(e))
         if previous_size is not None:
             self.accounting_client.removed(
@@ -321,3 +367,4 @@ class Application(object):
             file_size
         )
         return Response('OK')
+

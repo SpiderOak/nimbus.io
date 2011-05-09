@@ -23,7 +23,7 @@ class Deliverator(object):
         Add a message_id
         return a channel that will deliver the reply message 
         """
-        channel = Queue(maxsize=1)
+        channel = Queue(maxsize=0)
 
         self._lock.acquire()
         try:

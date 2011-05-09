@@ -17,10 +17,6 @@ from diyapi_web_server.exceptions import (
     ArchiveFailedError,
 )
 
-
-HANDOFF_NUM = 2
-
-
 class Archiver(object):
     """Sends data segments to data writers."""
     def __init__(self, data_writers, avatar_id, key, timestamp):
@@ -34,33 +30,16 @@ class Archiver(object):
         self.sequence_number = 0
         self._adler32s = {}
         self._md5s = defaultdict(hashlib.md5)
-        self._handoff_writers = defaultdict(list)
         self._pending = gevent.pool.Group()
         self._done = []
 
-    def _join(self, timeout, handoff=False):
+    def _join(self, timeout):
         self._pending.join(timeout, True)
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)
         if not self._pending:
             return
-        if handoff or self.sequence_number != 0:
-            raise ArchiveFailedError()
-        for task in self._pending.greenlets.copy():
-            if len(self._done) < HANDOFF_NUM:
-                raise ArchiveFailedError()
-            for done_task in self._done[:HANDOFF_NUM]:
-                self._handoff_writers[task.segment_number].append(
-                    done_task.data_writer)
-                self._spawn(
-                    task.segment_number,
-                    done_task.data_writer,
-                    getattr(done_task.data_writer, task.method_name),
-                    *task.args
-                )
-            del self._done[:HANDOFF_NUM]
-            task.kill()
-        self._join(timeout, True)
+        raise ArchiveFailedError("%s tasks incomplete" % (len(self._pending),))
 
     def _done_link(self, task):
         if isinstance(task.value, gevent.GreenletExit):
@@ -76,24 +55,6 @@ class Archiver(object):
         task.method_name = method_name
         return task
 
-    def _do_handoff(self, timeout):
-        if not self._handoff_writers:
-            return
-        for segment_number in self._handoff_writers:
-            for data_writer in self._handoff_writers[segment_number]:
-                self._spawn(
-                    segment_number,
-                    data_writer,
-                    data_writer.hinted_handoff,
-                    self.avatar_id,
-                    self.timestamp,
-                    self.key,
-                    self.version_number,
-                    segment_number,
-                    self.data_writers[segment_number - 1].exchange
-                )
-        self._join(timeout)
-
     def archive_slice(self, segments, timeout=None):
         if self._pending:
             raise AlreadyInProgress()
@@ -104,10 +65,7 @@ class Archiver(object):
                 self._adler32s.get(segment_number, 1)
             )
             self._md5s[segment_number].update(segment)
-            if segment_number in self._handoff_writers:
-                data_writers = self._handoff_writers[segment_number]
-            else:
-                data_writers = [self.data_writers[i]]
+            data_writers = [self.data_writers[i]]
             if self.sequence_number == 0:
                 for data_writer in data_writers:
                     self._spawn(
@@ -154,10 +112,7 @@ class Archiver(object):
                 self._adler32s.get(segment_number, 1)
             )
             self._md5s[segment_number].update(segment)
-            if segment_number in self._handoff_writers:
-                data_writers = self._handoff_writers[segment_number]
-            else:
-                data_writers = [self.data_writers[i]]
+            data_writers = [self.data_writers[i]]
             if self.sequence_number == 0:
                 for data_writer in data_writers:
                     self._spawn(
@@ -193,7 +148,6 @@ class Archiver(object):
                         segment
                     )
         self._join(timeout)
-        self._do_handoff(timeout)
         result = sum([task.value for task in self._done])
         self._done = []
         return result

@@ -13,8 +13,6 @@ from diyapi_web_server.exceptions import (
     DataWriterDownError,
     ArchiveFailedError,
     DestroyFailedError,
-    HandoffFailedError,
-    StartHandoff,
 )
 
 class DataWriter(object):
@@ -193,32 +191,3 @@ class DataWriter(object):
         self._log.debug('total_size = %(total-size)r' % reply)
         return reply["total-size"]
 
-#    def hinted_handoff(
-#        self,
-#        avatar_id,
-#        timestamp,
-#        key,
-#        version_number,
-#        segment_number,
-#        dest_exchange
-#    ):
-#        message = HintedHandoff(
-#            avatar_id,
-#            self.amqp_handler.exchange,
-#            self.amqp_handler.queue_name,
-#            timestamp,
-#            key,
-#            version_number,
-#            segment_number,
-#            dest_exchange,
-#        )
-#        self._log.debug(
-#            '%s: '
-#                message.__class__.__name__,
-#            ))
-#        reply = self._send(message, HandoffFailedError)
-#        self._log.debug(
-#            'previous_size = %r' % (
-#                reply.previous_size,
-#            ))
-#        return reply.previous_size

@@ -23,7 +23,7 @@ class Destroyer(object):
         self._pending = gevent.pool.Group()
         self._done = []
 
-    def _join(self, timeout, handoff=False):
+    def _join(self, timeout):
         self._pending.join(timeout, True)
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)

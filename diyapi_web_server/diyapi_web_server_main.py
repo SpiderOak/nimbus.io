@@ -83,11 +83,12 @@ class WebServer(object):
         self._pull_server.register(self._pollster)
 
         self._data_writer_clients = list()
-        for data_writer_address in DATA_WRITER_ADDRESSES:
+        for node_name, address in zip(NODE_NAMES, DATA_WRITER_ADDRESSES):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
                 self._pollster,
-                data_writer_address,
+                node_name,
+                address,
                 CLIENT_TAG,
                 WEB_SERVER_PIPELINE_ADDRESS,
                 self._deliverator
@@ -95,13 +96,12 @@ class WebServer(object):
             self._data_writer_clients.append(resilient_client)
 
         self._data_readers = list()
-        for node_name, data_reader_address in zip(
-            NODE_NAMES, DATA_READER_ADDRESSES
-        ):
+        for node_name, address in zip(NODE_NAMES, DATA_READER_ADDRESSES):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
                 self._pollster,
-                data_reader_address,
+                node_name,
+                address,
                 CLIENT_TAG,
                 WEB_SERVER_PIPELINE_ADDRESS,
                 self._deliverator
@@ -112,13 +112,12 @@ class WebServer(object):
             self._data_readers.append(data_reader)
 
         self._database_clients = list()
-        for node_name, database_server_address in zip(
-            NODE_NAMES, DATABASE_SERVER_ADDRESSES
-        ):
+        for node_name, address in zip(NODE_NAMES, DATABASE_SERVER_ADDRESSES):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
                 self._pollster,
-                database_server_address,
+                node_name,
+                address,
                 CLIENT_TAG,
                 WEB_SERVER_PIPELINE_ADDRESS,
                 self._deliverator

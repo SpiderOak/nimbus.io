@@ -12,12 +12,14 @@ import sqlite3
 
 factory =  namedtuple(
     "HandoffHint", [
-        "timestamp", 
-        "exchange",
+        "node-name",
         "avatar_id",
+        "timestamp", 
         "key",
         "version_number",
         "segment_number", 
+        "action",
+        "server-node-names",
     ]
 )
 
@@ -27,40 +29,51 @@ _database_path = os.path.join(_repository_path, _database_name)
 _schema = """
 create table hints (
     id integer primary key autoincrement,
-    exchange text not null,
-    timestamp timestamp not null, 
+    node_name,
     avatar_id int4 not null,
+    timestamp timestamp not null, 
     key text not null,
     version_number int4 not null,
-    segment_number int2 not null
+    segment_number int2 not null,
+    action text not null,
+    server_node_names text not null
 );
 create unique index hints_idx 
-on hints (exchange, timestamp, avatar_id, key, version_number, segment_number);
+on hints (node_name, avatar_id, timestamp, key);
 """.strip()
 
 _store = """
 insert into hints (
-    exchange, timestamp, avatar_id, key, version_number, segment_number
+    node_name, 
+    avatar_id, 
+    timestamp, 
+    key, 
+    version_number, 
+    segment_number,
+    action,
+    server_node_names
 )
-values (?, ?, ?, ?, ?, ?)
+values (? ?, ?, ?, ?, ?, ?, ?);
 """.strip()
 
-_oldest_row_for_exchange = """
-select timestamp, exchange, avatar_id, key, version_number, segment_number 
+_oldest_row_for_node_name = """
+select node_name, avatar_id, timestamp, key, version_number, segment_number,
+server_node_names 
 from hints
-where exchange = ?
+where node_name = ?
 order by timestamp
 limit 1
 """.strip()
 
 _purge = """
 delete from hints 
-where exchange = ? 
-and timestamp = ? 
+where node_name = ? 
 and avatar_id = ?
+and timestamp = ? 
 and key = ? 
 and version_number = ?
 and segment_number = ?
+and action = ?
 """.strip()
 
 def _connect_to_database():
@@ -85,38 +98,40 @@ class HintRepository(object):
 
     def store(
         self, 
-        exchange, 
-        timestamp, 
+        node_name, 
         avatar_id, 
+        timestamp,
         key, 
         version_number, 
-        segment_number
+        segment_number,
+        server_node_names
     ):
         """
-        store a hint to handoff this archive to dest exchange when its
+        store a hint to handoff this archive to dest node-name when its
         data_writer announces its presence.
         """
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
                 _store, (
-                    exchange, 
-                    timestamp, 
+                    node_name,
                     avatar_id, 
+                    timestamp, 
                     key, 
                     version_number, 
-                    segment_number, 
+                    segment_number,
+                    server_node_names
                 )
             )
             cursor.close()
 
-    def next_hint(self, exchange):
+    def next_hint(self, node_name):
         """
         retrieve the next avaialble hint for the exchange.
         returns a HandoffHint object or None
         """
         cursor = self._connection.cursor()
-        cursor.execute(_oldest_row_for_exchange, (exchange, ))
+        cursor.execute(_oldest_row_for_node_name, (node_name, ))
         row = cursor.fetchone()
         cursor.close()
         if row is None:
@@ -131,12 +146,13 @@ class HintRepository(object):
             cursor = self._connection.cursor()
             cursor.execute(
                 _purge, (
-                    handoff_hint.exchange, 
-                    handoff_hint.timestamp, 
+                    handoff_hint.node_name, 
                     handoff_hint.avatar_id,
+                    handoff_hint.timestamp, 
                     handoff_hint.key, 
                     handoff_hint.version_number, 
                     handoff_hint.segment_number,
+                    handoff_hint.action,
                 )
             )
             cursor.close()

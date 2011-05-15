@@ -18,20 +18,22 @@ from gevent.queue import Queue
 
 _message_format = namedtuple("Message", "control body")
 
-    
-
 class DataWriterHandoffClient(object):
     """
     This class mimics a single ResilientClient while wrapping two clients
     to perform hinted handoff for a node which is down.
     """
     def __init__(
-        self, original_server_address, resilient_clients, handoff_client
+        self,
+        original_dest_node_name,
+        resilient_clients, 
+        handoff_client
     ):
         self._log = logging.getLogger("HandoffClient-%s" % (
-            original_server_address,
+            original_dest_node_name,
         ))
         self._log.info("handing of to %s" % (resilient_clients, ))
+        self._original_dest_node_name = original_dest_node_name
         self._resilient_clients = resilient_clients
         self._handoff_client = handoff_client
         self._handoff_message = dict()
@@ -110,26 +112,32 @@ class DataWriterHandoffClient(object):
 
     def _handle_archive_key_entire(self, message):
         assert len(self._handoff_message) == 0, self._handoff_message
-        self._handoff_message["message-type"] = "handoff-archive"
+        self._handoff_message["message-type"] = "hinted-handoff"
+        self._handoff_message["dest-node-name"] = self._original_dest_node_name
         self._handoff_message["avatar-id"] = message["avatar-id"]
+        self._handoff_message["timestamp"] = message["timestamp"]
         self._handoff_message["key"] = message["key"]
         self._handoff_message["version-number"] = message["version-number"]
         self._handoff_message["segment-number"] = message["segment-number"]
-        self._handoff_message["backup-addresses"] = [
-            client.server_address for client in self._resilient_clients
+        self._handoff_message["action"] = "archive"
+        self._handoff_message["server-node-names"] = [
+            client.server_node_name for client in self._resilient_clients
         ]
 
         return True # completed
 
     def _handle_archive_key_start(self, message):
         assert len(self._handoff_message) == 0, self._handoff_message
-        self._handoff_message["message-type"] = "handoff-archive"
+        self._handoff_message["message-type"] = "hinted-handoff"
+        self._handoff_message["dest-node-name"] = self._original_dest_node_name
         self._handoff_message["avatar-id"] = message["avatar-id"]
+        self._handoff_message["timestamp"] = message["timestamp"]
         self._handoff_message["key"] = message["key"]
         self._handoff_message["version-number"] = message["version-number"]
         self._handoff_message["segment-number"] = message["segment-number"]
-        self._handoff_message["backup-addresses"] = [
-            client.server_address for client in self._resilient_clients
+        self._handoff_message["action"] = "archive"
+        self._handoff_message["server-node-names"] = [
+            client.server_node_name for client in self._resilient_clients
         ]
 
         return False # not completed
@@ -150,13 +158,16 @@ class DataWriterHandoffClient(object):
     
     def _handle_destroy_key(self, message):
         assert len(self._handoff_message) == 0, self._handoff_message
-        self._handoff_message["message-type"] = "handoff-destroy"
+        self._handoff_message["message-type"] = "hinted-handoff"
+        self._handoff_message["dest-node-name"] = self._original_dest_node_name
         self._handoff_message["avatar-id"] = message["avatar-id"]
+        self._handoff_message["timestamp"] = message["timestamp"]
         self._handoff_message["key"] = message["key"]
         self._handoff_message["version-number"] = message["version-number"]
         self._handoff_message["segment-number"] = message["segment-number"]
-        self._handoff_message["backup-addresses"] = [
-            client.server_address for client in self._resilient_clients
+        self._handoff_message["action"] = "destroy"
+        self._handoff_message["server-node-names"] = [
+            client.server_node_name for client in self._resilient_clients
         ]
 
         return True # completed

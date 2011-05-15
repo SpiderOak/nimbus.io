@@ -2,7 +2,7 @@
 """
 state_cleaner.py
 
-A time queue action to perioidcially clean out the state
+A time queue action to periodically clean out the state
 """
 import logging
 import time

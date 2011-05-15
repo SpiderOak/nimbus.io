@@ -420,10 +420,10 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
-    log.debug("stopping xrep server")
+    log.debug("stopping resilient server")
     state["resilient-server"].close()
 
-    log.debug("stopping database client")
+    log.debug("stopping pull server")
     state["pull-server"].close()
     state["database-client"].close()
 

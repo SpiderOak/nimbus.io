@@ -71,6 +71,7 @@ class GreenletResilientClient(object):
         self, 
         context, 
         pollster,
+        server_node_name,
         server_address, 
         client_tag, 
         client_address,
@@ -82,6 +83,7 @@ class GreenletResilientClient(object):
 
         self._context = context
         self._pollster = pollster
+        self._server_node_name = server_node_name
         self._server_address = server_address
 
         self._xreq_socket = None
@@ -112,6 +114,10 @@ class GreenletResilientClient(object):
     @property
     def connected(self):
         return self._status == _status_connected
+
+    @property
+    def server_node_name(self):
+        return self._server_node_name
 
     def test_current_status(self):
         """

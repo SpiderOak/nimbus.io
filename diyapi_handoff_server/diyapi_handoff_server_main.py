@@ -3,124 +3,90 @@
 diyapi_handoff_server_main.py
 
 """
+from base64 import b64encode
+from collections import deque, namedtuple
 import logging
 import os
+import os.path
 import sys
 import time
-import uuid
 
-from diyapi_tools import amqp_connection
-from diyapi_tools import message_driven_process as process
-from diyapi_tools.standard_logging import format_timestamp 
+import zmq
 
-from messages.process_status import ProcessStatus
-
-from messages.hinted_handoff import HintedHandoff
-from messages.hinted_handoff_reply import HintedHandoffReply
-
-from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-from messages.retrieve_key_next_reply import RetrieveKeyNextReply
-from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
-from messages.archive_key_start_reply import ArchiveKeyStartReply
-from messages.archive_key_next_reply import ArchiveKeyNextReply
-from messages.archive_key_final_reply import ArchiveKeyFinalReply
-from messages.purge_key_reply import PurgeKeyReply
-
-from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
-        as data_writer_routing_header
+from diyapi_tools.zeromq_pollster import ZeroMQPollster
+from diyapi_tools.resilient_server import ResilientServer
+from diyapi_tools.resilient_client import ResilientClient
+from diyapi_tools.pull_server import PULLServer
+from diyapi_tools.deque_dispatcher import DequeDispatcher
+from diyapi_tools import time_queue_driven_process
 
 from diyapi_handoff_server.hint_repository import HintRepository
+from diyapi_handoff_server.data_writer_status_checker import \
+        DataWriterStatusChecker
 from diyapi_handoff_server.forwarder_coroutine import forwarder_coroutine
 
+_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+    _local_node_name,
 )
-_queue_name = "handoff-server-%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
-_routing_header = "handoff_server"
-_routing_key_binding = ".".join([_routing_header, "*"])
-_retrieve_key_start_reply_routing_key = ".".join([
-    _routing_header, RetrieveKeyStartReply.routing_tag
-])
-_retrieve_key_next_reply_routing_key = ".".join([
-    _routing_header, RetrieveKeyNextReply.routing_tag
-])
-_retrieve_key_final_reply_routing_key = ".".join([
-    _routing_header, RetrieveKeyFinalReply.routing_tag
-])
-_archive_key_start_reply_routing_key = ".".join([
-    _routing_header, ArchiveKeyStartReply.routing_tag
-])
-_archive_key_next_reply_routing_key = ".".join([
-    _routing_header, ArchiveKeyNextReply.routing_tag
-])
-_archive_key_final_reply_routing_key = ".".join([
-    _routing_header, ArchiveKeyFinalReply.routing_tag
-])
-_purge_key_reply_routing_key = ".".join([
-    _routing_header, PurgeKeyReply.routing_tag
-])
+_data_reader_addresses = \
+    os.environ["DIYAPI_DATA_READER_ADDRESSES"].split()
+_data_writer_addresses = \
+    os.environ["DIYAPI_DATA_WRITER_ADDRESSES"].split()
+_client_tag = "handoff_server-%s" % (_local_node_name, )
+_handoff_server_address = os.environ.get(
+    "DIYAPI_HANDOFF_SERVER_ADDRESS",
+    "ipc:///tmp/spideroak-diyapi-handoff_server-%s/socket" % (
+        _local_node_name,
+    )
+)
+_handoff_server_pipeline_address = os.environ.get(
+    "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS",
+    "tcp://127.0.0.1:8700"
+    )
+)
 
-_active_status = [
-    ProcessStatus.status_startup, ProcessStatus.status_heartbeat,
-] 
+_retrieve_timeout = 30 * 60.0
 
-def _handle_hinted_handoff(state, message_body):
+def _handle_hinted_handoff(state, message, _data):
     log = logging.getLogger("_handle_hinted_handoff")
-    message = HintedHandoff.unmarshall(message_body)
-    log.info("avatar_id %s, key %s, version_number %s, segment_number %s" % (
-        message.avatar_id, 
-        message.key,  
-        message.version_number, 
-        message.segment_number
+    log.info("%s, %s %s, %s, %s, version_number %s, segment_number %s" % (
+        message["dest-node-name"], 
+        message["avatar-id"], 
+        format_timestamp(message["timestamp"]), 
+        message["action"]
+        message["key"],  
+        message["version-number"], 
+        message["segment-number"],
     ))
 
-    reply_exchange = message.reply_exchange
-    reply_routing_key = "".join(
-        [message.reply_routing_header, ".", HintedHandoffReply.routing_tag]
-    )
+    reply = {
+        "message-type"  : "handoff-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     try:
         state["hint-repository"].store(
-            message.dest_exchange,
-            message.timestamp,
-            message.avatar_id,
-            message.key,
-            message.version_number,
-            message.segment_number
+            message["dest-node-name"],
+            message["avatar-id"],
+            message["timestamp"],
+            message["key"],
+            message["version-number"],
+            message["segment-number"],
+            message["action"],
+            message["server-node-names"]
         )
     except Exception, instance:
         log.exception(str(instance))
-        reply = HintedHandoffReply(
-            message.request_id,
-            HintedHandoffReply.error_exception,
-            error_message=str(instance)
-        )
-        return [(reply_exchange, reply_routing_key, reply, )]
-
-    reply = HintedHandoffReply( 
-        message.request_id, HintedHandoffReply.successful
-    )
-    return [(reply_exchange, reply_routing_key, reply, )]
-
-def _handle_process_status(state, message_body):
-    log = logging.getLogger("_handle_process_status")
-    message = ProcessStatus.unmarshall(message_body)
-    log.debug("%s %s %s %s" % (
-        message.exchange,
-        message.routing_header,
-        message.status,
-        format_timestamp(message.timestamp),
-    ))
-    
-    # we're interested in startup and heartbeat messages from data_writers
-    # for whom we may have handoffs
-    if message.routing_header == data_writer_routing_header \
-    and message.status in _active_status:
-        results = _check_for_handoffs(state, message.exchange)
+        reply["result"] = "exception"
+        reply["error-message"] = str(instance)
     else:
-        results = []
+        reply["result"] = "success"
 
-    return results
+    state["resilient-server"].send_reply(reply)
 
 def _handle_retrieve_key_start_reply(state, message_body):
     log = logging.getLogger("_handle_retrieve_key_start_reply")
@@ -279,8 +245,7 @@ def _handle_purge_key_reply(state, message_body):
     return _check_for_handoffs(state, hint.exchange)
 
 _dispatch_table = {
-    HintedHandoff.routing_key               : _handle_hinted_handoff,
-    ProcessStatus.routing_key               : _handle_process_status,
+    "hinted-handoff"               : _handle_hinted_handoff,
     _retrieve_key_start_reply_routing_key   : _handle_retrieve_key_start_reply,
     _retrieve_key_next_reply_routing_key    : _handle_retrieve_key_next_reply,
     _retrieve_key_final_reply_routing_key   : _handle_retrieve_key_final_reply,
@@ -290,65 +255,105 @@ _dispatch_table = {
     _purge_key_reply_routing_key            : _handle_purge_key_reply,
 }
 
-def _check_for_handoffs(state, dest_exchange):
-    """
-    initiate the the process of retrieving handoffs and sending them to
-    the data_writer at the destination_exchange
-    """
-    log = logging.getLogger("_start_returning_handoffs")
-    hint = state["hint-repository"].next_hint(dest_exchange)
-    if hint is None:
-        return []
-    request_id = uuid.uuid1().hex
-    log.debug("found hint for exchange = %s assigning request_id %s" % (
-        dest_exchange, request_id,  
-    ))
-    state[request_id] = forwarder_coroutine(request_id, hint, _routing_header) 
-    return state[request_id].next()
+def _create_state():
+    return {
+        "zmq-context"               : zmq.Context(),
+        "pollster"                  : ZeroMQPollster(),
+        "resilient-server"          : None,
+        "pull-server"               : None,
+        "reader-clients"            : list(),
+        "writer-clients"            : list(),
+        "receive-queue"             : deque(),
+        "queue-dispatcher"          : None,
+        "hint-repository"           : None,
+        "data-writer-status-checker": None,
+    }
 
-def _startup(_halt_event, state):
+def _setup(_halt_event, state):
+    log = logging.getLogger("_setup")
     state["hint-repository"] = HintRepository()
 
-    message = ProcessStatus(
-        time.time(),
-        amqp_connection.local_exchange_name,
-        _routing_header,
-        ProcessStatus.status_startup
+    log.info("binding resilient-server to %s" % (_handoff_server_address, ))
+    state["resilient-server"] = ResilientServer(
+        state["zmq-context"],
+        _handoff_server_address,
+        state["receive-queue"]
+    )
+    state["resilient-server"].register(state["pollster"])
+
+    log.info("binding pull-server to %s" % (_handoff_server_pipeline_address, ))
+    state["pull-server"] = PULLServer(
+        state["zmq-context"],
+        _handoff_server_pipeline_address,
+        state["receive-queue"]
+    )
+    state["pull-server"].register(state["pollster"])
+    
+    for data_reader_address in _data_reader_addresses:
+        data_reader_client = ResilientClient(
+            state["zmq-context"],
+            data_reader_address,
+            _client_tag,
+            _handoff_server_pipeline_address
+        )
+        data_reader_client.register(state["pollster"])
+        state["reader-clients"].append(data_reader_client)
+
+    for data_writer_address in _data_writer_addresses:
+        data_writer_client = ResilientClient(
+            state["zmq-context"],
+            data_writer_address,
+            _client_tag,
+            _handoff_server_pipeline_address
+        )
+        data_writer_client.register(state["pollster"])
+        state["writer-clients"].append(data_writer_client)
+
+    state["queue-dispatcher"] = DequeDispatcher(
+        state,
+        state["receive-queue"],
+        _dispatch_table
     )
 
-    exchange = amqp_connection.broadcast_exchange_name
-    routing_key = ProcessStatus.routing_key
+    state["data-writer-status-checker"] = DataWriterStatusChecker(state)
 
-    return [(exchange, routing_key, message, )]
+    # hand the pollster and the queue-dispatcher to the time-queue 
+    return [
+        (state["pollster"].run, time.time(), ), 
+        (state["queue-dispatcher"].run, time.time(), ), 
+        (state["data-writer-status-checker"].run,
+            DataWriterStatusChecker.next_run())
+    ] 
 
-def _shutdown(state):
+def _tear_down(state):
+    log = logging.getLogger("_tear_down")
     state["hint-repository"].close()
     del state["hint-repository"]
 
-    message = ProcessStatus(
-        time.time(),
-        amqp_connection.local_exchange_name,
-        _routing_header,
-        ProcessStatus.status_shutdown
-    )
+    log.debug("stopping resilient server")
+    state["resilient-server"].close()
 
-    exchange = amqp_connection.broadcast_exchange_name
-    routing_key = ProcessStatus.routing_key
+    log.debug("stopping pull server")
+    state["pull-server"].close()
 
-    return [(exchange, routing_key, message, )]
+    log.debug("closing reader clients")
+    for reader_client in state["reader-clients"]:
+        reader_client.close()
+
+    log.debug("closing writer clients")
+    for writer_client in state["writer-clients"]:
+        writer_client.close()
+
+    state["zmq-context"].term()
 
 if __name__ == "__main__":
-    state = dict()
+    state = _create_state()
     sys.exit(
-        process.main(
-            _log_path, 
-            _queue_name, 
-            _routing_key_binding, 
-            _dispatch_table, 
+        time_queue_driven_process.main(
+            _log_path,
             state,
-            pre_loop_function=_startup,
-            in_loop_function=None,
-            post_loop_function=_shutdown
+            pre_loop_actions=[_setup, ],
+            post_loop_actions=[_tear_down, ]
         )
     )
 

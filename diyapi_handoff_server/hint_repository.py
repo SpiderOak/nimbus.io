@@ -12,14 +12,14 @@ import sqlite3
 
 factory =  namedtuple(
     "HandoffHint", [
-        "node-name",
+        "node_name",
         "avatar_id",
         "timestamp", 
         "key",
         "version_number",
         "segment_number", 
         "action",
-        "server-node-names",
+        "server_node_names",
     ]
 )
 

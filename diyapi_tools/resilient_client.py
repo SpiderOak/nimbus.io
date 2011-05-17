@@ -60,6 +60,10 @@ class ResilientClient(object):
     def close(self):
         self._xreq_socket.close()
 
+    @property
+    def connected(self):
+        return self._status is _status_connected
+
     def queue_message_for_send(self, message_control, data=None):
         """
         queue a message for send (unless we can send it immediately)

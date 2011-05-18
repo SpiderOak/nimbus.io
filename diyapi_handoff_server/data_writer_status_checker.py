@@ -55,31 +55,56 @@ class DataWriterStatusChecker(object):
             return
                 
         current_time = time.time()
-        for status_entry in self._node_status.values():
+        for node_name, status_entry in self._node_status.items():
             # we are looking for data writers who have connected recently
             # and who have stayed connected for a while
             if status_entry["handoff-status"] == "disconnected":
                 if status_entry["writer-client"].connected:
+                    self._log.info("marking node %s 'connected'" % (
+                        node_name, 
+                    ))
                     status_entry["handoff-status"] = "connected"
                     status_entry["status-time"] = current_time
             elif status_entry["handoff-status"] == "connected":
-                elapsed_time = current_time - status_entry["status-time"]
-                if elapsed_time >= _connected_test_time:
-                    hint = self._state["hint-repository"].next_hint(
-                        status_entry["node-name"]
-                    )
-                    if hint is None:
-                        status_entry["handoff-status"] = "up-to-date"
-                        status_entry["status-time"] = current_time
-                    else:
-                        if self._start_handoff(
-                            hint, 
-                            status_entry["writer-client"]
-                        ):
-                            status_entry["handoff-status"] = "in-progress"
-                            status_entry["status-time"] = current_time
+                if not status_entry["writer-client"].connected:
+                    self._log.info("marking node %s 'disconnected'" % (
+                        node_name, 
+                    ))
+                    status_entry["handoff-status"] = "disconnected"
+                    status_entry["status-time"] = current_time
+                else:
+                    elapsed_time = current_time - status_entry["status-time"]
+                    if elapsed_time >= _connected_test_time:
+                        self._check_for_hint(current_time, status_entry)
 
         return [(self.run, self.next_run(), )]
+
+    def check_node_for_hint(self, node_name):
+        """
+        see if we have a pending hint for the given node
+        set the status accordingly
+        """
+        current_time = time.time()
+        status_entry = self._node_status["node_name"]
+        assert status_entry["handoff-status"] == "connected"
+        if not status_entry["writer-client"].connected:
+            self._log.info("marking node %s 'disconnected'" % ( node_name, ))
+            status_entry["handoff-status"] = "disconnected"
+            status_entry["status-time"] = current_time
+        else:
+            self._check_for_hint(current_time, status_entry)
+
+    def _check_for_hint(self, current_time, status_entry):
+        hint = self._state["hint-repository"].next_hint(
+            status_entry["node-name"]
+        )
+        if hint is None:
+            status_entry["handoff-status"] = "up-to-date"
+            status_entry["status-time"] = current_time
+        else:
+            if self._start_handoff(hint, status_entry["writer-client"]):
+                status_entry["handoff-status"] = "in-progress"
+                status_entry["status-time"] = current_time
 
     def _start_handoff(self, hint, writer_client):
         self._log.info("starting handoffs to %s" % (hint.node_name, ))
@@ -109,4 +134,4 @@ class DataWriterStatusChecker(object):
             hint, writer_client, reader_client, purge_writer_clients
         )
         message_id = forwarder.next()
-        self._state["active-forwarders"][message_id]
+        self._state["active-forwarders"][message_id] = forwarder

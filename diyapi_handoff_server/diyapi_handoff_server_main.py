@@ -3,8 +3,7 @@
 diyapi_handoff_server_main.py
 
 """
-from base64 import b64encode
-from collections import deque, namedtuple
+from collections import deque
 import logging
 import os
 import os.path
@@ -19,6 +18,7 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
+from diyapi_tools.standard_logging import format_timestamp
 
 from diyapi_handoff_server.hint_repository import HintRepository
 from diyapi_handoff_server.data_writer_status_checker import \
@@ -42,7 +42,6 @@ _handoff_server_address = os.environ.get(
 _handoff_server_pipeline_address = os.environ.get(
     "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS",
     "tcp://127.0.0.1:8700"
-    )
 )
 
 _retrieve_timeout = 30 * 60.0
@@ -53,7 +52,7 @@ def _handle_hinted_handoff(state, message, _data):
         message["dest-node-name"], 
         message["avatar-id"], 
         format_timestamp(message["timestamp"]), 
-        message["action"]
+        message["action"],
         message["key"],  
         message["version-number"], 
         message["segment-number"],
@@ -167,8 +166,7 @@ def _handle_purge_key_reply(state, message, _data):
             state["hint-repository"].purge_hint(hint)
         except Exception, instance:
             log.exception(instance)
-
-    return _check_for_handoffs(state, hint.exchange)
+        state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
 
 _dispatch_table = {
     "hinted-handoff"                : _handle_hinted_handoff,

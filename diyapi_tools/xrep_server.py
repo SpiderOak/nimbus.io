@@ -26,6 +26,7 @@ class XREPServer(object):
             prepare_ipc_path(address)
 
         self._xrep_socket = context.socket(zmq.XREP)
+        self._xrep_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("binding")
         self._xrep_socket.bind(address)
 

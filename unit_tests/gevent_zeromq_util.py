@@ -5,6 +5,8 @@ gevent_zeromq_util.py
 Utility functions for testing zeromq servers
 using the same gevent driven objects used by the web server
 """
+import logging
+
 import gevent
 from gevent_zeromq import zmq
 
@@ -15,6 +17,7 @@ from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.greenlet_push_client import GreenletPUSHClient
 
 def send_request_and_get_reply(
+    server_node_name,
     server_address, 
     client_tag, 
     client_address, 
@@ -22,6 +25,7 @@ def send_request_and_get_reply(
     data=None
 ):
     reply, _ = send_request_and_get_reply_and_data(
+        server_node_name,
         server_address, 
         client_tag, 
         client_address, 
@@ -31,12 +35,14 @@ def send_request_and_get_reply(
     return reply
 
 def send_request_and_get_reply_and_data(
+    server_node_name,
     server_address, 
     client_tag, 
     client_address, 
     request, 
     data=None
 ):
+    log = logging.getLogger("send_request_and_get_reply_and_data")
     context = zmq.context.Context()
     pollster = GreenletZeroMQPollster()
     deliverator = Deliverator()
@@ -51,6 +57,7 @@ def send_request_and_get_reply_and_data(
     resilient_client = GreenletResilientClient(
         context,
         pollster,
+        server_node_name,
         server_address,
         client_tag,
         client_address,

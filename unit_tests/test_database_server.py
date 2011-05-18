@@ -66,6 +66,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -88,6 +89,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply, data = send_request_and_get_reply_and_data(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -111,6 +113,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply, data = send_request_and_get_reply_and_data(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -147,6 +150,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -171,6 +175,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -704,6 +709,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -739,6 +745,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -771,6 +778,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -804,6 +812,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -837,6 +846,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,
@@ -869,6 +879,7 @@ class TestDatabaseServer(unittest.TestCase):
         }
 
         reply = send_request_and_get_reply(
+            _local_node_name,
             _database_server_address, 
             _local_node_name,
             _client_address,

@@ -205,3 +205,35 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
+def start_handoff_server(
+    node_names,
+    local_node_name, 
+    address, 
+    pipeline_address, 
+    data_reader_addresses, 
+    data_writer_addresses, 
+    repository_path
+):
+    log = logging.getLogger("start_handoff_server_%s" % (local_node_name, ))
+    server_dir = identify_program_dir(u"diyapi_handoff_server")
+    server_path = os.path.join(server_dir, "diyapi_handoff_server_main.py")
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME_SEQ"         : " ".join(node_names),
+        "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
+        "DIYAPI_HANDOFF_SERVER_ADDRESS"        : address,
+        "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
+        "DIYAPI_DATA_READER_ADDRESSES"    : " ".join(data_reader_addresses),
+        "DIYAPI_DATA_WRITER_ADDRESSES"    : " ".join(data_writer_addresses),
+        "DIYAPI_REPOSITORY_PATH"            : repository_path,
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+

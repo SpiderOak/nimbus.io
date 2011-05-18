@@ -21,6 +21,7 @@ class XREQClient(object):
         self._log = logging.getLogger("XREQClient-%s" % (address, ))
 
         self._xreq_socket = context.socket(zmq.XREQ)
+        self._xreq_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting")
         self._xreq_socket.connect(address)
 

@@ -110,6 +110,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -157,6 +158,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-size"      : segment_size,
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -177,6 +179,7 @@ class TestDataWriter(unittest.TestCase):
                 "sequence"          : sequence,
             }
             reply = send_request_and_get_reply(
+                _local_node_name,
                 _data_writer_address, 
                 _local_node_name,
                 _client_address,
@@ -201,6 +204,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -226,6 +230,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -250,6 +255,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-number"    : segment_number,
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -305,6 +311,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -357,6 +364,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -419,6 +427,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,
@@ -481,6 +490,7 @@ class TestDataWriter(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         reply = send_request_and_get_reply(
+            _local_node_name,
             _data_writer_address, 
             _local_node_name,
             _client_address,

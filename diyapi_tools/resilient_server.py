@@ -25,6 +25,7 @@ class ResilientServer(object):
 
         self._context = context
         self._xrep_socket = context.socket(zmq.XREP)
+        self._xrep_socket.setsockopt(zmq.LINGER, 1000)
 
         # a server can bind to multiple zeromq addresses
         if type(address) in [list, tuple, ]:

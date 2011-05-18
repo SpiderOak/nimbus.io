@@ -12,6 +12,8 @@ import random
 import time
 import uuid
 
+import zmq
+
 import gevent
 from gevent.coros import RLock
 from gevent.greenlet import Greenlet
@@ -151,6 +153,7 @@ class GreenletResilientClient(object):
 
         assert self._xreq_socket is None
         self._xreq_socket = self._context.socket(zmq.XREQ)
+        self._xreq_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting to server")
         self._xreq_socket.connect(self._server_address)
         self._pollster.register_read(

@@ -33,6 +33,7 @@ class ResilientClient(object):
         ))
 
         self._xreq_socket = context.socket(zmq.XREQ)
+        self._xreq_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting")
         self._xreq_socket.connect(server_address)
 

@@ -16,6 +16,7 @@ from unit_tests.util import start_database_server, \
         start_data_reader, \
         start_space_accounting_server, \
         start_anti_entropy_server, \
+        start_handoff_server, \
         poll_process, \
         terminate_process
 
@@ -26,6 +27,7 @@ _node_count = 10
 _database_server_base_port = 8000
 _data_writer_base_port = 8100
 _data_reader_base_port = 8300
+_handoff_server_base_port = 8700
 _database_server_addresses = [
     "tcp://127.0.0.1:%s" % (_database_server_base_port+i, ) \
     for i in range(_node_count)
@@ -60,6 +62,16 @@ _space_accounting_server_address = "tcp://127.0.0.1:8500"
 _space_accounting_pipeline_address = "tcp://127.0.0.1:8550"
 _anti_entropy_server_address = "tcp://127.0.0.1:8600"
 _anti_entropy_server_pipeline_address = "tcp://127.0.0.1:8650"
+_handoff_server_addresses = [
+    "ipc:///tmp/spideroak-diyapi-handoff_server-%s/socket" % (
+        _generate_node_name( i ),
+    ) \
+    for i in range(_node_count)
+]
+_handoff_server_pipeline_addresses = [
+    "tcp://127.0.0.1:%s" % (_handoff_server_base_port+i, ) \
+    for i in range(_node_count)
+]
 
 class NodeSim(object):
     """simulate one node in a cluster"""
@@ -100,8 +112,14 @@ class NodeSim(object):
             _database_server_local_addresses[self._node_index],
             self._home_dir
         )
-#        self._processes["handoff_server"] = start_handoff_server(
-#        )
+        self._processes["handoff_server"] = start_handoff_server(
+            self._node_name,
+            _handoff_server_addresses[self._node_index],
+            _handoff_server_pipeline_addresses[self._node_index],
+            _data_reader_addresses,
+            _data_writer_addresses,
+            self._home_dir
+        )
 
         if self._space_accounting:
             self._processes["space_accounting"] = \

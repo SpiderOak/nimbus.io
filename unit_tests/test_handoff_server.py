@@ -5,6 +5,7 @@ test_handoff_server.py
 test the handoff server process
 """
 from base64 import b64encode
+import logging
 import os
 import os.path
 import shutil
@@ -14,6 +15,7 @@ import time
 import unittest
 import uuid
 
+import gevent
 from gevent_zeromq import zmq
 
 from diyapi_tools.standard_logging import initialize_logging
@@ -99,6 +101,9 @@ class TestHandoffServer(unittest.TestCase):
     """test message handling in handoff server"""
 
     def setUp(self):
+        if not hasattr(self, "_log"):
+            self._log = logging.getLogger("TestHandoffServer")
+
         self.tearDown()
         self._key_generator = generate_key()
 
@@ -180,9 +185,10 @@ class TestHandoffServer(unittest.TestCase):
 
         available_nodes = _node_names[:]
         del available_nodes[_disconnected_data_writer_node_index]
-        backup_nodes = random.sample(available_nodes, 2),
+        backup_nodes = random.sample(available_nodes, 2)
+        self._log.debug("backup nodes = %s" % (backup_nodes, ))
 
-        resilient_clients = list()        
+        self._resilient_clients = list()        
         for node_name, address in zip(_node_names, _data_writer_addresses):
             if not node_name in backup_nodes:
                 continue
@@ -195,7 +201,10 @@ class TestHandoffServer(unittest.TestCase):
                 _client_address,
                 self._deliverator,
             )
-            resilient_clients.append(resilient_client)
+            self._resilient_clients.append(resilient_client)
+        self._log.debug("%s resilient clients" % (
+            len(self._resilient_clients), 
+        ))
 
         self._handoff_client = GreenletResilientClient(
             self._context, 
@@ -209,7 +218,7 @@ class TestHandoffServer(unittest.TestCase):
 
         self._data_writer_handoff_client = DataWriterHandoffClient(
             _node_names[_disconnected_data_writer_node_index],
-            resilient_clients,
+            self._resilient_clients,
             self._handoff_client
         )
 
@@ -218,42 +227,57 @@ class TestHandoffServer(unittest.TestCase):
     def tearDown(self):
         if hasattr(self, "_handoff_server_process") \
         and self._handoff_server_process is not None:
+            print >> sys.stderr, "terminating _handoff_server_process"
             terminate_process(self._handoff_server_process)
             self._handoff_server_process = None
         if hasattr(self, "_data_writer_processes") \
         and self._data_writer_processes is not None:
+            print >> sys.stderr, "terminating _data_writer_processes"
             for process in self._data_writer_processes:
                 terminate_process(process)
             self._data_writer_processes = None
         if hasattr(self, "_data_reader_processes") \
         and self._data_reader_processes is not None:
+            print >> sys.stderr, "terminating _data_reader_processes"
             for process in self._data_reader_processes:
                 terminate_process(process)
             self._data_reader_processes = None
         if hasattr(self, "_database_server_processes") \
         and self._database_server_processes is not None:
+            print >> sys.stderr, "terminating _database_server_processes"
             for process in self._database_server_processes:
                 terminate_process(process)
             self._database_server_processes = None
 
         if hasattr(self, "_pollster") \
         and self._pollster is not None:
+            print >> sys.stderr, "terminating _pollster"
             self._pollster.kill()
             self._pollster.join(timeout=3.0)
             self._pollster = None
         
         if hasattr(self, "_handoff_client") \
         and self._handoff_client is not None:
+            print >> sys.stderr, "terminating _handoff_client"
             self._handoff_client.close()
             self._handoff_client = None
 
         if hasattr(self, "_pull_server") \
         and self._pull_server is not None:
+            print >> sys.stderr, "terminating _pull_server"
             self._pull_server.close()
             self._pull_server = None
  
+        if hasattr(self, "_resilient_clients") \
+        and self._resilient_clients is not None:
+            print >> sys.stderr, "terminating _resilient_clients"
+            for client in self._resilient_clients:
+                client.close()
+            self._resilient_clients = None
+ 
         if hasattr(self, "_context") \
         and self._context is not None:
+            print >> sys.stderr, "terminating _context"
             self._context.term()
             self._context = None
 
@@ -268,7 +292,6 @@ class TestHandoffServer(unittest.TestCase):
         segment_number = 5
         content_size = 64 * 1024
         content_item = random_string(content_size) 
-        archive_message_id = uuid.uuid1().hex
         timestamp = time.time()
 
         total_size = content_size - 42
@@ -279,7 +302,6 @@ class TestHandoffServer(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "message-id"        : archive_message_id,
             "avatar-id"         : avatar_id,
             "timestamp"         : timestamp,
             "key"               : key, 
@@ -291,14 +313,25 @@ class TestHandoffServer(unittest.TestCase):
             "segment-adler32"   : segment_adler32,
             "segment-md5"       : b64encode(segment_md5),
         }
+        g = gevent.spawn(self._send_message_get_reply, message, content_item)
+        self._log.debug("before join")
+        g.join(timeout=10.0)
+        self._log.debug("after join")
+        self.assertEqual(g.ready(), True)
+        reply = g.value
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
+
+    def _send_message_get_reply(self, message, content_item):
         completion_channel = \
             self._data_writer_handoff_client.queue_message_for_send(
                 message, data=content_item
             )
+        self._log.debug("before completion_channel.get()")
         reply, _ = completion_channel.get()
-        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-        self.assertEqual(reply["result"], "success")
-        self.assertEqual(reply["previous-size"], 0)
+        self._log.debug("after completion_channel.get()")
+        return reply
 
 #    def test_retrieve_large_content(self):
 #        """test retrieving content that fits in a multiple messages"""
@@ -311,7 +344,6 @@ class TestHandoffServer(unittest.TestCase):
 #        version_number = 0
 #        segment_number = 5
 #        sequence = 0
-#        archive_message_id = uuid.uuid1().hex
 #        timestamp = time.time()
 #
 #        file_adler32 = -42
@@ -321,7 +353,6 @@ class TestHandoffServer(unittest.TestCase):
 #
 #        message = {
 #            "message-type"      : "archive-key-start",
-#            "message-id"        : archive_message_id,
 #            "avatar-id"         : avatar_id,
 #            "timestamp"         : timestamp,
 #            "sequence"          : sequence,
@@ -338,7 +369,6 @@ class TestHandoffServer(unittest.TestCase):
 #            message, 
 #            data=test_data[sequence]
 #        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
 #        self.assertEqual(reply["message-type"], "archive-key-start-reply")
 #        self.assertEqual(reply["result"], "success")
 #
@@ -346,7 +376,6 @@ class TestHandoffServer(unittest.TestCase):
 #            sequence += 1
 #            message = {
 #                "message-type"      : "archive-key-next",
-#                "message-id"        : archive_message_id,
 #                "avatar-id"         : avatar_id,
 #                "key"               : key,
 #                "sequence"          : sequence,
@@ -359,14 +388,12 @@ class TestHandoffServer(unittest.TestCase):
 #                message, 
 #                data=content_item
 #            )
-#            self.assertEqual(reply["message-id"], archive_message_id)
 #            self.assertEqual(reply["message-type"], "archive-key-next-reply")
 #            self.assertEqual(reply["result"], "success")
 #        
 #        sequence += 1
 #        message = {
 #            "message-type"      : "archive-key-final",
-#            "message-id"        : archive_message_id,
 #            "avatar-id"         : avatar_id,
 #            "key"               : key,
 #            "sequence"          : sequence,
@@ -384,7 +411,6 @@ class TestHandoffServer(unittest.TestCase):
 #            message, 
 #            data=test_data[sequence]
 #        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
 #        self.assertEqual(reply["message-type"], "archive-key-final-reply")
 #        self.assertEqual(reply["result"], "success")
 #        self.assertEqual(reply["previous-size"], 0)

@@ -53,12 +53,12 @@ insert into hints (
     action,
     server_node_names
 )
-values (? ?, ?, ?, ?, ?, ?, ?);
+values (?, ?, ?, ?, ?, ?, ?, ?);
 """.strip()
 
 _oldest_row_for_node_name = """
 select node_name, avatar_id, timestamp, key, version_number, segment_number,
-server_node_names 
+action, server_node_names 
 from hints
 where node_name = ?
 order by timestamp
@@ -104,6 +104,7 @@ class HintRepository(object):
         key, 
         version_number, 
         segment_number,
+        action,
         server_node_names
     ):
         """
@@ -120,7 +121,8 @@ class HintRepository(object):
                     key, 
                     version_number, 
                     segment_number,
-                    server_node_names
+                    action,
+                    " ".join(server_node_names)
                 )
             )
             cursor.close()

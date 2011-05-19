@@ -17,6 +17,7 @@ import gevent
 from gevent.queue import Queue
 
 _message_format = namedtuple("Message", "control body")
+_data_writer_timeout = 30.0
 
 class DataWriterHandoffClient(object):
     """
@@ -32,7 +33,7 @@ class DataWriterHandoffClient(object):
         self._log = logging.getLogger("HandoffClient-%s" % (
             original_dest_node_name,
         ))
-        self._log.info("handing of to %s" % (resilient_clients, ))
+        self._log.info("handing off to %s" % (resilient_clients, ))
         self._original_dest_node_name = original_dest_node_name
         self._resilient_clients = resilient_clients
         self._handoff_client = handoff_client
@@ -53,19 +54,22 @@ class DataWriterHandoffClient(object):
         return completion_channel
 
     def _complete_handoff(self, message, data, completion_channel):
-        data_writer_replies = list()
-
         # hand off the message, 
         # at this stage we don't care what message it is
-        data_writer_channels = [
-            client.queue_message_for_send(message, data) \
+        data_writer_greenlets = [
+            # queue a copy of the message, so each gets a different message-id
+            gevent.spawn(
+                self._hand_off_to_one_data_writer, client, message.copy(), data
+            ) \
             for client in self._resilient_clients
         ]
-
+    
+        self._log.debug("waiting data_writer_greenlets")
         # get all replies from the actual clients  
-        for data_writer_channel in data_writer_channels:
-            data_writer_reply, _data = data_writer_channel.get()
-            data_writer_replies.append(data_writer_reply)
+        gevent.joinall(data_writer_greenlets, timeout=_data_writer_timeout)
+        assert all([g.ready() for g in data_writer_greenlets])
+        data_writer_replies = [g.value for g in data_writer_greenlets]
+        self._log.debug("got data_writer replies")
 
         # if any data writer has failed, we have failed
         for data_writer_reply in data_writer_replies:
@@ -82,20 +86,15 @@ class DataWriterHandoffClient(object):
         # if we made it here all the handoffs succeeded, 
         # now we care what the message is
         try:
-            completed = self._dispatch_table[message.control["message-type"]](
-                message
-            )
+            completed = self._dispatch_table[message["message-type"]](message)
         except KeyError:
             self._log.error("Unknown message type %s" % (message.control, ))
             return
 
         # if we're not done, notify the sender that we are ok so far
+        # by sending one of the data_writer_replies 
         if not completed:
-            reply = {
-               "message-type"   : "handoff-success",
-               "result"         : "success",
-               "error-message"  : None,
-            }
+            reply = data_writer_replies[0]
             message = _message_format(control=reply, body=None)
             completion_channel.put(message)
             return
@@ -103,12 +102,27 @@ class DataWriterHandoffClient(object):
         # now the archive (or destroy) is fully backed up,
         # we must send the hint to the handoff server
         handoff_client_channel = self._handoff_client.queue_message_for_send(
-            self._handoff_message, body=None
+            self._handoff_message, data=None
         )        
 
+        self._log.debug("waiting handoff server reply")
         # just pass on whatever reply the handoff server gave us
-        reply, _data = handoff_client_channel.get()
+        handoff_reply, _data = handoff_client_channel.get()
+        if handoff_reply["result"] != "success":
+            reply = {
+               "message-type"   : "handoff-failure",
+               "result"         : handoff_reply["result"],
+               "error-message"  : handoff_reply["error-message"],
+            }
+        else:
+            reply = data_writer_replies[0]
+        self._log.debug("got handoff server reply")
         completion_channel.put(_message_format(control=reply, body=None))
+
+    def _hand_off_to_one_data_writer(self, client, message, data):
+        channel = client.queue_message_for_send(message, data)
+        reply, _data = channel.get()
+        return reply
 
     def _handle_archive_key_entire(self, message):
         assert len(self._handoff_message) == 0, self._handoff_message

@@ -6,6 +6,7 @@ a coroutine that handles message traffic for retrieving and
 re-archiving a segment that was handed off to us
 """
 import logging
+import uuid
 
 def forwarder_coroutine(
     hint, writer_client, reader_client, purge_writer_clients
@@ -41,11 +42,11 @@ def forwarder_coroutine(
     # (zeromq's json likes them like that)
     # we don't decode, because we're send them right back out again
 
-    total_size      = reply["total-size"],
-    file_adler32    = reply["file-adler32"],
-    file_md5        = reply["file-md5"],
-    segment_adler32 = reply["segment-adler32"],
-    segment_md5     = reply["segment-md5"],
+    total_size      = reply["total-size"]
+    file_adler32    = reply["file-adler32"]
+    file_md5        = reply["file-md5"]
+    segment_adler32 = reply["segment-adler32"]
+    segment_md5     = reply["segment-md5"]
     segment_count   = reply["segment-count"]
 
     sequence = 0
@@ -111,45 +112,53 @@ def forwarder_coroutine(
 
     # send the intermediate segments
     while sequence < segment_count-1:
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "retrieve-key-next",
+            "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key,
             "sequence"          : sequence,
         }
         reader_client.queue_message_for_send(message, data=None)
-        reply, data = yield
+        reply, data = yield message_id
         assert reply["message-type"] == "retrieve-key-next-reply", reply
         assert reply["result"] == "success", reply
 
+        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "archive-key-next",
+            "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key,
             "sequence"          : sequence,
         }
         
         writer_client.queue_message_for_send(message, data=data)
-        reply = yield
+        reply = yield message_id
         assert reply["message-type"] == "archive-key-next-reply", reply
         assert reply["result"] == "success", reply
 
         sequence += 1
 
     # retrieve and archive the last segment
+    message_id = uuid.uuid1().hex
     message = {
         "message-type"      : "retrieve-key-final",
+        "message-id"        : message_id,
         "avatar-id"         : hint.avatar_id,
         "key"               : hint.key,
         "sequence"          : sequence,
     }
     reader_client.queue_message_for_send(message, data=None)
-    reply, data = yield
+    reply, data = yield message_id
     assert reply["message-type"] == "retrieve-key-final-reply", reply
     assert reply["result"] == "success", reply
 
+    message_id = uuid.uuid1().hex
     message = {
         "message-type"      : "archive-key-final",
+        "message-id"        : message_id,
         "avatar-id"         : hint.avatar_id,
         "key"               : hint.key,
         "sequence"          : sequence,
@@ -160,25 +169,24 @@ def forwarder_coroutine(
         "segment-md5"       : segment_md5,
     }
     writer_client.queue_message_for_send(message, data=data)
-    reply = yield
+    reply = yield message_id
     assert reply["message-type"] == "archive-key-final-reply", reply
     assert reply["result"] == "success"
 
     # handoff done, tell the backup nodes to purge the key
-    message = {
-        "message-type"      : "purge-key",
-        "avatar-id"         : hint.avatar_id, 
-        "timestamp"         : hint.timestamp, 
-        "key"               : hint.key, 
-        "version-number"    : hint.version_number,
-        "segment-number"    : hint.segment_number,
-    }
     for purge_writer_client in purge_writer_clients:
+        message_id = uuid.uuid1().hex
+        message = {
+            "message-type"      : "purge-key",
+            "message-id"        : message_id,
+            "avatar-id"         : hint.avatar_id, 
+            "timestamp"         : hint.timestamp, 
+            "key"               : hint.key, 
+            "version-number"    : hint.version_number,
+            "segment-number"    : hint.segment_number,
+        }
         purge_writer_client.queue_message_for_send(message, data=None)
-
-    # we want a reply for each purge
-    for _ in range(len(purge_writer_clients)):
-        reply = yield
+        reply = yield message_id
         assert reply["message-type"] == "purge-key-reply"
         if reply["result"] != "success":
             log.error("purge-key failed %s" % (reply, ))

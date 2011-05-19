@@ -64,12 +64,10 @@ class DataWriterHandoffClient(object):
             for client in self._resilient_clients
         ]
     
-        self._log.debug("waiting data_writer_greenlets")
         # get all replies from the actual clients  
         gevent.joinall(data_writer_greenlets, timeout=_data_writer_timeout)
         assert all([g.ready() for g in data_writer_greenlets])
         data_writer_replies = [g.value for g in data_writer_greenlets]
-        self._log.debug("got data_writer replies")
 
         # if any data writer has failed, we have failed
         for data_writer_reply in data_writer_replies:
@@ -105,7 +103,6 @@ class DataWriterHandoffClient(object):
             self._handoff_message, data=None
         )        
 
-        self._log.debug("waiting handoff server reply")
         # just pass on whatever reply the handoff server gave us
         handoff_reply, _data = handoff_client_channel.get()
         if handoff_reply["result"] != "success":
@@ -116,7 +113,6 @@ class DataWriterHandoffClient(object):
             }
         else:
             reply = data_writer_replies[0]
-        self._log.debug("got handoff server reply")
         completion_channel.put(_message_format(control=reply, body=None))
 
     def _hand_off_to_one_data_writer(self, client, message, data):
@@ -157,14 +153,16 @@ class DataWriterHandoffClient(object):
         return False # not completed
 
     def _handle_archive_key_next(self, message):
-        assert self._handoff_message["message-type"] == "handoff-archive"
+        assert self._handoff_message["message-type"] == "hinted-handoff", \
+                self._handoff_message
         assert self._handoff_message["avatar-id"] == message["avatar-id"]
         assert self._handoff_message["key"] == message["key"]
 
         return False # not completed
     
     def _handle_archive_key_final(self, message):
-        assert self._handoff_message["message-type"] == "handoff-archive"
+        assert self._handoff_message["message-type"] == "hinted-handoff", \
+                self._handoff_message
         assert self._handoff_message["avatar-id"] == message["avatar-id"]
         assert self._handoff_message["key"] == message["key"]
 

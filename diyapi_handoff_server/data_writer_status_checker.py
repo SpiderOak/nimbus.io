@@ -53,7 +53,15 @@ class DataWriterStatusChecker(object):
     def run(self, halt_event):
         if halt_event.is_set():
             return
-                
+
+        try:
+            self._current_time_check()
+        except Exception, instance:
+            self._log.exception(instance)
+        
+        return [(self.run, self.next_run(), )]
+
+    def _current_time_check(self):
         current_time = time.time()
         for node_name, status_entry in self._node_status.items():
             # we are looking for data writers who have connected recently
@@ -77,16 +85,14 @@ class DataWriterStatusChecker(object):
                     if elapsed_time >= _connected_test_time:
                         self._check_for_hint(current_time, status_entry)
 
-        return [(self.run, self.next_run(), )]
-
     def check_node_for_hint(self, node_name):
         """
         see if we have a pending hint for the given node
         set the status accordingly
         """
         current_time = time.time()
-        status_entry = self._node_status["node_name"]
-        assert status_entry["handoff-status"] == "connected"
+        status_entry = self._node_status[node_name]
+        assert status_entry["handoff-status"] in ["connected", "in-progress"]
         if not status_entry["writer-client"].connected:
             self._log.info("marking node %s 'disconnected'" % ( node_name, ))
             status_entry["handoff-status"] = "disconnected"
@@ -104,11 +110,11 @@ class DataWriterStatusChecker(object):
         else:
             if self._start_handoff(hint, status_entry["writer-client"]):
                 status_entry["handoff-status"] = "in-progress"
-                status_entry["status-time"] = current_time
+            status_entry["status-time"] = current_time
 
     def _start_handoff(self, hint, writer_client):
         self._log.info("starting handoffs to %s" % (hint.node_name, ))
-        assert hint.node_name not in self._state["active-handoffs"] 
+        assert hint.node_name not in self._state["active-forwarders"] 
 
         server_node_names = hint.server_node_names.split()
 
@@ -135,3 +141,5 @@ class DataWriterStatusChecker(object):
         )
         message_id = forwarder.next()
         self._state["active-forwarders"][message_id] = forwarder
+
+        return True

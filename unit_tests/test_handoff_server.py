@@ -49,7 +49,7 @@ def _generate_node_name(node_index):
 
 _local_node_index = 0
 _local_node_name = _generate_node_name(_local_node_index)
-_disconnected_data_writer_node_index = 3
+_missing_data_writer_index = 3
 _node_names = [_generate_node_name(i) for i in range(_node_count)]
 
 _database_server_addresses = [
@@ -128,7 +128,7 @@ class TestHandoffServer(unittest.TestCase):
             self._database_server_processes.append(process)
             time.sleep(1.0)
 
-            if i == _disconnected_data_writer_node_index:
+            if i == _missing_data_writer_index:
                 print >> sys.stderr, "NOT starting data writer", node_name
             else:
                 print >> sys.stderr, "starting data writer", node_name
@@ -144,7 +144,7 @@ class TestHandoffServer(unittest.TestCase):
                 self._data_writer_processes.append(process)
                 time.sleep(1.0)
 
-            if i == _disconnected_data_writer_node_index:
+            if i == _missing_data_writer_index:
                 print >> sys.stderr, "NOT starting data reader", node_name
             else:
                 print >> sys.stderr, "starting data reader", node_name
@@ -184,7 +184,7 @@ class TestHandoffServer(unittest.TestCase):
         self._pull_server.register(self._pollster)
 
         available_nodes = _node_names[:]
-        del available_nodes[_disconnected_data_writer_node_index]
+        del available_nodes[_missing_data_writer_index]
         backup_nodes = random.sample(available_nodes, 2)
         self._log.debug("backup nodes = %s" % (backup_nodes, ))
 
@@ -217,7 +217,7 @@ class TestHandoffServer(unittest.TestCase):
         )
 
         self._data_writer_handoff_client = DataWriterHandoffClient(
-            _node_names[_disconnected_data_writer_node_index],
+            _node_names[_missing_data_writer_index],
             self._resilient_clients,
             self._handoff_client
         )
@@ -248,6 +248,11 @@ class TestHandoffServer(unittest.TestCase):
             for process in self._database_server_processes:
                 terminate_process(process)
             self._database_server_processes = None
+
+        if hasattr(self, "_missing_data_writer") \
+        and self._missing_data_writer is not None:
+            terminate_process(self._missing_data_writer)
+            self._missing_data_writer = None
 
         if hasattr(self, "_pollster") \
         and self._pollster is not None:
@@ -314,14 +319,96 @@ class TestHandoffServer(unittest.TestCase):
             "segment-md5"       : b64encode(segment_md5),
         }
         g = gevent.spawn(self._send_message_get_reply, message, content_item)
-        self._log.debug("before join")
         g.join(timeout=10.0)
-        self._log.debug("after join")
         self.assertEqual(g.ready(), True)
         reply = g.value
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(reply["previous-size"], 0)
+
+        print >> sys.stderr, "archive successful: starting missing data writer"
+        self._start_missing_data_writer()
+        print >> sys.stderr, "data_writer started"
+        print >> sys.stderr, "press [Enter] to continue" 
+        raw_input()
+
+    def test_retrieve_large_content(self):
+        """test retrieving content that fits in a multiple messages"""
+        segment_size = 120 * 1024
+        chunk_count = 10
+        total_size = int(1.2 * segment_size * chunk_count)
+        avatar_id = 1001
+        test_data = [random_string(segment_size) for _ in range(chunk_count)]
+        key  = self._key_generator.next()
+        version_number = 0
+        segment_number = 5
+        sequence = 0
+        timestamp = time.time()
+
+        file_adler32 = -42
+        file_md5 = "ffffffffffffffff"
+        segment_adler32 = 32
+        segment_md5 = "1111111111111111"
+
+        message = {
+            "message-type"      : "archive-key-start",
+            "avatar-id"         : avatar_id,
+            "timestamp"         : timestamp,
+            "sequence"          : sequence,
+            "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
+            "segment-size"      : segment_size,
+        }
+        g = gevent.spawn(self._send_message_get_reply, message, test_data[sequence])
+        g.join(timeout=10.0)
+        self.assertEqual(g.ready(), True)
+        reply = g.value
+        self.assertEqual(reply["message-type"], "archive-key-start-reply")
+        self.assertEqual(reply["result"], "success")
+
+        for content_item in test_data[1:-1]:
+            sequence += 1
+            message = {
+                "message-type"      : "archive-key-next",
+                "avatar-id"         : avatar_id,
+                "key"               : key,
+                "sequence"          : sequence,
+            }
+            g = gevent.spawn(
+                self._send_message_get_reply, message, test_data[sequence]
+            )
+            g.join(timeout=10.0)
+            self.assertEqual(g.ready(), True)
+            reply = g.value
+            self.assertEqual(reply["message-type"], "archive-key-next-reply")
+            self.assertEqual(reply["result"], "success")
+        
+        sequence += 1
+        message = {
+            "message-type"      : "archive-key-final",
+            "avatar-id"         : avatar_id,
+            "key"               : key,
+            "sequence"          : sequence,
+            "total-size"        : total_size,
+            "file-adler32"      : file_adler32,
+            "file-md5"          : b64encode(file_md5),
+            "segment-adler32"   : segment_adler32,
+            "segment-md5"       : b64encode(segment_md5),
+        }
+        g = gevent.spawn(self._send_message_get_reply, message, test_data[sequence])
+        g.join(timeout=10.0)
+        self.assertEqual(g.ready(), True)
+        reply = g.value
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["previous-size"], 0)
+
+        print >> sys.stderr, "archive successful: starting missing data writer"
+        self._start_missing_data_writer()
+        print >> sys.stderr, "data_writer started"
+        print >> sys.stderr, "press [Enter] to continue" 
+        raw_input()
 
     def _send_message_get_reply(self, message, content_item):
         completion_channel = \
@@ -333,87 +420,18 @@ class TestHandoffServer(unittest.TestCase):
         self._log.debug("after completion_channel.get()")
         return reply
 
-#    def test_retrieve_large_content(self):
-#        """test retrieving content that fits in a multiple messages"""
-#        segment_size = 120 * 1024
-#        chunk_count = 10
-#        total_size = int(1.2 * segment_size * chunk_count)
-#        avatar_id = 1001
-#        test_data = [random_string(segment_size) for _ in range(chunk_count)]
-#        key  = self._key_generator.next()
-#        version_number = 0
-#        segment_number = 5
-#        sequence = 0
-#        timestamp = time.time()
-#
-#        file_adler32 = -42
-#        file_md5 = "ffffffffffffffff"
-#        segment_adler32 = 32
-#        segment_md5 = "1111111111111111"
-#
-#        message = {
-#            "message-type"      : "archive-key-start",
-#            "avatar-id"         : avatar_id,
-#            "timestamp"         : timestamp,
-#            "sequence"          : sequence,
-#            "key"               : key, 
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number,
-#            "segment-size"      : segment_size,
-#        }
-#        reply = send_request_and_get_reply(
-#            _node_names[_local_node_index], 
-#            _data_writer_addresses[_local_node_index], 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-type"], "archive-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#
-#        for content_item in test_data[1:-1]:
-#            sequence += 1
-#            message = {
-#                "message-type"      : "archive-key-next",
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply = send_request_and_get_reply(
-#                _node_names[_local_node_index], 
-#                _data_writer_addresses[_local_node_index], 
-#                _local_node_name,
-#                _client_address,
-#                message, 
-#                data=content_item
-#            )
-#            self.assertEqual(reply["message-type"], "archive-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#        
-#        sequence += 1
-#        message = {
-#            "message-type"      : "archive-key-final",
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#            "total-size"        : total_size,
-#            "file-adler32"      : file_adler32,
-#            "file-md5"          : b64encode(file_md5),
-#            "segment-adler32"   : segment_adler32,
-#            "segment-md5"       : b64encode(segment_md5),
-#        }
-#        reply = send_request_and_get_reply(
-#            _node_names[_local_node_index], 
-#            _data_writer_addresses[_local_node_index], 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(reply["previous-size"], 0)
+    def _start_missing_data_writer(self):
+        node_name = _generate_node_name(_missing_data_writer_index)
+        repository_path = _repository_path(node_name)
+        self._missing_data_writer = start_data_writer(
+            node_name, 
+            _data_writer_addresses[_missing_data_writer_index],
+            _data_writer_pipeline_addresses[_missing_data_writer_index],
+            _database_server_addresses[_missing_data_writer_index],
+            repository_path
+        )
+        poll_result = poll_process(self._missing_data_writer)
+        self.assertEqual(poll_result, None)
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

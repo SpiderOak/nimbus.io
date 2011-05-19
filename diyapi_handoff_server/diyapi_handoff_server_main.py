@@ -24,6 +24,9 @@ from diyapi_handoff_server.hint_repository import HintRepository
 from diyapi_handoff_server.data_writer_status_checker import \
         DataWriterStatusChecker
 
+class HandoffError(Exception):
+    pass
+
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
     _local_node_name,
@@ -96,14 +99,15 @@ def _handle_retrieve_reply(state, message, data):
         return
 
     #TODO: we need to squawk about this somehow
-    if message["result"] != "successful":
-        log.error("%s failed (%s) %s %s" % (
+    if message["result"] != "success":
+        error_message = "%s failed (%s) %s %s" % (
             message["message-type"], 
             message["result"], 
             message["error-message"], 
             message,
-        ))
-        return
+        )
+        log.error(error_message)
+        raise HandoffError(error_message)
 
     message_id = forwarder.send((message, data, ))
     assert message_id is not None
@@ -119,14 +123,15 @@ def _handle_archive_reply(state, message, _data):
         return
 
     #TODO: we need to squawk about this somehow
-    if message["result"] != "successful":
-        log.error("%s failed (%s) %s %s" % (
+    if message["result"] != "success":
+        error_message = "%s failed (%s) %s %s" % (
             message["message-type"], 
             message["result"], 
             message["error-message"], 
             message,
-        ))
-        return
+        )
+        log.error(error_message)
+        raise HandoffError(error_message)
 
     message_id = forwarder.send(message)
     assert message_id is not None
@@ -142,7 +147,7 @@ def _handle_purge_key_reply(state, message, _data):
         return
 
     #TODO: we need to squawk about this somehow
-    if message["result"] != "successful":
+    if message["result"] != "success":
         log.error("%s failed (%s) %s %s" % (
             message["message-type"], 
             message["result"], 
@@ -162,6 +167,9 @@ def _handle_purge_key_reply(state, message, _data):
         state["active-forwarders"][message_id] = forwarder
     else:
         hint = result
+        log.info("handoff complete %s %s %s" % (
+            hint.node_name, hint.avatar_id, hint.key
+        ))
         try:
             state["hint-repository"].purge_hint(hint)
         except Exception, instance:

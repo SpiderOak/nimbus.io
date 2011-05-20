@@ -175,6 +175,8 @@ class TestDataWriter(unittest.TestCase):
                 "message-type"      : "archive-key-next",
                 "avatar-id"         : avatar_id,
                 "key"               : key, 
+                "version-number"    : version_number,
+                "segment-number"    : segment_number,
                 "message-id"        : message_id,
                 "sequence"          : sequence,
             }
@@ -196,6 +198,8 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,

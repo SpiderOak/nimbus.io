@@ -99,7 +99,7 @@ def _compute_state_key(message):
     """
     compute a key to the state for this message
     """
-    return (message["avatar-id"], message["key"], )
+    return (message["avatar-id"], message["key"], message["segment-number"], )
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
@@ -114,14 +114,11 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request, something is wrong
+    # if we already have a state entry for this request
+    # assume we are doing some form of restart
     if state_key in state["active-requests"]:
-        error_string = "invalid duplicate in archive-key-entire"
-        log.error(error_string)
-        reply["result"] = "invalid-duplicate"
-        reply["error-message"] = error_string
-        state["resilient-server"].send_reply(reply)
-        return
+        log.warn("duplicate state_key (%s) assuming restart" % (state_key, ))
+        del state["active-requests"][state_key]
 
     file_name = _compute_filename(message)
 
@@ -176,6 +173,8 @@ def _handle_archive_key_entire(state, message, data):
         "message-type"      : "key-insert",
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
+        "version-number"    : message["version-number"],
+        "segment-number"    : message["segment-number"],
     }
     state["database-client"].queue_message_for_send(
         request, data=database_content.marshall(database_entry)
@@ -194,14 +193,11 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
-    # if we already have a state entry for this request, something is wrong
+    # if we already have a state entry for this request
+    # assume we are doing some form of restart
     if state_key in state["active-requests"]:
-        error_string = "invalid duplicate in archive-key-start"
-        log.error(error_string)
-        reply["result"] = "invalid-duplicate"
-        reply["error-message"] = error_string
-        state["resilient-server"].send_reply(reply)
-        return
+        log.warn("duplicate state_key (%s) assuming restart" % (state_key, ))
+        del state["active-requests"][state_key]
 
     file_name = _compute_filename(message)
 
@@ -390,6 +386,8 @@ def _handle_archive_key_final(state, message, data):
         "message-type"      : "key-insert",
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"], 
+        "version-number"    : request_state.version_number,
+        "segment-number"    : request_state.segment_number,
     }
     state["database-client"].queue_message_for_send(
         request, data=database_content.marshall(database_entry)
@@ -398,7 +396,7 @@ def _handle_archive_key_final(state, message, data):
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
     state_key = _compute_state_key(message)
-    log.info("%s segment %s" % (state_key, message["segment-number"], ))
+    log.info("%s" % (state_key, ))
 
     reply = {
         "message-type"  : "destroy-key-reply",
@@ -448,7 +446,7 @@ def _handle_destroy_key(state, message, _data):
 def _handle_purge_key(state, message, _data):
     log = logging.getLogger("_handle_purge_key")
     state_key = _compute_state_key(message)
-    log.info("%s segment = %s" % (state_key, message["segment-number"], ))
+    log.info("%s" % (state_key, ))
 
     reply = {
         "message-type"  : "purge-key-reply",

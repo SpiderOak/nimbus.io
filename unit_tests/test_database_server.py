@@ -62,6 +62,8 @@ class TestDatabaseServer(unittest.TestCase):
             "message-type"      : "key-insert",
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
+            "version-number"    : content.version_number,
+            "segment-number"    : content.segment_number,
             "key"               : key, 
         }
 

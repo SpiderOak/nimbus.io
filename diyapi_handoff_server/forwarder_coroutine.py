@@ -25,7 +25,7 @@ def forwarder_coroutine(
         "avatar-id"         : hint.avatar_id,
         "key"               : hint.key,
         "version-number"    : hint.version_number,
-        "segment-number"    : hint.segment_number
+        "segment-number"    : hint.segment_number,
     }
 
     log.debug("sending retrieve-key-start %s %s %s %s" % (
@@ -118,6 +118,8 @@ def forwarder_coroutine(
             "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key,
+            "version-number"    : hint.version_number,
+            "segment-number"    : hint.segment_number,
             "sequence"          : sequence,
         }
         reader_client.queue_message_for_send(message, data=None)
@@ -131,6 +133,8 @@ def forwarder_coroutine(
             "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key,
+            "version-number"    : hint.version_number,
+            "segment-number"    : hint.segment_number,
             "sequence"          : sequence,
         }
         
@@ -148,6 +152,8 @@ def forwarder_coroutine(
         "message-id"        : message_id,
         "avatar-id"         : hint.avatar_id,
         "key"               : hint.key,
+        "version-number"    : hint.version_number,
+        "segment-number"    : hint.segment_number,
         "sequence"          : sequence,
     }
     reader_client.queue_message_for_send(message, data=None)
@@ -161,6 +167,8 @@ def forwarder_coroutine(
         "message-id"        : message_id,
         "avatar-id"         : hint.avatar_id,
         "key"               : hint.key,
+        "version-number"    : hint.version_number,
+        "segment-number"    : hint.segment_number,
         "sequence"          : sequence,
         "total-size"        : total_size,
         "file-adler32"      : file_adler32,

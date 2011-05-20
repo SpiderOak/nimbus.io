@@ -289,48 +289,48 @@ class TestHandoffServer(unittest.TestCase):
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
-    def test_handoff_small_content(self):
-        """test retrieving content that fits in a single message"""
-        avatar_id = 1001
-        key  = self._key_generator.next()
-        version_number = 0
-        segment_number = 5
-        content_size = 64 * 1024
-        content_item = random_string(content_size) 
-        timestamp = time.time()
-
-        total_size = content_size - 42
-        file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
-        segment_adler32 = 32
-        segment_md5 = "1111111111111111"
-
-        message = {
-            "message-type"      : "archive-key-entire",
-            "avatar-id"         : avatar_id,
-            "timestamp"         : timestamp,
-            "key"               : key, 
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "total-size"        : total_size,
-            "file-adler32"      : file_adler32,
-            "file-md5"          : b64encode(file_md5),
-            "segment-adler32"   : segment_adler32,
-            "segment-md5"       : b64encode(segment_md5),
-        }
-        g = gevent.spawn(self._send_message_get_reply, message, content_item)
-        g.join(timeout=10.0)
-        self.assertEqual(g.ready(), True)
-        reply = g.value
-        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-        self.assertEqual(reply["result"], "success")
-        self.assertEqual(reply["previous-size"], 0)
-
-        print >> sys.stderr, "archive successful: starting missing data writer"
-        self._start_missing_data_writer()
-        print >> sys.stderr, "data_writer started"
-        print >> sys.stderr, "press [Enter] to continue" 
-        raw_input()
+#    def test_handoff_small_content(self):
+#        """test retrieving content that fits in a single message"""
+#        avatar_id = 1001
+#        key  = self._key_generator.next()
+#        version_number = 0
+#        segment_number = 5
+#        content_size = 64 * 1024
+#        content_item = random_string(content_size) 
+#        timestamp = time.time()
+#
+#        total_size = content_size - 42
+#        file_adler32 = -42
+#        file_md5 = "ffffffffffffffff"
+#        segment_adler32 = 32
+#        segment_md5 = "1111111111111111"
+#
+#        message = {
+#            "message-type"      : "archive-key-entire",
+#            "avatar-id"         : avatar_id,
+#            "timestamp"         : timestamp,
+#            "key"               : key, 
+#            "version-number"    : version_number,
+#            "segment-number"    : segment_number,
+#            "total-size"        : total_size,
+#            "file-adler32"      : file_adler32,
+#            "file-md5"          : b64encode(file_md5),
+#            "segment-adler32"   : segment_adler32,
+#            "segment-md5"       : b64encode(segment_md5),
+#        }
+#        g = gevent.spawn(self._send_message_get_reply, message, content_item)
+#        g.join(timeout=10.0)
+#        self.assertEqual(g.ready(), True)
+#        reply = g.value
+#        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+#        self.assertEqual(reply["result"], "success")
+#        self.assertEqual(reply["previous-size"], 0)
+#
+#        print >> sys.stderr, "archive successful: starting missing data writer"
+#        self._start_missing_data_writer()
+#        print >> sys.stderr, "data_writer started"
+#        print >> sys.stderr, "press [Enter] to continue" 
+#        raw_input()
 
     def test_retrieve_large_content(self):
         """test retrieving content that fits in a multiple messages"""
@@ -373,6 +373,8 @@ class TestHandoffServer(unittest.TestCase):
                 "message-type"      : "archive-key-next",
                 "avatar-id"         : avatar_id,
                 "key"               : key,
+                "version-number"    : version_number,
+                "segment-number"    : segment_number,
                 "sequence"          : sequence,
             }
             g = gevent.spawn(
@@ -389,6 +391,8 @@ class TestHandoffServer(unittest.TestCase):
             "message-type"      : "archive-key-final",
             "avatar-id"         : avatar_id,
             "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
             "sequence"          : sequence,
             "total-size"        : total_size,
             "file-adler32"      : file_adler32,

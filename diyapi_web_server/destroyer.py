@@ -57,8 +57,8 @@ class Destroyer(object):
                 avatar_id,
                 timestamp,
                 key,
-                segment_number,
-                0 # version_number
+                0, # version_number
+                segment_number
             )
         self._join(timeout)
         result = min([task.value for task in self._done])

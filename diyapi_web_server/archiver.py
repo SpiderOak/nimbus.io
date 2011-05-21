@@ -88,6 +88,8 @@ class Archiver(object):
                         data_writer.archive_key_next,
                         self.avatar_id,
                         self.key,
+                        self.version_number,
+                        segment_number,
                         self.sequence_number,
                         segment
                     )
@@ -139,6 +141,8 @@ class Archiver(object):
                         data_writer.archive_key_final,
                         self.avatar_id,
                         self.key,
+                        self.version_number,
+                        segment_number,
                         self.sequence_number,
                         file_size,
                         file_adler32,

@@ -130,6 +130,7 @@ class WebServer(object):
         self._handoff_client = GreenletResilientClient(
             self._zeromq_context, 
             self._pollster,
+            node_name,
             HANDOFF_SERVER_ADDRESS,
             CLIENT_TAG,
             WEB_SERVER_PIPELINE_ADDRESS,

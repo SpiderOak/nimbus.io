@@ -72,6 +72,7 @@ _handoff_server_pipeline_addresses = [
     "tcp://127.0.0.1:%s" % (_handoff_server_base_port+i, ) \
     for i in range(_node_count)
 ]
+_node_names = [_generate_node_name(i) for i in range(_node_count)]
 
 class NodeSim(object):
     """simulate one node in a cluster"""
@@ -113,6 +114,7 @@ class NodeSim(object):
             self._home_dir
         )
         self._processes["handoff_server"] = start_handoff_server(
+            _node_names,
             self._node_name,
             _handoff_server_addresses[self._node_index],
             _handoff_server_pipeline_addresses[self._node_index],

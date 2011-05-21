@@ -12,6 +12,7 @@ export DIYAPI_DATA_WRITER_ADDRESSES="tcp://127.0.0.1:8100 tcp://127.0.0.1:8101 t
 export DIYAPI_DATA_READER_ADDRESSES="tcp://127.0.0.1:8300 tcp://127.0.0.1:8301 tcp://127.0.0.1:8302 tcp://127.0.0.1:8303 tcp://127.0.0.1:8304 tcp://127.0.0.1:8305 tcp://127.0.0.1:8306 tcp://127.0.0.1:8307 tcp://127.0.0.1:8308 tcp://127.0.0.1:8309" 
 export DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS="tcp://127.0.0.1:8500"
 export DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS="tcp://127.0.0.1:8550"
+export DIYAPI_HANDOFF_SERVER_ADDRESS="ipc:///tmp/spideroak-diyapi-handoff_server-node-sim-00/socket"
 export PANDORA_DB_PW_diyapi="0.332009188365191"
 
 rm /var/log/pandora/diyapi_web_server.log

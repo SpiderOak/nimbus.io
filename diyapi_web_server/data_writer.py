@@ -104,6 +104,8 @@ class DataWriter(object):
         self,
         avatar_id,
         key,
+        version_number,
+        segment_number,
         sequence_number,
         segment
     ):
@@ -111,6 +113,8 @@ class DataWriter(object):
             "message-type"      : "archive-key-next",
             "avatar-id"         : avatar_id,
             "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
             "sequence"          : sequence_number,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
@@ -129,6 +133,8 @@ class DataWriter(object):
         self,
         avatar_id,
         key,
+        version_number,
+        segment_number,
         sequence_number,
         file_size,
         file_adler32,
@@ -141,6 +147,8 @@ class DataWriter(object):
             "message-type"      : "archive-key-final",
             "avatar-id"         : avatar_id,
             "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
             "sequence"          : sequence_number,
             "total-size"        : file_size,
             "file-adler32"      : file_adler32,
@@ -165,8 +173,8 @@ class DataWriter(object):
         avatar_id,
         timestamp,
         key,
-        segment_number,
-        version_number
+        version_number,
+        segment_number
     ):
         message = {
             "message-type"      : "destroy-key",

@@ -71,27 +71,30 @@ def _connected_clients(clients):
 
 def _create_data_writers(clients, handoff_client):
     data_writers = list()
-    connected_clients = list()
-    disconnected_clients = list()
+    connected_clients_by_node = list()
+    disconnected_clients_by_node = list()
 
     for node_name, client in zip(NODE_NAMES, clients):
         if client.connected:
-            connected_clients.append((node_name, client))
+            connected_clients_by_node.append((node_name, client))
         else:
-            disconnected_clients.append((node_name, client))
+            disconnected_clients_by_node.append((node_name, client))
 
-    if len(connected_clients) < MIN_CONNECTED_CLIENTS:
+    if len(connected_clients_by_node) < MIN_CONNECTED_CLIENTS:
         raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
-            len(connected_clients),
+            len(connected_clients_by_node),
         ))
 
-    for node_name, client in connected_clients:
+    connected_clients = list()
+    for node_name, client in connected_clients_by_node:
+        connected_clients.append(client)
         data_writers.append(DataWriter(node_name, client))
-
-    for node_name, client in disconnected_clients:
+    
+    for node_name, client in disconnected_clients_by_node:
+        backup_clients = random.sample(connected_clients, HANDOFF_COUNT)
         data_writer_handoff_client = DataWriterHandoffClient(
             client._server_address,
-            random.sample(HANDOFF_COUNT, connected_clients),
+            backup_clients,
             handoff_client
         )
         data_writers.append(DataWriter(node_name, data_writer_handoff_client))

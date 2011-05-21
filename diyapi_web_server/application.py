@@ -312,6 +312,12 @@ class Application(object):
                 req.remote_user, key, req.content_length
             )
         )
+
+        if req.content_length <= 0:
+            raise exc.HTTPForbidden(
+                "cannot archive: content_length = %s" % (req.content_length, )
+            ) 
+
         data_writers = _create_data_writers(
             self._data_writer_clients, self._handoff_client
         )

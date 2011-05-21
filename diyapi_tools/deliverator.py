@@ -23,7 +23,10 @@ class Deliverator(object):
         Add a message_id
         return a channel that will deliver the reply message 
         """
-        channel = Queue(maxsize=0)
+        # 2011-05-21 dougfort -- we can't use the zero size 'channel' queue
+        # becasue the web server moves on after 8 of 10 retrieves and nobody 
+        # is waiting on the last two
+        channel = Queue(maxsize=1)
 
         self._lock.acquire()
         try:

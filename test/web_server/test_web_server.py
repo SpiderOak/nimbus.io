@@ -128,7 +128,8 @@ class TestWebServer(unittest.TestCase):
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(json.loads(result), [key])
+        result_list = json.loads(result)
+        self.assertTrue(key in result_list)
 
     def test_upload_small_and_retrieve(self):
         log = logging.getLogger('test_upload_small_and_retrieve')
@@ -252,7 +253,8 @@ class TestWebServer(unittest.TestCase):
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(json.loads(result), [])
+        result_list = json.loads(result)
+        self.assertTrue(key not in result_list)
 
     def test_upload_small_then_delete_and_retrieve(self):
         log = logging.getLogger('test_upload_small_then_delete_and_retrieve')

@@ -90,6 +90,9 @@ class NodeSim(object):
         self._space_accounting = space_accounting
         self._anti_entropy = anti_entropy
 
+    def __str__(self):
+        return self._node_name
+
     def start(self):
         self._log.debug("start")
 

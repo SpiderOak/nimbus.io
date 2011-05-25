@@ -31,16 +31,49 @@ class CommandInterpreter(cmd.Cmd):
             )
         )
 
-    def do_start(self, _line):
-        """start all nodes"""
-        for node_sim in self._node_sims:
+    def _get_node_from_line(self, line):
+        try:
+            index = int(line) - 1
+        except ValueError:
+            index = len(self._node_sims) + 1
+            
+        try:
+            return self._node_sims[index]
+        except IndexError:
+            print "Please enter an integer betwee 1 and 10"
+            return None
+
+    def do_start(self, line):
+        """start a node (1..10) or 'all'"""
+        if line in ["", "all"]:
+            for node_sim in self._node_sims:
+                print "starting", str(node_sim)
+                node_sim.start()
+                time.sleep(1.0)
+            return
+        
+        node_sim = self._get_node_from_line(line)
+        if node_sim is not None:
             print "starting", str(node_sim)
             node_sim.start()
-            time.sleep(1.0)
+
+    def do_stop_node(self, line):
+        """stop one node"""
+        node_sim = self._get_node_from_line(line)
+        if node_sim is not None:
+            print "stopping", str(node_sim)
+            node_sim.stop()
 
     def do_poll(self, _line):
         """poll nodes for subprocess status"""
-        for node_sim in self._node_sims:
+        if line in ["", "all"]:
+            for node_sim in self._node_sims:
+                print "polling", str(node_sim)
+                node_sim.poll()
+                return
+
+        node_sim = self._get_node_from_line(line)
+        if node_sim is not None:
             print "polling", str(node_sim)
             node_sim.poll()
 
@@ -51,9 +84,6 @@ class CommandInterpreter(cmd.Cmd):
             node_sim.stop()
         return True
 
-    def do_stop(self, _line):
-        """stop the command interpreter and exit the program"""
-        return self.onecmd("halt")
     def do_quit(self, _line):
         """stop the command interpreter and exit the program"""
         return self.onecmd("halt")

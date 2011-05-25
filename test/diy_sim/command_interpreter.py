@@ -64,7 +64,7 @@ class CommandInterpreter(cmd.Cmd):
             print "stopping", str(node_sim)
             node_sim.stop()
 
-    def do_poll(self, _line):
+    def do_poll(self, line):
         """poll nodes for subprocess status"""
         if line in ["", "all"]:
             for node_sim in self._node_sims:

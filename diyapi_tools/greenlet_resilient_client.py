@@ -24,6 +24,7 @@ _message_format = namedtuple("Message", "control body")
 _polling_interval = 3.0
 _ack_timeout = float(os.environ.get("SPIDEROAK_DIYAPI_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
+_max_idle_time = 10 * 60.0
 _reporting_interval = 60.0
 
 _status_handshaking = 1
@@ -103,6 +104,8 @@ class GreenletResilientClient(object):
         self._status = _status_disconnected
         self._status_time = 0.0
 
+        self._last_successful_ack_time = 0.0
+
         self._dispatch_table = {
             _status_disconnected    : self._handle_status_disconnected,
             _status_connected       : self._handle_status_connected,            
@@ -175,7 +178,16 @@ class GreenletResilientClient(object):
         self._send_message(message)
 
     def _handle_status_connected(self):
+
+        # if we think we are connected, but we haven't sent anything
+        # recently, disconnect until we have something to send
         if  self._pending_message is None:
+            elapsed_time = time.time() - self._last_successful_ack_time
+            if elapsed_time >= _max_idle_time:
+                self._log.info("idle for %s seconds, disconnecting" % (
+                    elapsed_time,
+            ))
+            self._disconnect()
             return
 
         elapsed_time = time.time() - self._pending_message_start_time
@@ -188,13 +200,7 @@ class GreenletResilientClient(object):
             )
         )
 
-        assert self._xreq_socket is not None
-        self._pollster.unregister(self._xreq_socket)
-        self._xreq_socket.close()
-        self._xreq_socket = None
-
-        self._status = _status_disconnected
-        self._status_time = time.time()
+        self._disconnect()
 
         # deliver a failure reply to whoever is waiting for this message
         reply = {
@@ -219,22 +225,26 @@ class GreenletResilientClient(object):
 
         self._log.warn("timeout waiting handshake ack")
 
-        self._pollster.unregister(self._xreq_socket)
+        self._disconnect()
+
+        self._pending_message = None
+        self._pending_message_start_time = None
+
+    def _disconnect(self):
         assert self._xreq_socket is not None
+        self._pollster.unregister(self._xreq_socket)
         self._xreq_socket.close()
         self._xreq_socket = None
 
         self._status = _status_disconnected
         self._status_time = time.time()
-        self._pending_message = None
-        self._pending_message_start_time = None
 
     def close(self):
         self._watcher.kill()
         self._watcher.join()
+
         if self._xreq_socket is not None:
-            self._pollster.unregister(self._xreq_socket)
-            self._xreq_socket.close()
+            self._disconnect()
 
     def queue_message_for_send(self, message_control, data=None):
 
@@ -287,6 +297,7 @@ class GreenletResilientClient(object):
             self._log.debug("received ack: %s %s" % (
                 message_type, message["message-id"],
             ))
+            self._last_successful_ack_time = time.time()
 
             # if we got an ack to a handshake request, we are connected
             if message_type == "resilient-server-handshake":

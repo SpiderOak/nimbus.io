@@ -61,6 +61,7 @@ from diyapi_anti_entropy_server.retry_manager import \
 from diyapi_anti_entropy_server.state_cleaner import \
         StateCleaner
 
+_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_anti_entropy_server_%s.log" % (
     _local_node_name,
@@ -353,14 +354,17 @@ def _setup(_halt_event, state):
     state["pull-server"].register(state["pollster"])
 
     state["database-clients"] = list()
-    for database_server_address in _database_server_addresses:
+    for node_name, database_server_address in zip(
+        _node_names, _database_server_addresses
+    ):
         resilient_client = ResilientClient(
                 state["zmq-context"],
+                state["pollster"],
+                node_name,
                 database_server_address,
                 _client_tag,
                 _anti_entropy_server_pipeline_address
             )
-        resilient_client.register(state["pollster"])
         state["database-clients"].append(resilient_client)
 
     state["queue-dispatcher"] = DequeDispatcher(

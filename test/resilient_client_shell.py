@@ -94,11 +94,12 @@ def _setup(_halt_event, _state):
 
     state["test-client"] = ResilientClient(
         state["zmq-context"],
+        state["pollster"],
+        _local_node_name,
         _test_server_address,
         _local_node_name,
         _test_client_address,
     )
-    state["test-client"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,

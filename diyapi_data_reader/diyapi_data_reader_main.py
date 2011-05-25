@@ -396,11 +396,12 @@ def _setup(_halt_event, state):
     
     state["database-client"] = ResilientClient(
         state["zmq-context"],
+        state["pollster"],
+        _local_node_name,
         _database_server_local_address,
         _client_tag,
         _data_reader_pipeline_address
     )
-    state["database-client"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,

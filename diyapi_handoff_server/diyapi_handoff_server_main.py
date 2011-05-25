@@ -27,6 +27,7 @@ from diyapi_handoff_server.data_writer_status_checker import \
 class HandoffError(Exception):
     pass
 
+_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
     _local_node_name,
@@ -222,19 +223,26 @@ def _setup(_halt_event, state):
     )
     state["pull-server"].register(state["pollster"])
     
-    for data_reader_address in _data_reader_addresses:
+    for node_name, data_reader_address in zip(
+        _node_names, _data_reader_addresses
+    ):
         data_reader_client = ResilientClient(
             state["zmq-context"],
+            state["pollster"],
+            node_name,
             data_reader_address,
             _client_tag,
             _handoff_server_pipeline_address
         )
-        data_reader_client.register(state["pollster"])
         state["reader-clients"].append(data_reader_client)
 
-    for data_writer_address in _data_writer_addresses:
+    for node_name, data_writer_address in zip(
+        _node_names, _data_writer_addresses
+    ):
         data_writer_client = ResilientClient(
             state["zmq-context"],
+            state["pollster"],
+            node_name,
             data_writer_address,
             _client_tag,
             _handoff_server_pipeline_address

@@ -85,21 +85,21 @@ _request_state_tuple = namedtuple("RequestState", [
     "file_name",
 ])
 
+def _compute_state_key(message):
+    """
+    compute a key to the state for this message
+    """
+    return (message["avatar-id"], message["key"], message["segment-number"], )
+
 def _compute_filename(message):
     """
     compute a unique filename from message attributes
     to begin with, let's just use a hash of avatar-id and key
     """
     hasher = md5()
-    hasher.update(str(message["avatar-id"]))
-    hasher.update(message["key"])
+    for item in _compute_state_key(message):
+        hasher.update(str(item))
     return hasher.hexdigest()
-
-def _compute_state_key(message):
-    """
-    compute a key to the state for this message
-    """
-    return (message["avatar-id"], message["key"], message["segment-number"], )
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")

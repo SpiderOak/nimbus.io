@@ -122,8 +122,8 @@ class ResilientClient(object):
             if elapsed_time >= _max_idle_time:
                 self._log.info("idle for %s seconds, disconnecting" % (
                     elapsed_time,
-            ))
-            self._disconnect()
+                ))
+                self._disconnect()
             return
 
         elapsed_time = time.time() - self._pending_message_start_time

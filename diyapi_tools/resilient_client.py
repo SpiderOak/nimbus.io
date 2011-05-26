@@ -17,6 +17,7 @@ _message_format = namedtuple("Message", "control body")
 _ack_timeout = 10.0
 _handshake_retry_interval = 60.0
 _max_idle_time = 10 * 60.0
+_polling_interval = 3.0
 
 _status_handshaking = 1
 _status_connected = 2
@@ -32,7 +33,6 @@ class ResilientClient(object):
     """
     a class that manages a zeromq XREQ socket as a client
     """
-    polling_interval = 3.0
 
     def __init__(
         self, 
@@ -72,6 +72,10 @@ class ResilientClient(object):
             _status_connected       : self._handle_status_connected,            
             _status_handshaking     : self._handle_status_handshaking,  
         }
+
+    @classmethod
+    def next_run(cls):
+        return time.time() + _polling_interval
 
     @property
     def connected(self):
@@ -269,7 +273,7 @@ class ResilientClient(object):
 
         self._dispatch_table[self._status]()
 
-        return [(self.run, time.time() + self.polling_interval, ), ]
+        return [(self.run, self.next_run(), ), ]
 
     def __str__(self):
         return "ResilientClient-%s" % (self._server_address, )

@@ -47,7 +47,7 @@ class DataWriterHandoffClient(object):
         }
    
     def queue_message_for_send(self, message, data=None):
-        completion_channel = Queue(maxsize=0)
+        completion_channel = Queue(maxsize=1)
 
         gevent.spawn(self._complete_handoff, message, data, completion_channel)
 
@@ -66,7 +66,10 @@ class DataWriterHandoffClient(object):
     
         # get all replies from the actual clients  
         gevent.joinall(data_writer_greenlets, timeout=_data_writer_timeout)
-        assert all([g.ready() for g in data_writer_greenlets])
+        all_ready = all([g.ready() for g in data_writer_greenlets])
+        if not all_ready:
+            self._log.error("Not all data writer greenlets finished")
+        assert all_ready
         data_writer_replies = [g.value for g in data_writer_greenlets]
 
         # if any data writer has failed, we have failed

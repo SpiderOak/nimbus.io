@@ -34,7 +34,6 @@ from diyapi_tools.persistent_state import load_state, save_state
 from diyapi_tools import repository
 
 from diyapi_data_writer.state_cleaner import StateCleaner
-from diyapi_data_writer.heartbeater import Heartbeater
 
 from diyapi_database_server import database_content
 
@@ -60,17 +59,10 @@ _data_writer_pipeline_address = os.environ.get(
         _local_node_name,
     )
 )
-_data_writer_pub_address = os.environ.get(
-    "DIYAPI_DATA_WRITER_PUB_ADDRESS",
-    "tcp://127.0.0.1:8102"
-)
 _key_insert_timeout = 60.0
 _key_destroy_timeout = 60.0
 _key_purge_timeout = 60.0
 _archive_timeout = 30 * 60.0
-_heartbeat_interval = float(
-    os.environ.get("DIYAPI_DATA_WRITER_HEARTBEAT", "60.0")
-)
 
 _request_state_tuple = namedtuple("RequestState", [ 
     "client_tag",
@@ -722,9 +714,7 @@ def _create_state():
         "resilient-server"      : None,
         "pull-server"           : None,
         "database-client"       : None,
-        "pub-server"            : None,
         "state-cleaner"         : None,
-        "heartbeater"           : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
         "active-requests"       : dict(),
@@ -770,18 +760,12 @@ def _setup(_halt_event, state):
     )
 
     state["state-cleaner"] = StateCleaner(state)
-    state["heartbeater"] = Heartbeater(
-        state, 
-        _heartbeat_interval,
-        state["pub-server"]
-    )
 
-    # hand the pollster and the queue-dispatcher to the time-queue 
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
-        (state["heartbeater"].run, state["heartbeater"].next_run(), ), 
+        (state["database-client"].run, state["database-client"].next_run(), ),
     ] 
 
 def _tear_down(_state):
@@ -793,9 +777,6 @@ def _tear_down(_state):
     log.debug("stopping database client")
     state["pull-server"].close()
     state["database-client"].close()
-
-    log.debug("stopping (heartbeat) pub server")
-    #state["pub-server"].close()
 
     state["zmq-context"].term()
 

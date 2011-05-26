@@ -411,11 +411,11 @@ def _setup(_halt_event, state):
 
     state["state-cleaner"] = StateCleaner(state)
 
-    # hand the pollster and the queue-dispatcher to the time-queue 
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
+        (state["database-client"].run, state["database-client"].next_run(), ), 
     ] 
 
 def _tear_down(_state):

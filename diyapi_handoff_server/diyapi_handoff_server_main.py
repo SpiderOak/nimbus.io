@@ -7,6 +7,7 @@ from collections import deque
 import logging
 import os
 import os.path
+import random
 import sys
 import time
 
@@ -223,6 +224,8 @@ def _setup(_halt_event, state):
     )
     state["pull-server"].register(state["pollster"])
     
+    status_checkers = list()
+
     for node_name, data_reader_address in zip(
         _node_names, _data_reader_addresses
     ):
@@ -235,6 +238,10 @@ def _setup(_halt_event, state):
             _handoff_server_pipeline_address
         )
         state["reader-clients"].append(data_reader_client)
+        # don't run all the status checkers at the same time
+        status_checkers.append(
+            (data_reader_client.run, time.time() + random.random() * 60.0, )
+        )        
 
     for node_name, data_writer_address in zip(
         _node_names, _data_writer_addresses
@@ -248,6 +255,10 @@ def _setup(_halt_event, state):
             _handoff_server_pipeline_address
         )
         state["writer-clients"].append(data_writer_client)
+        # don't run all the status checkers at the same time
+        status_checkers.append(
+            (data_writer_client.run, time.time() + random.random() * 60.0, )
+        )        
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -257,13 +268,14 @@ def _setup(_halt_event, state):
 
     state["data-writer-status-checker"] = DataWriterStatusChecker(state)
 
-    # hand the pollster and the queue-dispatcher to the time-queue 
-    return [
+    timer_driven_callbacks = [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["data-writer-status-checker"].run,
             DataWriterStatusChecker.next_run())
     ] 
+    timer_driven_callbacks.extend(status_checkers)
+    return timer_driven_callbacks
 
 def _tear_down(state):
     log = logging.getLogger("_tear_down")

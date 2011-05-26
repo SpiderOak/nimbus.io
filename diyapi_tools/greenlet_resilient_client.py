@@ -102,6 +102,7 @@ class GreenletResilientClient(object):
 
         # set the status time low so we fire off a handshake
         self._status = _status_disconnected
+        self._log.info("status = %s" % (_status_name[self._status], ))
         self._status_time = 0.0
 
         self._last_successful_ack_time = 0.0
@@ -173,6 +174,7 @@ class GreenletResilientClient(object):
         self._pending_message = message
         self._pending_message_start_time = time.time()
         self._status = _status_handshaking
+        self._log.info("status = %s" % (_status_name[self._status], ))
         self._status_time = time.time()
 
         self._send_message(message)
@@ -186,8 +188,8 @@ class GreenletResilientClient(object):
             if elapsed_time >= _max_idle_time:
                 self._log.info("idle for %s seconds, disconnecting" % (
                     elapsed_time,
-            ))
-            self._disconnect()
+                ))
+                self._disconnect()
             return
 
         elapsed_time = time.time() - self._pending_message_start_time
@@ -231,12 +233,14 @@ class GreenletResilientClient(object):
         self._pending_message_start_time = None
 
     def _disconnect(self):
+        self._log.debug("disconnecting")
         assert self._xreq_socket is not None
         self._pollster.unregister(self._xreq_socket)
         self._xreq_socket.close()
         self._xreq_socket = None
 
         self._status = _status_disconnected
+        self._log.info("status = %s" % (_status_name[self._status], ))
         self._status_time = time.time()
 
     def close(self):
@@ -303,6 +307,7 @@ class GreenletResilientClient(object):
             if message_type == "resilient-server-handshake":
                 assert self._status == _status_handshaking, self._status
                 self._status = _status_connected
+                self._log.info("status = %s" % (_status_name[self._status], ))
                 self._status_time = time.time()                
 
             self._pending_message = None

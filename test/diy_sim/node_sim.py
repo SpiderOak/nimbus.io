@@ -136,6 +136,7 @@ class NodeSim(object):
 
         if self._anti_entropy:
             self._processes["anti_entropy"] = start_anti_entropy_server(
+                _node_names,
                 self._node_name,
                 _anti_entropy_server_address,
                 _anti_entropy_server_pipeline_address,

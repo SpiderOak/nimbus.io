@@ -70,7 +70,7 @@ class CommandInterpreter(cmd.Cmd):
             for node_sim in self._node_sims:
                 print "polling", str(node_sim)
                 node_sim.poll()
-                return
+            return
 
         node_sim = self._get_node_from_line(line)
         if node_sim is not None:
@@ -81,7 +81,11 @@ class CommandInterpreter(cmd.Cmd):
         """stop the command interpreter and exit the program"""
         for node_sim in self._node_sims:
             print "stopping", str(node_sim)
-            node_sim.stop()
+            try:
+                node_sim.stop()
+            except Exception, instance:
+                print "*** Exception", str(instance), "***"
+
         return True
 
     def do_quit(self, _line):

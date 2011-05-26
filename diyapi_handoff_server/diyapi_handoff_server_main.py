@@ -247,7 +247,6 @@ def _setup(_halt_event, state):
             _client_tag,
             _handoff_server_pipeline_address
         )
-        data_writer_client.register(state["pollster"])
         state["writer-clients"].append(data_writer_client)
 
     state["queue-dispatcher"] = DequeDispatcher(

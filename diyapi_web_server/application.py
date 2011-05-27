@@ -70,7 +70,8 @@ def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
 def _create_data_writers(clients, handoff_client):
-    data_writers = list()
+    data_writers_dict = dict()
+
     connected_clients_by_node = list()
     disconnected_clients_by_node = list()
 
@@ -88,7 +89,8 @@ def _create_data_writers(clients, handoff_client):
     connected_clients = list()
     for node_name, client in connected_clients_by_node:
         connected_clients.append(client)
-        data_writers.append(DataWriter(node_name, client))
+        assert node_name not in data_writers_dict, connected_clients_by_node
+        data_writers_dict[node_name] = DataWriter(node_name, client)
     
     for node_name, client in disconnected_clients_by_node:
         backup_clients = random.sample(connected_clients, HANDOFF_COUNT)
@@ -98,9 +100,15 @@ def _create_data_writers(clients, handoff_client):
             backup_clients,
             handoff_client
         )
-        data_writers.append(DataWriter(node_name, data_writer_handoff_client))
+        assert node_name not in data_writers_dict, data_writers_dict
+        data_writers_dict[node_name] = DataWriter(
+            node_name, data_writer_handoff_client
+        )
 
-    return data_writers
+    # 2011-05-27 dougfort -- the data-writers list must be in 
+    # the same order as NODE_NAMES, because that's the order that
+    # segment numbers get defined in
+    return [data_writers_dict[node_name] for node_name in NODE_NAMES]
 
 class Application(object):
     def __init__(
@@ -278,7 +286,7 @@ class Application(object):
             MIN_SEGMENTS,
             MAX_SEGMENTS)
         retriever = Retriever(
-            connected_data_readers,
+            self.data_readers,
             avatar_id,
             key,
             MIN_SEGMENTS

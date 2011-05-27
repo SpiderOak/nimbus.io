@@ -358,5 +358,5 @@ class GreenletResilientClient(object):
         assert not self._xreq_socket.rcvmore()
 
     def __str__(self):
-        return "ResilientClient-%s" % (self._server_address, )
+        return "ResilientClient-%s" % (self._server_node_name, )
 

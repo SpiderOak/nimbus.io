@@ -111,6 +111,7 @@ class HintRepository(object):
         store a hint to handoff this archive to dest node-name when its
         data_writer announces its presence.
         """
+        self._log.debug("store: %s %s %s" % (node_name, avatar_id, key, ))
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(
@@ -136,6 +137,7 @@ class HintRepository(object):
         cursor.execute(_oldest_row_for_node_name, (node_name, ))
         row = cursor.fetchone()
         cursor.close()
+        self._log.debug("next_hint(%s) found %r" % (node_name, row, ))
         if row is None:
             return None
         return factory._make(row)
@@ -144,6 +146,7 @@ class HintRepository(object):
         """
         remove the database entry for a HandoffHint object
         """
+        self._log.debug("purge_hint: %s" % (handoff_hint, ))
         with self._connection:
             cursor = self._connection.cursor()
             cursor.execute(

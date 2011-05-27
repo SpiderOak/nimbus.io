@@ -33,7 +33,9 @@ class DataWriterHandoffClient(object):
         self._log = logging.getLogger("HandoffClient-%s" % (
             original_dest_node_name,
         ))
-        self._log.info("handing off to %s" % (resilient_clients, ))
+        self._log.info("handing off to %s" % (
+            ", ".join([str(c) for c in resilient_clients]), 
+        ))
         self._original_dest_node_name = original_dest_node_name
         self._resilient_clients = resilient_clients
         self._handoff_client = handoff_client

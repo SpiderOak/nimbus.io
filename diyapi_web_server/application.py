@@ -93,7 +93,7 @@ def _create_data_writers(clients, handoff_client):
     for node_name, client in disconnected_clients_by_node:
         backup_clients = random.sample(connected_clients, HANDOFF_COUNT)
         data_writer_handoff_client = DataWriterHandoffClient(
-            client._server_address,
+            client.server_node_name,
             backup_clients,
             handoff_client
         )

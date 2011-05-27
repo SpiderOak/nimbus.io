@@ -53,7 +53,7 @@ _retrieve_timeout = 30 * 60.0
 
 def _handle_hinted_handoff(state, message, _data):
     log = logging.getLogger("_handle_hinted_handoff")
-    log.info("%s, %s %s, %s, %s, version_number %s, segment_number %s" % (
+    log.info("%s, %s %s, %s, %s, version_number %s, segment_number %s %s" % (
         message["dest-node-name"], 
         message["avatar-id"], 
         format_timestamp(message["timestamp"]), 
@@ -61,6 +61,7 @@ def _handle_hinted_handoff(state, message, _data):
         message["key"],  
         message["version-number"], 
         message["segment-number"],
+        message["server-node-names"],
     ))
 
     reply = {

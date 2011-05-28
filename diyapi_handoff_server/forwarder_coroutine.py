@@ -6,10 +6,11 @@ a coroutine that handles message traffic for retrieving and
 re-archiving a segment that was handed off to us
 """
 import logging
+import time
 import uuid
 
 def forwarder_coroutine(
-    hint, writer_client, reader_client, purge_writer_clients
+    hint, writer_client, reader_client, backup_writer_clients
 ):
     """
     manage the message traffic for retrieving and re-archiving 
@@ -84,23 +85,23 @@ def forwarder_coroutine(
     reply = yield message_id
 
     if reply["message-type"] == "archive-key-final-reply":
-        # handoff done, tell the backup nodes to purge the key
+        # handoff done, tell the backup nodes to destroy the key
         message = {
-            "message-type"      : "purge-key",
+            "message-type"      : "destroe-key",
             "avatar-id"         : hint.avatar_id, 
             "timestamp"         : hint.timestamp, 
             "key"               : hint.key, 
             "version-number"    : hint.version_number,
             "segment-number"    : hint.segment_number,
         }
-        for purge_writer_client in purge_writer_clients:
+        for backup_writer_client in backup_writer_clients:
             message_id = uuid.uuid1().hex
             message["message-id"] = message_id
-            purge_writer_client.queue_message_for_send(message, data=None)
+            backup_writer_client.queue_message_for_send(message, data=None)
             reply = yield message_id
-            assert reply["message-type"] == "purge-key-reply"
+            assert reply["message-type"] == "destroy-key-reply"
             if reply["result"] != "success":
-                log.error("purge-key failed %s" % (reply, ))
+                log.error("destroy-key failed %s" % (reply, ))
 
         # we give back the hint as our last yield
         yield hint
@@ -181,23 +182,23 @@ def forwarder_coroutine(
     assert reply["message-type"] == "archive-key-final-reply", reply
     assert reply["result"] == "success"
 
-    # handoff done, tell the backup nodes to purge the key
-    for purge_writer_client in purge_writer_clients:
+    # handoff done, tell the backup nodes to destroy the key
+    for backup_writer_client in backup_writer_clients:
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "purge-key",
+            "message-type"      : "destroy-key",
             "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id, 
-            "timestamp"         : hint.timestamp, 
+            "timestamp"         : time.time(),
             "key"               : hint.key, 
             "version-number"    : hint.version_number,
             "segment-number"    : hint.segment_number,
         }
-        purge_writer_client.queue_message_for_send(message, data=None)
+        backup_writer_client.queue_message_for_send(message, data=None)
         reply = yield message_id
-        assert reply["message-type"] == "purge-key-reply"
+        assert reply["message-type"] == "destroy-key-reply"
         if reply["result"] != "success":
-            log.error("purge-key failed %s" % (reply, ))
+            log.error("destroy-key failed %s" % (reply, ))
 
     # we give back the hint as our last yield
     yield hint

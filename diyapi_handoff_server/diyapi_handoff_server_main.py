@@ -140,8 +140,8 @@ def _handle_archive_reply(state, message, _data):
     assert message_id is not None
     state["active-forwarders"][message_id] = forwarder    
 
-def _handle_purge_key_reply(state, message, _data):
-    log = logging.getLogger("_handle_purge_key_reply")
+def _handle_destroy_key_reply(state, message, _data):
+    log = logging.getLogger("_handle_destroy_key_reply")
 
     try:
         forwarder = state["active-forwarders"].pop(message["message-id"])
@@ -160,7 +160,7 @@ def _handle_purge_key_reply(state, message, _data):
         # we don't give up here, because the handoff has succeeded 
         # at this point we're just cleaning up
 
-    # if we get back a string, it is a message-id for another purge
+    # if we get back a string, it is a message-id for another destroy
     # otherwise, we should get the hint we started with
     result = forwarder.send(message)
     assert result is not None
@@ -187,7 +187,7 @@ _dispatch_table = {
     "archive-key-start-reply"       : _handle_archive_reply,
     "archive-key-next-reply"        : _handle_archive_reply,
     "archive-key-final-reply"       : _handle_archive_reply,
-    "purge-key-reply"               : _handle_purge_key_reply,
+    "destroy-key-reply"             : _handle_destroy_key_reply,
 }
 
 def _create_state():

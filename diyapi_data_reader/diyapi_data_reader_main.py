@@ -153,7 +153,7 @@ def _handle_retrieve_key_next(state, message, _data):
         error_string = "%s out of sequence %s %s" % (
             state_key, 
             message["sequence"],
-            retrieve_state.sequence+1
+            retrieve_state.sequence
         )
         log.error(error_string)
         reply["result"] = "out-of-sequence"

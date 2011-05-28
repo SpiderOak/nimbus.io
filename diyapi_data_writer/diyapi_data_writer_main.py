@@ -81,7 +81,10 @@ def _compute_state_key(message):
     """
     compute a key to the state for this message
     """
-    return (message["avatar-id"], message["key"], message["segment-number"], )
+    return (message["avatar-id"], 
+            message["key"], 
+            message["version-number"],
+            message["segment-number"], )
 
 def _compute_filename(message):
     """

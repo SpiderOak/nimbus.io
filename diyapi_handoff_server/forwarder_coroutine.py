@@ -86,22 +86,25 @@ def forwarder_coroutine(
 
     if reply["message-type"] == "archive-key-final-reply":
         # handoff done, tell the backup nodes to destroy the key
-        message = {
-            "message-type"      : "destroe-key",
-            "avatar-id"         : hint.avatar_id, 
-            "timestamp"         : hint.timestamp, 
-            "key"               : hint.key, 
-            "version-number"    : hint.version_number,
-            "segment-number"    : hint.segment_number,
-        }
-        for backup_writer_client in backup_writer_clients:
-            message_id = uuid.uuid1().hex
-            message["message-id"] = message_id
-            backup_writer_client.queue_message_for_send(message, data=None)
-            reply = yield message_id
-            assert reply["message-type"] == "destroy-key-reply"
-            if reply["result"] != "success":
-                log.error("destroy-key failed %s" % (reply, ))
+        # 2011-05-28 dougfort -- destroy key will destroy everything in the
+        # database for the key, not just our segment. So I'm leaving that
+        # part out until we switch to postgres.
+#        message = {
+#            "message-type"      : "destroe-key",
+#            "avatar-id"         : hint.avatar_id, 
+#            "timestamp"         : hint.timestamp, 
+#            "key"               : hint.key, 
+#            "version-number"    : hint.version_number,
+#            "segment-number"    : hint.segment_number,
+#        }
+#        for backup_writer_client in backup_writer_clients:
+#            message_id = uuid.uuid1().hex
+#            message["message-id"] = message_id
+#            backup_writer_client.queue_message_for_send(message, data=None)
+#            reply = yield message_id
+#            assert reply["message-type"] == "destroy-key-reply"
+#            if reply["result"] != "success":
+#                log.error("destroy-key failed %s" % (reply, ))
 
         # we give back the hint as our last yield
         yield hint
@@ -183,22 +186,25 @@ def forwarder_coroutine(
     assert reply["result"] == "success"
 
     # handoff done, tell the backup nodes to destroy the key
-    for backup_writer_client in backup_writer_clients:
-        message_id = uuid.uuid1().hex
-        message = {
-            "message-type"      : "destroy-key",
-            "message-id"        : message_id,
-            "avatar-id"         : hint.avatar_id, 
-            "timestamp"         : time.time(),
-            "key"               : hint.key, 
-            "version-number"    : hint.version_number,
-            "segment-number"    : hint.segment_number,
-        }
-        backup_writer_client.queue_message_for_send(message, data=None)
-        reply = yield message_id
-        assert reply["message-type"] == "destroy-key-reply"
-        if reply["result"] != "success":
-            log.error("destroy-key failed %s" % (reply, ))
+    # 2011-05-28 dougfort -- destroy key will destroy everything in the
+    # database for the key, not just our segment. So I'm leaving that
+    # part out until we switch to postgres.
+#    for backup_writer_client in backup_writer_clients:
+#        message_id = uuid.uuid1().hex
+#        message = {
+#            "message-type"      : "destroy-key",
+#            "message-id"        : message_id,
+#            "avatar-id"         : hint.avatar_id, 
+#            "timestamp"         : time.time(),
+#            "key"               : hint.key, 
+#            "version-number"    : hint.version_number,
+#            "segment-number"    : hint.segment_number,
+#        }
+#        backup_writer_client.queue_message_for_send(message, data=None)
+#        reply = yield message_id
+#        assert reply["message-type"] == "destroy-key-reply"
+#        if reply["result"] != "success":
+#            log.error("destroy-key failed %s" % (reply, ))
 
     # we give back the hint as our last yield
     yield hint

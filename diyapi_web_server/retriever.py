@@ -38,7 +38,9 @@ class Retriever(object):
         if self._pending:
             raise RetrieveFailedError()
         if len(self._done) < self.segments_needed:
-            raise RetrieveFailedError()
+            raise RetrieveFailedError("too few segments done %s" % (
+                len(self._done),
+            ))
 
     def _done_link(self, task):
         if isinstance(task.value, gevent.GreenletExit):

@@ -136,31 +136,11 @@ def _handle_archive_reply(state, message, _data):
         log.error(error_message)
         raise HandoffError(error_message)
 
-    message_id = forwarder.send(message)
-    assert message_id is not None
-    state["active-forwarders"][message_id] = forwarder    
+#    message_id = forwarder.send(message)
+#    assert message_id is not None
+#    state["active-forwarders"][message_id] = forwarder    
 
-def _handle_destroy_key_reply(state, message, _data):
-    log = logging.getLogger("_handle_destroy_key_reply")
-
-    try:
-        forwarder = state["active-forwarders"].pop(message["message-id"])
-    except KeyError:
-        log.error("no forwarder for message %s" % (message, ))
-        return
-
-    #TODO: we need to squawk about this somehow
-    if message["result"] != "success":
-        log.error("%s failed (%s) %s %s" % (
-            message["message-type"], 
-            message["result"], 
-            message["error-message"], 
-            message,
-        ))
-        # we don't give up here, because the handoff has succeeded 
-        # at this point we're just cleaning up
-
-    # if we get back a string, it is a message-id for another destroy
+    # if we get back a string, it is a message-id for another archive
     # otherwise, we should get the hint we started with
     result = forwarder.send(message)
     assert result is not None
@@ -179,6 +159,45 @@ def _handle_destroy_key_reply(state, message, _data):
             log.exception(instance)
         state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
 
+#def _handle_destroy_key_reply(state, message, _data):
+#    log = logging.getLogger("_handle_destroy_key_reply")
+#
+#    try:
+#        forwarder = state["active-forwarders"].pop(message["message-id"])
+#    except KeyError:
+#        log.error("no forwarder for message %s" % (message, ))
+#        return
+#
+#    #TODO: we need to squawk about this somehow
+#    if message["result"] != "success":
+#        log.error("%s failed (%s) %s %s" % (
+#            message["message-type"], 
+#            message["result"], 
+#            message["error-message"], 
+#            message,
+#        ))
+#        # we don't give up here, because the handoff has succeeded 
+#        # at this point we're just cleaning up
+#
+#    # if we get back a string, it is a message-id for another destroy
+#    # otherwise, we should get the hint we started with
+#    result = forwarder.send(message)
+#    assert result is not None
+#
+#    if type(result) is str:
+#        message_id = result
+#        state["active-forwarders"][message_id] = forwarder
+#    else:
+#        hint = result
+#        log.info("handoff complete %s %s %s" % (
+#            hint.node_name, hint.avatar_id, hint.key
+#        ))
+#        try:
+#            state["hint-repository"].purge_hint(hint)
+#        except Exception, instance:
+#            log.exception(instance)
+#        state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
+
 _dispatch_table = {
     "hinted-handoff"                : _handle_hinted_handoff,
     "retrieve-key-start-reply"      : _handle_retrieve_reply,
@@ -187,7 +206,7 @@ _dispatch_table = {
     "archive-key-start-reply"       : _handle_archive_reply,
     "archive-key-next-reply"        : _handle_archive_reply,
     "archive-key-final-reply"       : _handle_archive_reply,
-    "destroy-key-reply"             : _handle_destroy_key_reply,
+#    "destroy-key-reply"             : _handle_destroy_key_reply,
 }
 
 def _create_state():

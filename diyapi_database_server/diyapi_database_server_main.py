@@ -273,6 +273,8 @@ def _handle_key_lookup(state, message, _data):
         "message-id"        : message["message-id"],
         "avatar-id"         : message["avatar-id"],
         "key"               : message["key"],
+        "version-number"    : message["version-number"],
+        "segment-number"    : message["segment-number"],
         "result"            : None,
         "error-message"     : None,
     }

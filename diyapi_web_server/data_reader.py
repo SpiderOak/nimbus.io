@@ -30,7 +30,7 @@ class DataReader(object):
             "avatar-id"         : avatar_id,
             "key"               : key,
             "version-number"    : version_number,
-            "segment-number"    : segment_number
+            "segment-number"    : segment_number,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
@@ -49,12 +49,16 @@ class DataReader(object):
         self,
         avatar_id,
         key,
+        version_number,
+        segment_number,
         sequence_number
     ):
         message = {
             "message-type"      : "retrieve-key-next",
             "avatar-id"         : avatar_id,
             "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
             "sequence"          : sequence_number,
         }
         delivery_channel = \
@@ -73,12 +77,16 @@ class DataReader(object):
         self,
         avatar_id,
         key,
+        version_number,
+        segment_number,
         sequence_number
     ):
         message = {
             "message-type"      : "retrieve-key-final",
             "avatar-id"         : avatar_id,
             "key"               : key,
+            "version-number"    : version_number,
+            "segment-number"    : segment_number,
             "sequence"          : sequence_number,
         }
         delivery_channel = \

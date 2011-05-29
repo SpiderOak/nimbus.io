@@ -71,7 +71,10 @@ def _compute_state_key(message):
     """
     compute a key to the state for this message
     """
-    return (message["avatar-id"], message["key"], )
+    return (message["avatar-id"], 
+            message["key"], 
+            message["version-number"],
+            message["segment-number"], )
 
 def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")

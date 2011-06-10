@@ -40,7 +40,7 @@ create table node (
 
 create sequence key_id_seq;
 create table key (
-    name varchar(255),
+    name varchar(1024),
     id int8 not null default nextval('diy.key_id_seq'),
     avatar_id int4 not null,
     timestamp timestamp not null,

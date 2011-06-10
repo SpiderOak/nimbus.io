@@ -56,46 +56,38 @@ import os
 import sys
 import time
 
-from diyapi_tools import message_driven_process as process
-from diyapi_tools.amqp_connection import local_exchange_name 
-from diyapi_tools.low_traffic_thread import LowTrafficThread, \
-        low_traffic_routing_tag
+from diyapi_tools.zeromq_pollster import ZeroMQPollster
+from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.pull_server import PULLServer
+from diyapi_tools.resilient_client import ResilientClient
+from diyapi_tools.deque_dispatcher import DequeDispatcher
+from diyapi_tools import time_queue_driven_process
 
-from messages.rebuild_request import RebuildRequest
-from messages.rebuild_reply import RebuildReply
-from messages.database_avatar_database_request import \
-    DatabaseAvatarDatabaseRequest
-from messages.database_avatar_database_reply import DatabaseAvatarDatabaseReply
-from messages.process_status import ProcessStatus
-
+_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_reconstructor_%s.log" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"],
+    _local_node_name,
 )
-_queue_name = "reconstructor-%s" % (
-    os.environ["SPIDEROAK_MULTI_NODE_NAME"], 
-)
-_routing_header = "reconstructor"
-_routing_key_binding = ".".join([_routing_header, "*"])
-_database_avatar_database_reply_routing_key = ".".join([
-    _routing_header,
-    DatabaseAvatarDatabaseReply.routing_tag,
-])
-_low_traffic_routing_key = ".".join([
-    _routing_header, 
-    low_traffic_routing_tag,
-])
-_request_timeout = 5.0 * 60.0
-_exchanges = os.environ["DIY_NODE_EXCHANGES"].split()
 
+_client_tag = "reconstructor-%s" % (_local_node_name, )
+_database_server_addresses = \
+    os.environ["DIYAPI_DATABASE_SERVER_ADDRESSES"].split()
+_reconstructor_address = os.environ.get(
+    "DIYAPI_RECONSTRUCTOR_ADDRESS",
+    "tcp://127.0.0.1:8800"
+)
+_reconstructor_pipeline_address = os.environ.get(
+    "DIYAPI_RECONSTRUCTOR_PIPELINE_ADDRESS",
+    "tcp://127.0.0.1:8850"
+)
+_request_timeout = 5.0 * 60.0
 _request_state_tuple = namedtuple("RequestState", [ 
+    "xrep_ident",
     "timestamp",
     "timeout",
     "timeout_function",
-    "avatar_id",
     "dest_dir",
     "replies",    
-    "reply_exchange",
-    "reply_routing_header"
 ])
 
 def _is_request_state((_, value, )):
@@ -104,56 +96,70 @@ def _is_request_state((_, value, )):
 def _create_state():
     import socket
     return {
-        "repository-path" : os.environ("DIYAPI_REPOSITORY_PATH"),
-        "host"            : socket.gethostname(),
+        "repository-path"   : os.environ["DIYAPI_REPOSITORY_PATH"],
+        "host"              : socket.gethostname(),
+        "active-requests"   : dict()
     }
 
-def _timeout_request(request_id, state):
+def _timeout_request(avatar_id, state):
     """
     If we don't hear from all the nodes in a reasonable time,
     give up.
     """
     log = logging.getLogger("_timeout_request")
     try:
-        request_state = state.pop(request_id)
+        request_state = state.pop(avatar_id)
     except KeyError:
-        log.error("can't find %s in state" % (request_id, ))
+        log.error("can't find %s in state" % (avatar_id, ))
         return
 
-    log.error("timeout on rebuild %s request_id %s" % (
-        request_state.avatar_id, request_id,
+    log.error("timeout on rebuild %s" % (
+        avatar_id,
     ))
 
-def _handle_rebuild_request(state, message_body):
+def _handle_rebuild_request(state, message, _data):
     """handle a request to rebuild the data for an avatar"""
     log = logging.getLogger("_handle_rebuild_request")
-    message = RebuildRequest.unmarshall(message_body)
-    log.info("request for rebuild of %s" % (message.avatar_id, )) 
+    log.info("request for rebuild of %s" % (message["avatar-id"], )) 
+
+    if message["avatar-id"] in state["active-requests"]
+        error_message = "rebuild already in progress for %s" % (
+            message["avatar-id"]
+        )
+        log.error(error_message)
+        reply = {
+            "message-type"  : "rebuild-reply",
+            "xrep-ident"    : message["xrep_ident"],
+            "avatar-id"     : message["avatar-id"],
+            "result"        : "duplicate",
+            "error-message" : "rebuild already in progress for %s" % (
+                message["avatar-id"]
+            ),
+        }
+        state["xrep-server"].queue_message_for_send(reply)
 
     timestamp = datetime.datetime.now()
     
-    state[message.request_id] = _request_state_tuple(
+    state["active-requests"][message["avatar-id"]] = _request_state_tuple(
+        xrep_ident=,essage["xrep_ident"],
         timestamp=timestamp,
         timeout=time.time()+_request_timeout,
         timeout_function=_timeout_request,
-        avatar_id=message.avatar_id,
         dest_dir=os.path.join(
-            state["repository-path"], "rebuild", message.request_id
+            state["repository-path"], "rebuild", message["avatar-id"]
         ),
         replies=dict(), 
-        reply_exchange=message.reply_exchange,
-        reply_routing_header=message.reply_routing_header
     )
-    os.makedirs(state[message.request_id].dest_dir)
+    os.makedirs(state["active-requests"][message["avatar-id"]] .dest_dir)
 
-    message = DatabaseAvatarDatabaseRequest(
+    message = {
         message.request_id,
-        message.avatar_id,
+        message["avatar-id"],
         state["host"],
         state[message.request_id].dest_dir,
         local_exchange_name,
         _routing_header
-    )
+    }
     # send the DatabaseAvatarDatabaseRequest to every node
     return [
         (dest_exchange, message.routing_key, message) \

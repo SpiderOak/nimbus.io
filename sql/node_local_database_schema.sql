@@ -187,5 +187,9 @@ create table key_sequence (
  * to drop the avatar_id column here have the single index. not sure yet. */
 create index key_sequence_key_id_idx on key_sequence (avatar_id, key_id);
 
+grant all privileges on schema diy to pandora;
+grant all privileges on all tables in schema diy to pandora;
+grant all privileges on all sequences in schema diy to pandora;
+
 /*rollback;*/
 commit;

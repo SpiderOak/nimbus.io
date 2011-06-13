@@ -110,6 +110,10 @@ class OutputValueFile(object):
         self._avatar_ids = set()
 
     @property
+    def value_file_id(self):
+        return self._value_file_id
+
+    @property
     def size(self):
         return self._size
 

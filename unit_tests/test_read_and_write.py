@@ -58,7 +58,7 @@ class TestReadAndWrite(unittest.TestCase):
     def test_simple_output_value_file(self):
         """test writing a simple output value file"""
         avatar_id = 1001
-        key_id = 42
+        segment_id = 42
         data_size = 1024
         data = random_string(data_size)
         output_value_file = OutputValueFile(
@@ -66,7 +66,7 @@ class TestReadAndWrite(unittest.TestCase):
         )
         self.assertEqual(output_value_file.size, 0)
         output_value_file.write_data_for_one_sequence(
-            avatar_id, key_id, data
+            avatar_id, segment_id, data
         )
         self.assertEqual(output_value_file.size, data_size)
         output_value_file.close()
@@ -79,8 +79,8 @@ class TestReadAndWrite(unittest.TestCase):
         data_md5_hash = hashlib.md5(data).digest()
         self.assertEqual(str(value_file_row.hash), data_md5_hash)
         self.assertEqual(value_file_row.sequence_count, 1)
-        self.assertEqual(value_file_row.min_key_id, key_id)
-        self.assertEqual(value_file_row.max_key_id, key_id)
+        self.assertEqual(value_file_row.min_segment_id, segment_id)
+        self.assertEqual(value_file_row.max_segment_id, segment_id)
         self.assertEqual(value_file_row.distinct_avatar_count, 1)
         self.assertEqual(value_file_row.avatar_ids, [avatar_id, ])
 

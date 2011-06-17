@@ -20,8 +20,8 @@ value_file_template = namedtuple("ValueFile", [
     "size",
     "hash",
     "sequence_count",
-    "min_key_id",
-    "max_key_id",
+    "min_segment_id",
+    "max_segment_id",
     "distinct_avatar_count",
     "avatar_ids",
     "garbage_size_estimate",
@@ -63,8 +63,8 @@ def _insert_value_file_row(connection, value_file_row):
             size,
             hash,
             sequence_count,
-            min_key_id,
-            max_key_id,
+            min_segment_id,
+            max_segment_id,
             distinct_avatar_count,
             avatar_ids,
             garbage_size_estimate,
@@ -78,8 +78,8 @@ def _insert_value_file_row(connection, value_file_row):
             %(size)s,
             %(hash)s,
             %(sequence_count)s,
-            %(min_key_id)s,
-            %(max_key_id)s,
+            %(min_segment_id)s,
+            %(max_segment_id)s,
             %(distinct_avatar_count)s,
             %(avatar_ids)s,
             %(garbage_size_estimate)s,
@@ -105,8 +105,8 @@ class OutputValueFile(object):
         self._size = 0L
         self._md5 = hashlib.md5()
         self._sequence_count = 0
-        self._min_key_id = None
-        self._max_key_id = None
+        self._min_segment_id = None
+        self._max_segment_id = None
         self._avatar_ids = set()
 
     @property
@@ -117,7 +117,7 @@ class OutputValueFile(object):
     def size(self):
         return self._size
 
-    def write_data_for_one_sequence(self, avatar_id, key_id, data):
+    def write_data_for_one_sequence(self, avatar_id, segment_id, data):
         """
         write the data for one sequence, acumulating meta information
         """
@@ -125,14 +125,14 @@ class OutputValueFile(object):
         self._size += len(data)
         self._md5.update(data)
         self._sequence_count += 1
-        if self._min_key_id is None:
-            self._min_key_id = key_id
+        if self._min_segment_id is None:
+            self._min_segment_id = segment_id
         else:
-            self._min_key_id = min(self._min_key_id, key_id)
-        if self._max_key_id is None:
-            self._max_key_id = key_id
+            self._min_segment_id = min(self._min_segment_id, segment_id)
+        if self._max_segment_id is None:
+            self._max_segment_id = segment_id
         else:
-            self._max_key_id = max(self._max_key_id, key_id)
+            self._max_segment_id = max(self._max_segment_id, segment_id)
         self._avatar_ids.add(avatar_id)
 
     def close(self):
@@ -148,8 +148,8 @@ class OutputValueFile(object):
             size=self._size,
             hash=psycopg2.Binary(self._md5.digest()),
             sequence_count=self._sequence_count,
-            min_key_id=self._min_key_id,
-            max_key_id=self._max_key_id,
+            min_segment_id=self._min_segment_id,
+            max_segment_id=self._max_segment_id,
             distinct_avatar_count=len(self._avatar_ids),
             avatar_ids=sorted(list(self._avatar_ids)),
             garbage_size_estimate=0,

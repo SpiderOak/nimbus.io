@@ -38,36 +38,36 @@ create table node (
  * old versions periodically, thus offering offering some safety of multiple
  * versions by default */
 
-create sequence key_id_seq;
-create table key (
-    name varchar(1024),
-    id int8 not null default nextval('diy.key_id_seq'),
+create sequence segment_id_seq;
+create table segment (
+    id int8 not null default nextval('diy.segment_id_seq'),
     avatar_id int4 not null,
+    key varchar(1024),
     timestamp timestamp not null,
-    size int8 not null default 0,
-    adler32 int4,
-    hash bytea,
-    user_id int4,
-    group_id int4,
-    permissions int4,
-    tombstone bool not null default false,
-    /* XXX: wasn't completely sure if this column belongs in key or
-     * key_sequence. It's true that every sequence stored on the local node for
-     * a given key should have the same segment_num, right?  If so, it goes
-     * here. */
     segment_num int2,
+    file_size int8 not null default 0,
+    file_adler32 int4,
+    file_hash bytea,
+    file_user_id int4,
+    file_group_id int4,
+    file_permissions int4,
+    file_tombstone bool not null default false,
+    /* XXX: wasn't completely sure if this column belongs in segment or
+     * segment_sequence. It's true that every sequence stored on the local node 
+     * for a given key should have the same segment_num, right?  If so, it goes
+     * here. */
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
-    constraint key_tombstone_zero_size check (tombstone is false or size = 0),
-    constraint key_nonzero_size check (tombstone is true or size > 0),
-    constraint key_adler32_not_null check
-        (tombstone is true or adler32 is not null),
-    constraint hash_not_null check
-        (tombstone is true or hash is not null),
+    constraint file_tombstone_zero_size check (file_tombstone is false or file_size = 0),
+    constraint file_nonzero_size check (file_tombstone is true or file_size > 0),
+    constraint file_adler32_not_null check
+        (file_tombstone is true or file_adler32 is not null),
+    constraint file_hash_not_null check
+        (file_tombstone is true or file_hash is not null),
     constraint segment_num_not_null check
-        (tombstone is true or segment_num is not null),
-    constraint hash_length check (hash is null or length(hash)=16)
+        (file_tombstone is true or segment_num is not null),
+    constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
 
 
@@ -81,13 +81,13 @@ create table key (
  * grouped into the regions of the index for which this is the case.  (I.e. it
  * has a similar effect to sharding this into a different index per avatar.) 
  */
-create index key_name_idx on key("avatar_id", "name");
+create index segment_key_idx on segment("avatar_id", "key");
 /* a partial index just for handoffs, so it's easy to find these records when a
  * node comes back online */
-create index key_handoff_idx on key("handoff_node_id") where handoff_node_id is not null;
+create index segment_handoff_idx on segment("handoff_node_id") where handoff_node_id is not null;
 
 /* we store all the values in the diy key/value store in large, sequentially
- * written value data files.  These are pointed to by the key_sequence table to
+ * written value data files.  These are pointed to by the segment_sequence table to
  * find sequences and segments of stored keys (and handoffs).  
 
    Additional qualities of value files:
@@ -111,8 +111,8 @@ create index key_handoff_idx on key("handoff_node_id") where handoff_node_id is 
      Add the new row to the value_file table
    Closed value files maybe garbage collected and/or defragmented and replaced:
      Identify a value_file with fragmentation or garbage via database queries
-     Query the database for current key_sequence data within the old data file
-     Sort the key_sequences into a defragmented order to write out
+     Query the database for current segment_sequence data within the old data file
+     Sort the segment_sequences into a defragmented order to write out
      Query the database sequence for a new value_file id
      Open new value file
      Open, Read the old value file entirely into memory, Close
@@ -120,8 +120,8 @@ create index key_handoff_idx on key("handoff_node_id") where handoff_node_id is 
      Sync and close new file
      In a database transaction:
        Insert the new value_file row
-       Delete all key_sequence entries that point to the old value_file
-       Insert new key_sequence entries that point to the new value_file
+       Delete all segment_sequence entries that point to the old value_file
+       Insert new segment_sequence entries that point to the new value_file
        Assert that equal number of rows deleted and inserted
        Delete the old value_file row
      Unlink old data file
@@ -154,13 +154,13 @@ create table value_file (
      * only on closing the file */
     sequence_count int4,
     /* storing min and max key ids is cheap and makes it possible to use the
-     * btree indexes to find the specific key and key_sequence records stored
+     * btree indexes to find the specific key and segment_sequence records stored
      * in this file via >= <= operators. */
-    min_key_id int8,
-    max_key_id int8,
+    min_segment_id int8,
+    max_segment_id int8,
     distinct_avatar_count int4,
     /* simple 1-d array to record the set of avatars which have data is this
-     * file. If we end up sharding the key and key_sequence tables, this will
+     * file. If we end up sharding the key and segment_sequence tables, this will
      * be very useful for maintenance. */
     avatar_ids int4[],
     garbage_size_estimate int8,
@@ -171,10 +171,10 @@ create table value_file (
 );
 
 /* this will be the largest table, as it will have 1 record for every sequence
- * of every key. */
-create table key_sequence (
+ * of every segment. */
+create table segment_sequence (
     avatar_id int4 not null,
-    key_id int8 not null,
+    segment_id int8 not null,
     value_file_id int4 not null,
     sequence_num int4 not null,
     value_file_offset int8 not null,
@@ -185,7 +185,7 @@ create table key_sequence (
 );
 /* again, need more research about the multi column index. it maybe better just
  * to drop the avatar_id column here have the single index. not sure yet. */
-create index key_sequence_key_id_idx on key_sequence (avatar_id, key_id);
+create index segment_sequence_id_idx on segment_sequence (avatar_id, segment_id);
 
 grant all privileges on schema diy to pandora;
 grant all privileges on all tables in schema diy to pandora;

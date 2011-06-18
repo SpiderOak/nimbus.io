@@ -137,10 +137,19 @@ class OutputValueFile(object):
 
     def close(self):
         """close the file and make it visible in the database"""
+        os.close(self._value_file_fd)
+
+        if self._sequence_count == 0:
+            self._log.info("removing empty file %s" % (self._value_file_path,)) 
+            try:
+                os.unlink(self._value_file_path)
+            except Exception:
+                pass
+            return
+
         self._log.info("closing %s size=%s sequence_count=%s" % (
             self._value_file_path, self._size, self._sequence_count
         )) 
-        os.close(self._value_file_fd)
         value_file_row = value_file_template(
             id=self._value_file_id,
             creation_time=self._creation_time,

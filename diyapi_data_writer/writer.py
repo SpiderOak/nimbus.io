@@ -2,38 +2,41 @@
 """
 writer.py
 
-Manage writing key values to disk
+Manage writing segment values to disk
 """
+from collections import namedtuple
+from datetime import datetime
 import hashlib
 import logging
 import zlib
 
 import psycopg2
 
+from diyapi_tools.standard_logging import format_timestamp
 from diyapi_data_writer.output_value_file import OutputValueFile
 
-key_row_template = namedtuple(
-    "KeyRow", [
-        "name",
+segment_row_template = namedtuple(
+    "SegmentRow", [
         "id",
         "avatar_id",
+        "key",
         "timestamp",
-        "size",
-        "adler32",
-        "hash",
-        "user_id",
-        "group_id",
-        "permissions",
-        "tombstone",
         "segment_num",
+        "file_size",
+        "file_adler32",
+        "file_hash",
+        "file_user_id",
+        "file_group_id",
+        "file_permissions",
+        "file_tombstone",
         "handoff_node_id",
     ]
 )
 
-key_sequence_template = namedtuple(
-    "KeySequence", [
+segment_sequence_template = namedtuple(
+    "egmentSequence", [
         "avatar_id",
-        "key_id",
+        "segment_id",
         "value_file_id",
         "sequence_num",
         "value_file_offset",
@@ -43,137 +46,134 @@ key_sequence_template = namedtuple(
     ]
 )
 
-def _get_next_key_id(connection):
-    (next_key_id, ) = connection.fetch_one_row(
-        "select nextval('diy.key_id_seq');"
+def _get_next_segment_id(connection):
+    (next_segment_id, ) = connection.fetch_one_row(
+        "select nextval('diy.segment_id_seq');"
     )
     connection.commit()
-    return next_key_id
+    return next_segment_id
 
-def _insert_key_row(connection, key_row):
+def _insert_segment_row(connection, segment_row):
     """
-    Insert one key entry, returning the row id
+    Insert one segment entry, returning the row id
     """
     cursor = connection._connection.cursor()
     cursor.execute("""
-        insert into diy.key (
-            name,
+        insert into diy.segment (
             id,
             avatar_id,
+            key,
             timestamp,
-            size,
-            adler32,
-            hash,
-            user_id,
-            group_id,
-            permissions,
-            tombstone,
             segment_num,
+            file_size,
+            file_adler32,
+            file_hash,
+            file_user_id,
+            file_group_id,
+            file_permissions,
+            file_tombstone,
             handoff_node_id
         ) values (
-            %(name)s,
             %(id)s,
             %(avatar_id)s,
+            %(key)s,
             %(timestamp)s::timestamp,
-            %(size)s,
-            %(adler32)s,
-            %(hash)s,
-            %(user_id)s,
-            %(group_id)s,
-            %(permissions)s,
-            %(tombstone)s,
             %(segment_num)s,
+            %(file_size)s,
+            %(file_adler32)s,
+            %(file_hash)s,
+            %(file_user_id)s,
+            %(file_group_id)s,
+            %(file_permissions)s,
+            %(file_tombstone)s,
             %(handoff_node_id)s
         )
-    """, key_row._asdict())
+    """, segment_row._asdict())
     cursor.close()
     connection.commit()
 
-def _insert_key_sequence_row(connection, key_sequence_row):
+def _insert_segment_sequence_row(connection, segment_sequence_row):
     """
-    Insert one key_sequence entry
+    Insert one segment_sequence entry
     """
     cursor = connection._connection.cursor()
     cursor.execute("""
-        insert into diy.key_sequence (
-        "avatar_id",
-        "key_id",
-        "value_file_id",
-        "sequence_num",
-        "value_file_offset",
-        "size",
-        "hash",
-        "adler32",
-            name,
-            avatar_id,
-            timestamp,
-            size,
-            adler32,
-            hash,
-            user_id,
-            group_id,
-            permissions,
-            tombstone,
-            segment_num,
-            handoff_node_id
+        insert into diy.segment_sequence (
+            "avatar_id",
+            "segment_id",
+            "value_file_id",
+            "sequence_num",
+            "value_file_offset",
+            "size",
+            "hash",
+            "adler32"
         ) values (
-            %(name)s,
             %(avatar_id)s,
-            %(timestamp)s::timestamp,
+            %(segment_id)s,
+            %(value_file_id)s,
+            %(sequence_num)s,
+            %(value_file_offset)s,
             %(size)s,
-            %(adler32)s,
             %(hash)s,
-            %(user_id)s,
-            %(group_id)s,
-            %(permissions)s,
-            %(tombstone)s,
-            %(segment_num)s,
-            %(handoff_node_id)s
+            %(adler32)s
         )
-    """, key_row._asdict())
+    """, segment_sequence_row._asdict())
     cursor.close()
     connection.commit()
 
 class Writer(object):
     """
-    Manage writing key values to disk
+    Manage writing segment values to disk
     """
     def __init__(self, connection, repository_path):
-        self._log = logging.getLogge("Writer")
+        self._log = logging.getLogger("Writer")
         self._connection = connection
         self._active_segments = dict()
 
         # open a new value file at startup
-        self._output_value_file = OutputValueFile(connection, repository_path)
+        self._value_file = OutputValueFile(connection, repository_path)
 
     def close(self):
-        self._output_value_file.close()
+        self._value_file.close()
 
-    def start_new_key(self, avatar_id, key, timestamp, segment_num):
+    def start_new_segment(self, avatar_id, key, timestamp, segment_num):
+        """
+        Initiate storing a segment of data for a file
+        """
         segment_key = (avatar_id, key, timestamp, segment_num, )
+        self._log.info("start_new_segment %s %s %s %s" % (
+            avatar_id, key, format_timestamp(timestamp), segment_num, 
+        ))
         if segment_key in self._active_segments:
             raise ValueError("duplicate segment %s" % (segment_key, ))
 
-        self._active_segments[segments_key] = {
-            "key-id"            : _get_next_key_id(),
-            "segment-md5"       : hashlib.md5(),
-            "segment-size"      : 0,
-            "segment_adler32"   : zlib.adler32("")
+        self._active_segments[segment_key] = {
+            "segment-id"            : _get_next_segment_id(self._connection),
         }
 
-    def store_key_sequence(
+    def store_sequence(
         self, avatar_id, key, timestamp, segment_num, sequence_num, data
     ):
+        """
+        store one piece (sequence) of segment data
+        """
         segment_key = (avatar_id, key, timestamp, segment_num, )
-        segment_entry = self._active_writes[active_key]
+        self._log.info("store_sequence %s %s %s %s: %s (%s)" % (
+            avatar_id, 
+            key, 
+            format_timestamp(timestamp), 
+            segment_num, 
+            sequence_num,
+            len(data)
+        ))
+        segment_entry = self._active_segments[segment_key]
 
         sequence_md5 = hashlib.md5()
         sequence_md5.update(data)
-        segment_entry["key-md5"].update(data)
 
-        key_sequence_row = key_sequence_template(
+        segment_sequence_row = segment_sequence_template(
             avatar_id=avatar_id,
-            key_id=segment_entry["key-id"],
+            segment_id=segment_entry["segment-id"],
             value_file_id=self._value_file.value_file_id,
             sequence_num=sequence_num,
             value_file_offset=self._value_file.size,
@@ -182,37 +182,50 @@ class Writer(object):
             adler32=zlib.adler32(data),
         )
 
-        segment_entry["segment-md5"].update(data)
-        segment_entry["segment-size"] += len(data)
-        segment_entry["segment-adler32"] += zlib.adler32(
-            data, segment_entry["segment-adler32"] 
-        )
-
         self._value_file.write_data_for_one_sequence(
-            avatar_id, segment_entry["key-id"], data
+            avatar_id, segment_entry["segment-id"], data
         )
 
-        _insert_key_sequence_row(self._database_connection, key_sequence_row)
+        _insert_segment_sequence_row(self._connection, segment_sequence_row)
 
-    def finish_new_key(self, avatar_id, key, timestamp, segment_num): 
+    def finish_new_segment(
+        self, 
+        avatar_id, 
+        key, 
+        timestamp, 
+        segment_num,
+        file_size,
+        file_adler32,
+        file_hash,
+        file_user_id,
+        file_group_id,
+        file_permissions,
+        file_tombstone
+    ): 
+        """
+        finalize storing one segment of data for a file
+        """
 
         segment_key = (avatar_id, key, timestamp, segment_num, )
-        segment_entry = self._active_writes.pop(segment_key)
+        self._log.info("finish_new_segment %s %s %s %s" % (
+            avatar_id, key, format_timestamp(timestamp), segment_num, 
+        ))
+        segment_entry = self._active_segments.pop(segment_key)
 
-        key_row = key_row_template(
-            name=key,
-            id=segment_entry["key-id"],
+        segment_row = segment_row_template(
+            id=segment_entry["segment-id"],
             avatar_id=avatar_id,
+            key=key,
             timestamp=datetime.fromtimestamp(timestamp),
-            size=segment_entry["segment-size"],
-            adler32=segment_entry["segment-adler32"],
-            hash=psycopg2.Binary(segment_entry["segment-md5"].digest()),
-            user_id=0,
-            group_id=0,
-            permissions=0,
-            tombstone=False,
             segment_num=segment_num,
+            file_size=file_size,
+            file_adler32=file_adler32,
+            file_hash=psycopg2.Binary(file_hash),
+            file_user_id=file_user_id,
+            file_group_id=file_group_id,
+            file_permissions=file_permissions,
+            file_tombstone=file_tombstone,
             handoff_node_id=None
         )
-        _insert_key_row(self._database_connection, key_row)
+        _insert_segment_row(self._connection, segment_row)
     

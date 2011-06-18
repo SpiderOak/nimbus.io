@@ -12,6 +12,7 @@ import os.path
 import shutil
 import time
 import unittest
+import zlib
 
 import psycopg2
 
@@ -22,6 +23,7 @@ from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_data_writer.output_value_file import OutputValueFile, \
         value_file_template
+from diyapi_data_writer.writer import Writer
 
 from unit_tests.util import random_string
 
@@ -83,6 +85,43 @@ class TestReadAndWrite(unittest.TestCase):
         self.assertEqual(value_file_row.max_segment_id, segment_id)
         self.assertEqual(value_file_row.distinct_avatar_count, 1)
         self.assertEqual(value_file_row.avatar_ids, [avatar_id, ])
+
+    def test_simple_segment(self):
+        """test writing an reading a simple segment of one sequence"""
+        avatar_id = 1001
+        key = "aaa/bbb/ccc"
+        timestamp = time.time()
+        segment_num = 42
+        sequence_num = 0
+        data_size = 1024
+        data = random_string(data_size)
+        data_adler32 = zlib.adler32(data)
+        data_md5 = hashlib.md5(data)
+        file_user_id = 1
+        file_group_id = 2
+        file_permissions = 3
+        file_tombstone = False
+ 
+        writer = Writer(self._database_connection, _repository_path)
+        writer.start_new_segment(avatar_id, key, timestamp, segment_num)
+        writer.store_sequence(
+            avatar_id, key, timestamp, segment_num, sequence_num, data
+        )
+        writer.finish_new_segment(
+            avatar_id, 
+            key, 
+            timestamp, 
+            segment_num,
+            data_size,
+            data_adler32,
+            data_md5.digest(),
+            file_user_id,
+            file_group_id,
+            file_permissions,
+            file_tombstone
+        )
+
+        writer.close()
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

@@ -2,34 +2,41 @@
 """
 reader.py
 
-read key data for avatars
+read segment data for avatars
 """
+import logging
 
-def _retrieve_key_rows(connection, avatar_id, key):
+from diyapi_tools.data_definitions import segment_row_template, \
+        segment_sequence_template
+
+def _retrieve_segment_rows(connection, avatar_id, key):
     """
-    retrieve all rows for avatar-id and key.
+    retrieve all rows for avatar-id and segment.
     Note that there is no unique constraint on (avatar_id, key):
     the caller must be prepared to deal with multiple rows
     """
     result = connection.fetch_all_rows("""
-        select %s from diy.key 
-        where avatar_id = %%s and name = %%s
-        order by timestamp  
-    """ % (",".join(key_row_template._fields), ), [avatar_id, key, ])
+        select %s from diy.segment 
+        where avatar_id = %%s and key = %%s
+        order by timestamp desc, segment_num asc
+    """ % (",".join(segment_row_template._fields), ), [avatar_id, key, ])
     print result
-    return [key_row_template._make(row) for row in result]
+    return [segment_row_template._make(row) for row in result]
 
 class Reader(object):
     """
-    read key data for avatars
+    read segment data for avatars
     """
-    def __init__(self):
+    def __init__(self, connection, repository_path):
+        self._log = logging.getLogger("Reader")
+        self._connection = connection
+        self._repository_path = repository_path
 
-    def start_retrieve(self, avatar_id, key, segment_number):
+    def get_file_information(self, avatar_id, key):
         """
-        retrieve the known information about the segment
+        retrieve file specific information about the segment
+        there can be more than one row per file, both dues to versions
+        (timestamp) and handoffs (segment_num)
         """
-        retrieved_rows = _retrieve_key_rows(
-            self._database_connection, avatar_id, key
-        )
-        self.assertEqual(len(retrieved_rows), 1)
+        return _retrieve_segment_rows(self._connection, avatar_id, key)
+

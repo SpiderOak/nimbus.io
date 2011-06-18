@@ -13,38 +13,9 @@ import zlib
 import psycopg2
 
 from diyapi_tools.standard_logging import format_timestamp
+from diyapi_tools.data_definitions import segment_row_template, \
+        segment_sequence_template
 from diyapi_data_writer.output_value_file import OutputValueFile
-
-segment_row_template = namedtuple(
-    "SegmentRow", [
-        "id",
-        "avatar_id",
-        "key",
-        "timestamp",
-        "segment_num",
-        "file_size",
-        "file_adler32",
-        "file_hash",
-        "file_user_id",
-        "file_group_id",
-        "file_permissions",
-        "file_tombstone",
-        "handoff_node_id",
-    ]
-)
-
-segment_sequence_template = namedtuple(
-    "egmentSequence", [
-        "avatar_id",
-        "segment_id",
-        "value_file_id",
-        "sequence_num",
-        "value_file_offset",
-        "size",
-        "hash",
-        "adler32",
-    ]
-)
 
 def _get_next_segment_id(connection):
     (next_segment_id, ) = connection.fetch_one_row(

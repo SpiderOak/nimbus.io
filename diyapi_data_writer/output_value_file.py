@@ -13,22 +13,8 @@ import os.path
 
 import psycopg2
 
-value_file_template = namedtuple("ValueFile", [
-    "id",
-    "creation_time",
-    "close_time",
-    "size",
-    "hash",
-    "sequence_count",
-    "min_segment_id",
-    "max_segment_id",
-    "distinct_avatar_count",
-    "avatar_ids",
-    "garbage_size_estimate",
-    "fragmentation_estimate",
-    "last_cleanup_check_time",
-    "last_integrity_check_time"]
-)
+from diyapi_tools.data_definitions import compute_value_file_path, \
+        value_file_template
 
 def _get_next_value_file_id(connection):
     (next_value_file_id, ) = connection.fetch_one_row(
@@ -36,13 +22,6 @@ def _get_next_value_file_id(connection):
     )
     connection.commit()
     return next_value_file_id
-
-def _compute_value_file_path(value_file_id, repository_path):
-    return os.path.join(
-        repository_path, 
-        "%03d" % (value_file_id % 1000), 
-        "%08d" % value_file_id
-    )
 
 def _open_value_file(value_file_path):
     value_file_dir = os.path.dirname(value_file_path)
@@ -96,8 +75,8 @@ class OutputValueFile(object):
         self._value_file_id = _get_next_value_file_id(connection)
         self._log = logging.getLogger("VF%08d" % (self._value_file_id, ))
         self._connection = connection
-        self._value_file_path = _compute_value_file_path(
-            self._value_file_id , repository_path
+        self._value_file_path = compute_value_file_path(
+             repository_path, self._value_file_id
         )
         self._log.info("opening %s" % (self._value_file_path, )) 
         self._value_file_fd = _open_value_file(self._value_file_path)

@@ -124,20 +124,27 @@ class TestReadAndWrite(unittest.TestCase):
         writer.close()
 
         reader = Reader(self._database_connection, _repository_path)
-        file_information_list = reader.get_file_information(avatar_id, key)
-        self.assertTrue(len(file_information_list) > 1)
-        file_information = file_information_list[0]
-        self.assertEqual(file_information.avatar_id, avatar_id) 
-        self.assertEqual(file_information.key, key) 
-        self.assertEqual(file_information.timestamp, timestamp) 
-        self.assertEqual(file_information.segment_num, segment_num) 
-        self.assertEqual(file_information.file_size, data_size) 
-        self.assertEqual(file_information.file_adler32, data_adler32) 
-        self.assertEqual(file_information.file_hash, data.md5.digest()) 
-        self.assertEqual(file_information.file_user_id, file_user_id) 
-        self.assertEqual(file_information.file_group_id, file_group_id) 
-        self.assertEqual(file_information.file_permissions, file_permissions)
-        self.assertEqual(file_information.file_tombstone, file_tombstone) 
+        segment_rows = reader.get_segment_rows(avatar_id, key)
+        self.assertTrue(len(segment_rows) > 1)
+        segment_row = segment_rows[0]
+        self.assertEqual(segment_row.avatar_id, avatar_id) 
+        self.assertEqual(segment_row.key, key) 
+#        self.assertEqual(segment_row.timestamp, timestamp) 
+        self.assertEqual(segment_row.segment_num, segment_num) 
+        self.assertEqual(segment_row.file_size, data_size) 
+        self.assertEqual(segment_row.file_adler32, data_adler32) 
+        self.assertEqual(str(segment_row.file_hash), data_md5.digest()) 
+        self.assertEqual(segment_row.file_user_id, file_user_id) 
+        self.assertEqual(segment_row.file_group_id, file_group_id) 
+        self.assertEqual(segment_row.file_permissions, file_permissions)
+        self.assertEqual(segment_row.file_tombstone, file_tombstone) 
+
+        sequence_generator = reader.sequence_generator(
+            avatar_id, segment_row.id
+        )
+        sequence_data = sequence_generator.next()
+        self.assertEqual(len(sequence_data), len(data))
+        self.assertEqual(sequence_data, data)
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

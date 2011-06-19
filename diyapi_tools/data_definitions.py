@@ -6,6 +6,31 @@ common data definitions
 """
 
 from collections import namedtuple
+import os.path
+
+def compute_value_file_path(repository_path, value_file_id):
+    return os.path.join(
+        repository_path, 
+        "%03d" % (value_file_id % 1000), 
+        "%08d" % value_file_id
+    )
+
+value_file_template = namedtuple("ValueFile", [
+    "id",
+    "creation_time",
+    "close_time",
+    "size",
+    "hash",
+    "sequence_count",
+    "min_segment_id",
+    "max_segment_id",
+    "distinct_avatar_count",
+    "avatar_ids",
+    "garbage_size_estimate",
+    "fragmentation_estimate",
+    "last_cleanup_check_time",
+    "last_integrity_check_time"]
+)
 
 segment_row_template = namedtuple(
     "SegmentRow", [

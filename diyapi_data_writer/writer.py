@@ -4,7 +4,6 @@ writer.py
 
 Manage writing segment values to disk
 """
-from collections import namedtuple
 from datetime import datetime
 import hashlib
 import logging
@@ -28,8 +27,7 @@ def _insert_segment_row(connection, segment_row):
     """
     Insert one segment entry, returning the row id
     """
-    cursor = connection._connection.cursor()
-    cursor.execute("""
+    connection.execute("""
         insert into diy.segment (
             id,
             avatar_id,
@@ -60,15 +58,13 @@ def _insert_segment_row(connection, segment_row):
             %(handoff_node_id)s
         )
     """, segment_row._asdict())
-    cursor.close()
     connection.commit()
 
 def _insert_segment_sequence_row(connection, segment_sequence_row):
     """
     Insert one segment_sequence entry
     """
-    cursor = connection._connection.cursor()
-    cursor.execute("""
+    connection.execute("""
         insert into diy.segment_sequence (
             "avatar_id",
             "segment_id",
@@ -89,7 +85,26 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
             %(adler32)s
         )
     """, segment_sequence_row._asdict())
-    cursor.close()
+    connection.commit()
+
+def _get_segment_id(connection, avatar_id, key, timestamp, segment_num): 
+    result = connection.fetch_one_row(""" 
+        select id from diy.segment
+        where avatar_id = %s and key = %s and timestamp = %s::timestamp
+        and segment_num = %s""",
+        [avatar_id, key, timestamp, segment_num]
+    )
+    if result is None:
+        return None
+    (segment_id, ) = result
+    return segment_id
+
+def _purge_segment_rows(connection, segment_id):
+    connection.execute("""
+        delete from diy.segment_sequence where segment_id = %s;
+        delete from diy.segment where id = %s;
+        """, [segment_id, segment_id]
+    )
     connection.commit()
 
 class Writer(object):
@@ -200,3 +215,13 @@ class Writer(object):
         )
         _insert_segment_row(self._connection, segment_row)
     
+    def purge_segment(self, avatar_id, key, timestamp, segment_num):
+        """
+        remove all database rows referring to a segment
+        """
+        segment_id = _get_segment_id(
+            self._connection, avatar_id, key, timestamp, segment_num
+        )
+        if segment_id is not None:
+            _purge_segment_rows(self._connection, segment_id)
+        

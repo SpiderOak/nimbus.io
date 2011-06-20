@@ -104,6 +104,17 @@ class TestReadAndWrite(unittest.TestCase):
         file_tombstone = False
  
         writer = Writer(self._database_connection, _repository_path)
+
+        # clean out any segments that are laying around for this (test) keu
+        reader = Reader(self._database_connection, _repository_path)
+        for segment_row in reader.get_segment_rows(avatar_id, key):
+            writer.purge_segment(
+                avatar_id, 
+                key, 
+                segment_row.timestamp, 
+                segment_row.segment_num
+            )
+
         writer.start_new_segment(avatar_id, key, timestamp, segment_num)
         writer.store_sequence(
             avatar_id, key, timestamp, segment_num, sequence_num, data
@@ -125,7 +136,7 @@ class TestReadAndWrite(unittest.TestCase):
 
         reader = Reader(self._database_connection, _repository_path)
         segment_rows = reader.get_segment_rows(avatar_id, key)
-        self.assertTrue(len(segment_rows) > 1)
+        self.assertEqual(len(segment_rows), 1)
         segment_row = segment_rows[0]
         self.assertEqual(segment_row.avatar_id, avatar_id) 
         self.assertEqual(segment_row.key, key) 

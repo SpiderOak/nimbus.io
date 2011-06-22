@@ -7,6 +7,7 @@ Manage writing segment values to disk
 from datetime import datetime
 import hashlib
 import logging
+import os
 import zlib
 
 import psycopg2
@@ -15,6 +16,10 @@ from diyapi_tools.standard_logging import format_timestamp
 from diyapi_tools.data_definitions import segment_row_template, \
         segment_sequence_template
 from diyapi_data_writer.output_value_file import OutputValueFile
+
+_max_value_file_size = os.environ.get(
+    "DIYAPI_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024)
+)
 
 def _get_next_segment_id(connection):
     (next_segment_id, ) = connection.fetch_one_row(
@@ -114,10 +119,13 @@ class Writer(object):
     def __init__(self, connection, repository_path):
         self._log = logging.getLogger("Writer")
         self._connection = connection
+        self._repository_path = repository_path
         self._active_segments = dict()
 
         # open a new value file at startup
-        self._value_file = OutputValueFile(connection, repository_path)
+        self._value_file = OutputValueFile(
+            self._connection, self._repository_path
+        )
 
     def close(self):
         self._value_file.close()
@@ -153,6 +161,14 @@ class Writer(object):
             len(data)
         ))
         segment_entry = self._active_segments[segment_key]
+
+        # if this write would put us over the max size,
+        # start a new output value file
+        if self._value_file.size + len(data) > _max_value_file_size:
+            self._value_file.close()
+            self._value_file = OutputValueFile(
+                self._connection, self._repository_path
+            )
 
         sequence_md5 = hashlib.md5()
         sequence_md5.update(data)

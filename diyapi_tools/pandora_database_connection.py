@@ -59,33 +59,32 @@ class PandoraDatabaseConnection(object):
     def close(self):
         """close the connection"""
         self._connection.close()
-        
-_database_name = "pandora"
-_database_user = "pandora_storage_server"
-_database_password = os.environ['PANDORA_DB_PW_pandora_storage_server']
-_local_database_user = "pandora"
-_local_database_password = os.environ['PANDORA_DB_PW_pandora']
 
 def get_database_connection():
+    database_name = "pandora"
+    database_user = "pandora_storage_server"
+    database_password = os.environ['PANDORA_DB_PW_pandora_storage_server']
     database_host = os.environ.get('PANDORA_DATABASE_HOST', 'localhost')
     database_port = int(os.environ.get('PANDORA_DATABASE_PORT', '5432'))
     connection = DatabaseConnection(
-        database_name=_database_name,
-        database_user=_database_user,
-        database_password=_database_password,
+        database_name=database_name,
+        database_user=database_user,
+        database_password=database_password,
         database_host=database_host,
         database_port=database_port
     )
     return connection
 
 def get_node_local_connection():
+    local_database_user = "pandora"
+    local_database_password = os.environ['PANDORA_DB_PW_pandora']
     database_host = os.environ.get("SPIDEROAK_LOCAL_DATABASE_HOST", "localhost")
     database_port = int(os.environ.get("SPIDEROAK_LOCAL_DATABASE_PORT", "5432"))
     database_name = "diy.%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
     connection = PandoraDatabaseConnection(
         database_name=database_name,
-        database_user=_local_database_user,
-        database_password=_local_database_password,
+        database_user=local_database_user,
+        database_password=local_database_password,
         database_host=database_host,
         database_port=database_port
     )

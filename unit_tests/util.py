@@ -125,7 +125,6 @@ def start_data_reader(
     node_name, 
     address, 
     pipeline_address, 
-    database_server_address, 
     repository_path
 ):
     log = logging.getLogger("start_data_reader_%s" % (node_name, ))
@@ -142,8 +141,8 @@ def start_data_reader(
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
         "DIYAPI_DATA_READER_ADDRESS"        : address,
         "DIYAPI_DATA_READER_PIPELINE_ADDRESS": pipeline_address,
-        "DIYAPI_DATABASE_SERVER_ADDRESS"    : database_server_address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
+        "PANDORA_DB_PW_pandora"             : "pork",
     }        
 
     log.info("starting %s %s" % (args, environment, ))

@@ -19,6 +19,7 @@ import psycopg2
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.pandora_database_connection import get_node_local_connection
 
+from diyapi_web_server.database_util import most_recent_timestamp_for_key
 from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_data_writer.output_value_file import OutputValueFile, \
@@ -107,7 +108,8 @@ class TestReadAndWrite(unittest.TestCase):
 
         # clean out any segments that are laying around for this (test) keu
         reader = Reader(self._database_connection, _repository_path)
-        for segment_row in reader.get_segment_rows(avatar_id, key):
+        for segment_row in reader.get_all_segment_rows_for_key(avatar_id, key):
+            print segment_row
             writer.purge_segment(
                 avatar_id, 
                 key, 
@@ -134,24 +136,21 @@ class TestReadAndWrite(unittest.TestCase):
         )
         writer.close()
 
-        reader = Reader(self._database_connection, _repository_path)
-        segment_rows = reader.get_segment_rows(avatar_id, key)
-        self.assertEqual(len(segment_rows), 1)
-        segment_row = segment_rows[0]
-        self.assertEqual(segment_row.avatar_id, avatar_id) 
-        self.assertEqual(segment_row.key, key) 
-#        self.assertEqual(segment_row.timestamp, timestamp) 
-        self.assertEqual(segment_row.segment_num, segment_num) 
-        self.assertEqual(segment_row.file_size, data_size) 
-        self.assertEqual(segment_row.file_adler32, data_adler32) 
-        self.assertEqual(str(segment_row.file_hash), data_md5.digest()) 
-        self.assertEqual(segment_row.file_user_id, file_user_id) 
-        self.assertEqual(segment_row.file_group_id, file_group_id) 
-        self.assertEqual(segment_row.file_permissions, file_permissions)
-        self.assertEqual(segment_row.file_tombstone, file_tombstone) 
+        file_info = most_recent_timestamp_for_key(
+            self._database_connection, avatar_id, key
+        )
 
-        sequence_generator = reader.sequence_generator(
-            avatar_id, segment_row.id
+        self.assertEqual(file_info.file_size, data_size) 
+        self.assertEqual(file_info.file_adler32, data_adler32) 
+        self.assertEqual(str(file_info.file_hash), data_md5.digest()) 
+        self.assertEqual(file_info.file_user_id, file_user_id) 
+        self.assertEqual(file_info.file_group_id, file_group_id) 
+        self.assertEqual(file_info.file_permissions, file_permissions)
+        self.assertEqual(file_info.file_tombstone, file_tombstone) 
+
+        reader = Reader(self._database_connection, _repository_path)
+        sequence_generator = reader.generate_all_sequence_rows_for_segment(
+            avatar_id, key, file_info.timestamp, file_info.segment_num
         )
         sequence_data = sequence_generator.next()
         self.assertEqual(len(sequence_data), len(data))

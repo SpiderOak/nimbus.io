@@ -67,9 +67,14 @@ class Reader(object):
         """
         open_value_files = dict()
 
-        for sequence_row in _all_sequence_rows_for_segment(
+        sequence_rows = _all_sequence_rows_for_segment(
             self._connection, avatar_id, key, timestamp, segment_num
-        ):
+        )
+
+        # first yield is count of sequences
+        yield len(sequence_rows)
+
+        for sequence_row in sequence_rows:
             if not sequence_row.value_file_id in open_value_files:
                 open_value_files[sequence_row.value_file_id] = open(
                     compute_value_file_path(

@@ -152,6 +152,11 @@ class TestReadAndWrite(unittest.TestCase):
         sequence_generator = reader.generate_all_sequence_rows_for_segment(
             avatar_id, key, file_info.timestamp, file_info.segment_num
         )
+
+        # first yield should be a count
+        sequence_count = sequence_generator.next()
+        self.assertEqual(sequence_count, 1) 
+
         sequence_data = sequence_generator.next()
         self.assertEqual(len(sequence_data), len(data))
         self.assertEqual(sequence_data, data)

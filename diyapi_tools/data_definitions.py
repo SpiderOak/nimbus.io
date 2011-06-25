@@ -7,6 +7,7 @@ common data definitions
 
 from collections import namedtuple
 import os.path
+import time
 
 def compute_value_file_path(repository_path, value_file_id):
     return os.path.join(
@@ -49,6 +50,13 @@ segment_row_template = namedtuple(
         "handoff_node_id",
     ]
 )
+
+def convert_segment_row(row):
+    raw_values = segment_row_template._make(row)
+    # convert the psycopg2 timestamp to time.time() truncated to even second
+    return raw_values._replace(
+        timestamp=int(time.mktime(raw_values.timestamp.timetuple()))
+    )
 
 segment_sequence_template = namedtuple(
     "SegmentSequence", [

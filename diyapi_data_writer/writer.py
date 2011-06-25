@@ -32,6 +32,10 @@ def _insert_segment_row(connection, segment_row):
     """
     Insert one segment entry, returning the row id
     """
+    segment_row_dict = segment_row._asdict()
+    segment_row_dict["timestamp"] = datetime.fromtimestamp(
+        int(segment_row_dict["timestamp"])
+    )
     connection.execute("""
         insert into diy.segment (
             id,
@@ -62,7 +66,7 @@ def _insert_segment_row(connection, segment_row):
             %(file_tombstone)s,
             %(handoff_node_id)s
         )
-    """, segment_row._asdict())
+    """, segment_row_dict)
     connection.commit()
 
 def _insert_segment_sequence_row(connection, segment_sequence_row):
@@ -97,7 +101,7 @@ def _get_segment_id(connection, avatar_id, key, timestamp, segment_num):
         select id from diy.segment
         where avatar_id = %s and key = %s and timestamp = %s::timestamp
         and segment_num = %s""",
-        [avatar_id, key, timestamp, segment_num]
+        [avatar_id, key, datetime.fromtimestamp(int(timestamp)), segment_num, ]
     )
     if result is None:
         return None
@@ -218,7 +222,7 @@ class Writer(object):
             id=segment_entry["segment-id"],
             avatar_id=avatar_id,
             key=key,
-            timestamp=datetime.fromtimestamp(timestamp),
+            timestamp=timestamp,
             segment_num=segment_num,
             file_size=file_size,
             file_adler32=file_adler32,

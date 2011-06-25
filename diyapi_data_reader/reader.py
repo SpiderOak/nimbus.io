@@ -4,9 +4,11 @@ reader.py
 
 read segment data for avatars
 """
+from datetime import datetime
 import logging
 
 from diyapi_tools.data_definitions import segment_row_template, \
+        convert_segment_row, \
         segment_sequence_template, \
         compute_value_file_path
 
@@ -21,7 +23,7 @@ def _all_segment_rows_for_key(connection, avatar_id, key):
         where avatar_id = %%s and key = %%s
         order by timestamp desc, segment_num asc
     """ % (",".join(segment_row_template._fields), ), [avatar_id, key, ])
-    return [segment_row_template._make(row) for row in result]
+    return [convert_segment_row(row) for row in result]
 
 def _all_sequence_rows_for_segment(
     connection, avatar_id, key, timestamp, segment_num
@@ -39,7 +41,7 @@ def _all_sequence_rows_for_segment(
         )
         order by sequence_num asc
     """ % (",".join(segment_sequence_template._fields), ), 
-    [avatar_id, key, timestamp, segment_num, ])
+    [avatar_id, key, datetime.fromtimestamp(int(timestamp)), segment_num, ])
     return [segment_sequence_template._make(row) for row in result]
 
 class Reader(object):
@@ -50,6 +52,10 @@ class Reader(object):
         self._log = logging.getLogger("Reader")
         self._connection = connection
         self._repository_path = repository_path
+
+    def close(self):
+        """have a close for consistency"""
+        self._log.info("closing")
 
     def get_all_segment_rows_for_key(self, avatar_id, key):
         """
@@ -68,7 +74,11 @@ class Reader(object):
         open_value_files = dict()
 
         sequence_rows = _all_sequence_rows_for_segment(
-            self._connection, avatar_id, key, timestamp, segment_num
+            self._connection, 
+            avatar_id, 
+            key, 
+            timestamp,
+            segment_num
         )
 
         # first yield is count of sequences

@@ -96,8 +96,8 @@ class TestDataReader(unittest.TestCase):
         timestamp = time.time()
         segment_num = 2
 
-        file_adler32 = zlib.adler32(content_item)
-        file_md5 = hashlib.md5(content_item)
+        file_adler32 = zlib.adler32(file_content)
+        file_md5 = hashlib.md5(file_content)
 
         message_id = uuid.uuid1().hex
         message = {
@@ -126,12 +126,12 @@ class TestDataReader(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
+        # get file info from the local database
         file_info = most_recent_timestamp_for_key(
             self._database_connection, avatar_id, key
         )
 
         self.assertNotEqual(file_info, None)
-        print file_info
 
         message_id = uuid.uuid1().hex
         message = {
@@ -152,479 +152,175 @@ class TestDataReader(unittest.TestCase):
         )
 
         self.assertEqual(reply["message-id"], message_id)
-        self.assertEqual(reply["message-type"], "archive-retrieve-reply")
+        self.assertEqual(reply["message-type"], "retrieve-key-reply")
+        self.assertEqual(reply["completed"], True)
         self.assertEqual(len(data), len(file_content))
         self.assertEqual(data, file_content)
 
-#    def test_retrieve_large_content(self):
-#        """test retrieving content that fits in a multiple messages"""
-#        segment_size = 120 * 1024
-#        chunk_count = 10
-#        total_size = int(1.2 * segment_size * chunk_count)
-#        avatar_id = 1001
-#        test_data = [random_string(segment_size) for _ in range(chunk_count)]
-#        key  = self._key_generator.next()
-#        version_number = 0
-#        segment_number = 5
-#        sequence = 0
-#        archive_message_id = uuid.uuid1().hex
-#        timestamp = time.time()
-#
-#        file_adler32 = -42
-#        file_md5 = "ffffffffffffffff"
-#        segment_adler32 = 32
-#        segment_md5 = "1111111111111111"
-#
-#        message = {
-#            "message-type"      : "archive-key-start",
-#            "message-id"        : archive_message_id,
-#            "avatar-id"         : avatar_id,
-#            "timestamp"         : timestamp,
-#            "sequence"          : sequence,
-#            "key"               : key, 
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number,
-#            "segment-size"      : segment_size,
-#        }
-#        reply = send_request_and_get_reply(
-#            _local_node_name,
-#            _data_writer_address, 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
-#        self.assertEqual(reply["message-type"], "archive-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#
-#        for content_item in test_data[1:-1]:
-#            sequence += 1
-#            message = {
-#                "message-type"      : "archive-key-next",
-#                "message-id"        : archive_message_id,
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply = send_request_and_get_reply(
-#            _local_node_name,
-#                _data_writer_address, 
-#                _local_node_name,
-#                _client_address,
-#                message, 
-#                data=content_item
-#            )
-#            self.assertEqual(reply["message-id"], archive_message_id)
-#            self.assertEqual(reply["message-type"], "archive-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#        
-#        sequence += 1
-#        message = {
-#            "message-type"      : "archive-key-final",
-#            "message-id"        : archive_message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#            "total-size"        : total_size,
-#            "file-adler32"      : file_adler32,
-#            "file-md5"          : b64encode(file_md5),
-#            "segment-adler32"   : segment_adler32,
-#            "segment-md5"       : b64encode(segment_md5),
-#        }
-#        reply = send_request_and_get_reply(
-#            _local_node_name,
-#            _data_writer_address, 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
-#        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(reply["previous-size"], 0)
-#
-#        message_id = uuid.uuid1().hex
-#        message = {
-#            "message-type"      : "retrieve-key-start",
-#            "message-id"        : message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number
-#        }
-#        reply, data = send_request_and_get_reply_and_data(
-#            _local_node_name,
-#            _data_reader_address, 
-#            _local_node_name,
-#            _client_address,
-#            message
-#        )
-#        self.assertEqual(reply["message-id"], message_id)
-#        self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(data, test_data[0])
-#
-#        segment_count = reply["segment-count"]
-#
-#        # we have sequence 0, get sequence 1..N-1
-#        for sequence in range(1, segment_count-1):
-#            message = {
-#                "message-type"      : "retrieve-key-next",
-#                "message-id"        : message_id,
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply, data = send_request_and_get_reply_and_data(
-#                _local_node_name,
-#                _data_reader_address, 
-#                _local_node_name,
-#                _client_address,
-#                message
-#            )
-#            self.assertEqual(reply["message-id"], message_id)
-#            self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#            self.assertEqual(data, test_data[sequence])
-#
-#        # get the last segment
-#        sequence = segment_count - 1
-#        message = {
-#            "message-type"      : "retrieve-key-final",
-#            "message-id"        : message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#        }
-#        reply, data = send_request_and_get_reply_and_data(
-#            _local_node_name,
-#            _data_reader_address, 
-#            _local_node_name,
-#            _client_address,
-#            message
-#        )
-#        self.assertEqual(reply["message-id"], message_id)
-#        self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(data, test_data[sequence])
-#
-#    def test_retrieve_large_content_short_last_segment(self):
-#        """
-#        test retrieving content that fits in a multiple messages
-#        with the last segment smaller than the others
-#        """
-#        segment_size = 120 * 1024
-#        short_size = 1024
-#        chunk_count = 10
-#        total_size = (segment_size * (chunk_count-1)) + short_size 
-#        avatar_id = 1001
-#        test_data = [random_string(segment_size) for _ in range(chunk_count-1)]
-#        test_data.append(random_string(short_size))
-#        key  = self._key_generator.next()
-#        version_number = 0
-#        segment_number = 5
-#        sequence = 0
-#        archive_message_id = uuid.uuid1().hex
-#        timestamp = time.time()
-#
-#        file_adler32 = -42
-#        file_md5 = "ffffffffffffffff"
-#        segment_adler32 = 32
-#        segment_md5 = "1111111111111111"
-#
-#        message = {
-#            "message-type"      : "archive-key-start",
-#            "message-id"        : archive_message_id,
-#            "avatar-id"         : avatar_id,
-#            "timestamp"         : timestamp,
-#            "sequence"          : sequence,
-#            "key"               : key, 
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number,
-#            "segment-size"      : segment_size,
-#        }
-#        reply = send_request_and_get_reply(
-#            _local_node_name,
-#            _data_writer_address, 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
-#        self.assertEqual(reply["message-type"], "archive-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#
-#        for content_item in test_data[1:-1]:
-#            sequence += 1
-#            message = {
-#                "message-type"      : "archive-key-next",
-#                "message-id"        : archive_message_id,
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply = send_request_and_get_reply(
-#                _local_node_name,
-#                _data_writer_address, 
-#                _local_node_name,
-#                _client_address,
-#                message, 
-#                data=content_item
-#            )
-#            self.assertEqual(reply["message-id"], archive_message_id)
-#            self.assertEqual(reply["message-type"], "archive-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#        
-#        sequence += 1
-#        message = {
-#            "message-type"      : "archive-key-final",
-#            "message-id"        : archive_message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#            "total-size"        : total_size,
-#            "file-adler32"      : file_adler32,
-#            "file-md5"          : b64encode(file_md5),
-#            "segment-adler32"   : segment_adler32,
-#            "segment-md5"       : b64encode(segment_md5),
-#        }
-#        reply = send_request_and_get_reply(
-#            _local_node_name,
-#            _data_writer_address, 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
-#        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(reply["previous-size"], 0)
-#
-#        message_id = uuid.uuid1().hex
-#        message = {
-#            "message-type"      : "retrieve-key-start",
-#            "message-id"        : message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number
-#        }
-#        reply, data = send_request_and_get_reply_and_data(
-#            _local_node_name,
-#            _data_reader_address, 
-#            _local_node_name,
-#            _client_address,
-#            message
-#        )
-#        self.assertEqual(reply["message-id"], message_id)
-#        self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(data, test_data[0])
-#
-#        segment_count = reply["segment-count"]
-#
-#        # we have sequence 0, get sequence 1..N-1
-#        for sequence in range(1, segment_count-1):
-#            message = {
-#                "message-type"      : "retrieve-key-next",
-#                "message-id"        : message_id,
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply, data = send_request_and_get_reply_and_data(
-#                _local_node_name,
-#                _data_reader_address, 
-#                _local_node_name,
-#                _client_address,
-#                message
-#            )
-#            self.assertEqual(reply["message-id"], message_id)
-#            self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#            self.assertEqual(data, test_data[sequence])
-#
-#        # get the last segment
-#        sequence = segment_count - 1
-#        message = {
-#            "message-type"      : "retrieve-key-final",
-#            "message-id"        : message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#        }
-#        reply, data = send_request_and_get_reply_and_data(
-#            _local_node_name,
-#            _data_reader_address, 
-#            _local_node_name,
-#            _client_address,
-#            message
-#        )
-#        self.assertEqual(reply["message-id"], message_id)
-#        self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(data, test_data[sequence])
-#
-#    def test_retrieve_large_content_2_segments(self):
-#        """
-#        test retrieving content that fits in a multiple messages
-#        but without a 'middle' i.e. no RetrieveKeyNext
-#        """
-#        segment_size = 120 * 1024
-#        chunk_count = 2
-#        total_size = segment_size * chunk_count
-#        avatar_id = 1001
-#        test_data = [random_string(segment_size) for _ in range(chunk_count)]
-#        key  = self._key_generator.next()
-#        version_number = 0
-#        segment_number = 5
-#        sequence = 0
-#        archive_message_id = uuid.uuid1().hex
-#        timestamp = time.time()
-#
-#        file_adler32 = -42
-#        file_md5 = "ffffffffffffffff"
-#        segment_adler32 = 32
-#        segment_md5 = "1111111111111111"
-#
-#        message = {
-#            "message-type"      : "archive-key-start",
-#            "message-id"        : archive_message_id,
-#            "avatar-id"         : avatar_id,
-#            "timestamp"         : timestamp,
-#            "sequence"          : sequence,
-#            "key"               : key, 
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number,
-#            "segment-size"      : segment_size,
-#        }
-#        reply = send_request_and_get_reply(
-#            _local_node_name,
-#            _data_writer_address, 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
-#        self.assertEqual(reply["message-type"], "archive-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#
-#        for content_item in test_data[1:-1]:
-#            sequence += 1
-#            message = {
-#                "message-type"      : "archive-key-next",
-#                "message-id"        : archive_message_id,
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply = send_request_and_get_reply(
-#                _local_node_name,
-#                _data_writer_address, 
-#                _local_node_name,
-#                _client_address,
-#                message, 
-#                data=content_item
-#            )
-#            self.assertEqual(reply["message-id"], archive_message_id)
-#            self.assertEqual(reply["message-type"], "archive-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#        
-#        sequence += 1
-#        message = {
-#            "message-type"      : "archive-key-final",
-#            "message-id"        : archive_message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#            "total-size"        : total_size,
-#            "file-adler32"      : file_adler32,
-#            "file-md5"          : b64encode(file_md5),
-#            "segment-adler32"   : segment_adler32,
-#            "segment-md5"       : b64encode(segment_md5),
-#        }
-#        reply = send_request_and_get_reply(
-#            _local_node_name,
-#            _data_writer_address, 
-#            _local_node_name,
-#            _client_address,
-#            message, 
-#            data=test_data[sequence]
-#        )
-#        self.assertEqual(reply["message-id"], archive_message_id)
-#        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(reply["previous-size"], 0)
-#
-#        message_id = uuid.uuid1().hex
-#        message = {
-#            "message-type"      : "retrieve-key-start",
-#            "message-id"        : message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "version-number"    : version_number,
-#            "segment-number"    : segment_number
-#        }
-#        reply, data = send_request_and_get_reply_and_data(
-#            _local_node_name,
-#            _data_reader_address, 
-#            _local_node_name,
-#            _client_address,
-#            message
-#        )
-#        self.assertEqual(reply["message-id"], message_id)
-#        self.assertEqual(reply["message-type"], "retrieve-key-start-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(data, test_data[0])
-#
-#        segment_count = reply["segment-count"]
-#
-#        # we have sequence 0, get sequence 1..N-1
-#        for sequence in range(1, segment_count-1):
-#            message = {
-#                "message-type"      : "retrieve-key-next",
-#                "message-id"        : message_id,
-#                "avatar-id"         : avatar_id,
-#                "key"               : key,
-#                "sequence"          : sequence,
-#            }
-#            reply, data = send_request_and_get_reply_and_data(
-#                _local_node_name,
-#                _data_reader_address, 
-#                _local_node_name,
-#                _client_address,
-#                message
-#            )
-#            self.assertEqual(reply["message-id"], message_id)
-#            self.assertEqual(reply["message-type"], "retrieve-key-next-reply")
-#            self.assertEqual(reply["result"], "success")
-#            self.assertEqual(data, test_data[sequence])
-#
-#        # get the last segment
-#        sequence = segment_count - 1
-#        message = {
-#            "message-type"      : "retrieve-key-final",
-#            "message-id"        : message_id,
-#            "avatar-id"         : avatar_id,
-#            "key"               : key,
-#            "sequence"          : sequence,
-#        }
-#        reply, data = send_request_and_get_reply_and_data(
-#            _local_node_name,
-#            _data_reader_address, 
-#            _local_node_name,
-#            _client_address,
-#            message
-#        )
-#        self.assertEqual(reply["message-id"], message_id)
-#        self.assertEqual(reply["message-type"], "retrieve-key-final-reply")
-#        self.assertEqual(reply["result"], "success")
-#        self.assertEqual(data, test_data[sequence])
+    def test_retrieve_large_content(self):
+        """test retrieving content that fits in a multiple messages"""
+        slice_size = 1024 * 1024
+        slice_count = 10
+        total_size = slice_size * slice_count
+        test_data = random_string(total_size)
+
+        avatar_id = 1001
+        timestamp = time.time()
+        key  = self._key_generator.next()
+        segment_num = 4
+        sequence_num = 0
+
+        file_adler32 = zlib.adler32(test_data)
+        file_md5 = hashlib.md5(test_data)
+
+        slice_start = 0
+        slice_end = slice_size
+
+        message_id = uuid.uuid1().hex
+        message = {
+            "message-type"      : "archive-key-start",
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key, 
+            "timestamp"         : timestamp,
+            "segment-num"       : segment_num,
+            "sequence-num"      : sequence_num,
+        }
+        reply = send_request_and_get_reply(
+            _local_node_name,
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[slice_start:slice_end]
+        )
+        self.assertEqual(reply["message-id"], message_id)
+        self.assertEqual(reply["message-type"], "archive-key-start-reply")
+        self.assertEqual(reply["result"], "success")
+
+        for _ in range(slice_count-2):
+            sequence_num += 1
+            slice_start += slice_size
+            slice_end += slice_size
+            message_id = uuid.uuid1().hex
+            message = {
+                "message-type"      : "archive-key-next",
+                "avatar-id"         : avatar_id,
+                "key"               : key, 
+                "timestamp"         : timestamp,
+                "segment-num"       : segment_num,
+                "message-id"        : message_id,
+                "sequence-num"      : sequence_num,
+            }
+            reply = send_request_and_get_reply(
+                _local_node_name,
+                _data_writer_address, 
+                _local_node_name,
+                _client_address,
+                message, 
+                data=test_data[slice_start:slice_end]
+            )
+            self.assertEqual(reply["message-id"], message_id)
+            self.assertEqual(reply["message-type"], "archive-key-next-reply")
+            self.assertEqual(reply["result"], "success")
+        
+        sequence_num += 1
+        slice_start += slice_size
+        slice_end += slice_size
+        self.assertEqual(slice_end, total_size)
+        message_id = uuid.uuid1().hex
+        message = {
+            "message-type"      : "archive-key-final",
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key, 
+            "timestamp"         : timestamp,
+            "segment-num"       : segment_num,
+            "sequence-num"      : sequence_num,
+            "file-size"         : total_size,
+            "file-adler32"      : file_adler32,
+            "file-hash"         : b64encode(file_md5.digest()),
+            "file-user-id"      : None,
+            "file-group-id"     : None,
+            "file-permissions"  : None,
+        }
+        reply = send_request_and_get_reply(
+            _local_node_name,
+            _data_writer_address, 
+            _local_node_name,
+            _client_address,
+            message, 
+            data=test_data[slice_start:slice_end]
+        )
+        self.assertEqual(reply["message-id"], message_id)
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
+
+        # get file info from the local database
+        file_info = most_recent_timestamp_for_key(
+            self._database_connection, avatar_id, key
+        )
+
+        self.assertNotEqual(file_info, None)
+
+        retrieved_data_list = list()
+
+        message_id = uuid.uuid1().hex
+        message = {
+            "message-type"      : "retrieve-key-start",
+            "message-id"        : message_id,
+            "avatar-id"         : avatar_id,
+            "key"               : key, 
+            "timestamp"         : timestamp,
+            "segment-num"       : segment_num
+        }
+
+        reply, data = send_request_and_get_reply_and_data(
+            _local_node_name,
+            _data_reader_address, 
+            _local_node_name,
+            _client_address,
+            message 
+        )
+        
+        self.assertEqual(reply["message-id"], message_id)
+        self.assertEqual(reply["message-type"], "retrieve-key-reply")
+        self.assertEqual(reply["completed"], False)
+        print "sequence-num =", reply["sequence-num"]
+
+        retrieved_data_list.append(data)
+
+        while True:
+            message_id = uuid.uuid1().hex
+            message = {
+                "message-type"      : "retrieve-key-next",
+                "message-id"        : message_id,
+                "avatar-id"         : avatar_id,
+                "key"               : key, 
+                "timestamp"         : timestamp,
+                "segment-num"       : segment_num
+            }
+
+            reply, data = send_request_and_get_reply_and_data(
+                _local_node_name,
+                _data_reader_address, 
+                _local_node_name,
+                _client_address,
+                message 
+            )
+            
+            self.assertEqual(reply["message-id"], message_id)
+            self.assertEqual(reply["message-type"], "retrieve-key-reply")
+            retrieved_data_list.append(data)
+            print "sequence-num =", reply["sequence-num"]
+
+            if reply["completed"]:
+                break
+
+        retrieved_data = "".join(retrieved_data_list)
+        self.assertEqual(len(retrieved_data), len(test_data))
+        self.assertEqual(retrieved_data, test_data)
+
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

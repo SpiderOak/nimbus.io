@@ -109,7 +109,6 @@ class TestReadAndWrite(unittest.TestCase):
         # clean out any segments that are laying around for this (test) keu
         reader = Reader(self._database_connection, _repository_path)
         for segment_row in reader.get_all_segment_rows_for_key(avatar_id, key):
-            print segment_row
             writer.purge_segment(
                 avatar_id, 
                 key, 

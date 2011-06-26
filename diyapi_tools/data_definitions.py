@@ -47,7 +47,7 @@ segment_row_template = namedtuple(
         "file_group_id",
         "file_permissions",
         "file_tombstone",
-        "handoff_node_id",
+        "handoff_node_name",
     ]
 )
 

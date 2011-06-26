@@ -11,8 +11,7 @@ import os.path
 class SimError(Exception):
     pass
 
-from unit_tests.util import start_database_server, \
-        start_data_writer, \
+from unit_tests.util import start_data_writer, \
         start_data_reader, \
         start_space_accounting_server, \
         start_anti_entropy_server, \
@@ -24,20 +23,9 @@ def _generate_node_name(node_index):
     return "node-sim-%02d" % (node_index, )
 
 _node_count = 10
-_database_server_base_port = 8000
 _data_writer_base_port = 8100
 _data_reader_base_port = 8300
 _handoff_server_base_port = 8700
-_database_server_addresses = [
-    "tcp://127.0.0.1:%s" % (_database_server_base_port+i, ) \
-    for i in range(_node_count)
-]
-_database_server_local_addresses = [
-    "ipc:///tmp/spideroak-diyapi-database-server-%s/socket" % (
-        _generate_node_name( i ),
-    ) \
-    for i in range(_node_count)
-]
 _data_writer_addresses = [
     "tcp://127.0.0.1:%s" % (_data_writer_base_port+i, ) \
     for i in range(_node_count)
@@ -96,24 +84,10 @@ class NodeSim(object):
     def start(self):
         self._log.debug("start")
 
-        self._processes["database_server"] = start_database_server(
-            self._node_name,
-            _database_server_addresses[self._node_index],
-            _database_server_local_addresses[self._node_index],
-            self._home_dir
-        )
         self._processes["data_writer"] = start_data_writer(
             self._node_name,
             _data_writer_addresses[self._node_index],
             _data_writer_pipeline_addresses[self._node_index],
-            _database_server_local_addresses[self._node_index],
-            self._home_dir
-        )
-        self._processes["data_reader"] = start_data_reader(
-            self._node_name,
-            _data_reader_addresses[self._node_index],
-            _data_reader_pipeline_addresses[self._node_index],
-            _database_server_local_addresses[self._node_index],
             self._home_dir
         )
         self._processes["handoff_server"] = start_handoff_server(
@@ -140,7 +114,6 @@ class NodeSim(object):
                 self._node_name,
                 _anti_entropy_server_address,
                 _anti_entropy_server_pipeline_address,
-                _database_server_addresses
             )
 
     def stop(self):

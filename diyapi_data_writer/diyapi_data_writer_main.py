@@ -30,6 +30,7 @@ from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
 from diyapi_tools.standard_logging import format_timestamp
+from diyapi_web_server.database_util import segment_row_for_key
 
 from diyapi_data_writer.writer import Writer
 
@@ -51,14 +52,31 @@ _repository_path = os.environ.get(
     "DIYAPI_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
 )
 
-def _handle_archive_key_entire(state, message, data):
-    log = logging.getLogger("_handle_archive_key_entire")
-    log.info("%s %s %s %s" % (
+def _start_segment(state, message, data, reply):
+    log = logging.getLogger("_start_segment")
+
+    # see if we already have a row for this key
+    segment_row = segment_row_for_key(
+        state["database-connection"],
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp"],
         message["segment-num"]
-    ))
+    )
+
+    # if we already have a row for this key, something is wrong
+    if segment_row is not None:
+        if segment_row.file_tombstone:
+            error_message = "file is deleted"
+            log.error(error_message)
+            reply["result"] = "deleted"
+            reply["error-message"] = error_message
+        else:
+            error_message = "file is already archived"
+            log.error(error_message)
+            reply["result"] = "duplicate"
+            reply["error-message"] = error_message
+        return False
 
     state["writer"].start_new_segment(
         message["avatar-id"], 
@@ -66,55 +84,7 @@ def _handle_archive_key_entire(state, message, data):
         message["timestamp"],
         message["segment-num"]
     )
-    state["writer"].store_sequence(
-        message["avatar-id"], 
-        message["key"], 
-        message["timestamp"],
-        message["segment-num"],
-        0,
-        data
-    )
-    state["writer"].finish_new_segment(
-        message["avatar-id"], 
-        message["key"], 
-        message["timestamp"],
-        message["segment-num"],
-        message["file-size"],
-        message["file-adler32"],
-        b64decode(message["file-hash"]),
-        message["file-user-id"],
-        message["file-group-id"],
-        message["file-permissions"],
-        file_tombstone=False
-    )
 
-    Statgrabber.accumulate('diy_write_requests', 1)
-    Statgrabber.accumulate('diy_write_bytes', len(data))
-
-    reply = {
-        "message-type"  : "archive-key-final-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
-    state["resilient-server"].send_reply(reply)
-
-def _handle_archive_key_start(state, message, data):
-    log = logging.getLogger("_handle_archive_key_start")
-    log.info("%s %s %s %s" % (
-        message["avatar-id"], 
-        message["key"], 
-        format_timestamp(message["timestamp"]),
-        message["segment-num"]
-    ))
-
-    state["writer"].start_new_segment(
-        message["avatar-id"], 
-        message["key"], 
-        message["timestamp"],
-        message["segment-num"]
-    )
     state["writer"].store_sequence(
         message["avatar-id"], 
         message["key"], 
@@ -127,13 +97,66 @@ def _handle_archive_key_start(state, message, data):
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
 
+    return True
+
+def _handle_archive_key_entire(state, message, data):
+    log = logging.getLogger("_handle_archive_key_entire")
+    log.info("%s %s %s %s" % (
+        message["avatar-id"], 
+        message["key"], 
+        format_timestamp(message["timestamp"]),
+        message["segment-num"]
+    ))
+
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
+    if _start_segment(state, message, data, reply):
+
+        state["writer"].finish_new_segment(
+            message["avatar-id"], 
+            message["key"], 
+            message["timestamp"],
+            message["segment-num"],
+            message["file-size"],
+            message["file-adler32"],
+            b64decode(message["file-hash"]),
+            message["file-user-id"],
+            message["file-group-id"],
+            message["file-permissions"],
+            file_tombstone=False,
+            handoff_node_name=message["handoff-node-name"]
+        )
+
+        message["result"] = "succcess"
+
+    state["resilient-server"].send_reply(reply)
+
+def _handle_archive_key_start(state, message, data):
+    log = logging.getLogger("_handle_archive_key_start")
+    log.info("%s %s %s %s" % (
+        message["avatar-id"], 
+        message["key"], 
+        format_timestamp(message["timestamp"]),
+        message["segment-num"]
+    ))
+
     reply = {
         "message-type"  : "archive-key-start-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
-        "result"        : "success",
+        "result"        : None,
         "error-message" : None,
     }
+
+    if _start_segment(state, message, data, reply):
+        reply["result"] = "success"
+
     state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_next(state, message, data):
@@ -194,7 +217,8 @@ def _handle_archive_key_final(state, message, data):
         message["file-user-id"],
         message["file-group-id"],
         message["file-permissions"],
-        file_tombstone=False
+        file_tombstone=False,
+        handoff_node_name=message["handoff-node-name"]
     )
 
     Statgrabber.accumulate('diy_write_requests', 1)
@@ -209,56 +233,31 @@ def _handle_archive_key_final(state, message, data):
     }
     state["resilient-server"].send_reply(reply)
 
-#def _handle_destroy_key(state, message, _data):
-#    log = logging.getLogger("_handle_destroy_key")
-#    state_key = _compute_state_key(message)
-#    log.info("%s" % (state_key, ))
-#
-#    reply = {
-#        "message-type"  : "destroy-key-reply",
-#        "client-tag"    : message["client-tag"],
-#        "message-id"    : message["message-id"],
-#        "result"        : None,
-#        "error-message" : None,
-#    }
-#
-#    # if we already have a state entry for this request, something is wrong
-#    if state_key in state["active-requests"]:
-#        error_string = "invalid duplicate in destroy-key"
-#        log.error(error_string)
-#        reply["result"] = "invalid-duplicate"
-#        reply["error-message"] = error_string
-#        state["resilient-server"].send_reply(reply)
-#        return
-#
-#    file_name = _compute_filename(message)
-#
-#    # save stuff we need to recall in state
-#    state["active-requests"][state_key] = _request_state_tuple(
-#        client_tag=message["client-tag"],
-#        message_id=message["message-id"],
-#        timestamp=message["timestamp"],
-#        timeout=time.time()+_key_destroy_timeout,
-#        timeout_message="destroy-key-reply",
-#        sequence=0,
-#        version_number=0,
-#        segment_number=0,
-#        segment_size=0,
-#        file_name=file_name,
-#    )
-#
-#    # send a destroy request to the database, with the reply
-#    # coming back to us
-#    request = {
-#        "message-type"      : "key-destroy",
-#        "avatar-id"         : message["avatar-id"],
-#        "key"               : message["key"], 
-#        "version-number"    : message["version-number"],
-#        "segment-num"    : message["segment-num"],
-#        "timestamp"         : message["timestamp"],
-#    }
-#    state["database-client"].queue_message_for_send(request)
-#
+def _handle_destroy_key(state, message, _data):
+    log = logging.getLogger("_handle_destroy_key")
+    log.info("%s %s %s %s" % (
+        message["avatar-id"], 
+        message["key"], 
+        format_timestamp(message["timestamp"]),
+        message["segment-num"]
+    ))
+
+    state["writer"].set_tombstone(
+        message["avatar-id"], 
+        message["key"], 
+        message["timestamp"],
+        message["segment-num"]
+    )
+
+    reply = {
+        "message-type"  : "destroy-key-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : success,
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
 #def _handle_purge_key(state, message, _data):
 #    log = logging.getLogger("_handle_purge_key")
 #    state_key = _compute_state_key(message)

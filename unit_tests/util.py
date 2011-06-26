@@ -24,24 +24,6 @@ def generate_key():
         n += 1
         yield "test-key-%06d" % (n, )
 
-def generate_database_content(
-    timestamp=time.time(), version_number=0, segment_number=1
-):
-    return database_content.factory(
-        timestamp=timestamp, 
-        is_tombstone=False,  
-        version_number=version_number,
-        segment_number=segment_number,  
-        segment_size=42,  
-        segment_count=1,
-        total_size=4200,  
-        file_adler32=345, 
-        file_md5='\x936\xeb\xf2P\x87\xd9\x1c\x81\x8e\xe6\xe9\xec)\xf8\xc1',
-        segment_adler32=123, 
-        segment_md5="1111111111111111",
-        file_name="aaa"
-    )
-
 def identify_program_dir(target_dir):
     python_path = os.environ["PYTHONPATH"]
     for work_path in python_path.split(os.pathsep):
@@ -72,27 +54,6 @@ def terminate_process(process):
         print >> sys.stderr, process.returncode
     assert process.returncode == 0, \
         process.returncode
-
-def start_database_server(node_name, address, local_address, repository_path):
-    log = logging.getLogger("start_database_server_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_database_server")
-    server_path = os.path.join(server_dir, "diyapi_database_server_main.py")
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_DATABASE_SERVER_ADDRESS"    : address,
-        "DIYAPI_DATABASE_SERVER_LOCAL_ADDRESS": local_address,
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-    }        
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_data_writer(
     node_name, 

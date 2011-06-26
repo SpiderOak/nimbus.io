@@ -17,8 +17,6 @@ from diyapi_tools.standard_logging import initialize_logging
 
 from unit_tests.util import identify_program_dir, \
         generate_key, \
-        generate_database_content, \
-        start_database_server,\
         start_anti_entropy_server, \
         poll_process, \
         terminate_process
@@ -32,10 +30,6 @@ _repository_dirs = [
     os.path.join(_test_dir, "repository_%s" % (n, )) for n in _node_names
 ]
 _anti_entropy_server_address = "tcp://127.0.0.1:8400"
-_database_server_base_port = 8000
-_database_server_addresses = [
-    "tcp://127.0.0.1:%s" % (_database_server_base_port+i, ) for i in range(10)
-]
 
 class TestAntiEntropyServer(unittest.TestCase):
     """test message handling in anti entropy server"""
@@ -46,22 +40,10 @@ class TestAntiEntropyServer(unittest.TestCase):
         for repository_dir in _repository_dirs:
             os.mkdir(repository_dir)
         self._key_generator = generate_key()
-        self._database_server_processes = list()
-        for node_name, address, repository_path in zip(
-            _node_names, _database_server_addresses, _repository_dirs
-        ):
-            database_server_process = start_database_server(
-                node_name, address, repository_path
-            )
-            time.sleep(1.0)
-            poll_result = poll_process(database_server_process)
-            self.assertEqual(poll_result, None)
-            self._database_server_processes.append(database_server_process)
         self._anti_entropy_server_process = \
             start_anti_entropy_server(
                 _local_node_name,
                 _anti_entropy_server_address,
-                _database_server_addresses
             )
 
     def tearDown(self):
@@ -69,15 +51,10 @@ class TestAntiEntropyServer(unittest.TestCase):
         and self._anti_entropy_server_process is not None:
             terminate_process(self._anti_entropy_server_process)
             self._anti_entropy_server_process = None
-        if hasattr(self, "_database_server_processes") \
-        and self._database_server_processes is not None:
-            for database_server_process in self._database_server_processes:
-                terminate_process(database_server_process)
-            self._database_server_processes = None
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
-    def _insert_key(self, database_server_address, avatar_id, key, content):
+    def _insert_key(self, avatar_id, key, content):
         request_id = uuid.uuid1().hex
         message = {
             "message-type"      : "key-insert",

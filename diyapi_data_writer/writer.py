@@ -50,7 +50,7 @@ def _insert_segment_row(connection, segment_row):
             file_group_id,
             file_permissions,
             file_tombstone,
-            handoff_node_id
+            handoff_node_name
         ) values (
             %(id)s,
             %(avatar_id)s,
@@ -64,7 +64,7 @@ def _insert_segment_row(connection, segment_row):
             %(file_group_id)s,
             %(file_permissions)s,
             %(file_tombstone)s,
-            %(handoff_node_id)s
+            %(handoff_node_name)s
         )
     """, segment_row_dict)
     connection.commit()
@@ -206,12 +206,12 @@ class Writer(object):
         file_user_id,
         file_group_id,
         file_permissions,
-        file_tombstone
+        file_tombstone,
+        handoff_node_name
     ): 
         """
         finalize storing one segment of data for a file
         """
-
         segment_key = (avatar_id, key, timestamp, segment_num, )
         self._log.info("finish_new_segment %s %s %s %s" % (
             avatar_id, key, format_timestamp(timestamp), segment_num, 
@@ -231,7 +231,7 @@ class Writer(object):
             file_group_id=file_group_id,
             file_permissions=file_permissions,
             file_tombstone=file_tombstone,
-            handoff_node_id=None
+            handoff_node_name=handoff_node_name
         )
         _insert_segment_row(self._connection, segment_row)
     
@@ -245,3 +245,22 @@ class Writer(object):
         if segment_id is not None:
             _purge_segment_rows(self._connection, segment_id)
         
+    def set_tombstone(self, avatar_id, key, timestamp, segment_num):
+        """
+        mark a key as deleted
+        """
+        # if there is an archive in progress, heave the entry and
+        # let subsequent requests error out
+        segment_key = (avatar_id, key, timestamp, segment_num, )
+        try:
+            self._active_segments.pop(segment_key)
+        except KeyError:
+            pass
+        else:
+            log.warn("setting tombstone for archive in progress %s" % (
+                segment_key,
+            ))
+
+        # if we have something stored for this key, get rid of it
+        purge_segment(self, avatar_id, key, timestamp, segment_num)
+

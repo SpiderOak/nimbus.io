@@ -84,7 +84,7 @@ create table segment (
 create index segment_key_idx on segment("avatar_id", "key");
 /* a partial index just for handoffs, so it's easy to find these records when a
  * node comes back online */
-create index segment_handoff_idx on segment("handoff_node_id") where handoff_node_id is not null;
+create index segment_handoff_idx on segment("handoff_node_name") where handoff_node_name is not null;
 
 /* we store all the values in the diy key/value store in large, sequentially
  * written value data files.  These are pointed to by the segment_sequence table to

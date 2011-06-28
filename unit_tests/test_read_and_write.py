@@ -133,7 +133,7 @@ class TestReadAndWrite(unittest.TestCase):
             file_group_id,
             file_permissions,
             file_tombstone,
-            handoff_node_name=None,
+            handoff_node_id=None,
         )
         writer.close()
 

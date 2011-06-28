@@ -50,7 +50,7 @@ def _insert_segment_row(connection, segment_row):
             file_group_id,
             file_permissions,
             file_tombstone,
-            handoff_node_name
+            handoff_node_id
         ) values (
             %(id)s,
             %(avatar_id)s,
@@ -64,7 +64,7 @@ def _insert_segment_row(connection, segment_row):
             %(file_group_id)s,
             %(file_permissions)s,
             %(file_tombstone)s,
-            %(handoff_node_name)s
+            %(handoff_node_id)s
         )
     """, segment_row_dict)
     connection.commit()
@@ -207,7 +207,7 @@ class Writer(object):
         file_group_id,
         file_permissions,
         file_tombstone,
-        handoff_node_name
+        handoff_node_id
     ): 
         """
         finalize storing one segment of data for a file
@@ -231,7 +231,7 @@ class Writer(object):
             file_group_id=file_group_id,
             file_permissions=file_permissions,
             file_tombstone=file_tombstone,
-            handoff_node_name=handoff_node_name
+            handoff_node_id=handoff_node_id
         )
         _insert_segment_row(self._connection, segment_row)
     
@@ -263,4 +263,21 @@ class Writer(object):
 
         # if we have something stored for this key, get rid of it
         purge_segment(self, avatar_id, key, timestamp, segment_num)
+
+        segment_row = segment_row_template(
+            id=None,
+            avatar_id=avatar_id,
+            key=key,
+            timestamp=timestamp,
+            segment_num=segment_num,
+            file_size=None,
+            file_adler32=None,
+            file_hash=None,
+            file_user_id=None,
+            file_group_id=None,
+            file_permissions=None,
+            file_tombstone=True,
+            handoff_node_id=None
+        )
+        _insert_segment_row(self._connection, segment_row)
 

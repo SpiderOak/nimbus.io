@@ -130,7 +130,7 @@ def _handle_archive_key_entire(state, message, data):
             message["file-group-id"],
             message["file-permissions"],
             file_tombstone=False,
-            handoff_node_name=message["handoff-node-name"]
+            handoff_node_id=message["handoff-node-id"]
         )
 
         message["result"] = "succcess"
@@ -218,7 +218,7 @@ def _handle_archive_key_final(state, message, data):
         message["file-group-id"],
         message["file-permissions"],
         file_tombstone=False,
-        handoff_node_name=message["handoff-node-name"]
+        handoff_node_id=message["handoff-node-id"]
     )
 
     Statgrabber.accumulate('diy_write_requests', 1)
@@ -253,68 +253,43 @@ def _handle_destroy_key(state, message, _data):
         "message-type"  : "destroy-key-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
-        "result"        : success,
+        "result"        : "success",
         "error-message" : None,
     }
     state["resilient-server"].send_reply(reply)
 
-#def _handle_purge_key(state, message, _data):
-#    log = logging.getLogger("_handle_purge_key")
-#    state_key = _compute_state_key(message)
-#    log.info("%s" % (state_key, ))
-#
-#    reply = {
-#        "message-type"  : "purge-key-reply",
-#        "client-tag"    : message["client-tag"],
-#        "message-id"    : message["message-id"],
-#        "result"        : None,
-#        "error-message" : None,
-#    }
-#
-#    # if we already have a state entry for this request, something is wrong
-#    if state_key in state["active-requests"]:
-#        error_string = "invalid duplicate request in purge-key"
-#        log.error(error_string)
-#        reply["result"] = "invalid-duplicate"
-#        reply["error-message"] = error_string
-#        state["resilient-server"].send_reply(reply)
-#        return
-#
-#    file_name = _compute_filename(message)
-#
-#    # save stuff we need to recall in state
-#    state["active-requests"][state_key] = _request_state_tuple(
-#        client_tag=message["client-tag"],
-#        message_id=message["message-id"],
-#        timestamp=message["timestamp"],
-#        timeout=time.time()+_key_purge_timeout,
-#        timeout_message="purge-key-reply",
-#        sequence=0,
-#        version_number=0,
-#        segment_number=0,
-#        segment_size=0,
-#        file_name=file_name,
-#    )
-#
-#    # send a purge request to the database, with the reply
-#    # coming back to us
-#    request = {
-#        "message-type"      : "key-purge",
-#        "avatar-id"         : message["avatar-id"],
-#        "key"               : message["key"], 
-#        "version-number"    : message["version-number"],
-#        "segment-num"    : message["segment-num"],
-#        "timestamp"         : message["timestamp"],
-#    }
-#    state["database-client"].queue_message_for_send(request)
+def _handle_purge_key(state, message, _data):
+    log = logging.getLogger("_handle_purge_key")
+    log.info("%s %s %s %s" % (
+        message["avatar-id"], 
+        message["key"], 
+        format_timestamp(message["timestamp"]),
+        message["segment-num"]
+    ))
+
+    state["writer"].purge_key(
+        message["avatar-id"], 
+        message["key"], 
+        message["timestamp"],
+        message["segment-num"]
+    )
+
+    reply = {
+        "message-type"  : "purge-key-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
 
 _dispatch_table = {
     "archive-key-entire"    : _handle_archive_key_entire,
     "archive-key-start"     : _handle_archive_key_start,
     "archive-key-next"      : _handle_archive_key_next,
     "archive-key-final"     : _handle_archive_key_final,
-#    "destroy-key"           : _handle_destroy_key,
-#    "purge-key"             : _handle_purge_key,
+    "destroy-key"           : _handle_destroy_key,
+    "purge-key"             : _handle_purge_key,
 }
 
 def _create_state():

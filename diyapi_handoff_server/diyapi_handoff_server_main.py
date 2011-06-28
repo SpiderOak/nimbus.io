@@ -20,6 +20,7 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.standard_logging import format_timestamp
+from diyapi_tools.pandora_database_connection import get_node_local_connection
 
 from diyapi_handoff_server.hint_repository import HintRepository
 from diyapi_handoff_server.data_writer_status_checker import \
@@ -53,14 +54,13 @@ _retrieve_timeout = 30 * 60.0
 
 def _handle_hinted_handoff(state, message, _data):
     log = logging.getLogger("_handle_hinted_handoff")
-    log.info("%s, %s %s, %s, %s, version_number %s, segment_number %s %s" % (
+    log.info("%s, %s %s, %s, segment_num %s %s" % (
         message["dest-node-name"], 
-        message["avatar-id"], 
-        format_timestamp(message["timestamp"]), 
         message["action"],
+        message["avatar-id"], 
         message["key"],  
-        message["version-number"], 
-        message["segment-number"],
+        format_timestamp(message["timestamp"]), 
+        message["segment-num"],
         message["server-node-names"],
     ))
 
@@ -76,10 +76,9 @@ def _handle_hinted_handoff(state, message, _data):
         state["hint-repository"].store(
             message["dest-node-name"],
             message["avatar-id"],
-            message["timestamp"],
             message["key"],
-            message["version-number"],
-            message["segment-number"],
+            message["timestamp"],
+            message["segment-num"],
             message["action"],
             message["server-node-names"]
         )
@@ -136,10 +135,6 @@ def _handle_archive_reply(state, message, _data):
         log.error(error_message)
         raise HandoffError(error_message)
 
-#    message_id = forwarder.send(message)
-#    assert message_id is not None
-#    state["active-forwarders"][message_id] = forwarder    
-
     # if we get back a string, it is a message-id for another archive
     # otherwise, we should get the hint we started with
     result = forwarder.send(message)
@@ -159,44 +154,44 @@ def _handle_archive_reply(state, message, _data):
             log.exception(instance)
         state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
 
-#def _handle_destroy_key_reply(state, message, _data):
-#    log = logging.getLogger("_handle_destroy_key_reply")
-#
-#    try:
-#        forwarder = state["active-forwarders"].pop(message["message-id"])
-#    except KeyError:
-#        log.error("no forwarder for message %s" % (message, ))
-#        return
-#
-#    #TODO: we need to squawk about this somehow
-#    if message["result"] != "success":
-#        log.error("%s failed (%s) %s %s" % (
-#            message["message-type"], 
-#            message["result"], 
-#            message["error-message"], 
-#            message,
-#        ))
-#        # we don't give up here, because the handoff has succeeded 
-#        # at this point we're just cleaning up
-#
-#    # if we get back a string, it is a message-id for another destroy
-#    # otherwise, we should get the hint we started with
-#    result = forwarder.send(message)
-#    assert result is not None
-#
-#    if type(result) is str:
-#        message_id = result
-#        state["active-forwarders"][message_id] = forwarder
-#    else:
-#        hint = result
-#        log.info("handoff complete %s %s %s" % (
-#            hint.node_name, hint.avatar_id, hint.key
-#        ))
-#        try:
-#            state["hint-repository"].purge_hint(hint)
-#        except Exception, instance:
-#            log.exception(instance)
-#        state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
+def _handle_purge_key_reply(state, message, _data):
+    log = logging.getLogger("_handle_purge_key_reply")
+
+    try:
+        forwarder = state["active-forwarders"].pop(message["message-id"])
+    except KeyError:
+        log.error("no forwarder for message %s" % (message, ))
+        return
+
+    #TODO: we need to squawk about this somehow
+    if message["result"] != "success":
+        log.error("%s failed (%s) %s %s" % (
+            message["message-type"], 
+            message["result"], 
+            message["error-message"], 
+            message,
+        ))
+        # we don't give up here, because the handoff has succeeded 
+        # at this point we're just cleaning up
+
+    # if we get back a string, it is a message-id for another purge
+    # otherwise, we should get the hint we started with
+    result = forwarder.send(message)
+    assert result is not None
+
+    if type(result) is str:
+        message_id = result
+        state["active-forwarders"][message_id] = forwarder
+    else:
+        hint = result
+        log.info("handoff complete %s %s %s" % (
+            hint.node_name, hint.avatar_id, hint.key
+        ))
+        try:
+            state["hint-repository"].purge_hint(hint)
+        except Exception, instance:
+            log.exception(instance)
+        state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
 
 _dispatch_table = {
     "hinted-handoff"                : _handle_hinted_handoff,
@@ -206,7 +201,7 @@ _dispatch_table = {
     "archive-key-start-reply"       : _handle_archive_reply,
     "archive-key-next-reply"        : _handle_archive_reply,
     "archive-key-final-reply"       : _handle_archive_reply,
-#    "destroy-key-reply"             : _handle_destroy_key_reply,
+    "purge-key-reply"               : _handle_purge_key_reply,
 }
 
 def _create_state():
@@ -222,6 +217,7 @@ def _create_state():
         "hint-repository"           : None,
         "data-writer-status-checker": None,
         "active-forwarders"         : dict(),
+        "database-connection"       : None,
     }
 
 def _setup(_halt_event, state):
@@ -288,6 +284,8 @@ def _setup(_halt_event, state):
 
     state["data-writer-status-checker"] = DataWriterStatusChecker(state)
 
+    state["database-connection"] = get_node_local_connection()
+
     timer_driven_callbacks = [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
@@ -317,6 +315,8 @@ def _tear_down(state):
         writer_client.close()
 
     state["zmq-context"].term()
+
+    state["database-connection"].close()
 
 if __name__ == "__main__":
     state = _create_state()

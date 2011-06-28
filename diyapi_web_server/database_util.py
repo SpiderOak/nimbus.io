@@ -24,7 +24,7 @@ def most_recent_timestamp_for_key(connection, avatar_id, key):
     """
     result = connection.fetch_one_row("""
         select %s from diy.segment 
-        where avatar_id = %%s and key = %%s and handoff_node_name is null
+        where avatar_id = %%s and key = %%s and handoff_node_id is null
         order by timestamp desc
         limit 1
     """ % (",".join(segment_row_template._fields), ), [avatar_id, key, ])

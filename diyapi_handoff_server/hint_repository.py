@@ -14,12 +14,11 @@ factory =  namedtuple(
     "HandoffHint", [
         "node_name",
         "avatar_id",
-        "timestamp", 
         "key",
-        "version_number",
-        "segment_number", 
+        "timestamp", 
+        "segment_num", 
         "action",
-        "server_node_names",
+        "server_node_ids",
     ]
 )
 
@@ -31,10 +30,9 @@ create table hints (
     id integer primary key autoincrement,
     node_name,
     avatar_id int4 not null,
-    timestamp timestamp not null, 
     key text not null,
-    version_number int4 not null,
-    segment_number int2 not null,
+    timestamp timestamp not null, 
+    segment_num int2 not null,
     action text not null,
     server_node_names text not null
 );

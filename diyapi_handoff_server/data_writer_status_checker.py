@@ -20,7 +20,7 @@ _node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _polling_interval = 15.0
 _reporting_interval = 60.0
 
-# we don't want to jump on a data writer as soo as it connects
+# we don't want to jump on a data writer as soon as it connects
 # we want it to see it stay up for a while before we start handing off
 _connected_test_time = 3 * _polling_interval
 

@@ -30,7 +30,6 @@ from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
 from diyapi_tools.standard_logging import format_timestamp
-from diyapi_web_server.database_util import segment_row_for_key
 
 from diyapi_data_writer.writer import Writer
 
@@ -52,31 +51,22 @@ _repository_path = os.environ.get(
     "DIYAPI_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
 )
 
-def _start_segment(state, message, data, reply):
-    log = logging.getLogger("_start_segment")
-
-    # see if we already have a row for this key
-    segment_row = segment_row_for_key(
-        state["database-connection"],
+def _handle_archive_key_entire(state, message, data):
+    log = logging.getLogger("_handle_archive_key_entire")
+    log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        format_timestamp(message["timestamp"]),
         message["segment-num"]
-    )
+    ))
 
-    # if we already have a row for this key, something is wrong
-    if segment_row is not None:
-        if segment_row.file_tombstone:
-            error_message = "file is deleted"
-            log.error(error_message)
-            reply["result"] = "deleted"
-            reply["error-message"] = error_message
-        else:
-            error_message = "file is already archived"
-            log.error(error_message)
-            reply["result"] = "duplicate"
-            reply["error-message"] = error_message
-        return False
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
 
     state["writer"].start_new_segment(
         message["avatar-id"], 
@@ -97,44 +87,22 @@ def _start_segment(state, message, data, reply):
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
 
-    return True
-
-def _handle_archive_key_entire(state, message, data):
-    log = logging.getLogger("_handle_archive_key_entire")
-    log.info("%s %s %s %s" % (
+    state["writer"].finish_new_segment(
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
-        message["segment-num"]
-    ))
+        message["timestamp"],
+        message["segment-num"],
+        message["file-size"],
+        message["file-adler32"],
+        b64decode(message["file-hash"]),
+        message["file-user-id"],
+        message["file-group-id"],
+        message["file-permissions"],
+        file_tombstone=False,
+        handoff_node_id=message["handoff-node-id"]
+    )
 
-    reply = {
-        "message-type"  : "archive-key-final-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : None,
-        "error-message" : None,
-    }
-
-    if _start_segment(state, message, data, reply):
-
-        state["writer"].finish_new_segment(
-            message["avatar-id"], 
-            message["key"], 
-            message["timestamp"],
-            message["segment-num"],
-            message["file-size"],
-            message["file-adler32"],
-            b64decode(message["file-hash"]),
-            message["file-user-id"],
-            message["file-group-id"],
-            message["file-permissions"],
-            file_tombstone=False,
-            handoff_node_id=message["handoff-node-id"]
-        )
-
-        message["result"] = "succcess"
-
+    message["result"] = "succcess"
     state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_start(state, message, data):
@@ -154,9 +122,26 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
-    if _start_segment(state, message, data, reply):
-        reply["result"] = "success"
+    state["writer"].start_new_segment(
+        message["avatar-id"], 
+        message["key"], 
+        message["timestamp"],
+        message["segment-num"]
+    )
 
+    state["writer"].store_sequence(
+        message["avatar-id"], 
+        message["key"], 
+        message["timestamp"],
+        message["segment-num"],
+        message["sequence-num"],
+        data
+    )
+
+    Statgrabber.accumulate('diy_write_requests', 1)
+    Statgrabber.accumulate('diy_write_bytes', len(data))
+
+    reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_next(state, message, data):

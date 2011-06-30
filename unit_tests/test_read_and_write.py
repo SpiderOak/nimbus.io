@@ -18,7 +18,7 @@ import psycopg2
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_web_server.database_util import integer_timestamp
+from diyapi_web_server.database_util import time.time
 
 from diyapi_web_server.database_util import most_recent_timestamp_for_key
 from diyapi_web_server.data_slicer import DataSlicer
@@ -93,7 +93,7 @@ class TestReadAndWrite(unittest.TestCase):
         """test writing an reading a simple segment of one sequence"""
         avatar_id = 1001
         key = "aaa/bbb/ccc"
-        timestamp = integer_timestamp()
+        timestamp = time.time()
         segment_num = 42
         sequence_num = 0
         data_size = 1024

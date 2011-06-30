@@ -249,21 +249,6 @@ class Writer(object):
         """
         mark a key as deleted
         """
-        # if there is an archive in progress, heave the entry and
-        # let subsequent requests error out
-        segment_key = (avatar_id, key, timestamp, segment_num, )
-        try:
-            self._active_segments.pop(segment_key)
-        except KeyError:
-            pass
-        else:
-            log.warn("setting tombstone for archive in progress %s" % (
-                segment_key,
-            ))
-
-        # if we have something stored for this key, get rid of it
-        purge_segment(self, avatar_id, key, timestamp, segment_num)
-
         segment_row = segment_row_template(
             id=None,
             avatar_id=avatar_id,

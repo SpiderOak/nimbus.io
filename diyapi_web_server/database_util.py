@@ -9,18 +9,10 @@ import time
 from diyapi_tools.data_definitions import segment_row_template, \
         convert_segment_row
 
-def integer_timestamp():
-    """
-    produce an int() timestamp. 
-    This will be rounded to the nearest second
-    """
-    return int(time.time())
-        
 def most_recent_timestamp_for_key(connection, avatar_id, key):
     """
-    Retrieve the row form the segment table that has the most recent
+    Retrieve the row from the segment table that has the most recent
     timestamp.
-    This is the default for retrieving a key
     """
     result = connection.fetch_one_row("""
         select %s from diy.segment 

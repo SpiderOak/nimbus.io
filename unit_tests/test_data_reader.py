@@ -17,7 +17,7 @@ import zlib
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.pandora_database_connection import get_node_local_connection
 from diyapi_web_server.database_util import most_recent_timestamp_for_key, \
-        integer_timestamp
+        time.time
 
 from unit_tests.util import random_string, \
         generate_key, \
@@ -94,7 +94,7 @@ class TestDataReader(unittest.TestCase):
         file_content = random_string(file_size) 
         avatar_id = 1001
         key  = self._key_generator.next()
-        timestamp = integer_timestamp()
+        timestamp = time.time()
         segment_num = 2
 
         file_adler32 = zlib.adler32(file_content)
@@ -167,7 +167,7 @@ class TestDataReader(unittest.TestCase):
         test_data = random_string(total_size)
 
         avatar_id = 1001
-        timestamp = integer_timestamp()
+        timestamp = time.time()
         key  = self._key_generator.next()
         segment_num = 4
         sequence_num = 0

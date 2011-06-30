@@ -95,7 +95,7 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
     log.info("start consistency check on %s" % (avatar_id, ))
 
     request_id = uuid.uuid1().hex
-    timestamp = datetime.datetime.now()
+    timestamp = datetime.datetime.utcnow()
 
     database = AuditResultDatabase()
     if row_id is None:
@@ -118,7 +118,7 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
         "message-type"  : "consistency-check",
         "request-id"    : request_id,
         "avatar-id"     : avatar_id,
-        "timestamp"     : time.mktime(timestamp.timetuple()),
+        "timestamp-repr": repr(timestamp),
     }
     for database_client in state["database-clients"]:
         database_client.queue_message_for_send(request)
@@ -128,7 +128,7 @@ def _handle_anti_entropy_audit_request(state, message, _data):
     log = logging.getLogger("_handle_anti_entropy_audit_request")
     log.info("request for audit on %s" % (message["avatar-id"], )) 
 
-    timestamp = datetime.datetime.now()
+    timestamp = datetime.datetime.utcnow()
 
     database = AuditResultDatabase()
     row_id = database.start_audit(message["avatar-id"], timestamp)
@@ -148,7 +148,7 @@ def _handle_anti_entropy_audit_request(state, message, _data):
         "message-type"  : "consistency-check",
         "request-id"    : message["request-id"],
         "avatar-id"     : message["avatar-id"],
-        "timestamp"     : time.mktime(timestamp.timetuple()),
+        "timestamp-repr": repr(timestamp),
     }
     for database_client in state["database-clients"]:
         database_client.queue_message_for_send(request)
@@ -220,7 +220,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
     # we don't want to preserve state anymore
     del state["active-requests"][request_id]
     database = AuditResultDatabase()
-    timestamp = datetime.datetime.now()
+    timestamp = datetime.datetime.utcnow()
     
     hash_list = list(set(request_state.replies.values()))
     

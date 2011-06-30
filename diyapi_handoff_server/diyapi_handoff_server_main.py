@@ -19,8 +19,8 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.standard_logging import format_timestamp
 from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.data_definitions import parse_timestamp_repr
 
 from diyapi_handoff_server.hint_repository import HintRepository
 from diyapi_handoff_server.data_writer_status_checker import \
@@ -59,7 +59,7 @@ def _handle_hinted_handoff(state, message, _data):
         message["action"],
         message["avatar-id"], 
         message["key"],  
-        format_timestamp(message["timestamp"]), 
+        message["timestamp-repr"], 
         message["segment-num"],
         message["server-node-names"],
     ))
@@ -72,12 +72,14 @@ def _handle_hinted_handoff(state, message, _data):
         "error-message" : None,
     }
 
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
     try:
         state["hint-repository"].store(
             message["dest-node-name"],
             message["avatar-id"],
             message["key"],
-            message["timestamp"],
+            timestamp,
             message["segment-num"],
             message["action"],
             message["server-node-names"]

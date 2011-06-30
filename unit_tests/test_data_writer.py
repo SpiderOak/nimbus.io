@@ -5,11 +5,11 @@ test_data_writer.py
 test the data writer process
 """
 from base64 import b64encode
+from datetime import datetime, timedelta
 import hashlib
 import os
 import os.path
 import shutil
-import time
 import unittest
 import uuid
 import zlib
@@ -66,7 +66,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)
@@ -77,7 +77,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
@@ -112,7 +112,7 @@ class TestDataWriter(unittest.TestCase):
         test_data = random_string(total_size)
 
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         key  = self._key_generator.next()
         segment_num = 4
         sequence_num = 0
@@ -129,7 +129,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
             "sequence-num"      : sequence_num,
         }
@@ -154,7 +154,7 @@ class TestDataWriter(unittest.TestCase):
                 "message-type"      : "archive-key-next",
                 "avatar-id"         : avatar_id,
                 "key"               : key, 
-                "timestamp"         : timestamp,
+                "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num,
                 "message-id"        : message_id,
                 "sequence-num"      : sequence_num,
@@ -180,7 +180,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
             "sequence-num"      : sequence_num,
             "file-size"         : total_size,
@@ -210,7 +210,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key,
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
         }
         reply = send_request_and_get_reply(
@@ -232,7 +232,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key,
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
         }
         reply = send_request_and_get_reply(
@@ -252,7 +252,7 @@ class TestDataWriter(unittest.TestCase):
         avatar_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         reply = self._destroy(avatar_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
@@ -263,8 +263,8 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = time.time()
-        destroy_timestamp = archive_timestamp + 1.0
+        archive_timestamp = datetime.utcnow()
+        destroy_timestamp = archive_timestamp + timedelta(seconds=1)
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)
@@ -275,7 +275,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : archive_timestamp,
+            "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
@@ -307,9 +307,9 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = time.time()
-        destroy_1_timestamp = archive_timestamp + 1.0
-        destroy_2_timestamp = destroy_1_timestamp + 1.0
+        archive_timestamp = datetime.utcnow()
+        destroy_1_timestamp = archive_timestamp + timedelta(seconds=1)
+        destroy_2_timestamp = destroy_1_timestamp + timedelta(seconds=1)
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)
@@ -320,7 +320,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : archive_timestamp,
+            "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
@@ -358,8 +358,8 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = time.time()
-        destroy_timestamp = archive_timestamp - 1.0
+        archive_timestamp = datetime.utcnow()
+        destroy_timestamp = archive_timestamp - timedelta(seconds=1)
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)
@@ -370,7 +370,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : archive_timestamp,
+            "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
@@ -400,9 +400,9 @@ class TestDataWriter(unittest.TestCase):
         avatar_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         reply = self._purge(avatar_id, key, timestamp, segment_num)
-        self.assertEqual(reply["result"], "no-such-key", reply)
+        self.assertEqual(reply["result"], "success", reply)
 
     def test_simple_purge(self):
         """test purging a key that exists, with no complicatons"""
@@ -411,7 +411,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = time.time()
+        archive_timestamp = datetime.utcnow()
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)
@@ -422,7 +422,7 @@ class TestDataWriter(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : archive_timestamp,
+            "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,

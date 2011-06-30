@@ -4,7 +4,6 @@ writer.py
 
 Manage writing segment values to disk
 """
-from datetime import datetime
 import hashlib
 import logging
 import os
@@ -12,9 +11,9 @@ import zlib
 
 import psycopg2
 
-from diyapi_tools.standard_logging import format_timestamp
 from diyapi_tools.data_definitions import segment_row_template, \
-        segment_sequence_template
+        segment_sequence_template, \
+        parse_timestamp_repr
 from diyapi_data_writer.output_value_file import OutputValueFile
 
 _max_value_file_size = os.environ.get(
@@ -30,12 +29,9 @@ def _get_next_segment_id(connection):
 
 def _insert_segment_row(connection, segment_row):
     """
-    Insert one segment entry, returning the row id
+    Insert one segment entry, with pre-assigned row id
     """
     segment_row_dict = segment_row._asdict()
-    segment_row_dict["timestamp"] = datetime.fromtimestamp(
-        int(segment_row_dict["timestamp"])
-    )
     connection.execute("""
         insert into diy.segment (
             id,
@@ -53,6 +49,42 @@ def _insert_segment_row(connection, segment_row):
             handoff_node_id
         ) values (
             %(id)s,
+            %(avatar_id)s,
+            %(key)s,
+            %(timestamp)s::timestamp,
+            %(segment_num)s,
+            %(file_size)s,
+            %(file_adler32)s,
+            %(file_hash)s,
+            %(file_user_id)s,
+            %(file_group_id)s,
+            %(file_permissions)s,
+            %(file_tombstone)s,
+            %(handoff_node_id)s
+        )
+    """, segment_row_dict)
+    connection.commit()
+
+def _insert_segment_tombstone_row(connection, segment_row):
+    """
+    Insert one segment entry, with default row id
+    """
+    segment_row_dict = segment_row._asdict()
+    connection.execute("""
+        insert into diy.segment (
+            avatar_id,
+            key,
+            timestamp,
+            segment_num,
+            file_size,
+            file_adler32,
+            file_hash,
+            file_user_id,
+            file_group_id,
+            file_permissions,
+            file_tombstone,
+            handoff_node_id
+        ) values (
             %(avatar_id)s,
             %(key)s,
             %(timestamp)s::timestamp,
@@ -101,7 +133,7 @@ def _get_segment_id(connection, avatar_id, key, timestamp, segment_num):
         select id from diy.segment
         where avatar_id = %s and key = %s and timestamp = %s::timestamp
         and segment_num = %s""",
-        [avatar_id, key, datetime.fromtimestamp(int(timestamp)), segment_num, ]
+        [avatar_id, key, timestamp, segment_num, ]
     )
     if result is None:
         return None
@@ -134,13 +166,13 @@ class Writer(object):
     def close(self):
         self._value_file.close()
 
-    def start_new_segment(self, avatar_id, key, timestamp, segment_num):
+    def start_new_segment(self, avatar_id, key, timestamp_repr, segment_num):
         """
         Initiate storing a segment of data for a file
         """
-        segment_key = (avatar_id, key, timestamp, segment_num, )
+        segment_key = (avatar_id, key, timestamp_repr, segment_num, )
         self._log.info("start_new_segment %s %s %s %s" % (
-            avatar_id, key, format_timestamp(timestamp), segment_num, 
+            avatar_id, key, timestamp_repr, segment_num, 
         ))
         if segment_key in self._active_segments:
             raise ValueError("duplicate segment %s" % (segment_key, ))
@@ -150,16 +182,16 @@ class Writer(object):
         }
 
     def store_sequence(
-        self, avatar_id, key, timestamp, segment_num, sequence_num, data
+        self, avatar_id, key, timestamp_repr, segment_num, sequence_num, data
     ):
         """
         store one piece (sequence) of segment data
         """
-        segment_key = (avatar_id, key, timestamp, segment_num, )
+        segment_key = (avatar_id, key, timestamp_repr, segment_num, )
         self._log.info("store_sequence %s %s %s %s: %s (%s)" % (
             avatar_id, 
             key, 
-            format_timestamp(timestamp), 
+            timestamp_repr, 
             segment_num, 
             sequence_num,
             len(data)
@@ -198,7 +230,7 @@ class Writer(object):
         self, 
         avatar_id, 
         key, 
-        timestamp, 
+        timestamp_repr, 
         segment_num,
         file_size,
         file_adler32,
@@ -212,11 +244,13 @@ class Writer(object):
         """
         finalize storing one segment of data for a file
         """
-        segment_key = (avatar_id, key, timestamp, segment_num, )
+        segment_key = (avatar_id, key, timestamp_repr, segment_num, )
         self._log.info("finish_new_segment %s %s %s %s" % (
-            avatar_id, key, format_timestamp(timestamp), segment_num, 
+            avatar_id, key, timestamp_repr, segment_num, 
         ))
         segment_entry = self._active_segments.pop(segment_key)
+
+        timestamp = parse_timestamp_repr(timestamp_repr)
 
         segment_row = segment_row_template(
             id=segment_entry["segment-id"],
@@ -255,7 +289,7 @@ class Writer(object):
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,
-            file_size=None,
+            file_size=0,
             file_adler32=None,
             file_hash=None,
             file_user_id=None,
@@ -264,5 +298,5 @@ class Writer(object):
             file_tombstone=True,
             handoff_node_id=None
         )
-        _insert_segment_row(self._connection, segment_row)
+        _insert_segment_tombstone_row(self._connection, segment_row)
 

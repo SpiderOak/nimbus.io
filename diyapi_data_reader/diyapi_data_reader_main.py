@@ -23,7 +23,7 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_tools.standard_logging import format_timestamp
+from diyapi_tools.data_definitions import parse_timestamp_repr
 
 from diyapi_data_reader.reader import Reader
 from diyapi_data_reader.state_cleaner import StateCleaner
@@ -61,7 +61,7 @@ def _compute_state_key(message):
     return (message["client-tag"],
             message["avatar-id"], 
             message["key"], 
-            message["timestamp"],
+            message["timestamp-repr"],
             message["segment-num"], )
 
 def _handle_retrieve_key_start(state, message, _data):
@@ -70,7 +70,7 @@ def _handle_retrieve_key_start(state, message, _data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
 
@@ -80,7 +80,7 @@ def _handle_retrieve_key_start(state, message, _data):
         "message-id"    : message["message-id"],
         "avatar-id"     : message["avatar-id"],
         "key"           : message["key"],
-        "timestamp"     : message["timestamp"],
+        "timestamp-repr": message["timestamp-repr"],
         "segment-num"   : message["segment-num"],
         "sequence-num"  : None,
         "completed"     : None,
@@ -97,10 +97,12 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
     sequence_generator = state["reader"].generate_all_sequence_rows_for_segment(
         message["avatar-id"],
         message["key"],
-        message["timestamp"],
+        timestamp,
         message["segment-num"]
     )
 
@@ -143,7 +145,7 @@ def _handle_retrieve_key_next(state, message, _data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
 
@@ -153,7 +155,7 @@ def _handle_retrieve_key_next(state, message, _data):
         "message-id"    : message["message-id"],
         "avatar-id"     : message["avatar-id"],
         "key"           : message["key"],
-        "timestamp"     : message["timestamp"],
+        "timestamp-repr": message["timestamp-repr"],
         "segment-num"   : message["segment-num"],
         "sequence-num"  : None,
         "completed"     : None,

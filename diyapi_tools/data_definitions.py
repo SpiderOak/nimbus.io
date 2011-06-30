@@ -6,8 +6,28 @@ common data definitions
 """
 
 from collections import namedtuple
+from datetime import datetime
 import os.path
-import time
+import re
+
+# datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)
+_timestamp_repr_re = re.compile(r"""
+^datetime.datetime\(
+(?P<year>\d{4})         #year
+,\s
+(?P<month>\d{1,2})      #month
+,\s
+(?P<day>\d{1,2})        #day
+,\s
+(?P<hour>\d{1,2})       #hour
+,\s
+(?P<minute>\d{1,2})     #minute
+,\s
+(?P<second>\d{1,2})     #second
+,\s
+(?P<microsecond>\d+)    #microsecond
+\)$
+""", re.VERBOSE)
 
 def compute_value_file_path(repository_path, value_file_id):
     return os.path.join(
@@ -15,6 +35,23 @@ def compute_value_file_path(repository_path, value_file_id):
         "%03d" % (value_file_id % 1000), 
         "%08d" % value_file_id
     )
+
+def parse_timestamp_repr(timestamp_repr):
+    match_object = _timestamp_repr_re.match(timestamp_repr)
+    if match_object is None:
+        raise ValueError("unparsable timestamp '%s'" % (timestamp_repr, ))
+
+    timestamp = datetime(
+        year=int(match_object.group("year")),
+        month=int(match_object.group("month")),
+        day=int(match_object.group("day")),
+        hour=int(match_object.group("hour")),
+        minute=int(match_object.group("minute")),
+        second=int(match_object.group("second")),
+        microsecond=int(match_object.group("microsecond"))
+    )
+
+    return timestamp
 
 value_file_template = namedtuple("ValueFile", [
     "id",
@@ -50,13 +87,6 @@ segment_row_template = namedtuple(
         "handoff_node_id",
     ]
 )
-
-def convert_segment_row(row):
-    raw_values = segment_row_template._make(row)
-    # convert the psycopg2 timestamp to time.time() truncated to even second
-    return raw_values._replace(
-        timestamp=int(time.mktime(raw_values.timestamp.timetuple()))
-    )
 
 segment_sequence_template = namedtuple(
     "SegmentSequence", [

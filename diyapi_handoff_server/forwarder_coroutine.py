@@ -38,7 +38,7 @@ def forwarder_coroutine(
         "message-id"        : message_id,
         "avatar-id"         : hint.avatar_id,
         "key"               : hint.key,
-        "timestamp"         : hint.timestamp,
+        "timestamp-repr"    : repr(hint.timestamp),
         "segment-num"       : hint.segment_num,
     }
 
@@ -62,7 +62,7 @@ def forwarder_coroutine(
             "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key, 
-            "timestamp"         : hint.timestamp,
+            "timestamp-repr"    : repr(hint.timestamp),
             "segment-num"       : hint.segment_num,
             "file-size"         : file_info.file_size,
             "file-adler32"      : file_info.file_adler32,
@@ -78,7 +78,7 @@ def forwarder_coroutine(
             "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key, 
-            "timestamp"         : hint.timestamp,
+            "timestamp-repr"    : repr(hint.timestamp),
             "segment-num"       : hint.segment_num,
             "sequence-num"      : sequence,
         }
@@ -94,7 +94,7 @@ def forwarder_coroutine(
             "message-type"      : "purge-key",
             "avatar-id"         : hint.avatar_id, 
             "key"               : hint.key, 
-            "timestamp"         : hint.timestamp, 
+            "timestamp-repr"    : hrepr(int.timestamp), 
             "segment-num"       : hint.segment_num,
         }
         for backup_writer_client in backup_writer_clients:
@@ -123,7 +123,7 @@ def forwarder_coroutine(
             "message-id"        : message_id,
             "avatar-id"         : hint.avatar_id,
             "key"               : hint.key,
-            "timestamp"         : hint.timestamp,
+            "timestamp-repr"    : repr(hint.timestamp),
             "segment-num"       : hint.segment_num,
             "sequence-num"      : sequence,
         }
@@ -170,7 +170,7 @@ def forwarder_coroutine(
         "message-type"      : "purge-key",
         "avatar-id"         : hint.avatar_id, 
         "key"               : hint.key, 
-        "timestamp"         : hint.timestamp, 
+        "timestamp-repr"    : repr(hint.timestamp), 
         "segment-num"       : hint.segment_num,
     }
     for backup_writer_client in backup_writer_clients:

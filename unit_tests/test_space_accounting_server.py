@@ -4,6 +4,7 @@ test_space_accounting_server.py
 
 test space accounting
 """
+from datetime import datetime, timedelta
 import logging
 import os
 import os.path
@@ -35,13 +36,14 @@ def _detail_generator(
     total_bytes_added, total_bytes_removed, total_bytes_retrieved
 ):
 
-    current_time = time.time()
+    current_time = datetime.utcnow()
 
     for i in xrange(1000):
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : _avatar_id,
-            "timestamp"     : current_time+i,
+            "t
+            imestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_added",
             "value"         : total_bytes_added / 1000,
         }
@@ -53,7 +55,7 @@ def _detail_generator(
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : _avatar_id,
-            "timestamp"     : current_time+i,
+            "timestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_removed",
             "value"         : total_bytes_removed / 50,
         }
@@ -63,7 +65,7 @@ def _detail_generator(
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : _avatar_id,
-            "timestamp"     : current_time+i,
+            "timestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_retrieved",
             "value"         : total_bytes_retrieved / 25,
         }

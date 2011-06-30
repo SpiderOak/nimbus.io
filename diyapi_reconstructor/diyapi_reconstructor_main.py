@@ -138,7 +138,7 @@ def _handle_rebuild_request(state, message, _data):
         }
         state["xrep-server"].queue_message_for_send(reply)
 
-    timestamp = datetime.datetime.now()
+    timestamp = datetime.datetime.utcnow()
     
     state["active-requests"][message["avatar-id"]] = _request_state_tuple(
         xrep_ident=,essage["xrep_ident"],

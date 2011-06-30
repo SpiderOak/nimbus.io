@@ -10,7 +10,6 @@ import hashlib
 import os
 import os.path
 import shutil
-import time
 import unittest
 import zlib
 
@@ -18,7 +17,6 @@ import psycopg2
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_web_server.database_util import time.time
 
 from diyapi_web_server.database_util import most_recent_timestamp_for_key
 from diyapi_web_server.data_slicer import DataSlicer
@@ -93,7 +91,7 @@ class TestReadAndWrite(unittest.TestCase):
         """test writing an reading a simple segment of one sequence"""
         avatar_id = 1001
         key = "aaa/bbb/ccc"
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         segment_num = 42
         sequence_num = 0
         data_size = 1024
@@ -117,14 +115,14 @@ class TestReadAndWrite(unittest.TestCase):
                 segment_row.segment_num
             )
 
-        writer.start_new_segment(avatar_id, key, timestamp, segment_num)
+        writer.start_new_segment(avatar_id, key, repr(timestamp), segment_num)
         writer.store_sequence(
-            avatar_id, key, timestamp, segment_num, sequence_num, data
+            avatar_id, key, repr(timestamp), segment_num, sequence_num, data
         )
         writer.finish_new_segment(
             avatar_id, 
             key, 
-            timestamp, 
+            repr(timestamp), 
             segment_num,
             data_size,
             data_adler32,

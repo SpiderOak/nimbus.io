@@ -5,19 +5,18 @@ test_data_reader.py
 test the data reader process
 """
 from base64 import b64encode
+from datetime import datetime
 import hashlib
 import os
 import os.path
 import shutil
-import time
 import unittest
 import uuid
 import zlib
 
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_web_server.database_util import most_recent_timestamp_for_key, \
-        time.time
+from diyapi_web_server.database_util import most_recent_timestamp_for_key
 
 from unit_tests.util import random_string, \
         generate_key, \
@@ -94,7 +93,7 @@ class TestDataReader(unittest.TestCase):
         file_content = random_string(file_size) 
         avatar_id = 1001
         key  = self._key_generator.next()
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         segment_num = 2
 
         file_adler32 = zlib.adler32(file_content)
@@ -106,7 +105,7 @@ class TestDataReader(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
@@ -141,7 +140,7 @@ class TestDataReader(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num
         }
 
@@ -167,7 +166,7 @@ class TestDataReader(unittest.TestCase):
         test_data = random_string(total_size)
 
         avatar_id = 1001
-        timestamp = time.time()
+        timestamp = datetime.utcnow()
         key  = self._key_generator.next()
         segment_num = 4
         sequence_num = 0
@@ -184,7 +183,7 @@ class TestDataReader(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
             "sequence-num"      : sequence_num,
         }
@@ -209,7 +208,7 @@ class TestDataReader(unittest.TestCase):
                 "message-type"      : "archive-key-next",
                 "avatar-id"         : avatar_id,
                 "key"               : key, 
-                "timestamp"         : timestamp,
+                "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num,
                 "message-id"        : message_id,
                 "sequence-num"      : sequence_num,
@@ -236,7 +235,7 @@ class TestDataReader(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
             "sequence-num"      : sequence_num,
             "file-size"         : total_size,
@@ -274,7 +273,7 @@ class TestDataReader(unittest.TestCase):
             "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
-            "timestamp"         : timestamp,
+            "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num
         }
 
@@ -300,7 +299,7 @@ class TestDataReader(unittest.TestCase):
                 "message-id"        : message_id,
                 "avatar-id"         : avatar_id,
                 "key"               : key, 
-                "timestamp"         : timestamp,
+                "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num
             }
 

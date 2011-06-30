@@ -29,7 +29,7 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_tools.standard_logging import format_timestamp
+from diyapi_tools.data_definitions import parse_timestamp_repr
 
 from diyapi_data_writer.writer import Writer
 
@@ -56,9 +56,10 @@ def _handle_archive_key_entire(state, message, data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
+    sequence_num = 0
 
     reply = {
         "message-type"  : "archive-key-final-reply",
@@ -71,16 +72,16 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].start_new_segment(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"]
     )
 
     state["writer"].store_sequence(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"],
-        message["sequence-num"],
+        sequence_num,
         data
     )
 
@@ -90,7 +91,7 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].finish_new_segment(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"],
         message["file-size"],
         message["file-adler32"],
@@ -102,7 +103,7 @@ def _handle_archive_key_entire(state, message, data):
         handoff_node_id=message["handoff-node-id"]
     )
 
-    message["result"] = "succcess"
+    reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_start(state, message, data):
@@ -110,7 +111,7 @@ def _handle_archive_key_start(state, message, data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
 
@@ -125,14 +126,14 @@ def _handle_archive_key_start(state, message, data):
     state["writer"].start_new_segment(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"]
     )
 
     state["writer"].store_sequence(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"],
         message["sequence-num"],
         data
@@ -149,14 +150,14 @@ def _handle_archive_key_next(state, message, data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
 
     state["writer"].store_sequence(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"],
         message["sequence-num"],
         data
@@ -179,14 +180,14 @@ def _handle_archive_key_final(state, message, data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
 
     state["writer"].store_sequence(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"],
         message["sequence-num"],
         data
@@ -194,7 +195,7 @@ def _handle_archive_key_final(state, message, data):
     state["writer"].finish_new_segment(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        message["timestamp-repr"],
         message["segment-num"],
         message["file-size"],
         message["file-adler32"],
@@ -223,14 +224,16 @@ def _handle_destroy_key(state, message, _data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
+
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].set_tombstone(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        timestamp,
         message["segment-num"]
     )
 
@@ -248,14 +251,16 @@ def _handle_purge_key(state, message, _data):
     log.info("%s %s %s %s" % (
         message["avatar-id"], 
         message["key"], 
-        format_timestamp(message["timestamp"]),
+        message["timestamp-repr"],
         message["segment-num"]
     ))
 
-    state["writer"].purge_key(
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    state["writer"].purge_segment(
         message["avatar-id"], 
         message["key"], 
-        message["timestamp"],
+        timestamp,
         message["segment-num"]
     )
 

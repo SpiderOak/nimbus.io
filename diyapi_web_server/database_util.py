@@ -4,10 +4,8 @@ database_util.py
 
 utility routines for the node local database
 """
-import time
 
-from diyapi_tools.data_definitions import segment_row_template, \
-        convert_segment_row
+from diyapi_tools.data_definitions import segment_row_template
 
 def most_recent_timestamp_for_key(connection, avatar_id, key):
     """
@@ -24,7 +22,7 @@ def most_recent_timestamp_for_key(connection, avatar_id, key):
     if result is None:
         return None
 
-    return convert_segment_row(result)
+    return segment_row_template._make(result)
 
 def segment_row_for_key(connection, avatar_id, key, timestamp, segment_num):
     """
@@ -42,5 +40,5 @@ def segment_row_for_key(connection, avatar_id, key, timestamp, segment_num):
     if result is None:
         return None
 
-    return convert_segment_row(result)
+    return segment_row_template._make(result)
 

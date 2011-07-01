@@ -5,6 +5,7 @@ test_handoff_server.py
 test the handoff server process
 """
 from base64 import b64encode
+import hashlib
 import logging
 import os
 import os.path
@@ -13,7 +14,7 @@ import random
 import sys
 import time
 import unittest
-import uuid
+import zlib
 
 import gevent
 from gevent_zeromq import zmq
@@ -23,6 +24,7 @@ from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
 from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
 from diyapi_tools.greenlet_pull_server import GreenletPULLServer
 from diyapi_tools.deliverator import Deliverator
+from diyapi_tools.data_definitions import create_timestamp
 
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
@@ -43,7 +45,7 @@ _data_reader_base_port = 8300
 _handoff_server_base_port = 8700
 
 def _generate_node_name(node_index):
-    return "node-sim-%02d" % (node_index, )
+    return "multi-node-%02d" % (node_index+1, )
 
 _local_node_index = 0
 _local_node_name = _generate_node_name(_local_node_index)
@@ -103,23 +105,10 @@ class TestHandoffServer(unittest.TestCase):
             repository_path = _repository_path(node_name)
             os.makedirs(repository_path)
             
-            print >> sys.stderr, "starting database server", node_name
-            process = start_database_server(
-                node_name, 
-                _database_server_addresses[i], 
-                _database_server_local_addresses[i], 
-                repository_path
-            )
-            poll_result = poll_process(process)
-            self.assertEqual(poll_result, None)
-            self._database_server_processes.append(process)
-            time.sleep(1.0)
-
             process = start_data_writer(
                 node_name, 
                 _data_writer_addresses[i],
                 _data_writer_pipeline_addresses[i],
-                _database_server_addresses[i],
                 repository_path
             )
             poll_result = poll_process(process)
@@ -131,7 +120,6 @@ class TestHandoffServer(unittest.TestCase):
                 node_name, 
                 _data_reader_addresses[i],
                 _data_reader_pipeline_addresses[i],
-                _database_server_addresses[i],
                 repository_path
             )
             poll_result = poll_process(process)
@@ -141,12 +129,12 @@ class TestHandoffServer(unittest.TestCase):
 
             process = start_handoff_server(
                 _node_names,
-                _local_node_name, 
+                node_name, 
                 _handoff_server_addresses,
-                _handoff_server_pipeline_addresses,
+                _handoff_server_pipeline_addresses[i],
                 _data_reader_addresses,
                 _data_writer_addresses,
-                _repository_path(_local_node_name)
+                _repository_path(node_name)
             )
             poll_result = poll_process(process)
             self.assertEqual(poll_result, None)
@@ -222,17 +210,6 @@ class TestHandoffServer(unittest.TestCase):
             for process in self._data_reader_processes:
                 terminate_process(process)
             self._data_reader_processes = None
-        if hasattr(self, "_database_server_processes") \
-        and self._database_server_processes is not None:
-            print >> sys.stderr, "terminating _database_server_processes"
-            for process in self._database_server_processes:
-                terminate_process(process)
-            self._database_server_processes = None
-
-        if hasattr(self, "_missing_data_writer") \
-        and self._missing_data_writer is not None:
-            terminate_process(self._missing_data_writer)
-            self._missing_data_writer = None
 
         if hasattr(self, "_pollster") \
         and self._pollster is not None:
@@ -271,36 +248,31 @@ class TestHandoffServer(unittest.TestCase):
 
     def test_handoff_small_content(self):
         """test retrieving content that fits in a single message"""
+        file_size = 10 * 64 * 1024
+        file_content = random_string(file_size) 
         avatar_id = 1001
         key  = self._key_generator.next()
-        version_number = 0
-        segment_number = 5
-        content_size = 64 * 1024
-        content_item = random_string(content_size) 
-        timestamp = 
+        timestamp = create_timestamp()
+        segment_num = 5
 
-        total_size = content_size - 42
-        file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
-        segment_adler32 = 32
-        segment_md5 = "1111111111111111"
+        file_adler32 = zlib.adler32(file_content)
+        file_md5 = hashlib.md5(file_content)
 
-        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "archive-key-entire",
-            "message-id"        : message_id,
             "avatar-id"         : avatar_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "total-size"        : total_size,
+            "segment-num"       : segment_num,
+            "file-size"         : file_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : b64encode(file_md5),
-            "segment-adler32"   : segment_adler32,
-            "segment-md5"       : b64encode(segment_md5),
+            "file-hash"         : b64encode(file_md5.digest()),
+            "file-user-id"      : None,
+            "file-group-id"     : None,
+            "file-permissions"  : None,
+            "handoff-node-id"   : None,
         }
-        g = gevent.spawn(self._send_message_get_reply, message, content_item)
+        g = gevent.spawn(self._send_message_get_reply, message, file_content)
         g.join(timeout=10.0)
         self.assertEqual(g.ready(), True)
         reply = g.value
@@ -321,7 +293,7 @@ class TestHandoffServer(unittest.TestCase):
 #        test_data = [random_string(segment_size) for _ in range(chunk_count)]
 #        key  = self._key_generator.next()
 #        version_number = 0
-#        segment_number = 5
+#        segment_num = 5
 #        sequence = 0
 #        timestamp = time.time()
 #
@@ -337,10 +309,12 @@ class TestHandoffServer(unittest.TestCase):
 #            "sequence"          : sequence,
 #            "key"               : key, 
 #            "version-number"    : version_number,
-#            "segment-number"    : segment_number,
+#            "segment-num"    : segment_num,
 #            "segment-size"      : segment_size,
 #        }
-#        g = gevent.spawn(self._send_message_get_reply, message, test_data[sequence])
+#        g = gevent.spawn(
+#            self._send_message_get_reply, message, test_data[sequence]
+#        )
 #        g.join(timeout=10.0)
 #        self.assertEqual(g.ready(), True)
 #        reply = g.value
@@ -354,7 +328,7 @@ class TestHandoffServer(unittest.TestCase):
 #                "avatar-id"         : avatar_id,
 #                "key"               : key,
 #                "version-number"    : version_number,
-#                "segment-number"    : segment_number,
+#                "segment-num"    : segment_num,
 #                "sequence"          : sequence,
 #            }
 #            g = gevent.spawn(
@@ -372,7 +346,7 @@ class TestHandoffServer(unittest.TestCase):
 #            "avatar-id"         : avatar_id,
 #            "key"               : key,
 #            "version-number"    : version_number,
-#            "segment-number"    : segment_number,
+#            "segment-num"    : segment_num,
 #            "sequence"          : sequence,
 #            "total-size"        : total_size,
 #            "file-adler32"      : file_adler32,
@@ -380,7 +354,9 @@ class TestHandoffServer(unittest.TestCase):
 #            "segment-adler32"   : segment_adler32,
 #            "segment-md5"       : b64encode(segment_md5),
 #        }
-#        g = gevent.spawn(self._send_message_get_reply, message, test_data[sequence])
+#        g = gevent.spawn(
+#            self._send_message_get_reply, message, test_data[sequence]
+#        )
 #        g.join(timeout=10.0)
 #        self.assertEqual(g.ready(), True)
 #        reply = g.value

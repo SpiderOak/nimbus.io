@@ -90,8 +90,8 @@ class DataWriterHandoffClient(object):
         # now we care what the message is
         try:
             completed = self._dispatch_table[message["message-type"]](message)
-        except KeyError:
-            self._log.error("Unknown message type %s" % (message.control, ))
+        except KeyError, instance:
+            self._log.error("dispatch error %s %s" % (instance, message, ))
             return
 
         # if we're not done, notify the sender that we are ok so far
@@ -130,10 +130,9 @@ class DataWriterHandoffClient(object):
         self._handoff_message["message-type"] = "hinted-handoff"
         self._handoff_message["dest-node-name"] = self._original_dest_node_name
         self._handoff_message["avatar-id"] = message["avatar-id"]
-        self._handoff_message["timestamp"] = message["timestamp"]
+        self._handoff_message["timestamp-repr"] = message["timestamp-repr"]
         self._handoff_message["key"] = message["key"]
-        self._handoff_message["version-number"] = message["version-number"]
-        self._handoff_message["segment-number"] = message["segment-number"]
+        self._handoff_message["segment-num"] = message["segment-num"]
         self._handoff_message["action"] = "archive"
         self._handoff_message["server-node-names"] = [
             client.server_node_name for client in self._resilient_clients
@@ -146,10 +145,9 @@ class DataWriterHandoffClient(object):
         self._handoff_message["message-type"] = "hinted-handoff"
         self._handoff_message["dest-node-name"] = self._original_dest_node_name
         self._handoff_message["avatar-id"] = message["avatar-id"]
-        self._handoff_message["timestamp"] = message["timestamp"]
+        self._handoff_message["timestamp-repr"] = message["timestamp-repr"]
         self._handoff_message["key"] = message["key"]
-        self._handoff_message["version-number"] = message["version-number"]
-        self._handoff_message["segment-number"] = message["segment-number"]
+        self._handoff_message["segment-num"] = message["segment-num"]
         self._handoff_message["action"] = "archive"
         self._handoff_message["server-node-names"] = [
             client.server_node_name for client in self._resilient_clients
@@ -178,10 +176,9 @@ class DataWriterHandoffClient(object):
         self._handoff_message["message-type"] = "hinted-handoff"
         self._handoff_message["dest-node-name"] = self._original_dest_node_name
         self._handoff_message["avatar-id"] = message["avatar-id"]
-        self._handoff_message["timestamp"] = message["timestamp"]
+        self._handoff_message["timestamp-repr"] = message["timestamp-repr"]
         self._handoff_message["key"] = message["key"]
-        self._handoff_message["version-number"] = message["version-number"]
-        self._handoff_message["segment-number"] = message["segment-number"]
+        self._handoff_message["segment-num"] = message["segment-num"]
         self._handoff_message["action"] = "destroy"
         self._handoff_message["server-node-names"] = [
             client.server_node_name for client in self._resilient_clients

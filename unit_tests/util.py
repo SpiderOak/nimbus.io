@@ -170,7 +170,7 @@ def start_space_accounting_server(node_name, address, pipeline_address):
 def start_handoff_server(
     node_names,
     local_node_name, 
-    address, 
+    handoff_server_addresses, 
     pipeline_address, 
     data_reader_addresses, 
     data_writer_addresses, 
@@ -189,11 +189,14 @@ def start_handoff_server(
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME_SEQ"         : " ".join(node_names),
         "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
-        "DIYAPI_HANDOFF_SERVER_ADDRESS"        : address,
+        "DIYAPI_HANDOFF_SERVER_ADDRESSES"        : " ".join(
+            handoff_server_addresses
+        ),
         "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
         "DIYAPI_DATA_READER_ADDRESSES"    : " ".join(data_reader_addresses),
         "DIYAPI_DATA_WRITER_ADDRESSES"    : " ".join(data_writer_addresses),
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
+        "PANDORA_DB_PW_pandora" :  os.environ["PANDORA_DB_PW_pandora"],
     }        
 
     log.info("starting %s %s" % (args, environment, ))

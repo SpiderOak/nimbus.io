@@ -39,12 +39,8 @@ _data_reader_addresses = \
 _data_writer_addresses = \
     os.environ["DIYAPI_DATA_WRITER_ADDRESSES"].split()
 _client_tag = "handoff_server-%s" % (_local_node_name, )
-_handoff_server_address = os.environ.get(
-    "DIYAPI_HANDOFF_SERVER_ADDRESS",
-    "ipc:///tmp/spideroak-diyapi-handoff_server-%s/socket" % (
-        _local_node_name,
-    )
-)
+_handoff_server_addresses = \
+    os.environ["DIYAPI_HANDOFF_SERVER_ADDRESSES"].split()
 _handoff_server_pipeline_address = os.environ.get(
     "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS",
     "tcp://127.0.0.1:8700"
@@ -54,7 +50,7 @@ _retrieve_timeout = 30 * 60.0
 
 def _handle_hinted_handoff(state, message, _data):
     log = logging.getLogger("_handle_hinted_handoff")
-    log.info("%s, %s %s, %s, segment_num %s %s" % (
+    log.info("%s, %s %s, %s, %s segment_num %s %s" % (
         message["dest-node-name"], 
         message["action"],
         message["avatar-id"], 
@@ -214,6 +210,7 @@ def _create_state():
         "pull-server"               : None,
         "reader-clients"            : list(),
         "writer-clients"            : list(),
+        "handoff-server-clients"    : list(),
         "receive-queue"             : deque(),
         "queue-dispatcher"          : None,
         "hint-repository"           : None,
@@ -224,15 +221,38 @@ def _create_state():
 
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
+    status_checkers = list()
+
     state["hint-repository"] = HintRepository()
 
-    log.info("binding resilient-server to %s" % (_handoff_server_address, ))
-    state["resilient-server"] = ResilientServer(
-        state["zmq-context"],
-        _handoff_server_address,
-        state["receive-queue"]
-    )
-    state["resilient-server"].register(state["pollster"])
+    for node_name, handoff_server_address in zip(
+        _node_names, _handoff_server_addresses
+    ):
+        if node_name == _local_node_name:
+            log.info("binding resilient-server to %s" % (
+                handoff_server_address, 
+            ))
+            state["resilient-server"] = ResilientServer(
+                state["zmq-context"],
+                handoff_server_address,
+                state["receive-queue"]
+            )
+            state["resilient-server"].register(state["pollster"])
+        else:
+            handoff_server_client = ResilientClient(
+                state["zmq-context"],
+                state["pollster"],
+                node_name,
+                handoff_server_address,
+                _client_tag,
+                _handoff_server_pipeline_address
+            )
+            state["handoff-server-clients"].append(handoff_server_client)
+            # don't run all the status checkers at the same time
+            status_checkers.append(
+                (handoff_server_client.run, 
+                 time.time() + random.random() * 60.0, )
+            )        
 
     log.info("binding pull-server to %s" % (_handoff_server_pipeline_address, ))
     state["pull-server"] = PULLServer(
@@ -241,8 +261,6 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["pull-server"].register(state["pollster"])
-    
-    status_checkers = list()
 
     for node_name, data_reader_address in zip(
         _node_names, _data_reader_addresses
@@ -315,6 +333,10 @@ def _tear_down(state):
     log.debug("closing writer clients")
     for writer_client in state["writer-clients"]:
         writer_client.close()
+
+    log.debug("closing handoff_server clients")
+    for handoff_server_client in state["handoff-server-clients"]:
+        handoff_server_client.close()
 
     state["zmq-context"].term()
 

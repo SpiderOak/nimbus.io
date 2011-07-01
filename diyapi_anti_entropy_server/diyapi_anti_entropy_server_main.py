@@ -31,7 +31,6 @@ Any other situation would indicate a data integrity error
 that should be resolved.
 """
 from collections import deque, namedtuple
-import datetime
 import logging
 import os
 import sys
@@ -46,6 +45,7 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
+from diyapi_tools.data_definitions import create_timestamp
 
 from diyapi_anti_entropy_server.common import max_retry_count, \
         retry_entry_tuple, \
@@ -95,7 +95,7 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
     log.info("start consistency check on %s" % (avatar_id, ))
 
     request_id = uuid.uuid1().hex
-    timestamp = datetime.datetime.utcnow()
+    timestamp = create_timestamp()
 
     database = AuditResultDatabase()
     if row_id is None:
@@ -128,7 +128,7 @@ def _handle_anti_entropy_audit_request(state, message, _data):
     log = logging.getLogger("_handle_anti_entropy_audit_request")
     log.info("request for audit on %s" % (message["avatar-id"], )) 
 
-    timestamp = datetime.datetime.utcnow()
+    timestamp = create_timestamp()
 
     database = AuditResultDatabase()
     row_id = database.start_audit(message["avatar-id"], timestamp)
@@ -220,7 +220,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
     # we don't want to preserve state anymore
     del state["active-requests"][request_id]
     database = AuditResultDatabase()
-    timestamp = datetime.datetime.utcnow()
+    timestamp = create_timestamp()
     
     hash_list = list(set(request_state.replies.values()))
     

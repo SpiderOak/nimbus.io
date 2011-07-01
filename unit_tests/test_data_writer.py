@@ -5,7 +5,7 @@ test_data_writer.py
 test the data writer process
 """
 from base64 import b64encode
-from datetime import datetime, timedelta
+from datetime import timedelta
 import hashlib
 import os
 import os.path
@@ -15,6 +15,7 @@ import uuid
 import zlib
 
 from diyapi_tools.standard_logging import initialize_logging
+from diyapi_tools.data_definitions import create_timestamp
 
 from unit_tests.util import random_string, \
         generate_key, \
@@ -66,7 +67,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        timestamp = datetime.utcnow()
+        timestamp = create_timestamp()
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)
@@ -112,7 +113,7 @@ class TestDataWriter(unittest.TestCase):
         test_data = random_string(total_size)
 
         avatar_id = 1001
-        timestamp = datetime.utcnow()
+        timestamp = create_timestamp()
         key  = self._key_generator.next()
         segment_num = 4
         sequence_num = 0
@@ -252,7 +253,7 @@ class TestDataWriter(unittest.TestCase):
         avatar_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
-        timestamp = datetime.utcnow()
+        timestamp = create_timestamp()
         reply = self._destroy(avatar_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
@@ -263,7 +264,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = datetime.utcnow()
+        archive_timestamp = create_timestamp()
         destroy_timestamp = archive_timestamp + timedelta(seconds=1)
         segment_num = 2
 
@@ -307,7 +308,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = datetime.utcnow()
+        archive_timestamp = create_timestamp()
         destroy_1_timestamp = archive_timestamp + timedelta(seconds=1)
         destroy_2_timestamp = destroy_1_timestamp + timedelta(seconds=1)
         segment_num = 2
@@ -358,7 +359,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = datetime.utcnow()
+        archive_timestamp = create_timestamp()
         destroy_timestamp = archive_timestamp - timedelta(seconds=1)
         segment_num = 2
 
@@ -400,7 +401,7 @@ class TestDataWriter(unittest.TestCase):
         avatar_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
-        timestamp = datetime.utcnow()
+        timestamp = create_timestamp()
         reply = self._purge(avatar_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply)
 
@@ -411,7 +412,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         avatar_id = 1001
         key  = self._key_generator.next()
-        archive_timestamp = datetime.utcnow()
+        archive_timestamp = create_timestamp()
         segment_num = 2
 
         file_adler32 = zlib.adler32(content_item)

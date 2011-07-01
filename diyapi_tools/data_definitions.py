@@ -36,6 +36,9 @@ def compute_value_file_path(repository_path, value_file_id):
         "%08d" % value_file_id
     )
 
+def create_timestamp():
+    return datetime.utcnow()
+
 def parse_timestamp_repr(timestamp_repr):
     match_object = _timestamp_repr_re.match(timestamp_repr)
     if match_object is None:

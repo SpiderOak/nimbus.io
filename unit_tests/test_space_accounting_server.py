@@ -15,6 +15,7 @@ import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
+from diyapi_tools.data_definitions import create_timestamp
 
 from diyapi_space_accounting_server.space_accounting_database import \
     SpaceAccountingDatabase
@@ -36,14 +37,13 @@ def _detail_generator(
     total_bytes_added, total_bytes_removed, total_bytes_retrieved
 ):
 
-    current_time = datetime.utcnow()
+    current_time = create_timestamp()
 
     for i in xrange(1000):
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : _avatar_id,
-            "t
-            imestamp-repr": repr(current_time + timedelta(seconds=i)),
+            "timestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_added",
             "value"         : total_bytes_added / 1000,
         }

@@ -5,7 +5,6 @@ test_read_and_write.py
 test writing and reading back 
 """
 from collections import namedtuple
-from datetime import datetime
 import hashlib
 import os
 import os.path
@@ -25,6 +24,7 @@ from diyapi_data_writer.output_value_file import OutputValueFile, \
         value_file_template
 from diyapi_data_writer.writer import Writer
 from diyapi_data_reader.reader import Reader
+from diyapi_tools.data_definitions import create_timestamp
 
 from unit_tests.util import random_string
 
@@ -91,7 +91,7 @@ class TestReadAndWrite(unittest.TestCase):
         """test writing an reading a simple segment of one sequence"""
         avatar_id = 1001
         key = "aaa/bbb/ccc"
-        timestamp = datetime.utcnow()
+        timestamp = create_timestamp()
         segment_num = 42
         sequence_num = 0
         data_size = 1024

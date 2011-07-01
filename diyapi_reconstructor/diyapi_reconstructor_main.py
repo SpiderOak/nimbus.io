@@ -50,7 +50,6 @@ Otherwise log general data loss for the key.
 
 """
 from collections import namedtuple
-import datetime
 import logging
 import os
 import sys
@@ -62,6 +61,7 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
+from diyapi_tools.data_definitions import create_timestamp
 
 _node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
@@ -138,7 +138,7 @@ def _handle_rebuild_request(state, message, _data):
         }
         state["xrep-server"].queue_message_for_send(reply)
 
-    timestamp = datetime.datetime.utcnow()
+    timestamp = create_timestamp()
     
     state["active-requests"][message["avatar-id"]] = _request_state_tuple(
         xrep_ident=,essage["xrep_ident"],

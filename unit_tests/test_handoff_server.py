@@ -173,20 +173,9 @@ class TestHandoffServer(unittest.TestCase):
             len(self._resilient_clients), 
         ))
 
-        self._handoff_client = GreenletResilientClient(
-            self._context, 
-            self._pollster,
-            _node_names[_local_node_index],
-            _handoff_server_addresses[_local_node_index],
-            _local_node_name,
-            _client_address,
-            self._deliverator,
-        )
-
         self._data_writer_handoff_client = DataWriterHandoffClient(
             _node_names[0],
-            self._resilient_clients,
-            self._handoff_client
+            self._resilient_clients
         )
 
         self._pollster.start()
@@ -218,12 +207,6 @@ class TestHandoffServer(unittest.TestCase):
             self._pollster.join(timeout=3.0)
             self._pollster = None
         
-        if hasattr(self, "_handoff_client") \
-        and self._handoff_client is not None:
-            print >> sys.stderr, "terminating _handoff_client"
-            self._handoff_client.close()
-            self._handoff_client = None
-
         if hasattr(self, "_pull_server") \
         and self._pull_server is not None:
             print >> sys.stderr, "terminating _pull_server"
@@ -278,7 +261,6 @@ class TestHandoffServer(unittest.TestCase):
         reply = g.value
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
-        self.assertEqual(reply["previous-size"], 0)
 
         print >> sys.stderr, "archive successful"
         print >> sys.stderr, "press [Enter] to continue" 

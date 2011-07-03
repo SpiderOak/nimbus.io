@@ -128,7 +128,6 @@ class TestHandoffServer(unittest.TestCase):
             time.sleep(1.0)
 
             process = start_handoff_server(
-                _node_names,
                 node_name, 
                 _handoff_server_addresses,
                 _handoff_server_pipeline_addresses[i],

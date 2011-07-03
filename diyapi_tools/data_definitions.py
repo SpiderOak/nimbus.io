@@ -56,6 +56,14 @@ def parse_timestamp_repr(timestamp_repr):
 
     return timestamp
 
+node_row_template = namedtuple("NodeRow", [
+    "id",
+    "node_number_in_cluster",
+    "name",
+    "hostname",
+    "offline"]
+)
+
 value_file_template = namedtuple("ValueFile", [
     "id",
     "creation_time",

@@ -7,6 +7,7 @@ from collections import deque
 import logging
 import os
 import os.path
+import cPickle as pickle
 import random
 import sys
 import time
@@ -20,16 +21,17 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_tools.data_definitions import parse_timestamp_repr
+from diyapi_tools.data_definitions import parse_timestamp_repr, \
+        segment_row_template
 
-from diyapi_handoff_server.hint_repository import HintRepository
-from diyapi_handoff_server.data_writer_status_checker import \
-        DataWriterStatusChecker
+from diyapi_web_server.database_util import node_rows
+
+from diyapi_handoff_server.handoff_requestor import HandoffRequestor, \
+        handoff_polling_interval
 
 class HandoffError(Exception):
     pass
 
-_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
     _local_node_name,
@@ -48,46 +50,115 @@ _handoff_server_pipeline_address = os.environ.get(
 
 _retrieve_timeout = 30 * 60.0
 
-def _handle_hinted_handoff(state, message, _data):
-    log = logging.getLogger("_handle_hinted_handoff")
-    log.info("%s, %s %s, %s, %s segment_num %s %s" % (
-        message["dest-node-name"], 
-        message["action"],
-        message["avatar-id"], 
-        message["key"],  
-        message["timestamp-repr"], 
-        message["segment-num"],
-        message["server-node-names"],
+
+def _retrieve_handoffs_for_node(connection, node_id):
+    result = connection.fetch_one_row("""
+        select %s from diy.segment 
+        where handoff_node_id = %%s
+        order by timestamp desc
+    """ % (",".join(segment_row_template._fields), ), [node_id, ])
+
+    if result is None:
+        return None
+
+    return [segment_row_template._make(row) for row in result]
+
+def _handle_request_handoffs(state, message, _data):
+    log = logging.getLogger("_handle_request_handoffs")
+    log.info("node %s id %s %s" % (
+        message["node-name"], 
+        message["node-id"],
+        message["request-timestamp-repr"],
     ))
 
     reply = {
-        "message-type"  : "handoff-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : None,
-        "error-message" : None,
+        "message-type"              : "request-handoffs",
+        "client-tag"                : message["client-tag"],
+        "message-id"                : message["message-id"],
+        "request-timestamp-repr"    : message["request-timestamp-repr"],
+        "node-name"                 : _local_node_name,
+        "segment-count"             : None,
+        "result"                    : None,
+        "error-message"             : None,
     }
 
-    timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     try:
-        state["hint-repository"].store(
-            message["dest-node-name"],
-            message["avatar-id"],
-            message["key"],
-            timestamp,
-            message["segment-num"],
-            message["action"],
-            message["server-node-names"]
+        rows = _retrieve_handoffs_for_node(
+            state["database-connection"], message["node-id"]
         )
     except Exception, instance:
         log.exception(str(instance))
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
-    else:
-        reply["result"] = "success"
+        state["resilient-server"].send_reply(reply)
+        return
 
-    state["resilient-server"].send_reply(reply)
+    reply["result"] = "success"
+
+    if rows is None:
+        reply["segment-count"] = 0
+        state["resilient-server"].send_reply(reply)
+        return
+
+    reply["segment-count"] = len(rows)
+    log.debug("found %s segments" % (reply["segment-count"], ))
+
+    # convert the rows from namedtuple through ordered_dict to regular dict
+    data_list = [dict(row._asdict().items) for row in rows]
+    data = pickle.dumps(data_list)
+        
+    state["resilient-server"].send_reply(reply, data)
+
+def _handle_request_handoffs_reply(state, message, data):
+    log = logging.getLogger("_handle_request_handoffs_reply")
+    log.info("node %s %s segment-count %s %s" % (
+        message["node-name"], 
+        message["result"], 
+        message["segment-count"], 
+        message["request-timestamp-repr"],
+    ))
+
+    if message["result"] != "success":
+        log.error("request-handoffs failed on node %s %s %s" % (
+            message["node-name"], 
+            message["result"], 
+            message["error-message"],
+        ))
+        return
+
+    # the normal case
+    if message["segment-count"] == 0:
+        return
+
+    try:
+        data_list = pickle.loads(data)
+    except Exception:
+        log.exception("unable to load handoffs from %s" % (
+            message["node-name"],
+        ))
+        return
+
+    rows = list()
+    for entry in data_list:
+        rows.append(
+            segment_row_template(
+                id=entry["id"],
+                avatar_id=entry["avatar_id"],
+                key=entry["key"],
+                timestamp=entry["timestamp"],
+                segment_num=entry["segment_num"],
+                file_size=entry["file_size"],
+                file_adler32=entry["file_adler32"],
+                file_hash=entry["file_hash"],
+                file_user_id=entry["file_user_id"],
+                file_group_id=entry["file_group_id"],
+                file_permissions=entry["file_permissions"],
+                file_tombstone=entry["file_tombstone"],
+                file_handoff_node_id=entry["handoff_node_id"]
+            )
+        )
+
 
 def _handle_retrieve_reply(state, message, data):
     log = logging.getLogger("_handle_retrieve_reply")
@@ -192,7 +263,8 @@ def _handle_purge_key_reply(state, message, _data):
         state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
 
 _dispatch_table = {
-    "hinted-handoff"                : _handle_hinted_handoff,
+    "request-handoffs"              : _handle_request_handoffs,
+    "request-handoffs-reply"        : _handle_request_handoffs_reply,
     "retrieve-key-start-reply"      : _handle_retrieve_reply,
     "retrieve-key-next-reply"       : _handle_retrieve_reply,
     "retrieve-key-final-reply"      : _handle_retrieve_reply,
@@ -204,6 +276,9 @@ _dispatch_table = {
 
 def _create_state():
     return {
+        "database-connection"       : None,
+        "node-rows"                 : None,
+        "node-id-dict"              : None,
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
         "resilient-server"          : None,
@@ -213,22 +288,25 @@ def _create_state():
         "handoff-server-clients"    : list(),
         "receive-queue"             : deque(),
         "queue-dispatcher"          : None,
-        "hint-repository"           : None,
-        "data-writer-status-checker": None,
+        "handoff-requestor"         : None,
         "active-forwarders"         : dict(),
-        "database-connection"       : None,
     }
 
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     status_checkers = list()
 
-    state["hint-repository"] = HintRepository()
+    state["database-connection"] = get_node_local_connection()
 
-    for node_name, handoff_server_address in zip(
-        _node_names, _handoff_server_addresses
+    state["node-rows"] = node_rows(state["database-connection"])
+    state["node-id-dict"] = dict(
+        [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
+    )
+
+    for node_row, handoff_server_address in zip(
+        state["node-rows"], _handoff_server_addresses
     ):
-        if node_name == _local_node_name:
+        if node_row.name == _local_node_name:
             log.info("binding resilient-server to %s" % (
                 handoff_server_address, 
             ))
@@ -242,7 +320,7 @@ def _setup(_halt_event, state):
             handoff_server_client = ResilientClient(
                 state["zmq-context"],
                 state["pollster"],
-                node_name,
+                node_row.name,
                 handoff_server_address,
                 _client_tag,
                 _handoff_server_pipeline_address
@@ -262,13 +340,13 @@ def _setup(_halt_event, state):
     )
     state["pull-server"].register(state["pollster"])
 
-    for node_name, data_reader_address in zip(
-        _node_names, _data_reader_addresses
+    for node_row, data_reader_address in zip(
+        state["node-rows"], _data_reader_addresses
     ):
         data_reader_client = ResilientClient(
             state["zmq-context"],
             state["pollster"],
-            node_name,
+            node_row.name,
             data_reader_address,
             _client_tag,
             _handoff_server_pipeline_address
@@ -279,13 +357,13 @@ def _setup(_halt_event, state):
             (data_reader_client.run, time.time() + random.random() * 60.0, )
         )        
 
-    for node_name, data_writer_address in zip(
-        _node_names, _data_writer_addresses
+    for node_row, data_writer_address in zip(
+        state["node-rows"], _data_writer_addresses
     ):
         data_writer_client = ResilientClient(
             state["zmq-context"],
             state["pollster"],
-            node_name,
+            node_row.name,
             data_writer_address,
             _client_tag,
             _handoff_server_pipeline_address
@@ -302,23 +380,20 @@ def _setup(_halt_event, state):
         _dispatch_table
     )
 
-    state["data-writer-status-checker"] = DataWriterStatusChecker(state)
-
-    state["database-connection"] = get_node_local_connection()
+    state["handoff-requestor"] = HandoffRequestor(state, _local_node_name)
 
     timer_driven_callbacks = [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
-        (state["data-writer-status-checker"].run,
-            DataWriterStatusChecker.next_run())
+        # try to spread out handoff polling, if all nodes start together
+        (state["handoff-requestor"].run,
+            time.time() + random.random() * handoff_polling_interval)
     ] 
     timer_driven_callbacks.extend(status_checkers)
     return timer_driven_callbacks
 
 def _tear_down(state):
     log = logging.getLogger("_tear_down")
-    state["hint-repository"].close()
-    del state["hint-repository"]
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()

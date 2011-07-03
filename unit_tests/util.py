@@ -5,13 +5,10 @@ util.py
 utility functions for unit tests
 """
 import logging
-import time
 import os
 import os.path
 import subprocess
 import sys
-
-from diyapi_database_server import database_content
 
 def random_string(size):
     with open('/dev/urandom', 'rb') as f:
@@ -168,7 +165,6 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_handoff_server(
-    node_names,
     local_node_name, 
     handoff_server_addresses, 
     pipeline_address, 
@@ -187,7 +183,6 @@ def start_handoff_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME_SEQ"         : " ".join(node_names),
         "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
         "DIYAPI_HANDOFF_SERVER_ADDRESSES"        : " ".join(
             handoff_server_addresses

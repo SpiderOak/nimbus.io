@@ -21,13 +21,15 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_tools.data_definitions import parse_timestamp_repr, \
-        segment_row_template
+from diyapi_tools.data_definitions import segment_row_template
 
 from diyapi_web_server.database_util import node_rows
 
+from diyapi_handoff_server.pending_handoffs import PendingHandoffs
 from diyapi_handoff_server.handoff_requestor import HandoffRequestor, \
         handoff_polling_interval
+from diyapi_handoff_server.handoff_starter import HandoffStarter
+from diyapi_handoff_server.forwarder_coroutine import forwarder_coroutine
 
 class HandoffError(Exception):
     pass
@@ -52,7 +54,7 @@ _retrieve_timeout = 30 * 60.0
 
 
 def _retrieve_handoffs_for_node(connection, node_id):
-    result = connection.fetch_one_row("""
+    result = connection.fetch_all_rows("""
         select %s from diy.segment 
         where handoff_node_id = %%s
         order by timestamp desc
@@ -61,18 +63,45 @@ def _retrieve_handoffs_for_node(connection, node_id):
     if result is None:
         return None
 
-    return [segment_row_template._make(row) for row in result]
+    segment_row_list = list()
+    for entry in result:
+        segment_row = segment_row_template._make(entry)
+
+        # file_hash (md5.digest()) comes out of the database as a buffer
+        # object
+        segment_row = segment_row._replace(
+            file_hash = str(segment_row.file_hash)
+        )
+        segment_row_list.append(segment_row)
+
+    return segment_row_list
+
+def _convert_dict_to_segment_row(segment_dict):
+    return segment_row_template(
+        id=segment_dict["id"],
+        avatar_id=segment_dict["avatar_id"],
+        key=segment_dict["key"],
+        timestamp=segment_dict["timestamp"],
+        segment_num=segment_dict["segment_num"],
+        file_size=segment_dict["file_size"],
+        file_adler32=segment_dict["file_adler32"],
+        file_hash=segment_dict["file_hash"],
+        file_user_id=segment_dict["file_user_id"],
+        file_group_id=segment_dict["file_group_id"],
+        file_permissions=segment_dict["file_permissions"],
+        file_tombstone=segment_dict["file_tombstone"],
+        handoff_node_id=segment_dict["handoff_node_id"]
+    )
 
 def _handle_request_handoffs(state, message, _data):
     log = logging.getLogger("_handle_request_handoffs")
-    log.info("node %s id %s %s" % (
+    log.info("node %s %s" % (
         message["node-name"], 
-        message["node-id"],
         message["request-timestamp-repr"],
     ))
 
     reply = {
-        "message-type"              : "request-handoffs",
+        "message-type"              : "request-handoffs-reply",
         "client-tag"                : message["client-tag"],
         "message-id"                : message["message-id"],
         "request-timestamp-repr"    : message["request-timestamp-repr"],
@@ -82,10 +111,10 @@ def _handle_request_handoffs(state, message, _data):
         "error-message"             : None,
     }
 
-
+    node_id = state["node-id-dict"][message["node-name"]]
     try:
         rows = _retrieve_handoffs_for_node(
-            state["database-connection"], message["node-id"]
+            state["database-connection"], node_id
         )
     except Exception, instance:
         log.exception(str(instance))
@@ -105,7 +134,7 @@ def _handle_request_handoffs(state, message, _data):
     log.debug("found %s segments" % (reply["segment-count"], ))
 
     # convert the rows from namedtuple through ordered_dict to regular dict
-    data_list = [dict(row._asdict().items) for row in rows]
+    data_list = [dict(row._asdict().items()) for row in rows]
     data = pickle.dumps(data_list)
         
     state["resilient-server"].send_reply(reply, data)
@@ -139,36 +168,14 @@ def _handle_request_handoffs_reply(state, message, data):
         ))
         return
 
-    rows = list()
+    source_node_name = message["node-name"]
     for entry in data_list:
-        rows.append(
-            segment_row_template(
-                id=entry["id"],
-                avatar_id=entry["avatar_id"],
-                key=entry["key"],
-                timestamp=entry["timestamp"],
-                segment_num=entry["segment_num"],
-                file_size=entry["file_size"],
-                file_adler32=entry["file_adler32"],
-                file_hash=entry["file_hash"],
-                file_user_id=entry["file_user_id"],
-                file_group_id=entry["file_group_id"],
-                file_permissions=entry["file_permissions"],
-                file_tombstone=entry["file_tombstone"],
-                file_handoff_node_id=entry["handoff_node_id"]
-            )
-        )
-
+        segment_row = _convert_dict_to_segment_row(entry)
+        state["pending-handoffs"].push(segment_row, source_node_name)
 
 def _handle_retrieve_reply(state, message, data):
     log = logging.getLogger("_handle_retrieve_reply")
 
-    try:
-        forwarder = state["active-forwarders"].pop(message["message-id"])
-    except KeyError:
-        log.error("no forwarder for message %s" % (message, ))
-        return
-
     #TODO: we need to squawk about this somehow
     if message["result"] != "success":
         error_message = "%s failed (%s) %s %s" % (
@@ -180,19 +187,11 @@ def _handle_retrieve_reply(state, message, data):
         log.error(error_message)
         raise HandoffError(error_message)
 
-    message_id = forwarder.send((message, data, ))
-    assert message_id is not None
-    state["active-forwarders"][message_id] = forwarder    
+    state["forwarder"].send((message, data, ))
 
 def _handle_archive_reply(state, message, _data):
     log = logging.getLogger("_handle_archive_reply")
 
-    try:
-        forwarder = state["active-forwarders"].pop(message["message-id"])
-    except KeyError:
-        log.error("no forwarder for message %s" % (message, ))
-        return
-
     #TODO: we need to squawk about this somehow
     if message["result"] != "success":
         error_message = "%s failed (%s) %s %s" % (
@@ -204,33 +203,57 @@ def _handle_archive_reply(state, message, _data):
         log.error(error_message)
         raise HandoffError(error_message)
 
-    # if we get back a string, it is a message-id for another archive
-    # otherwise, we should get the hint we started with
-    result = forwarder.send(message)
-    assert result is not None
+    result = state["forwarder"].send(message)
 
-    if type(result) is str:
-        message_id = result
-        state["active-forwarders"][message_id] = forwarder
-    else:
-        hint = result
-        log.info("handoff complete %s %s %s" % (
-            hint.node_name, hint.avatar_id, hint.key
+    if result is not None:
+        segment_row, source_node_names = result
+        log.info("handoff complete %s %s %s %s" % (
+            segment_row.avatar_id,
+            segment_row.key,
+            segment_row.timestamp,
+            segment_row.segment_num,
         ))
+
+        state["forwarder"] = None
+
+        # purge the handoff source(s)
+        message = {
+            "message-type"      : "purge-key",
+            "avatar-id"         : segment_row.avatar_id,
+            "key"               : segment_row.key,
+            "timestamp-repr"    : repr(segment_row.timestamp),
+            "segment-num"       : segment_row.segment_num,
+        }
+        for source_node_name in source_node_names:
+            writer_client = state["writer-client-dict"][source_node_name]
+            writer_client.queue_message_for_send(message)
+
+        # see if we have another handoff to this node
         try:
-            state["hint-repository"].purge_hint(hint)
-        except Exception, instance:
-            log.exception(instance)
-        state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
+            segment_row, source_node_names = state["pending-handoffs"].pop()
+        except IndexError:
+            log.debug("all handoffs done")
+            # run the handoff requestor again, after the polling interval
+            return [(state["handoff-requestor"].run, 
+                     state["handoff-requestor"].next_run(), )]
+        
+        # we pick the first source name, because it's easy, and because,
+        # since that source responded to us first, it might have better 
+        # response
+        # TODO: switch over to the second source on error
+        source_node_name = source_node_names[0]
+        reader_client = state["reader-client-dict"][source_node_name]
 
-def _handle_purge_key_reply(state, message, _data):
+        state["forwarder"] = forwarder_coroutine(
+            segment_row, 
+            source_node_names, 
+            state["writer-client-dict"][_local_node_name], 
+            reader_client
+        )
+        state["forwarder"] .next()
+
+def _handle_purge_key_reply(_state, message, _data):
     log = logging.getLogger("_handle_purge_key_reply")
-
-    try:
-        forwarder = state["active-forwarders"].pop(message["message-id"])
-    except KeyError:
-        log.error("no forwarder for message %s" % (message, ))
-        return
 
     #TODO: we need to squawk about this somehow
     if message["result"] != "success":
@@ -242,25 +265,6 @@ def _handle_purge_key_reply(state, message, _data):
         ))
         # we don't give up here, because the handoff has succeeded 
         # at this point we're just cleaning up
-
-    # if we get back a string, it is a message-id for another purge
-    # otherwise, we should get the hint we started with
-    result = forwarder.send(message)
-    assert result is not None
-
-    if type(result) is str:
-        message_id = result
-        state["active-forwarders"][message_id] = forwarder
-    else:
-        hint = result
-        log.info("handoff complete %s %s %s" % (
-            hint.node_name, hint.avatar_id, hint.key
-        ))
-        try:
-            state["hint-repository"].purge_hint(hint)
-        except Exception, instance:
-            log.exception(instance)
-        state["data-writer-status-checker"].check_node_for_hint(hint.node_name)
 
 _dispatch_table = {
     "request-handoffs"              : _handle_request_handoffs,
@@ -279,17 +283,19 @@ def _create_state():
         "database-connection"       : None,
         "node-rows"                 : None,
         "node-id-dict"              : None,
+        "node-name-dict"            : None,
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
         "resilient-server"          : None,
         "pull-server"               : None,
-        "reader-clients"            : list(),
-        "writer-clients"            : list(),
+        "reader-client-dict"        : dict(),
+        "writer-client-dict"        : dict(),
         "handoff-server-clients"    : list(),
         "receive-queue"             : deque(),
         "queue-dispatcher"          : None,
         "handoff-requestor"         : None,
-        "active-forwarders"         : dict(),
+        "pending-handoffs"          : PendingHandoffs(),
+        "forwarder"                 : None,
     }
 
 def _setup(_halt_event, state):
@@ -301,6 +307,9 @@ def _setup(_halt_event, state):
     state["node-rows"] = node_rows(state["database-connection"])
     state["node-id-dict"] = dict(
         [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
+    )
+    state["node-name-dict"] = dict(
+        [(node_row.id, node_row.name, ) for node_row in state["node-rows"]]
     )
 
     for node_row, handoff_server_address in zip(
@@ -351,7 +360,8 @@ def _setup(_halt_event, state):
             _client_tag,
             _handoff_server_pipeline_address
         )
-        state["reader-clients"].append(data_reader_client)
+        state["reader-client-dict"][data_reader_client.server_node_name] = \
+                data_reader_client
         # don't run all the status checkers at the same time
         status_checkers.append(
             (data_reader_client.run, time.time() + random.random() * 60.0, )
@@ -368,7 +378,8 @@ def _setup(_halt_event, state):
             _client_tag,
             _handoff_server_pipeline_address
         )
-        state["writer-clients"].append(data_writer_client)
+        state["writer-client-dict"][data_writer_client.server_node_name] = \
+                data_writer_client
         # don't run all the status checkers at the same time
         status_checkers.append(
             (data_writer_client.run, time.time() + random.random() * 60.0, )
@@ -381,6 +392,7 @@ def _setup(_halt_event, state):
     )
 
     state["handoff-requestor"] = HandoffRequestor(state, _local_node_name)
+    state["handoff-starter"] = HandoffStarter(state, _local_node_name)
 
     timer_driven_callbacks = [
         (state["pollster"].run, time.time(), ), 
@@ -402,11 +414,11 @@ def _tear_down(state):
     state["pull-server"].close()
 
     log.debug("closing reader clients")
-    for reader_client in state["reader-clients"]:
+    for reader_client in state["reader-client-dict"].values():
         reader_client.close()
 
     log.debug("closing writer clients")
-    for writer_client in state["writer-clients"]:
+    for writer_client in state["writer-client-dict"].values():
         writer_client.close()
 
     log.debug("closing handoff_server clients")

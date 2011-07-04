@@ -113,7 +113,7 @@ class TestDataReader(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -244,7 +244,7 @@ class TestDataReader(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,

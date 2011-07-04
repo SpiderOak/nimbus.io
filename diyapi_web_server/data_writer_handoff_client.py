@@ -24,12 +24,12 @@ class DataWriterHandoffClient(object):
     This class mimics a single ResilientClient while wrapping two clients
     to perform hinted handoff for a node which is down.
     """
-    def __init__( self, dest_node_name, dest_node_id, resilient_clients):
+    def __init__( self, dest_node_name, resilient_clients):
         self._log = logging.getLogger("HandoffClient-%s" % (dest_node_name,))
         self._log.info("handing off to %s" % (
             ", ".join([str(c) for c in resilient_clients]), 
         ))
-        self._dest_node_id = dest_node_id
+        self._dest_node_name = dest_node_name
         self._resilient_clients = resilient_clients
         self._handoff_message = dict()
    
@@ -42,9 +42,9 @@ class DataWriterHandoffClient(object):
 
     def _complete_handoff(self, message, data, completion_channel):
         # hand off the message, 
-        if "handoff-node-id" in message:
-            assert message["handoff-node-id"] is None, message
-            message["handoff-node-id"] = self._dest_node_id
+        if "handoff-node-name" in message:
+            assert message["handoff-node-name"] is None, message
+            message["handoff-node-name"] = self._dest_node_name
 
         data_writer_greenlets = [
             # queue a copy of the message, so each gets a different message-id

@@ -25,6 +25,8 @@ from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
 from diyapi_tools.greenlet_pull_server import GreenletPULLServer
 from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.data_definitions import create_timestamp
+from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_web_server.database_util import node_rows
 
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
@@ -94,6 +96,9 @@ class TestHandoffServer(unittest.TestCase):
             self._log = logging.getLogger("TestHandoffServer")
 
         self.tearDown()
+        self._database_connection = get_node_local_connection()
+        node_rows_list = node_rows(self._database_connection)
+
         self._key_generator = generate_key()
 
         self._data_writer_processes = list()
@@ -151,17 +156,19 @@ class TestHandoffServer(unittest.TestCase):
         )
         self._pull_server.register(self._pollster)
 
-        backup_nodes = random.sample(_node_names, 2)
-        self._log.debug("backup nodes = %s" % (backup_nodes, ))
+        backup_nodes = random.sample(node_rows_list[1:], 2)
+        self._log.debug("backup nodes = %s" % (
+            [n.name for n in backup_nodes], 
+        ))
 
         self._resilient_clients = list()        
-        for node_name, address in zip(_node_names, _data_writer_addresses):
-            if not node_name in backup_nodes:
+        for node_row, address in zip(node_rows_list, _data_writer_addresses):
+            if not node_row in backup_nodes:
                 continue
             resilient_client = GreenletResilientClient(
                 self._context,
                 self._pollster,
-                node_name,
+                node_row.name,
                 address,
                 _local_node_name,
                 _client_address,
@@ -173,7 +180,7 @@ class TestHandoffServer(unittest.TestCase):
         ))
 
         self._data_writer_handoff_client = DataWriterHandoffClient(
-            _node_names[0],
+            node_rows_list[0].name,
             self._resilient_clients
         )
 
@@ -219,6 +226,12 @@ class TestHandoffServer(unittest.TestCase):
                 client.close()
             self._resilient_clients = None
  
+        if hasattr(self, "_database_connection") \
+        and self._database_connection is not None:
+            print >> sys.stderr, "closing _database_connection"
+            self._database_connection.close()
+            self._database_connection = None
+
         if hasattr(self, "_context") \
         and self._context is not None:
             print >> sys.stderr, "terminating _context"
@@ -252,7 +265,7 @@ class TestHandoffServer(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         g = gevent.spawn(self._send_message_get_reply, message, file_content)
         g.join(timeout=10.0)

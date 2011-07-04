@@ -30,6 +30,7 @@ from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
 from diyapi_tools.data_definitions import parse_timestamp_repr
+from diyapi_web_server.database_util import node_rows
 
 from diyapi_data_writer.writer import Writer
 
@@ -88,6 +89,11 @@ def _handle_archive_key_entire(state, message, data):
     Statgrabber.accumulate('diy_write_requests', 1)
     Statgrabber.accumulate('diy_write_bytes', len(data))
 
+    if message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].finish_new_segment(
         message["avatar-id"], 
         message["key"], 
@@ -100,7 +106,7 @@ def _handle_archive_key_entire(state, message, data):
         message["file-group-id"],
         message["file-permissions"],
         file_tombstone=False,
-        handoff_node_id=message["handoff-node-id"]
+        handoff_node_id=handoff_node_id
     )
 
     reply["result"] = "success"
@@ -192,6 +198,12 @@ def _handle_archive_key_final(state, message, data):
         message["sequence-num"],
         data
     )
+
+    if message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].finish_new_segment(
         message["avatar-id"], 
         message["key"], 
@@ -204,7 +216,7 @@ def _handle_archive_key_final(state, message, data):
         message["file-group-id"],
         message["file-permissions"],
         file_tombstone=False,
-        handoff_node_id=message["handoff-node-id"]
+        handoff_node_id=handoff_node_id
     )
 
     Statgrabber.accumulate('diy_write_requests', 1)
@@ -293,6 +305,8 @@ def _create_state():
         "queue-dispatcher"      : None,
         "writer"                : None,
         "database-connection"   : None,
+        "node-rows"             : None,
+        "node-id-dict"          : None,
     }
 
 def _setup(_halt_event, state):
@@ -321,6 +335,10 @@ def _setup(_halt_event, state):
     )
 
     state["database-connection"] = get_node_local_connection()
+    state["node-rows"] = node_rows(state["database-connection"])
+    state["node-id-dict"] = dict(
+        [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
+    )
 
     state["writer"] = Writer(
         state["database-connection"],

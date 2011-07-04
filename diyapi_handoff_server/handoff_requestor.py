@@ -40,6 +40,8 @@ class HandoffRequestor(object):
         if halt_event.is_set():
             return
 
+        self._log.debug("sending handoff requests")
+
         message = {
             "message-type"              : "request-handoffs",
             "request-timestamp-repr"    : repr(create_timestamp()),
@@ -50,5 +52,8 @@ class HandoffRequestor(object):
         for handoff_server_client in self._state["handoff-server-clients"]:
             handoff_server_client.queue_message_for_send(message)
         
-        return [(self.run, self.next_run(), )]
+        # run the handoff starter after all nodes have had a resonable
+        # time to respond to our requests.
+        return [(self._state["handoff-starter"].run, 
+                 self._state["handoff-starter"].next_run(), )]
 

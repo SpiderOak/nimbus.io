@@ -56,7 +56,7 @@ class TestDataWriter(unittest.TestCase):
         if hasattr(self, "_data_writer_process") \
         and self._data_writer_process is not None:
             terminate_process(self._data_writer_process)
-            self._data_wrter_process = None
+            self._data_writer_process = None
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
@@ -86,7 +86,7 @@ class TestDataWriter(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -190,7 +190,7 @@ class TestDataWriter(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -284,7 +284,7 @@ class TestDataWriter(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -329,7 +329,7 @@ class TestDataWriter(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -379,7 +379,7 @@ class TestDataWriter(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -431,7 +431,7 @@ class TestDataWriter(unittest.TestCase):
             "file-user-id"      : None,
             "file-group-id"     : None,
             "file-permissions"  : None,
-            "handoff-node-id"   : None,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,

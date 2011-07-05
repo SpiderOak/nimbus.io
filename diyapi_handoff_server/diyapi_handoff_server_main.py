@@ -173,8 +173,8 @@ def _handle_request_handoffs_reply(state, message, data):
         segment_row = _convert_dict_to_segment_row(entry)
         state["pending-handoffs"].push(segment_row, source_node_name)
 
-def _handle_retrieve_reply(state, message, data):
-    log = logging.getLogger("_handle_retrieve_reply")
+def _handle_retrieve_key_reply(state, message, data):
+    log = logging.getLogger("_handle_retrieve_key_reply")
 
     #TODO: we need to squawk about this somehow
     if message["result"] != "success":
@@ -256,7 +256,9 @@ def _handle_purge_key_reply(_state, message, _data):
     log = logging.getLogger("_handle_purge_key_reply")
 
     #TODO: we need to squawk about this somehow
-    if message["result"] != "success":
+    if message["result"] == "success":
+        log.debug("purge-key successful")
+    else:
         log.error("%s failed (%s) %s %s" % (
             message["message-type"], 
             message["result"], 
@@ -269,9 +271,7 @@ def _handle_purge_key_reply(_state, message, _data):
 _dispatch_table = {
     "request-handoffs"              : _handle_request_handoffs,
     "request-handoffs-reply"        : _handle_request_handoffs_reply,
-    "retrieve-key-start-reply"      : _handle_retrieve_reply,
-    "retrieve-key-next-reply"       : _handle_retrieve_reply,
-    "retrieve-key-final-reply"      : _handle_retrieve_reply,
+    "retrieve-key-reply"            : _handle_retrieve_key_reply,
     "archive-key-start-reply"       : _handle_archive_reply,
     "archive-key-next-reply"        : _handle_archive_reply,
     "archive-key-final-reply"       : _handle_archive_reply,

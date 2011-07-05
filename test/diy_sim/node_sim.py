@@ -13,14 +13,14 @@ class SimError(Exception):
 
 from unit_tests.util import start_data_writer, \
         start_data_reader, \
+        start_data_writer, \
         start_space_accounting_server, \
-        start_anti_entropy_server, \
         start_handoff_server, \
         poll_process, \
         terminate_process
 
 def _generate_node_name(node_index):
-    return "node-sim-%02d" % (node_index, )
+    return "multi-node-%02d" % (node_index+1, )
 
 _node_count = 10
 _data_writer_base_port = 8100
@@ -48,8 +48,6 @@ _data_reader_pipeline_addresses = [
 ]
 _space_accounting_server_address = "tcp://127.0.0.1:8500"
 _space_accounting_pipeline_address = "tcp://127.0.0.1:8550"
-_anti_entropy_server_address = "tcp://127.0.0.1:8600"
-_anti_entropy_server_pipeline_address = "tcp://127.0.0.1:8650"
 _handoff_server_addresses = [
     "ipc:///tmp/spideroak-diyapi-handoff_server-%s/socket" % (
         _generate_node_name( i ),
@@ -84,6 +82,12 @@ class NodeSim(object):
     def start(self):
         self._log.debug("start")
 
+        self._processes["data_reader"] = start_data_reader(
+            self._node_name, 
+            _data_reader_addresses[self._node_index],
+            _data_reader_pipeline_addresses[self._node_index],
+            self._home_dir
+        )
         self._processes["data_writer"] = start_data_writer(
             self._node_name,
             _data_writer_addresses[self._node_index],
@@ -91,9 +95,8 @@ class NodeSim(object):
             self._home_dir
         )
         self._processes["handoff_server"] = start_handoff_server(
-            _node_names,
             self._node_name,
-            _handoff_server_addresses[self._node_index],
+            _handoff_server_addresses,
             _handoff_server_pipeline_addresses[self._node_index],
             _data_reader_addresses,
             _data_writer_addresses,
@@ -107,14 +110,6 @@ class NodeSim(object):
                     _space_accounting_server_address,
                     _space_accounting_pipeline_address
                 )
-
-        if self._anti_entropy:
-            self._processes["anti_entropy"] = start_anti_entropy_server(
-                _node_names,
-                self._node_name,
-                _anti_entropy_server_address,
-                _anti_entropy_server_pipeline_address,
-            )
 
     def stop(self):
         self._log.debug("stop")

@@ -10,7 +10,6 @@ import logging
 import gevent
 
 from diyapi_web_server.exceptions import (
-    DataWriterDownError,
     ArchiveFailedError,
     DestroyFailedError,
 )
@@ -28,29 +27,30 @@ class DataWriter(object):
     def archive_key_entire(
         self,
         avatar_id,
-        timestamp,
         key,
-        version_number,
-        segment_number,
-        total_size,
+        timestamp,
+        segment_num,
+        file_size,
         file_adler32,
         file_md5,
-        segment_adler32,
-        segment_md5,
-        segment
+        file_user_id,
+        file_group_id,
+        file_permissions,
+        segment,
     ):
         message = {
             "message-type"      : "archive-key-entire",
             "avatar-id"         : avatar_id,
-            "timestamp"         : timestamp,
             "key"               : key, 
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "total-size"        : total_size,
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
+            "file-size"         : file_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : b64encode(file_md5),
-            "segment-adler32"   : segment_adler32,
-            "segment-md5"       : b64encode(segment_md5),
+            "file-hash"         : b64encode(file_md5),
+            "file-user-id"      : file_user_id,
+            "file-group-id"     : file_group_id,
+            "file-permissions"  : file_permissions,
+            "handoff-node-name" : None,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -58,34 +58,30 @@ class DataWriter(object):
         self._log.debug(
             '%(message-type)s: '
             'key = %(key)r '
-            'segment_number = %(segment-number)d' % message
+            'timestamp = %(timestamp)r '
+            'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
-        self._log.debug('previous_size = %(previous-size)r' % reply)
-        return reply["previous-size"]
 
     def archive_key_start(
         self,
         avatar_id,
-        timestamp,
-        sequence_number,
         key,
-        version_number,
-        segment_number,
+        timestamp,
+        segment_num,
+        sequence_num,
         segment
     ):
         message = {
             "message-type"      : "archive-key-start",
             "avatar-id"         : avatar_id,
-            "timestamp"         : timestamp,
-            "sequence"          : sequence_number,
             "key"               : key, 
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "segment-size"      : len(segment)
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
+            "sequence-num"      : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -93,7 +89,7 @@ class DataWriter(object):
         self._log.debug(
             '%(message-type)s: '
             'key = %(key)r '
-            'segment_number = %(segment-number)d' % message
+            'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
@@ -104,25 +100,25 @@ class DataWriter(object):
         self,
         avatar_id,
         key,
-        version_number,
-        segment_number,
-        sequence_number,
+        timestamp,
+        segment_num,
+        sequence_num,
         segment
     ):
         message = {
             "message-type"      : "archive-key-next",
             "avatar-id"         : avatar_id,
             "key"               : key,
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "sequence"          : sequence_number,
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
+            "sequence-num"      : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
         self._log.debug(
             '%(message-type)s: %(avatar-id)s $(key)s '
-            'sequence = %(sequence)s' % message
+            'sequence = %(sequence-num)s' % message
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
@@ -133,28 +129,31 @@ class DataWriter(object):
         self,
         avatar_id,
         key,
-        version_number,
-        segment_number,
-        sequence_number,
+        timestamp,
+        segment_num,
+        sequence_num,
         file_size,
         file_adler32,
         file_md5,
-        segment_adler32,
-        segment_md5,
-        segment
+        file_user_id,
+        file_group_id,
+        file_permissions,
+        segment,
     ):
         message = {
             "message-type"      : "archive-key-final",
             "avatar-id"         : avatar_id,
             "key"               : key,
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "sequence"          : sequence_number,
-            "total-size"        : file_size,
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
+            "sequence-num"      : sequence_num,
+            "file-size"         : file_size,
             "file-adler32"      : file_adler32,
-            "file-md5"          : b64encode(file_md5),
-            "segment-adler32"   : segment_adler32,
-            "segment-md5"       : b64encode(segment_md5),
+            "file-hash"         : b64encode(file_md5),
+            "file-user-id"      : file_user_id,
+            "file-group-id"     : file_group_id,
+            "file-permissions"  : file_permissions,
+            "handoff-node-name" : None,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -165,24 +164,19 @@ class DataWriter(object):
             self._log.error("failed: %s" % (reply, ))
             raise ArchiveFailedError(reply["error-message"])
 
-        self._log.debug('previous_size = %(previous-size)r' % reply)
-        return reply["previous-size"]
-
     def destroy_key(
         self,
         avatar_id,
-        timestamp,
         key,
-        version_number,
-        segment_number
+        timestamp,
+        segment_num
     ):
         message = {
             "message-type"      : "destroy-key",
             "avatar-id"         : avatar_id,
-            "timestamp"         : timestamp,
             "key"               : key,
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
@@ -190,7 +184,7 @@ class DataWriter(object):
         self._log.debug(
             '%(message-type)s: '
             'key = %(key)r '
-            'segment_number = %(segment-number)d' % message
+            'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":

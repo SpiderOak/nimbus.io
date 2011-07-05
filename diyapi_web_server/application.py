@@ -19,6 +19,8 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
+from diyapi_tools.data_definitions import create_timestamp
+
 from diyapi_web_server import util
 from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
@@ -69,7 +71,7 @@ class router(list):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
-def _create_data_writers(clients, handoff_client):
+def _create_data_writers(clients):
     data_writers_dict = dict()
 
     connected_clients_by_node = list()
@@ -97,8 +99,7 @@ def _create_data_writers(clients, handoff_client):
         assert backup_clients[0] != backup_clients[1]
         data_writer_handoff_client = DataWriterHandoffClient(
             client.server_node_name,
-            backup_clients,
-            handoff_client
+            backup_clients
         )
         assert node_name not in data_writers_dict, data_writers_dict
         data_writers_dict[node_name] = DataWriter(
@@ -114,17 +115,13 @@ class Application(object):
     def __init__(
         self, 
         data_writer_clients, 
-        handoff_client,
         data_readers,
-        database_clients, 
         authenticator, 
         accounting_client
     ):
         self._log = logging.getLogger("Application")
         self._data_writer_clients = data_writer_clients
-        self._handoff_client = handoff_client
         self.data_readers = data_readers
-        self.database_clients = database_clients
         self.authenticator = authenticator
         self.accounting_client = accounting_client
 
@@ -196,7 +193,7 @@ class Application(object):
             req.remote_user,
             path
         ))
-        connected_database_clients = _connected_clients(self.database_clients)
+        connected_database_clients = None
 
         if len(connected_database_clients) < MIN_CONNECTED_CLIENTS:
             raise exc.HTTPServiceUnavailable("Too few connected clients %s" % (
@@ -222,7 +219,7 @@ class Application(object):
         self._log.debug("listmatch: avatar_id = %s prefix = '%s'" % (
             req.remote_user, prefix
         ))
-        connected_database_clients = _connected_clients(self.database_clients)
+        connected_database_clients = None
 
         if len(connected_database_clients) < MIN_CONNECTED_CLIENTS:
             raise exc.HTTPServiceUnavailable("Too few connected clients %s" % (
@@ -249,12 +246,10 @@ class Application(object):
         self._log.debug("destroy: avatar_id = %s key = %s" % (
             req.remote_user, key,
         ))
-        data_writers = _create_data_writers(
-            self._data_writer_clients, self._handoff_client
-        )
+        data_writers = _create_data_writers(self._data_writer_clients)
 
         avatar_id = req.remote_user
-        timestamp = time.time()
+        timestamp = create_timestamp()
         destroyer = Destroyer(data_writers)
         try:
             size_deleted = destroyer.destroy(
@@ -281,7 +276,6 @@ class Application(object):
             ))
 
         avatar_id = req.remote_user
-        timestamp = time.time()
         segmenter = ZfecSegmenter(
             MIN_SEGMENTS,
             MAX_SEGMENTS)
@@ -309,7 +303,7 @@ class Application(object):
                 ))
             self.accounting_client.retrieved(
                 avatar_id,
-                timestamp,
+                time.time(),
                 sent
             )
         return Response(app_iter=app_iter())
@@ -327,12 +321,9 @@ class Application(object):
                 "cannot archive: content_length = %s" % (req.content_length, )
             ) 
 
-        data_writers = _create_data_writers(
-            self._data_writer_clients, self._handoff_client
-        )
-
+        data_writers = _create_data_writers(self._data_writer_clients) 
         avatar_id = req.remote_user
-        timestamp = time.time()
+        timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
             avatar_id,
@@ -346,7 +337,10 @@ class Application(object):
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
-        previous_size = 0
+        # TODO: get these file attributs from somewhere
+        file_user_id = None
+        file_group_id = None
+        file_permissions = None
         segments = None
         try:
             for slice_item in DataSlicer(req.body_file,
@@ -364,24 +358,21 @@ class Application(object):
                 segments = segmenter.encode(slice_item)
             if not segments:
                 segments = segmenter.encode('')
-            previous_size = archiver.archive_final(
+            archiver.archive_final(
                 file_size,
                 file_adler32,
                 file_md5.digest(),
+                file_user_id,
+                file_group_id,
+                file_permissions,
                 segments,
                 REPLY_TIMEOUT
             )
         except (ArchiveFailedError), e:
             raise exc.HTTPInternalServerError(str(e))
-        if previous_size is not None:
-            self.accounting_client.removed(
-                avatar_id,
-                timestamp,
-                previous_size
-            )
         self.accounting_client.added(
             avatar_id,
-            timestamp,
+            time.time(),
             file_size
         )
         return Response('OK')

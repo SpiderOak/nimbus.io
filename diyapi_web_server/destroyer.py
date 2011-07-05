@@ -36,11 +36,11 @@ class Destroyer(object):
             return
         self._done.append(task)
 
-    def _spawn(self, segment_number, data_writer, run, *args):
+    def _spawn(self, segment_num, data_writer, run, *args):
         method_name = run.__name__
         task = self._pending.spawn(run, *args)
         task.rawlink(self._done_link)
-        task.segment_number = segment_number
+        task.segment_num = segment_num
         task.data_writer = data_writer
         task.method_name = method_name
         return task
@@ -49,16 +49,15 @@ class Destroyer(object):
         if self._pending:
             raise AlreadyInProgress()
         for i, data_writer in enumerate(self.data_writers):
-            segment_number = i + 1
+            segment_num = i + 1
             self._spawn(
-                segment_number,
+                segment_num,
                 data_writer,
                 data_writer.destroy_key,
                 avatar_id,
-                timestamp,
                 key,
-                0, # version_number
-                segment_number
+                timestamp,
+                segment_num
             )
         self._join(timeout)
         result = min([task.value for task in self._done])

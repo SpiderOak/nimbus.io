@@ -27,7 +27,6 @@ from diyapi_tools.greenlet_push_client import GreenletPUSHClient
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.data_reader import DataReader
-from diyapi_web_server.database_client import DatabaseClient
 from diyapi_web_server.space_accounting_client import SpaceAccountingClient
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
 
@@ -48,10 +47,6 @@ DATA_READER_ADDRESSES = \
     os.environ["DIYAPI_DATA_READER_ADDRESSES"].split()
 DATA_WRITER_ADDRESSES = \
     os.environ["DIYAPI_DATA_WRITER_ADDRESSES"].split()
-DATABASE_SERVER_ADDRESSES = \
-    os.environ["DIYAPI_DATABASE_SERVER_ADDRESSES"].split()
-HANDOFF_SERVER_ADDRESS = \
-    os.environ["DIYAPI_HANDOFF_SERVER_ADDRESS"]
 SPACE_ACCOUNTING_SERVER_ADDRESS = \
     os.environ["DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS"]
 SPACE_ACCOUNTING_PIPELINE_ADDRESS = \
@@ -111,32 +106,6 @@ class WebServer(object):
             )
             self._data_readers.append(data_reader)
 
-        self._database_clients = list()
-        for node_name, address in zip(NODE_NAMES, DATABASE_SERVER_ADDRESSES):
-            resilient_client = GreenletResilientClient(
-                self._zeromq_context, 
-                self._pollster,
-                node_name,
-                address,
-                CLIENT_TAG,
-                WEB_SERVER_PIPELINE_ADDRESS,
-                self._deliverator
-            )
-            database_client = DatabaseClient(
-                node_name, resilient_client
-            )
-            self._database_clients.append(database_client)
-
-        self._handoff_client = GreenletResilientClient(
-            self._zeromq_context, 
-            self._pollster,
-            node_name,
-            HANDOFF_SERVER_ADDRESS,
-            CLIENT_TAG,
-            WEB_SERVER_PIPELINE_ADDRESS,
-            self._deliverator
-        )
-
         xreq_client = GreenletXREQClient(
             self._zeromq_context, 
             LOCAL_NODE_NAME, 
@@ -158,9 +127,7 @@ class WebServer(object):
 
         self.application = Application(
             self._data_writer_clients,
-            self._handoff_client,
             self._data_readers,
-            self._database_clients,
             authenticator,
             self._accounting_client
         )
@@ -180,8 +147,6 @@ class WebServer(object):
             client.close()
         for data_reader in self._data_readers:
             data_reader.close()
-        for database_client in self._database_clients:
-            database_client.close()
         self._pull_server.close()
         self._pollster.kill()
         self._pollster.join(timeout=3.0)

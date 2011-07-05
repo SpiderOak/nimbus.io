@@ -7,7 +7,7 @@ wrap access to the diyapi_space_accounting_table
 import logging
 
 from diyapi_tools.pandora_database_connection import \
-        get_pandora_database_connection
+        get_database_connection
 
 class SpaceAccountingDatabaseError(Exception):
     pass
@@ -37,7 +37,7 @@ class SpaceAccountingDatabase(object):
     """wrap access to the diyapi_space_accounting_table"""
     def __init__(self, transaction=True):
         self._log = logging.getLogger("SpaceAccountingDatabase")
-        self._connection = get_pandora_database_connection()
+        self._connection = get_database_connection()
         if transaction:
             self._connection.execute("BEGIN;")
 

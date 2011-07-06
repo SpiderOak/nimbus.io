@@ -24,6 +24,7 @@ from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
 from diyapi_tools.greenlet_pull_server import GreenletPULLServer
 from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.greenlet_push_client import GreenletPUSHClient
+from diyapi_tools.pandora_database_connection import get_node_local_connection
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.data_reader import DataReader
@@ -63,6 +64,8 @@ class WebServer(object):
             host=DB_HOST
         )
         authenticator = SqlAuthenticator(db_connection)
+
+        self._node_local_connection = get_node_local_connection()
 
         self._deliverator = Deliverator()
 
@@ -126,6 +129,7 @@ class WebServer(object):
         )
 
         self.application = Application(
+            self._node_local_connection,
             self._data_writer_clients,
             self._data_readers,
             authenticator,
@@ -151,7 +155,7 @@ class WebServer(object):
         self._pollster.kill()
         self._pollster.join(timeout=3.0)
         self._zeromq_context.term()
-
+        self._node_local_connection.close()
     def serve_forever(self):
         self.start()
         self._stopped_event.wait()

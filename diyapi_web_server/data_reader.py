@@ -22,82 +22,49 @@ class DataReader(object):
         self,
         avatar_id,
         key,
-        version_number,
-        segment_number
+        timestamp,
+        segment_num
     ):
         message = {
             "message-type"      : "retrieve-key-start",
             "avatar-id"         : avatar_id,
             "key"               : key,
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
         self._log.debug(
             '%(message-type)s: %(avatar-id)s '
             'key = %(key)r '
-            'segment_number = %(segment-number)d' % message
+            'segment_num = %(segment-num)d' % message
             )
         reply, data = delivery_channel.get()
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
             raise RetrieveFailedError(reply["error-message"])
-        return reply["segment-count"], data
+        return data, reply["completed"]
 
     def retrieve_key_next(
         self,
         avatar_id,
         key,
-        version_number,
-        segment_number,
-        sequence_number
+        timestamp,
+        segment_num
     ):
         message = {
             "message-type"      : "retrieve-key-next",
             "avatar-id"         : avatar_id,
             "key"               : key,
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "sequence"          : sequence_number,
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
-        self._log.debug(
-            '%(message-type)s: %(avatar-id)s %(key)s '
-            'sequence_number = %(sequence)d' % message
-            )
+        self._log.debug('%(message-type)s: %(avatar-id)s %(key)s' % message)
         reply, data = delivery_channel.get()
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
             raise RetrieveFailedError(reply["error-message"])
-        return data
-
-    def retrieve_key_final(
-        self,
-        avatar_id,
-        key,
-        version_number,
-        segment_number,
-        sequence_number
-    ):
-        message = {
-            "message-type"      : "retrieve-key-final",
-            "avatar-id"         : avatar_id,
-            "key"               : key,
-            "version-number"    : version_number,
-            "segment-number"    : segment_number,
-            "sequence"          : sequence_number,
-        }
-        delivery_channel = \
-                self._resilient_client.queue_message_for_send(message)
-        self._log.debug(
-            '%(message-type)s: %(avatar-id)s %(key)s '
-            'sequence_number = %(sequence)d' % message
-            )
-        reply, data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise RetrieveFailedError(reply["error-message"])
-        return data
+        return data, reply["completed"]
 

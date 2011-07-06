@@ -13,21 +13,27 @@ from diyapi_web_server.exceptions import (
     AlreadyInProgress,
     RetrieveFailedError,
 )
+from diyapi_web_server.database_util import most_recent_timestamp_for_key
 
 
 class Retriever(object):
     """Retrieves data from data readers."""
-    def __init__(self, data_readers, avatar_id, key, segments_needed):
+    def __init__(
+        self, 
+        node_local_connection,
+        data_readers, 
+        avatar_id, 
+        key, 
+        segments_needed
+    ):
         self.log = logging.getLogger(
             'Retriever(avatar_id=%d, key=%r)' % (
                 avatar_id, key))
+        self._node_local_connection = node_local_connection
         self.data_readers = data_readers
         self.avatar_id = avatar_id
         self.key = key
-        self.version_number = 0
         self.segments_needed = segments_needed
-        self.sequence_number = 0
-        self.n_slices = None
         self._pending = gevent.pool.Group()
         self._done = []
 
@@ -58,8 +64,24 @@ class Retriever(object):
         return task
 
     def retrieve(self, timeout=None):
-        if self._pending or self.n_slices is not None:
+        if self._pending:
             raise AlreadyInProgress()
+
+        # TODO: find a non-blocking way to do this
+        file_info = most_recent_timestamp_for_key(
+            self._node_local_connection , self.avatar_id, self.key
+        )
+
+        if file_info is None:
+            raise RetrieveFailedError("key not found %s %s" % (
+                self.avatar_id, self.key,
+            ))
+
+        if file_info.file_tombstone:
+            raise RetrieveFailedError("key is deleted %s %s" % (
+                self.avatar_id, self.key,
+            ))
+
         for i, data_reader in enumerate(self.data_readers):
             segment_number = i + 1
             self._spawn(
@@ -68,17 +90,29 @@ class Retriever(object):
                 data_reader.retrieve_key_start,
                 self.avatar_id,
                 self.key,
-                self.version_number,
+                file_info.timestamp,
                 segment_number
             )
-        self._join(timeout)        
-        self.n_slices = self._done[0].value[0] # segment_count
-        yield dict((task.segment_number, task.value[1])
-                   for task in self._done[:self.segments_needed])
-        self._done = []
-        self.sequence_number += 1
+        self._join(timeout)  
 
-        while self.sequence_number < self.n_slices - 1:
+        # we expect retrieve_key_start to return the tuple
+        # (<data-segment>, <completion-status>, )
+        # where completion-status is a boolean
+
+        yield dict((task.segment_number, task.value[0])
+                   for task in self._done[:self.segments_needed])
+        completed_list = \
+            [task.value[1] for task in self._done[:self.segments_needed]]
+        completed = all(completed_list)
+        if completed:
+            return
+        if any(completed_list):
+            raise RetrieveFailedError("inconsistent completed status %s" % (
+                completed_list,
+            ))
+            
+        while True:
+            self._done = []
             for i, data_reader in enumerate(self.data_readers):
                 segment_number = i + 1
                 self._spawn(
@@ -87,33 +121,26 @@ class Retriever(object):
                     data_reader.retrieve_key_next,
                     self.avatar_id,
                     self.key,
-                    self.version_number,
-                    segment_number,
-                    self.sequence_number
+                    file_info.timestamp,
+                    segment_number
                 )
             self._join(timeout)
-            yield dict((task.segment_number, task.value)
+
+            # we expect retrieve_key_next to return the tuple
+            # (<data-segment>, <completion-status>, )
+            # where completion-status is a boolean
+
+            yield dict((task.segment_number, task.value[0])
                        for task in self._done[:self.segments_needed])
-            self._done = []
-            self.sequence_number += 1
-
-        if self.sequence_number >= self.n_slices:
-            return
-
-        for i, data_reader in enumerate(self.data_readers):
-            segment_number = i + 1
-            self._spawn(
-                segment_number,
-                data_reader,
-                data_reader.retrieve_key_final,
-                self.avatar_id,
-                self.key,
-                self.version_number,
-                segment_number,
-                self.sequence_number
-            )
-        self._join(timeout)
-        yield dict((task.segment_number, task.value)
-                   for task in self._done[:self.segments_needed])
-        self._done = []
+            completed_list = \
+                [task.value[1] for task in self._done[:self.segments_needed]]
+            completed = all(completed_list)
+            if completed:
+                return
+            if any(completed_list):
+                raise RetrieveFailedError(
+                    "inconsistent completed status %s" % (
+                        completed_list,
+                    )
+                )
 

@@ -114,6 +114,7 @@ def _create_data_writers(clients):
 class Application(object):
     def __init__(
         self, 
+        node_local_connection,
         data_writer_clients, 
         data_readers,
         authenticator, 
@@ -121,6 +122,7 @@ class Application(object):
     ):
         self._log = logging.getLogger("Application")
         self._data_writer_clients = data_writer_clients
+        self._node_local_connection = node_local_connection
         self.data_readers = data_readers
         self.authenticator = authenticator
         self.accounting_client = accounting_client
@@ -280,6 +282,7 @@ class Application(object):
             MIN_SEGMENTS,
             MAX_SEGMENTS)
         retriever = Retriever(
+            self._node_local_connection,
             self.data_readers,
             avatar_id,
             key,

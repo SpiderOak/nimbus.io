@@ -117,7 +117,16 @@ def _handle_retrieve_key_start(state, message, _data):
         return
 
     log.debug("found %s sequence rows" % (sequence_row_count, ))
-    data_content = sequence_generator.next()
+
+    try:
+        data_content = sequence_generator.next()
+    except Exception, instance:
+        log.exception("retrieving")
+        reply["result"] = "exception"
+        reply["error-message"] = str(instance)
+        state["resilient-server"].send_reply(reply)
+        return
+
     Statgrabber.accumulate('diy_read_requests', 1)
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 
@@ -174,7 +183,15 @@ def _handle_retrieve_key_next(state, message, _data):
         return
 
 
-    data_content = state_entry.generator.next()
+    try:
+        data_content = state_entry.generator.next()
+    except Exception, instance:
+        log.exception("retrieving")
+        reply["result"] = "exception"
+        reply["error-message"] = str(instance)
+        state["resilient-server"].send_reply(reply)
+        return
+
     Statgrabber.accumulate('diy_read_requests', 1)
     Statgrabber.accumulate('diy_read_bytes', len(data_content))
 

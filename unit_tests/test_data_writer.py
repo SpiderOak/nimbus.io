@@ -29,10 +29,6 @@ _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "multi-node-01"
 _data_writer_address = "tcp://127.0.0.1:8100"
-_data_writer_pipeline_address = \
-    "ipc:///tmp/spideroak-diyapi-data-writer-pipeline-%s/socket" % (
-        _local_node_name,
-    )
 _client_address = "tcp://127.0.0.1:8900"
 
 class TestDataWriter(unittest.TestCase):
@@ -46,7 +42,6 @@ class TestDataWriter(unittest.TestCase):
         self._data_writer_process = start_data_writer(
             _local_node_name, 
             _data_writer_address, 
-            _data_writer_pipeline_address,
             _repository_path
         )
         poll_result = poll_process(self._data_writer_process)

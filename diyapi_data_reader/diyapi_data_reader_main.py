@@ -19,7 +19,6 @@ import Statgrabber
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.resilient_server import ResilientServer
-from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
@@ -35,12 +34,6 @@ _log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
 _data_reader_address = os.environ.get(
     "DIYAPI_DATA_READER_ADDRESS",
     "tcp://127.0.0.1:8200"
-)
-_data_reader_pipeline_address = os.environ.get(
-    "DIYAPI_DATA_READER_PIPELINE_ADDRESS",
-    "ipc:///tmp/spideroak-diyapi-data-reader-pipeline-%s/socket" % (
-        _local_node_name,
-    )
 )
 _retrieve_timeout = 30 * 60.0
 _repository_path = os.environ.get(
@@ -219,7 +212,6 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
-        "pull-server"           : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
@@ -239,14 +231,6 @@ def _setup(_halt_event, state):
     )
     state["resilient-server"].register(state["pollster"])
 
-    log.info("binding pull-server to %s" % (_data_reader_pipeline_address, ))
-    state["pull-server"] = PULLServer(
-        state["zmq-context"],
-        _data_reader_pipeline_address,
-        state["receive-queue"]
-    )
-    state["pull-server"].register(state["pollster"])
-    
     state["queue-dispatcher"] = DequeDispatcher(
         state,
         state["receive-queue"],
@@ -273,9 +257,6 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
-
-    log.debug("stopping pull server")
-    state["pull-server"].close()
 
     state["zmq-context"].term()
 

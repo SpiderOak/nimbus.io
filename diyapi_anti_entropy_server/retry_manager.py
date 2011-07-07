@@ -41,14 +41,3 @@ class RetryManager(object):
 
         return [(self.run, self.next_run(), )]
 
-
-    def _send_timeout_message(self, request_id, request_state):
-        reply = {
-            "message-type"  : request_state.timeout_message,
-            "xrep-ident"    : request_state.xrep_ident,
-            "request-id"    : request_id,
-            "result"        : "timed-out",
-            "error-message" : "timed out waiting for message reply",
-        }
-        self._state["xrep-server"].queue_message_for_send(reply)
-

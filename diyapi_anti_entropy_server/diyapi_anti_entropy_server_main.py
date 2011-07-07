@@ -31,21 +31,24 @@ Any other situation would indicate a data integrity error
 that should be resolved.
 """
 from collections import deque, namedtuple
+import hashlib
 import logging
 import os
+import random
 import sys
 import time
-import uuid
 
 import zmq
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.xrep_server import XREPServer
+from diyapi_tools.resilient_server import ResilientServer
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.data_definitions import create_timestamp
+from diyapi_tools.data_definitions import create_timestamp, \
+        parse_timestamp_repr
+from diyapi_tools.pandora_database_connection import get_node_local_connection
 
 from diyapi_anti_entropy_server.common import max_retry_count, \
         retry_entry_tuple, \
@@ -67,12 +70,8 @@ _log_path = u"/var/log/pandora/diyapi_anti_entropy_server_%s.log" % (
     _local_node_name,
 )
 _client_tag = "anti-entropy-server-%s" % (_local_node_name, )
-_database_server_addresses = \
-    os.environ["DIYAPI_DATABASE_SERVER_ADDRESSES"].split()
-_anti_entropy_server_address = os.environ.get(
-    "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESS",
-    "tcp://127.0.0.1:8600"
-)
+_anti_entropy_server_addresses = \
+    os.environ["DIYAPI_ANTI_ENTROPY_SERVER_ADDRESSES"].split()
 _anti_entropy_server_pipeline_address = os.environ.get(
     "DIYAPI_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS",
     "tcp://127.0.0.1:8650"
@@ -81,10 +80,9 @@ _request_timeout = 5.0 * 60.0
 _error_hash = "*** error ***"
 
 _request_state_tuple = namedtuple("RequestState", [ 
-    "xrep_ident",
+    "client_tag",
     "timestamp",
     "timeout",
-    "avatar_id",
     "retry_count",
     "replies",
     "row_id",
@@ -94,8 +92,8 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
     log = logging.getLogger("_start_consistency_check")
     log.info("start consistency check on %s" % (avatar_id, ))
 
-    request_id = uuid.uuid1().hex
     timestamp = create_timestamp()
+    state_key = (avatar_id, timestamp, )
 
     database = AuditResultDatabase()
     if row_id is None:
@@ -104,11 +102,10 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
         database.restart_audit(row_id, timestamp)
     database.close()
 
-    state["active-requests"][request_id] = _request_state_tuple(
-        xrep_ident=None,
+    state["active-requests"][state_key] = _request_state_tuple(
+        client_tag=None,
         timestamp=timestamp,
         timeout=time.time()+_request_timeout,
-        avatar_id=avatar_id,
         retry_count=retry_count,
         replies=dict(), 
         row_id=row_id
@@ -116,12 +113,11 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
 
     request = {
         "message-type"  : "consistency-check",
-        "request-id"    : request_id,
         "avatar-id"     : avatar_id,
         "timestamp-repr": repr(timestamp),
     }
-    for database_client in state["database-clients"]:
-        database_client.queue_message_for_send(request)
+    for anti_entropy_client in state["anti-entropy-clients"]:
+        anti_entropy_client.queue_message_for_send(request)
 
 def _handle_anti_entropy_audit_request(state, message, _data):
     """handle a requst to audit a specific avatar, not some random one"""
@@ -129,16 +125,16 @@ def _handle_anti_entropy_audit_request(state, message, _data):
     log.info("request for audit on %s" % (message["avatar-id"], )) 
 
     timestamp = create_timestamp()
+    state_key = (message["avatar-id"], timestamp, )
 
     database = AuditResultDatabase()
     row_id = database.start_audit(message["avatar-id"], timestamp)
     database.close()
 
-    state["active-requests"][message["request-id"]] = _request_state_tuple(
-        xrep_ident=message["xrep-ident"],
+    state["active-requests"][state_key] = _request_state_tuple(
+        client_tag=message["client-tag"],
         timestamp=timestamp,
         timeout=time.time()+_request_timeout,
-        avatar_id=message["avatar-id"],
         retry_count=max_retry_count,
         replies=dict(), 
         row_id=row_id
@@ -146,12 +142,11 @@ def _handle_anti_entropy_audit_request(state, message, _data):
 
     request = {
         "message-type"  : "consistency-check",
-        "request-id"    : message["request-id"],
         "avatar-id"     : message["avatar-id"],
         "timestamp-repr": repr(timestamp),
     }
-    for database_client in state["database-clients"]:
-        database_client.queue_message_for_send(request)
+    for anti_entropy_client in state["anti-entropy-clients"]:
+        anti_entropy_client.queue_message_for_send(request)
 
 def _handle_database_avatar_list_reply(state, message, _data):
     log = logging.getLogger("_handle_database_avatar_list_reply")
@@ -159,78 +154,120 @@ def _handle_database_avatar_list_reply(state, message, _data):
     state["avatar-ids"] = set(message["avatar-id-list"])
     log.info("found %s avatar ids" % (len(state["avatar-ids"]), ))
 
-def _handle_database_consistency_check_reply(state, message, _data):
-    log = logging.getLogger("_handle_database_consistency_check_reply")
+def _handle_consistency_check(state, message, _data):
+    log = logging.getLogger("_handle_consistency_check")
 
-    request_id = message["request-id"]
+    data_generator = state["local-database-connection"].generate_all_rows(
+        """
+        select key, timestamp, file_hash 
+        from diy.segment where avatar_id = %s
+        order by key
+        """.strip(),
+        [message["avatar-id"], ]
+    )
+
+    reply = {
+        "message-type"      : "consistency-check-reply",
+        "client-tag"        : message["client-tag"],
+        "node-name"         : _local_node_name,
+        "avatar-id"         : message["avatar-id"],
+        "timestamp-repr"    : message["timestamp-repr"],
+        "result"            : None,
+        "error-message"     : None
+    }
+
+    count = 0
+    md5 = hashlib.md5()
+    prev_key = None
+    for key, timestamp, file_hash in data_generator:
+        count += 1
+        if key != prev_key:
+            md5.update(key)
+            prev_key = key
+        md5.update(repr(timestamp))
+        md5.update(str(file_hash))
+
+    log.info("found %s rows for avatar %s %s" % (
+        count, message["avatar-id"], message["timestamp-repr"],
+    ))
+
+    if count == 0:
+        reply["result"] = "no-data"
+        reply["error-message"] = "no data for avatar"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    reply["result"] = "success"
+    state["resilient-server"].send_reply(reply, str(md5.digest()))
+
+def _handle_consistency_check_reply(state, message, data):
+    log = logging.getLogger("_handle_consistency_check_reply")
+    
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+    state_key = (message["avatar-id"], timestamp, )
 
     try:
-        request_state = state["active-requests"][request_id]
+        request_state = state["active-requests"][state_key]
     except KeyError:
-        log.warn("Unknown request_id %s from %s" % (
-            message["request-id"], message["node-name"]
+        log.warn("Unknown state_key %s from %s" % (
+            state_key, message["node-name"]
         ))
         return
 
+    if message["node-name"] in request_state.replies:
+        error_message = "duplicate reply from %s %s" % (
+            message["node-name"],
+            state_key, 
+        )
+        log.error(error_message)
+        return
+
     if message["result"] != "success":
-        log.error("%s (%s) %s from %s %s" % (
-            request_state.avatar_id, 
+        log.error("%s (%s) %s from %s" % (
+            state_key, 
             message["result"],
             message["error-message"],
             message["node-name"],
-            message["request-id"]
         ))
         hash_value = _error_hash
     else:
-        hash_value = message["md5-digest"]
+        hash_value = data
 
+    request_state.replies[message["node-name"]] = hash_value
+
+    # not done yet, wait for more replies
+    if len(request_state.replies) < len(state["anti-entropy-clients"]):
+        return
+
+    # at this point we should have a reply from every node, so
+    # we don't want to preserve state anymore
+    del state["active-requests"][state_key]
+    database = AuditResultDatabase()
+    timestamp = create_timestamp()
+    
+    # push the results into a set to see how many unique entries there are
+    hash_list = list(set(request_state.replies.values()))
+    
     # if this audit was started by an anti-entropy-audit-request message,
     # we want to send a reply
-    if request_state.xrep_ident is not None:
+    if request_state.client_tag is not None:
         reply = {
             "message-type"  : "anti-entropy-audit-reply",
-            "xrep-ident"    : request_state.xrep_ident,
-            "request-id"    : request_id,
+            "client-tag"    : request_state.client_tag,
+            "avatar-id"     : message["avatar-id"],
             "result"        : None,
             "error-message" : None,
         }
     else:
         reply = None
         
-    if message["node-name"] in request_state.replies:
-        error_message = "duplicate reply from %s %s %s" % (
-            message["node-name"],
-            request_state.avatar_id, 
-            request_id
-        )
-        log.error(error_message)
-        if reply is not None:
-            reply["result"] = "error"
-            reply["error-message"] = error_message
-            state["xrep-server"].queue_message_for_send(reply)
-        return
-
-    request_state.replies[message["node-name"]] = hash_value
-
-    # not done yet, wait for more replies
-    if len(request_state.replies) < len(state["database-clients"]):
-        return
-
-    # at this point we should have a reply from every node, so
-    # we don't want to preserve state anymore
-    del state["active-requests"][request_id]
-    database = AuditResultDatabase()
-    timestamp = create_timestamp()
-    
-    hash_list = list(set(request_state.replies.values()))
-    
     # ok - all have the same hash
     if len(hash_list) == 1 and hash_list[0] != _error_hash:
-        log.info("avatar %s compares ok" % (request_state.avatar_id, ))
+        log.info("avatar %s compares ok" % (message["avatar-id"], ))
         database.successful_audit(request_state.row_id, timestamp)
         if reply is not None:
             reply["result"] = "success"
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
         return
 
     # we have error(s), but the non-errors compare ok
@@ -248,25 +285,25 @@ def _handle_database_consistency_check_reply(state, message, _data):
             log.error(error_message)
             reply["result"] = "error"
             reply["error-message"] = error_message
-            state["xrep-server"].queue_message_for_send(reply)
+            state["resilient-server"].send_reply(reply)
             return
         
         if request_state.retry_count >= max_retry_count:
             log.error("avatar %s %s errors, too many retries" % (
-                request_state.avatar_id, 
+                message["avatar-id"], 
                 error_count
             ))
             database.audit_error(request_state.row_id, timestamp)
             # TODO: needto do something here
         else:
             log.warn("avatar %s %s errors, will retry" % (
-                request_state.avatar_id, 
+                message["avatar-id"], 
                 error_count
             ))
             state["retry-list"].append(
                 retry_entry_tuple(
                     retry_time=retry_time(), 
-                    avatar_id=request_state.avatar_id,
+                    avatar_id=message["avatar-id"],
                     row_id=request_state.row_id,
                     retry_count=request_state.retry_count, 
                 )
@@ -277,7 +314,7 @@ def _handle_database_consistency_check_reply(state, message, _data):
 
     # if we make it here, we have some form of mismatch, possibly mixed with
     # errors
-    error_message = "avatar %s hash mismatch" % (request_state.avatar_id, )
+    error_message = "avatar %s hash mismatch" % (message["avatar-id"], )
     log.error(error_message)
     for node_name, value in request_state.replies.items():
         log.error("    node %s value %s" % (node_name, value, ))
@@ -288,18 +325,18 @@ def _handle_database_consistency_check_reply(state, message, _data):
         database.close()
         reply["result"] = "audit-error"
         reply["error-message"] = error_message
-        state["xrep-server"].queue_message_for_send(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     if request_state.retry_count >= max_retry_count:
-        log.error("%s too many retries" % (request_state.avatar_id, ))
+        log.error("%s too many retries" % (message["avatar-id"], ))
         database.audit_error(request_state.row_id, timestamp)
         # TODO: need to do something here
     else:
         state["retry-list"].append(
             retry_entry_tuple(
                 retry_time=retry_time(), 
-                avatar_id=request_state.avatar_id,
+                avatar_id=message["avatar-id"],
                 row_id=request_state.row_id,
                 retry_count=request_state.retry_count, 
             )
@@ -309,18 +346,19 @@ def _handle_database_consistency_check_reply(state, message, _data):
     database.close()
 
 _dispatch_table = {
-    "anti-entropy-audit-request" : _handle_anti_entropy_audit_request,
-    "avatar-list-reply"          : _handle_database_avatar_list_reply,
-    "consistency-check-reply"    :  _handle_database_consistency_check_reply,
+    "anti-entropy-audit-request"    :  _handle_anti_entropy_audit_request,
+    "consistency-check"             :  _handle_consistency_check,
+    "consistency-check-reply"       :  _handle_consistency_check_reply,
 }
 
 def _create_state():
     return {
+        "local-database-connection" : None,
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
-        "xrep-server"               : None,
+        "resilient-server"          : None,
         "pull-server"               : None,
-        "database-clients"          : None,
+        "anti-entropy-clients"      : None,
         "avatar-list-requestor"     : None,
         "consistency-check-starter" : None,
         "retry_manager"             : None,
@@ -334,14 +372,26 @@ def _create_state():
 
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
+    status_checkers = list()
 
-    log.info("binding xrep-server to %s" % (_anti_entropy_server_address, ))
-    state["xrep-server"] = XREPServer(
+    state["local-database-connection"] = get_node_local_connection()
+
+    local_anti_entropy_server_address = None
+    for node_name, address in zip(_node_names, _anti_entropy_server_addresses):
+        if node_name == _local_node_name:
+            local_anti_entropy_server_address = address
+            break
+    assert local_anti_entropy_server_address is not None
+
+    log.info("binding resilient-server to %s" % (
+        local_anti_entropy_server_address, 
+    ))
+    state["resilient-server"] = ResilientServer(
         state["zmq-context"],
-        _anti_entropy_server_address,
+        local_anti_entropy_server_address,
         state["receive-queue"]
     )
-    state["xrep-server"].register(state["pollster"])
+    state["resilient-server"].register(state["pollster"])
 
     log.info("binding pull-server to %s" % (
         _anti_entropy_server_pipeline_address, 
@@ -353,19 +403,22 @@ def _setup(_halt_event, state):
     )
     state["pull-server"].register(state["pollster"])
 
-    state["database-clients"] = list()
-    for node_name, database_server_address in zip(
-        _node_names, _database_server_addresses
+    state["anti-entropy-clients"] = list()
+    for node_name, anti_entropy_server_address in zip(
+        _node_names, _anti_entropy_server_addresses
     ):
         resilient_client = ResilientClient(
                 state["zmq-context"],
                 state["pollster"],
                 node_name,
-                database_server_address,
+                anti_entropy_server_address,
                 _client_tag,
                 _anti_entropy_server_pipeline_address
             )
-        state["database-clients"].append(resilient_client)
+        state["anti-entropy-clients"].append(resilient_client)
+        status_checkers.append(
+            (resilient_client.run, time.time() + random.random() * 60.0, )
+        )        
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -382,11 +435,10 @@ def _setup(_halt_event, state):
     )
     state["state-cleaner"] = StateCleaner(state)
 
-    # hand the pollster and the queue-dispatcher to the time-queue 
     # start the avatar list requestor right away
     # start the consistency check starter a little later, when
     # we presumably have some avatar ids
-    return [
+    timer_driven_callbacks = [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["avatar-list-requestor"].run, time.time(), ), 
@@ -394,19 +446,22 @@ def _setup(_halt_event, state):
         (state["retry-manager"].run, state["retry-manager"].next_run(), ), 
         (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
     ] 
+    timer_driven_callbacks.extend(status_checkers)
+    return timer_driven_callbacks
 
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
     log.debug("stopping xrep server")
-    state["xrep-server"].close()
+    state["resilient-server"].close()
 
-    log.debug("stopping database clients")
+    log.debug("stopping anti entropy clients")
     state["pull-server"].close()
-    for database_client in state["database-clients"]:
-        database_client.close()
+    for anti_entropy_client in state["anti-entropy-clients"]:
+        anti_entropy_client.close()
 
     state["zmq-context"].term()
+    state["local-database-connection"].close()
 
     log.debug("teardown complete")
 

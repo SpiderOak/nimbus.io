@@ -5,9 +5,9 @@ audit_result_database.py
 wrap access to the diyapi_audit_result_table 
 """
 import logging
+import os
 
-from diyapi_tools.pandora_database_connection import \
-        get_pandora_database_connection
+from diyapi_tools.pandora_database_connection import get_database_connection
 
 state_audit_started = "audit-started"
 state_audit_waiting_retry = "audit-waiting-retry"
@@ -16,6 +16,7 @@ state_audit_successful = "audit-successful"
 state_audit_error = "audit-error"
 
 _database_user = "diyapi_auditor"
+_database_password = os.environ['PANDORA_DB_PW_diyapi_auditor']
 
 _start_audit_command = """
 INSERT INTO diyapi_audit_result
@@ -57,7 +58,9 @@ class AuditResultDatabase(object):
     """wrap access to the diyapi_audit_result table"""
     def __init__(self):
         self._log = logging.getLogger("AuditResultDatabase")
-        self._connection = get_pandora_database_connection(_database_user)
+        self._connection = get_database_connection(
+            user=_database_user, password=_database_password
+        )
 
     def close(self):
         """commit the updates and close the database connection"""

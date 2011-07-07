@@ -23,12 +23,7 @@ class CommandInterpreter(cmd.Cmd):
             NodeSim(_temp_dir, i) for i in xrange(_node_count-1)
         ]
         self._node_sims.append(
-            NodeSim(
-                _temp_dir, 
-                _node_count-1, 
-                space_accounting=True,
-                anti_entropy=True
-            )
+            NodeSim(_temp_dir, _node_count-1, space_accounting=True)
         )
 
     def _get_node_from_line(self, line):

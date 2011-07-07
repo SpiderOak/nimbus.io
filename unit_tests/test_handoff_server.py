@@ -57,30 +57,16 @@ _data_writer_addresses = [
     "tcp://127.0.0.1:%s" % (_data_writer_base_port+i, ) \
     for i in range(_node_count)
 ]
-_data_writer_pipeline_addresses = [
-    "ipc:///tmp/spideroak-diyapi-data-writer-pipeline-%s/socket" % (
-        _generate_node_name( i ),
-    ) \
-    for i in range(_node_count)
-]
 _data_reader_addresses = [
     "tcp://127.0.0.1:%s" % (_data_reader_base_port+i, ) \
     for i in range(_node_count)
 ]
-_data_reader_pipeline_addresses = [
-    "ipc:///tmp/spideroak-diyapi-data-reader-pipeline-%s/socket" % (
-        _generate_node_name( i ),
-    ) \
-    for i in range(_node_count)
-]
 _handoff_server_addresses = [
-    "ipc:///tmp/spideroak-diyapi-handoff_server-%s/socket" % (
-        _generate_node_name( i ),
-    ) \
+    "tcp://127.0.0.1:%s" % (_handoff_server_base_port+i, ) \
     for i in range(_node_count)
 ]
 _handoff_server_pipeline_addresses = [
-    "tcp://127.0.0.1:%s" % (_handoff_server_base_port+i, ) \
+    "tcp://127.0.0.1:%s" % (_handoff_server_base_port+50+i, ) \
     for i in range(_node_count)
 ]
 _client_address = "tcp://127.0.0.1:8900"
@@ -113,7 +99,6 @@ class TestHandoffServer(unittest.TestCase):
             process = start_data_writer(
                 node_name, 
                 _data_writer_addresses[i],
-                _data_writer_pipeline_addresses[i],
                 repository_path
             )
             poll_result = poll_process(process)
@@ -124,7 +109,6 @@ class TestHandoffServer(unittest.TestCase):
             process = start_data_reader(
                 node_name, 
                 _data_reader_addresses[i],
-                _data_reader_pipeline_addresses[i],
                 repository_path
             )
             poll_result = poll_process(process)

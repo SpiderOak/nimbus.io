@@ -6,9 +6,7 @@ A time queue action to periodically request a list of avatars
 """
 import logging
 import os
-import random
 import time
-import uuid
 
 _avatar_polling_interval = float(os.environ.get(
     "DIYAPI_ANTI_ENTROPY_AVATAR_POLLING_INTERVAL", "86400.0") # 24 * 60 * 60
@@ -28,24 +26,22 @@ class AvatarListRequestor(object):
 
     def run(self, halt_event):
         """
-        request a list of avatar ids from a random database server.
-        We could track down the local server, but we're not going to do this
-        very often.
+        request a list of avatar ids from the local database
         """
         if halt_event.is_set():
             self._log.info("halt-event is set, exiting")
             return
+
+        avatar_id_generator = \
+                self._state["local-database-connection"].generate_all_rows(
+                    """select distinct avatar_id from diy.segment"""
+                )
+        for (avatar_id, ) in avatar_id_generator:
+            self._state["avatar-ids"].add(avatar_id)
+
+        self._log.info("%s known avatar ids" % (
+            len(self._state["avatar-ids"]), 
+        ))
                 
-        request_id = uuid.uuid1().hex
-
-        self._log.info("requesing list of avatar ids from %s" % (request_id, ))
-        request = {
-            "message-type"  : "avatar-list-request",
-            "request-id"    : request_id,
-        }
-
-        database_client = random.choice(self._state["database-clients"])
-        database_client.queue_message_for_send(request)
-
         return [(self.run, self.next_run(), )]
 

@@ -41,6 +41,23 @@ class PandoraDatabaseConnection(object):
         result = cursor.fetchall()
         cursor.close()
         return result
+
+    def generate_all_rows(self, query, *args):
+        """
+        run a query and return a generator 
+        which will get all rows, withpout havin them all
+        in memory
+        """
+        cursor = self._connection.cursor()
+        cursor.execute(query, *args)
+
+        result = cursor.fetchmany()
+        while len(result) > 0:
+            for row in result:
+                yield row
+            result = cursor.fetchmany()
+
+        cursor.close()
         
     def execute(self, query, *args):
         """run a statement and return the last row id inserted"""
@@ -60,13 +77,15 @@ class PandoraDatabaseConnection(object):
         """close the connection"""
         self._connection.close()
 
-def get_database_connection():
+def get_database_connection(user=None, password=None):
     database_name = "pandora"
-    database_user = "pandora_storage_server"
-    database_password = os.environ['PANDORA_DB_PW_pandora_storage_server']
+    database_user = (user if user is not None else "pandora_storage_server")
+    database_password = (password if password is not None else \
+                         os.environ['PANDORA_DB_PW_pandora_storage_server'])
+
     database_host = os.environ.get('PANDORA_DATABASE_HOST', 'localhost')
     database_port = int(os.environ.get('PANDORA_DATABASE_PORT', '5432'))
-    connection = DatabaseConnection(
+    connection = PandoraDatabaseConnection(
         database_name=database_name,
         database_user=database_user,
         database_password=database_password,

@@ -186,3 +186,23 @@ def start_handoff_server(
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
+def start_event_publisher(node_name, pull_address, pub_address):
+    log = logging.getLogger("start_event_publisher_%s" % (node_name, ))
+    server_dir = identify_program_dir(u"diyapi_event_publisher")
+    server_path = os.path.join(server_dir, "diyapi_event_publisher_main.py")
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                            : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME"             : node_name,
+        "DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS"   : pull_address,
+        "DIYAPI_EVENT_PUBLISHER_PUB_ADDRESS"    : pub_address,
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+

@@ -17,6 +17,7 @@ from unit_tests.util import start_data_writer, \
         start_space_accounting_server, \
         start_handoff_server, \
         start_anti_entropy_server, \
+        start_event_publisher, \
         poll_process, \
         terminate_process
 
@@ -30,6 +31,7 @@ _space_accounting_server_address = "tcp://127.0.0.1:8500"
 _space_accounting_pipeline_address = "tcp://127.0.0.1:8550"
 _anti_entropy_server_base_port = 8600
 _handoff_server_base_port = 8700
+_event_publisher_base_port = 8800
 _data_writer_addresses = [
     "tcp://127.0.0.1:%s" % (_data_writer_base_port+i, ) \
     for i in range(_node_count)
@@ -55,6 +57,14 @@ _handoff_server_pipeline_addresses = [
     for i in range(_node_count)
 ]
 _node_names = [_generate_node_name(i) for i in range(_node_count)]
+_event_publisher_pull_addresses = [
+    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (node_name, ) \
+    for node_name in _node_names
+]
+_event_publisher_pub_addresses = [
+    "tcp://127.0.0.1:%s" % (_event_publisher_base_port+i, ) \
+    for i in range(_node_count)
+]
 
 class NodeSim(object):
     """simulate one node in a cluster"""
@@ -76,6 +86,11 @@ class NodeSim(object):
     def start(self):
         self._log.debug("start")
 
+        self._processes["event_publisher"] = start_event_publisher(
+            self._node_name, 
+            _event_publisher_pull_addresses[self._node_index],
+            _event_publisher_pub_addresses[self._node_index]
+        )
         self._processes["data_reader"] = start_data_reader(
             self._node_name, 
             _data_reader_addresses[self._node_index],

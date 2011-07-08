@@ -72,6 +72,7 @@ def main(
     state,
     pre_loop_actions,
     post_loop_actions,
+    exception_action = None,
     halt_event = Event(),
 ):
     """main processing entry point"""
@@ -79,17 +80,20 @@ def main(
     log = logging.getLogger("main")
     log.info("start")
 
-    try:
-        _run_until_halt(
-            state,
-            pre_loop_actions,
-            post_loop_actions,
-            halt_event
-        )
-    except Exception, instance:
-        log.exception(instance)
-        print >> sys.stderr, instance.__class__.__name__, str(instance)
-        return 12
+    while not halt_event.is_set():
+        try:
+            _run_until_halt(
+                state,
+                pre_loop_actions,
+                post_loop_actions,
+                halt_event
+            )
+        except Exception, instance:
+            log.exception(instance)
+            print >> sys.stderr, instance.__class__.__name__, str(instance)
+            if exception_action is None:
+                return 12
+            exception_action(state)
 
     log.info("normal termination")
     return 0

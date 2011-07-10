@@ -25,6 +25,7 @@ import Statgrabber
 
 from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.resilient_server import ResilientServer
+from diyapi_tools.event_push_client import EventPushClient, exception_event
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.pandora_database_connection import get_node_local_connection
@@ -292,6 +293,7 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "event-push-client"     : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
@@ -312,6 +314,11 @@ def _setup(_halt_event, state):
     )
     state["resilient-server"].register(state["pollster"])
 
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "data_writer"
+    )
+
     state["queue-dispatcher"] = DequeDispatcher(
         state,
         state["receive-queue"],
@@ -329,6 +336,8 @@ def _setup(_halt_event, state):
         _repository_path
     )
 
+    state["event-push-client"].info("program-start", "data_writer starts")  
+
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
@@ -336,6 +345,8 @@ def _setup(_halt_event, state):
 
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
+
+    state["event-push-client"].info("program-stop", "data_writer stops")  
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
@@ -354,7 +365,8 @@ if __name__ == "__main__":
             _log_path,
             state,
             pre_loop_actions=[_setup, ],
-            post_loop_actions=[_tear_down, ]
+            post_loop_actions=[_tear_down, ],
+            exception_action=exception_event
         )
     )
 

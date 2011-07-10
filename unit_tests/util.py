@@ -52,7 +52,9 @@ def terminate_process(process):
     assert process.returncode == 0, \
         process.returncode
 
-def start_data_writer(node_name, address, repository_path):
+def start_data_writer(
+    node_name, address, event_publisher_pull_address, repository_path
+):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_data_writer")
     server_path = os.path.join(server_dir, "diyapi_data_writer_main.py")
@@ -67,6 +69,8 @@ def start_data_writer(node_name, address, repository_path):
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
         "DIYAPI_DATA_WRITER_ADDRESS"        : address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
+        "DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS" : \
+            event_publisher_pull_address,
         "PANDORA_DB_PW_pandora"             : "pork",
     }        
 

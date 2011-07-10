@@ -99,6 +99,7 @@ class NodeSim(object):
         self._processes["data_writer"] = start_data_writer(
             self._node_name,
             _data_writer_addresses[self._node_index],
+            _event_publisher_pull_addresses[self._node_index],
             self._home_dir
         )
         self._processes["handoff_server"] = start_handoff_server(

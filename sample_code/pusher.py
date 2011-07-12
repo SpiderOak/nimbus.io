@@ -18,6 +18,7 @@ def main():
     main entry point
     """
     topic = "test-topic"
+    key = "test-key"
     context = zmq.Context()
 
     push_socket = context.socket(zmq.PUSH)
@@ -29,13 +30,15 @@ def main():
     sub_socket.connect(_diy_client_pub_address)
 
     message = {
-        "message-type"  : "push-body",
-        "client-topic"  : topic
+        "message-type"  : "archive-blob",
+        "client-topic"  : topic,
+        "key"           : key        
     }
 
-    sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
-    push_socket.send_json(message)
+    push_socket.send_json(message, zmq.SNDMORE)
+    push_socket.send("pork")
 
+    sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
     topic = sub_socket.recv()
     print "topic =", topic
 

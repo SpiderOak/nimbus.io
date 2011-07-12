@@ -12,17 +12,20 @@ import signal
 import sys
 
 import gevent
+from gevent import monkey; monkey.patch_socket()
 from gevent_zeromq import zmq
 from gevent.queue import Queue
 from gevent.event import Event
 
 from sample_code.diy_client.pull_server import PULLServer
+from sample_code.diy_client.publisher import Publisher
 from sample_code.diy_client.message_handler import MessageHandler
 
 _log_path = "diy_client.log"
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
 _pull_address = "ipc:///tmp/diy-client-main-pull/socket"
 _pub_address = "ipc:///tmp/diy-client-main-pub/socket"
+_config_path = os.path.expandvars("$HOME/.config/diy-tool/config")
 
 def _handle_sigterm(halt_event):
     halt_event.set()
@@ -56,6 +59,13 @@ def _initialize_logging(log_path):
 
     logging.root.setLevel(logging.DEBUG)
 
+def _load_config():
+    config = dict()
+    for line in open(_config_path):
+        key, value = line.split()
+        config[key] = value
+    return config
+
 def main():
     """
     main processing module
@@ -67,17 +77,23 @@ def main():
     halt_event = Event()
     gevent.signal(signal.SIGTERM, _handle_sigterm, halt_event)
 
+    config = _load_config()
+    log.info("running as username '%s'" % (config["Username"], ))
+
     context = zmq.context.Context()
+    send_queue = Queue()
     receive_queue = Queue()
 
     _prepare_ipc_path(_pull_address)
     _prepare_ipc_path(_pub_address)
 
+    publisher = Publisher(halt_event, context, _pub_address, send_queue)
     message_handler = MessageHandler(
-        halt_event, context, _pub_address, receive_queue
+        halt_event, config, context, send_queue, receive_queue
     )
     pull_server = PULLServer(halt_event, context, _pull_address, receive_queue)
     
+    publisher.start()
     message_handler.start()
     pull_server.start()
 
@@ -87,10 +103,12 @@ def main():
     log.info("killing")
     pull_server.kill()
     message_handler.kill()
+    publisher.kill()
     
     log.info("joining")
     pull_server.join()
     message_handler.join()
+    publisher.join()
     
     context.term()
     log.info("program ends")

@@ -9,13 +9,12 @@ A greenlet object to manage a zeromq PULL socket
 import logging
 
 import gevent
-from gevent import monkey; monkey.patch_socket()
 from gevent_zeromq import zmq
 from  gevent.greenlet import Greenlet
 
 class PULLServer(Greenlet):
     """
-    A greenlet object to manage a zeromq _pull socket
+    A greenlet object to manage a zeromq PULL socket
     """
     def __init__(self, halt_event, context, pull_address, receive_queue):
         Greenlet.__init__(self)

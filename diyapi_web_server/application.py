@@ -171,7 +171,7 @@ class Application(object):
 
             if url_matched:
                 raise exc.HTTPMethodNotAllowed()
-            raise exc.HTTPNotFound()
+            raise exc.HTTPNotFound(req.path)
         except:
             self._log.exception('error in __call__')
             raise

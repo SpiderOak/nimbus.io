@@ -39,15 +39,20 @@ def main():
     push_socket.send("pork")
 
     sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
-    topic = sub_socket.recv()
-    print "topic =", topic
 
-    assert sub_socket.rcvmore()
-    message = sub_socket.recv_json()
+    while True:
+        topic = sub_socket.recv()
 
-    body_list = list()
-    while sub_socket.rcvmore():
-        body_list.append(sub_socket.recv())
+        assert sub_socket.rcvmore()
+        message = sub_socket.recv_json()
+
+        body_list = list()
+        while sub_socket.rcvmore():
+            body_list.append(sub_socket.recv())
+
+        print message
+        if message["completed"]:
+            break
     
     sub_socket.close()
     push_socket.close()

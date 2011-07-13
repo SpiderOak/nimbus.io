@@ -58,7 +58,7 @@ class DataWriter(object):
         self._log.debug(
             '%(message-type)s: '
             'key = %(key)r '
-            'timestamp = %(timestamp)r '
+            'timestamp = %(timestamp-repr)r '
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()

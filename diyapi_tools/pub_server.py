@@ -22,7 +22,7 @@ class PUBServer(object):
             prepare_ipc_path(address)
 
         self._pub_socket = context.socket(zmq.PUB)
-#        self._pub_socket.setsockopt(zmq.LINGER, 1000)
+        self._pub_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("binding")
         self._pub_socket.bind(address)
 

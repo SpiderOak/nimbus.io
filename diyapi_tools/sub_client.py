@@ -17,7 +17,6 @@ class SUBClient(object):
         self._log = logging.getLogger("SUBClient-%s" % (address, ))
 
         self._sub_socket = context.socket(zmq.SUB)
-#        self._sub_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting")
         self._sub_socket.connect(address)
         self._sub_socket.setsockopt(zmq.SUBSCRIBE, topics)

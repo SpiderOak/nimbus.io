@@ -10,6 +10,7 @@ import httplib
 import logging
 import os
 import os.path
+from cStringIO import StringIO
 import time
 
 def compute_authentication_string(config, method, timestamp):
@@ -25,10 +26,19 @@ def archive_blob(config, message, body, send_queue):
     """
     archive a blob of data passed as an argument
     """
-    log = logging.getLogger("archive_blob")
-
     assert type(body) == list, body
     assert len(body) == 1, body
+
+    _archive(config, message, StringIO(body[0]), send_queue)
+
+def archive_file(config, message, _body, send_queue):
+    """
+    archive a file of data passed as an argument
+    """
+    _archive(config, message, open(message["path"]), send_queue)
+
+def _archive(config, message, file_object, send_queue):
+    log = logging.getLogger("_archive")
 
     connection = httplib.HTTPConnection(config["BaseAddress"])
 
@@ -41,7 +51,11 @@ def archive_blob(config, message, body, send_queue):
     send_queue.put((status_message, None, ))
 
     method = "POST"
-    uri = os.path.join(os.sep, "data", message["key"])
+    key = (
+        message["key"][1:] if message["key"][0] == os.sep else message["key"]
+    )
+ 
+    uri = os.path.join(os.sep, "data", key)
     timestamp = int(time.time())
         
     authentification_string = compute_authentication_string(
@@ -56,7 +70,8 @@ def archive_blob(config, message, body, send_queue):
         "agent"                 : 'diy-tool/1.0'
     }
 
-    connection.request(method, uri, body=body[0], headers=headers)
+    log.info("uri = '%s'" % (uri, ))
+    connection.request(method, uri, body=file_object, headers=headers)
 
     response = connection.getresponse()
     connection.close()

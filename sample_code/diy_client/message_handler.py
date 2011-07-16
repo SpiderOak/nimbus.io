@@ -12,7 +12,7 @@ import gevent
 from gevent_zeromq import zmq
 from  gevent.greenlet import Greenlet
 
-from sample_code.diy_client.archiver import archive_blob
+from sample_code.diy_client.archiver import archive_blob, archive_file
 
 class MessageHandler(Greenlet):
     """
@@ -27,6 +27,10 @@ class MessageHandler(Greenlet):
         self._config = config
         self._send_queue = send_queue
         self._receive_queue = receive_queue
+        self._dispatch_table = {
+            "archive-blob" : archive_blob,
+            "archive-file" : archive_file,
+        }
 
     def join(self, timeout=None):
         """
@@ -39,10 +43,13 @@ class MessageHandler(Greenlet):
             message, body = self._receive_queue.get()
             self._log.info(str(message))
 
-            if message["message-type"] == "archive-blob":
+            try:
+                handler = self._dispatch_table[message["message-type"]]
+            except KeyError:
+                self._log.error("Unknown message-type %s" % (message, ))
+            else:
                 gevent.spawn(
-                    archive_blob, 
+                    handler, 
                     self._config, message, body, self._send_queue
                 )
-            else:
-                self._log.error("Unknown message-type %s" % (message, ))
+

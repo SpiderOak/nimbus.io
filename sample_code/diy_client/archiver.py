@@ -29,7 +29,7 @@ def archive_blob(config, message, body, send_queue):
     assert type(body) == list, body
     assert len(body) == 1, body
 
-    _archive(config, message, StringIO(body[0]), send_queue)
+    _archive(config, message, body[0], send_queue)
 
 def archive_file(config, message, _body, send_queue):
     """
@@ -37,7 +37,13 @@ def archive_file(config, message, _body, send_queue):
     """
     _archive(config, message, open(message["path"]), send_queue)
 
-def _archive(config, message, file_object, send_queue):
+def _archive(config, message, body, send_queue):
+    """
+    If the body argument is present, it should be a string of data to send 
+    after the headers are finished. Alternatively, it may be an open file 
+    object, in which case the contents of the file is sent; 
+    this file object should support fileno() and read() methods. 
+    """
     log = logging.getLogger("_archive")
 
     connection = httplib.HTTPConnection(config["BaseAddress"])
@@ -71,9 +77,10 @@ def _archive(config, message, file_object, send_queue):
     }
 
     log.info("uri = '%s'" % (uri, ))
-    connection.request(method, uri, body=file_object, headers=headers)
+    connection.request(method, uri, body=body, headers=headers)
 
     response = connection.getresponse()
+    response.read()
     connection.close()
 
     status_message = {

@@ -30,6 +30,7 @@ from diyapi_tools.xrep_server import XREPServer
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
+from diyapi_tools.data_definitions import parse_timestamp_repr
 
 from diyapi_space_accounting_server.space_accounting_database import \
         SpaceAccountingDatabase, SpaceAccountingDatabaseAvatarNotFound
@@ -53,7 +54,7 @@ _space_accounting_pipeline_address = os.environ.get(
 
 def _handle_space_accounting_detail(state, message, _data):
     log = logging.getLogger("_handle_space_accounting_detail")
-    message_datetime = datetime.datetime.fromtimestamp(message["timestamp"])
+    message_datetime = parse_timestamp_repr(message["timestamp-repr"])
     message_hour = floor_hour(message_datetime)
     log.info("hour = %s avatar_id = %s, event = %s, value = %s" % (
         message_hour, message["avatar-id"], message["event"], message["value"]

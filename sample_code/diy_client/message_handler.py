@@ -14,6 +14,7 @@ from  gevent.greenlet import Greenlet
 
 from sample_code.diy_client.archiver import archive_blob, archive_file
 from sample_code.diy_client.retriever import retrieve_file
+from sample_code.diy_client.deleter import delete_file
 
 class MessageHandler(Greenlet):
     """
@@ -32,6 +33,7 @@ class MessageHandler(Greenlet):
             "archive-blob"  : archive_blob,
             "archive-file"  : archive_file,
             "retrieve-file" : retrieve_file,
+            "delete-file"   : delete_file,
         }
 
     def join(self, timeout=None):

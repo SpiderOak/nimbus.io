@@ -346,8 +346,6 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
-    state["event-push-client"].info("program-stop", "data_writer stops")  
-
     log.debug("stopping resilient server")
     state["resilient-server"].close()
 

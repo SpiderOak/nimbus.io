@@ -190,6 +190,4 @@ class DataWriter(object):
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
             raise DestroyFailedError(reply["error-message"])
-        self._log.debug('total_size = %(total-size)r' % reply)
-        return reply["total-size"]
 

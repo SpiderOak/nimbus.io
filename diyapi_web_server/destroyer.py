@@ -14,12 +14,25 @@ from diyapi_web_server.exceptions import (
     DestroyFailedError,
 )
 
+from diyapi_web_server.database_util import most_recent_timestamp_for_key
 
 class Destroyer(object):
     """Performs a destroy query on all data writers."""
-    def __init__(self, data_writers):
-        self.log = logging.getLogger('Destroyer()')
+    def __init__(
+        self, 
+        node_local_connection,
+        data_writers,
+        avatar_id, 
+        key,
+        timestamp        
+    ):
+        self.log = logging.getLogger('Destroyer')
+        self.log.info('avatar_id=%d, key=%r' % (avatar_id, key, ))
+        self._node_local_connection = node_local_connection
         self.data_writers = data_writers
+        self.avatar_id = avatar_id
+        self.key = key
+        self.timestamp = timestamp
         self._pending = gevent.pool.Group()
         self._done = []
 
@@ -45,22 +58,30 @@ class Destroyer(object):
         task.method_name = method_name
         return task
 
-    def destroy(self, avatar_id, key, timestamp, timeout=None):
+    def destroy(self, timeout=None):
         if self._pending:
             raise AlreadyInProgress()
+
+        # TODO: find a non-blocking way to do this
+        file_info = most_recent_timestamp_for_key(
+            self._node_local_connection , self.avatar_id, self.key
+        )
+
+        file_size = (0 if file_info is None else file_info.file_size)
+
         for i, data_writer in enumerate(self.data_writers):
             segment_num = i + 1
             self._spawn(
                 segment_num,
                 data_writer,
                 data_writer.destroy_key,
-                avatar_id,
-                key,
-                timestamp,
+                self.avatar_id,
+                self.key,
+                self.timestamp,
                 segment_num
             )
         self._join(timeout)
-        result = min([task.value for task in self._done])
         self._done = []
-        return result
+
+        return file_size
 

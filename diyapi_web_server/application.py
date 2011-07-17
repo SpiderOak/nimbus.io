@@ -252,12 +252,20 @@ class Application(object):
 
         avatar_id = req.remote_user
         timestamp = create_timestamp()
-        destroyer = Destroyer(data_writers)
+
+        destroyer = Destroyer(
+            self._node_local_connection,
+            data_writers,
+            avatar_id,
+            key,
+            timestamp
+        )
+
         try:
-            size_deleted = destroyer.destroy(
-                avatar_id, key, timestamp, REPLY_TIMEOUT)
-        except (DataWriterDownError, DestroyFailedError), e:
+            size_deleted = destroyer.destroy(REPLY_TIMEOUT)
+        except (DataWriterDownError, DestroyFailedError), e:            
             raise exc.HTTPInternalServerError(str(e))
+
         self.accounting_client.removed(
             avatar_id,
             timestamp,

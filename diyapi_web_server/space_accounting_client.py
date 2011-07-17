@@ -26,7 +26,7 @@ class SpaceAccountingClient(object):
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : avatar_id,
-            "timestamp"     : timestamp,
+            "timestamp-repr": repr(timestamp),
             "event"         : "bytes_added",
             "value"         : bytes_added,
         }
@@ -36,7 +36,7 @@ class SpaceAccountingClient(object):
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : avatar_id,
-            "timestamp"     : timestamp,
+            "timestamp-repr": repr(timestamp),
             "event"         : "bytes_retrieved",
             "value"         : bytes_retrieved,
         }
@@ -46,7 +46,7 @@ class SpaceAccountingClient(object):
         message = {
             "message-type"  : "space-accounting-detail",
             "avatar-id"     : avatar_id,
-            "timestamp"     : timestamp,
+            "timestamp-repr": repr(timestamp),
             "event"         : "bytes_removed",
             "value"         : bytes_removed,
         }

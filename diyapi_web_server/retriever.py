@@ -26,9 +26,8 @@ class Retriever(object):
         key, 
         segments_needed
     ):
-        self.log = logging.getLogger(
-            'Retriever(avatar_id=%d, key=%r)' % (
-                avatar_id, key))
+        self.log = logging.getLogger("Retriever")
+        self.log.info('avatar_id=%d, key=%r' % (avatar_id, key, ))
         self._node_local_connection = node_local_connection
         self.data_readers = data_readers
         self.avatar_id = avatar_id

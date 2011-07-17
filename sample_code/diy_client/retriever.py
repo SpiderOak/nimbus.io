@@ -1,47 +1,28 @@
 # -*- coding: utf-8 -*-
 """
-archiver.py
+retriever.py
 
-archive one file
+retrieve one file
 """
-import hashlib
-import hmac
 import httplib
 import logging
-import os
-import os.path
-from cStringIO import StringIO
-import time
 
 from sample_code.diy_client.http_util import compute_authentication_string, \
         compute_uri, \
         current_timestamp
 
-def archive_blob(config, message, body, send_queue):
-    """
-    archive a blob of data passed as an argument
-    """
-    assert type(body) == list, body
-    assert len(body) == 1, body
+_read_buffer_size = 64 * 1024
 
-    _archive(config, message, body[0], send_queue)
-
-def archive_file(config, message, _body, send_queue):
+def retrieve_file(config, message, _body, send_queue):
     """
-    archive a file of data passed as an argument
+    retrieve a file
     """
-    file_object = open(message["path"], "r")
-    _archive(config, message, file_object, send_queue)
+    file_object = open(message["dest-path"], "w")
+    _retrieve(config, message, file_object, send_queue)
     file_object.close()
 
-def _archive(config, message, body, send_queue):
-    """
-    If the body argument is present, it should be a string of data to send 
-    after the headers are finished. Alternatively, it may be an open file 
-    object, in which case the contents of the file is sent; 
-    this file object should support fileno() and read() methods. 
-    """
-    log = logging.getLogger("_archive")
+def _retrieve(config, message, dest_file, send_queue):
+    log = logging.getLogger("_retrieve")
 
     connection = httplib.HTTPConnection(config["BaseAddress"])
 
@@ -53,7 +34,7 @@ def _archive(config, message, body, send_queue):
     }
     send_queue.put((status_message, None, ))
 
-    method = "POST"
+    method = "GET"
     timestamp = current_timestamp()
     uri = compute_uri(message["key"]) 
     authentication_string = compute_authentication_string(
@@ -63,24 +44,24 @@ def _archive(config, message, body, send_queue):
         method, 
         timestamp
     )
-        
-    authentification_string = compute_authentication_string(
-        config, 
-        method, 
-        timestamp
-    )
 
     headers = {
-        "Authorization"         : authentification_string,
+        "Authorization"         : authentication_string,
         "X-DIYAPI-Timestamp"    : str(timestamp),
         "agent"                 : 'diy-tool/1.0'
     }
 
     log.info("uri = '%s'" % (uri, ))
-    connection.request(method, uri, body=body, headers=headers)
+    connection.request(method, uri, body=None, headers=headers)
 
     response = connection.getresponse()
-    response.read()
+
+    while True:
+        data = response.read(_read_buffer_size)
+        if len(data) == 0:
+            break
+        dest_file.write(data)
+
     connection.close()
 
     status_message = {

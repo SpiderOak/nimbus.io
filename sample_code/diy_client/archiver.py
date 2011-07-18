@@ -4,18 +4,11 @@ archiver.py
 
 archive one file
 """
-import hashlib
-import hmac
-import httplib
 import logging
-import os
-import os.path
-from cStringIO import StringIO
-import time
 
-from sample_code.diy_client.http_util import compute_authentication_string, \
-        compute_uri, \
-        current_timestamp
+from sample_code.diy_client.http_util import compute_uri
+from sample_code.diy_client.http_connection import HTTPConnection, \
+        HTTPRequestError
 
 def archive_blob(config, message, body, send_queue):
     """
@@ -43,46 +36,6 @@ def _archive(config, message, body, send_queue):
     """
     log = logging.getLogger("_archive")
 
-    connection = httplib.HTTPConnection(config["BaseAddress"])
-
-    status_message = {
-        "message-type"  : message["client-topic"],
-        "status"        : "sending request",
-        "error-message" : None,
-        "completed"     : False,        
-    }
-    send_queue.put((status_message, None, ))
-
-    method = "POST"
-    timestamp = current_timestamp()
-    uri = compute_uri(message["key"]) 
-    authentication_string = compute_authentication_string(
-        config["Username"], 
-        config["AuthKey"],
-        config["AuthKeyId"],
-        method, 
-        timestamp
-    )
-        
-    authentification_string = compute_authentication_string(
-        config, 
-        method, 
-        timestamp
-    )
-
-    headers = {
-        "Authorization"         : authentification_string,
-        "X-DIYAPI-Timestamp"    : str(timestamp),
-        "agent"                 : 'diy-tool/1.0'
-    }
-
-    log.info("uri = '%s'" % (uri, ))
-    connection.request(method, uri, body=body, headers=headers)
-
-    response = connection.getresponse()
-    response.read()
-    connection.close()
-
     status_message = {
         "message-type"  : message["client-topic"],
         "status"        : None,
@@ -90,14 +43,34 @@ def _archive(config, message, body, send_queue):
         "completed"     : True,        
     }
 
-    if response.status == httplib.OK:
-        status_message["status"] = "OK"
-        log.info("archvie successful")
-    else:
-        message = "request failed %s %s" % (response.status, response.reason, ) 
-        log.warn(message)
-        status_message["status"] = "error"
-        status_message["error-message"] = message
+    connection = HTTPConnection(
+        config["BaseAddress"],
+        config["Username"], 
+        config["AuthKey"],
+        config["AuthKeyId"]
+    )
 
+    method = "POST"
+    uri = compute_uri(message["key"]) 
+
+    log.info("requesting %s" % (uri, ))
+    try:
+        response = connection.request(method, uri, body=body)
+    except HTTPRequestError, instance:
+        log.error(str(instance))
+        status_message["status"] = "error"
+        status_message["error-message"] = str(instance)
+        connection.close()
+        send_queue.put((status_message, None, ))
+        return
+    else:
+        log.info("reading response")
+        response.read()
+    finally:
+        log.info("closing connection")
+        connection.close()
+    
+    log.info("archive complete")
+    status_message["status"] = "OK"
     send_queue.put((status_message, None, ))
         

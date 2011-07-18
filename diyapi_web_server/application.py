@@ -314,7 +314,7 @@ class Application(object):
                 ))
             self.accounting_client.retrieved(
                 avatar_id,
-                time.time(),
+                create_timestamp(),
                 sent
             )
         return Response(app_iter=app_iter())
@@ -383,7 +383,7 @@ class Application(object):
             raise exc.HTTPInternalServerError(str(e))
         self.accounting_client.added(
             avatar_id,
-            time.time(),
+            timestamp,
             file_size
         )
         return Response('OK')

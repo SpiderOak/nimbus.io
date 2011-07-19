@@ -6,12 +6,13 @@ utility functions for connecting wiht DIY via HTTP
 """
 import os
 import time
+import urllib
 
 def compute_uri(key, action=None):
     """
     Create the REST URI sent to the server
     """
-    work_key = (key[1:] if key[0] == os.sep else key)
+    work_key = urllib.quote_plus(key)
     path = os.path.join(os.sep, "data", work_key)
     if action is not None:
         path = "?".join([path, "action=%s" % (action, ), ])

@@ -13,6 +13,7 @@ import hashlib
 import json
 from itertools import chain
 from binascii import hexlify
+import urllib
 
 from webob.dec import wsgify
 from webob import exc
@@ -190,13 +191,14 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', action='stat')
     def stat(self, req, path):
-        self._log.debug("stat: avatar_id = %s path = %r" % (
+        key = urllib.unquote_plus(path)
+        self._log.debug("stat: avatar_id = %s key = %r" % (
             req.remote_user,
-            path
+            key
         ))
         avatar_id = req.remote_user
         getter = StatGetter(self._node_local_connection)
-        file_info = getter.stat(avatar_id, path, REPLY_TIMEOUT)
+        file_info = getter.stat(avatar_id, key, REPLY_TIMEOUT)
         file_info_dict = dict()
         for key, value in file_info._asdict().items():
             if key.startswith("file_"):
@@ -211,6 +213,7 @@ class Application(object):
             req.remote_user, prefix
         ))
         avatar_id = req.remote_user
+        prefix = urllib.unquote_plus(prefix)
         matcher = Listmatcher(self._node_local_connection)
         keys = matcher.listmatch(avatar_id, prefix, REPLY_TIMEOUT)
         # TODO: break up large (>1mb) listmatch response
@@ -219,6 +222,7 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
+        key = urllib.unquote_plus(key)
         self._log.debug("destroy: avatar_id = %s key = %s" % (
             req.remote_user, key,
         ))
@@ -249,6 +253,7 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
+        key = urllib.unquote_plus(key)
         self._log.debug("retrieve: avatar_id = %s key = %s" % (
             req.remote_user, key
         ))
@@ -295,6 +300,7 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
+        key = urllib.unquote_plus(key)
         self._log.debug(
             "archive: avatar_id = %s key = %s, content_length = %s" % (
                 req.remote_user, key, req.content_length

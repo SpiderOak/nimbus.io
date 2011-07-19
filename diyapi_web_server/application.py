@@ -8,7 +8,6 @@ import logging
 import os
 import re
 import random
-import time
 import zlib
 import hashlib
 import json
@@ -195,26 +194,16 @@ class Application(object):
             req.remote_user,
             path
         ))
-        connected_database_clients = None
-
-        if len(connected_database_clients) < MIN_CONNECTED_CLIENTS:
-            raise exc.HTTPServiceUnavailable("Too few connected clients %s" % (
-                len(connected_database_clients),
-            ))
-
         avatar_id = req.remote_user
-        getter = StatGetter(
-            connected_database_clients,
-            DATABASE_AGREEMENT_LEVEL
-        )
-        try:
-            stat = getter.stat(avatar_id, path, REPLY_TIMEOUT)
-        except (DataReaderDownError, StatFailedError):
-            self._log.exception(path)
-            raise exc.HTTPNotFound()
-        if 'file_md5' in stat:
-            stat['file_md5'] = hexlify(stat['file_md5'])
-        return Response(json.dumps(stat))
+        getter = StatGetter(self._node_local_connection)
+        file_info = getter.stat(avatar_id, path, REPLY_TIMEOUT)
+        file_info_dict = dict()
+        for key, value in file_info._asdict().items():
+            if key.startswith("file_"):
+                if key == "file_hash" and value is not None:
+                    value = hexlify(value)
+                file_info_dict[key] = value
+        return Response(json.dumps(file_info_dict))
 
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):

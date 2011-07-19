@@ -4,14 +4,29 @@ HTTPConnection.py
 
 DIY wrapper for httplib.HTTPConnection
 """
+import hashlib
+import hmac
 import httplib
 import logging
 
-from sample_code.diy_client.http_util import compute_authentication_string, \
-        current_timestamp
+from sample_code.diy_client.http_util import current_timestamp
 
 class HTTPRequestError(Exception):
     pass
+
+def _compute_authentication_string(
+    user_name, auth_key, auth_key_id, method, timestamp
+):
+    """
+    Compute the authentication hmac sent to the server
+    """
+    message = "\n".join([user_name, method, str(timestamp)])
+    hmac_object = hmac.new(
+        auth_key,
+        message,
+        hashlib.sha256
+    )
+    return "DIYAPI %s:%s" % (auth_key_id, hmac_object.hexdigest(), )
 
 class HTTPConnection(httplib.HTTPConnection):
     """
@@ -26,7 +41,7 @@ class HTTPConnection(httplib.HTTPConnection):
 
     def request(self, method, uri, body=None, headers=dict()):
         timestamp = current_timestamp()
-        authentication_string = compute_authentication_string(
+        authentication_string = _compute_authentication_string(
             self._user_name, 
             self._auth_key,
             self._auth_id,

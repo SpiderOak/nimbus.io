@@ -210,24 +210,9 @@ class Application(object):
         self._log.debug("listmatch: avatar_id = %s prefix = '%s'" % (
             req.remote_user, prefix
         ))
-        connected_database_clients = None
-
-        if len(connected_database_clients) < MIN_CONNECTED_CLIENTS:
-            raise exc.HTTPServiceUnavailable("Too few connected clients %s" % (
-                len(connected_database_clients),
-            ))
-
-        delimiter = req.GET.get('delimiter', '/')
-        # TODO: do something with delimiter
         avatar_id = req.remote_user
-        matcher = Listmatcher(
-            connected_database_clients,
-            DATABASE_AGREEMENT_LEVEL
-        )
-        try:
-            keys = matcher.listmatch(avatar_id, prefix, REPLY_TIMEOUT)
-        except (DataReaderDownError, ListmatchFailedError), e:
-            raise exc.HTTPInternalServerError(str(e))
+        matcher = Listmatcher(self._node_local_connection)
+        keys = matcher.listmatch(avatar_id, prefix, REPLY_TIMEOUT)
         # TODO: break up large (>1mb) listmatch response
         return Response(json.dumps(keys))
 

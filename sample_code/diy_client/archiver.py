@@ -38,6 +38,7 @@ def _archive(config, message, body, send_queue):
 
     status_message = {
         "message-type"  : message["client-topic"],
+        "key"           : message["key"], 
         "status"        : None,
         "error-message" : None,
         "completed"     : True,        

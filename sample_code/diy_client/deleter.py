@@ -14,6 +14,7 @@ def delete_file(config, message, _body, send_queue):
     """
     status_message = {
         "message-type"  : message["client-topic"],
+        "key"           : message["key"], 
         "status"        : None,
         "error-message" : None,
         "completed"     : True,        

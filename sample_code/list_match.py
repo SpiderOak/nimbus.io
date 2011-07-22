@@ -35,8 +35,7 @@ def main():
         "prefix"        : prefix,
     }
 
-    push_socket.send_json(message, zmq.SNDMORE)
-    push_socket.send("pork")
+    push_socket.send_json(message)
 
     sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
 

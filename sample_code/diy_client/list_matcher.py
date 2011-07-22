@@ -4,6 +4,7 @@ list_matcher.py
 
 request list match
 """
+import json
 import os.path
 import logging
 
@@ -21,7 +22,6 @@ def list_match(config, message, _body, send_queue):
         "message-type"  : message["client-topic"],
         "status"        : None,
         "error-message" : None,
-        "list-result"   : None,
         "completed"     : True,        
     }
 
@@ -49,7 +49,6 @@ def list_match(config, message, _body, send_queue):
         connection.close()
 
     status_message["status"] = "OK"
-    status_message["list-result"] = data
     log.info("listmatch successful %s" % (data, ))
-    send_queue.put((status_message, None, ))
+    send_queue.put((status_message, [data, ], ))
         

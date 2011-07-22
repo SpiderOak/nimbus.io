@@ -216,8 +216,10 @@ class Application(object):
         prefix = urllib.unquote_plus(prefix)
         matcher = Listmatcher(self._node_local_connection)
         keys = matcher.listmatch(avatar_id, prefix, REPLY_TIMEOUT)
-        # TODO: break up large (>1mb) listmatch response
-        return Response(json.dumps(keys))
+        response = Response(content_type='text/plain', charset='utf8')
+        for key in keys:
+            response.body_file.write("%s\n" % (key, ))
+        return response
 
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')

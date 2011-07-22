@@ -89,7 +89,7 @@ def main():
 
     publisher = Publisher(halt_event, context, _pub_address, send_queue)
     message_handler = MessageHandler(
-        halt_event, config, context, send_queue, receive_queue
+        halt_event, config, send_queue, receive_queue
     )
     pull_server = PULLServer(halt_event, context, _pull_address, receive_queue)
     

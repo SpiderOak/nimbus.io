@@ -21,7 +21,7 @@ class Listmatcher(object):
         self._node_local_connection = node_local_connection
 
     def listmatch(self, avatar_id, prefix, timeout=None):
-        return self._node_local_connection.fetch_all_rows(
+        result = self._node_local_connection.fetch_all_rows(
             """
             select key from diy.segment
             where avatar_id = %s
@@ -30,4 +30,5 @@ class Listmatcher(object):
             """.strip(),
             [avatar_id, "%s%%" % prefix, ]
         )
+        return [key for (key, ) in result]
 

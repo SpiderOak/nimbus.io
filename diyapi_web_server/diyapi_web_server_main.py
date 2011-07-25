@@ -25,6 +25,7 @@ from diyapi_tools.greenlet_pull_server import GreenletPULLServer
 from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.greenlet_push_client import GreenletPUSHClient
 from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.event_push_client import EventPushClient
 
 from diyapi_web_server.application import Application
 from diyapi_web_server.data_reader import DataReader
@@ -128,12 +129,18 @@ class WebServer(object):
             push_client
         )
 
+        self._event_push_client = EventPushClient(
+            self._zeromq_context,
+            "web-server"
+        )
+
         self.application = Application(
             self._node_local_connection,
             self._data_writer_clients,
             self._data_readers,
             authenticator,
-            self._accounting_client
+            self._accounting_client,
+            self._event_push_client
         )
         self.wsgi_server = WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
@@ -154,8 +161,10 @@ class WebServer(object):
         self._pull_server.close()
         self._pollster.kill()
         self._pollster.join(timeout=3.0)
+        self._event_push_client.close()
         self._zeromq_context.term()
         self._node_local_connection.close()
+
     def serve_forever(self):
         self.start()
         self._stopped_event.wait()

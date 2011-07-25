@@ -348,6 +348,7 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
+    state["event-push-client"].close()
 
     state["zmq-context"].term()
 

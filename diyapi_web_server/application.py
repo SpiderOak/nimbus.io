@@ -14,6 +14,7 @@ import json
 from itertools import chain
 from binascii import hexlify
 import urllib
+import time
 
 from webob.dec import wsgify
 from webob import exc
@@ -24,11 +25,9 @@ from diyapi_tools.data_definitions import create_timestamp
 from diyapi_web_server import util
 from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
-        DataReaderDownError, \
         StatFailedError, \
         DataReaderDownError, \
         ListmatchFailedError, \
-        DataWriterDownError, \
         RetrieveFailedError, \
         ArchiveFailedError, \
         DestroyFailedError
@@ -118,7 +117,8 @@ class Application(object):
         data_writer_clients, 
         data_readers,
         authenticator, 
-        accounting_client
+        accounting_client,
+        event_push_client
     ):
         self._log = logging.getLogger("Application")
         self._data_writer_clients = data_writer_clients
@@ -126,6 +126,7 @@ class Application(object):
         self.data_readers = data_readers
         self.authenticator = authenticator
         self.accounting_client = accounting_client
+        self._event_push_client = event_push_client
 
     routes = router()
 
@@ -243,7 +244,7 @@ class Application(object):
 
         try:
             size_deleted = destroyer.destroy(REPLY_TIMEOUT)
-        except (DataWriterDownError, DestroyFailedError), e:            
+        except DestroyFailedError, e:            
             raise exc.HTTPInternalServerError(str(e))
 
         self.accounting_client.removed(
@@ -255,10 +256,12 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
+        start_time = time.time()
         key = urllib.unquote_plus(key)
-        self._log.debug("retrieve: avatar_id = %s key = %s" % (
+        description = "retrieve: avatar_id = %s key = %s" % (
             req.remote_user, key
-        ))
+        )
+        self._log.debug(description)
         connected_data_readers = _connected_clients(self.data_readers)
 
         if len(connected_data_readers) < MIN_CONNECTED_CLIENTS:
@@ -277,11 +280,21 @@ class Application(object):
             key,
             MIN_SEGMENTS
         )
+
         retrieved = retriever.retrieve(REPLY_TIMEOUT)
+
         try:
             first_segments = retrieved.next()
-        except (DataWriterDownError, RetrieveFailedError):
-            return exc.HTTPNotFound()
+        except RetrieveFailedError, instance:
+            self._log.error("retrieve failed: %s %s" % (
+                description, instance,
+            ))
+            self._event_push_client.error(
+                "retrieve-failed",
+                "%s: %s" % (description, instance, )
+            )
+            return exc.HTTPNotFound(str(instance))
+
         def app_iter():
             sent = 0
             try:
@@ -289,25 +302,42 @@ class Application(object):
                     data = segmenter.decode(segments.values())
                     sent += len(data)
                     yield data
-            except (DataWriterDownError, RetrieveFailedError):
-                self._log.warning('retrieve failed: avatar_id = %s' % (
-                    avatar_id,
+            except RetrieveFailedError, instance:
+                self._event_push_client.error(
+                    "retrieve-failed",
+                    "%s: %s" % (description, instance, )
+                )
+                self._log.error('retrieve failed: %s %s' % (
+                    description, instance
                 ))
+                raise exc.HTTPInternalServerError(str(instance))
+
+            end_time = time.time()
+
             self.accounting_client.retrieved(
                 avatar_id,
                 create_timestamp(),
                 sent
             )
+
+            self._event_push_client.info(
+                "retrieve-stats",
+                description,
+                start_time=start_time,
+                end_time=end_time,
+                bytes_retrieved=sent
+            )
+
         return Response(app_iter=app_iter())
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
+        start_time = time.time()
         key = urllib.unquote_plus(key)
-        self._log.debug(
-            "archive: avatar_id = %s key = %s, content_length = %s" % (
-                req.remote_user, key, req.content_length
-            )
+        description = "archive: avatar_id=%s key=%s, content_length=%s" % (
+            req.remote_user, key, req.content_length
         )
+        self._log.debug(description)
 
         if req.content_length <= 0:
             raise exc.HTTPForbidden(
@@ -361,12 +391,31 @@ class Application(object):
                 segments,
                 REPLY_TIMEOUT
             )
-        except (ArchiveFailedError), e:
-            raise exc.HTTPInternalServerError(str(e))
+        except ArchiveFailedError, instance:
+            self._event_push_client.error(
+                "archived-failed-error",
+                "%s: %s" % (description, instance, )
+            )
+            self._log.error("archive failed: %s %s" % (
+                description, instance, 
+            ))
+            raise exc.HTTPInternalServerError(str(instance))
+        
+        end_time = time.time()
+
         self.accounting_client.added(
             avatar_id,
             timestamp,
             file_size
         )
+
+        self._event_push_client.info(
+            "archive-stats",
+            description,
+            start_time=start_time,
+            end_time=end_time,
+            bytes_archived=req.content_length
+        )
+
         return Response('OK')
 

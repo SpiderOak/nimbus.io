@@ -58,7 +58,8 @@ def main():
     log = logging.getLogger("main")
     options = _parse_command_line()
     context = zmq.Context()
-    listmatch_topic = "listmatch-%s" % (options.key_prefix, )
+    listmatch_topic = "-".join(["puller", "listmatch", options.key_prefix,])
+    retrieve_topic = "-".join(["puller", options.key_prefix, ])
 
     log.info("concurrent_retrieves = %s" % (options.concurrent_retrieves, ))
     log.info("total_retrieves = %s" % (options.total_retrieves, ))
@@ -76,7 +77,7 @@ def main():
     completed_retrieves = 0
 
     sub_socket.setsockopt(zmq.SUBSCRIBE, listmatch_topic)
-    sub_socket.setsockopt(zmq.SUBSCRIBE, options.key_prefix)
+    sub_socket.setsockopt(zmq.SUBSCRIBE, retrieve_topic)
 
     listmatch_message = {
         "message-type"  : "list-match",
@@ -95,7 +96,7 @@ def main():
             key = key_deque.popleft()
             message = {
                 "message-type"  : "retrieve-blob",
-                "client-topic"  : options.key_prefix,
+                "client-topic"  : retrieve_topic,
                 "key"           : key        
             }
 
@@ -115,7 +116,7 @@ def main():
         if topic == listmatch_topic:
             assert len(body_list) == 1, body_list
             key_list = body_list[0].split("\n")
-            log.debug("listmatch %s entries" % (len(key_list), ))
+            log.debug("listmatch %s entries %s" % (len(key_list), key_list, ))
             for key in sorted(key_list):
                 if key > highest_known_key:
                     key_deque.append(key)

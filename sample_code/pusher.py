@@ -62,6 +62,7 @@ def main():
     log = logging.getLogger("main")
     options = _parse_command_line()
     context = zmq.Context()
+    archive_topic = "-".join(["pusher", options.key_prefix, ])
 
     log.info("blob_size = %smb" % (options.blob_size, ))
     log.info("concurrent_archives = %s" % (options.concurrent_archives, ))
@@ -85,7 +86,7 @@ def main():
     active_keys = dict()
     completed_archives = 0
 
-    sub_socket.setsockopt(zmq.SUBSCRIBE, options.key_prefix)
+    sub_socket.setsockopt(zmq.SUBSCRIBE, archive_topic)
 
     while completed_archives < options.total_archives:
         while len(active_keys) < options.concurrent_archives \
@@ -94,7 +95,7 @@ def main():
             key = "%s-%08d" % (options.key_prefix, archive_sequence, )
             message = {
                 "message-type"  : "archive-blob",
-                "client-topic"  : options.key_prefix,
+                "client-topic"  : archive_topic,
                 "key"           : key        
             }
 

@@ -210,3 +210,24 @@ def start_event_publisher(node_name, pull_address, pub_address):
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
+def start_performance_packager(node_name, pub_addresses):
+    log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
+    server_dir = identify_program_dir(u"diyapi_performance_packager")
+    server_path = os.path.join(
+        server_dir, "diyapi_performance_packager_main.py"
+    )
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                            : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_NODE_NAME"             : node_name,
+        "DIYAPI_EVENT_PUBLISHER_PUB_ADDRESSES"  : " ".join(pub_addresses),
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+

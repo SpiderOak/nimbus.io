@@ -18,6 +18,7 @@ from unit_tests.util import start_data_writer, \
         start_handoff_server, \
         start_anti_entropy_server, \
         start_event_publisher, \
+        start_performance_packager, \
         poll_process, \
         terminate_process
 
@@ -70,7 +71,12 @@ class NodeSim(object):
     """simulate one node in a cluster"""
 
     def __init__(
-        self, test_dir, node_index, space_accounting=False):
+        self, 
+        test_dir, 
+        node_index, 
+        space_accounting=False,
+        performance_packager=False
+    ):
         self._node_index = node_index
         self._node_name = _generate_node_name(node_index)
         self._log = logging.getLogger(self._node_name)
@@ -79,6 +85,7 @@ class NodeSim(object):
             os.makedirs(self._home_dir)
         self._processes = dict()
         self._space_accounting = space_accounting
+        self._performance_packager = performance_packager
 
     def __str__(self):
         return self._node_name
@@ -123,6 +130,13 @@ class NodeSim(object):
                     self._node_name,
                     _space_accounting_server_address,
                     _space_accounting_pipeline_address
+                )
+
+        if self._performance_packager:
+            self._processes["performance-packager"] = \
+                start_performance_packager(
+                    self._node_name,
+                    _event_publisher_pub_addresses
                 )
 
     def stop(self):

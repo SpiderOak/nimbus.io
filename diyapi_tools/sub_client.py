@@ -19,7 +19,10 @@ class SUBClient(object):
         self._sub_socket = context.socket(zmq.SUB)
         self._log.debug("connecting")
         self._sub_socket.connect(address)
-        self._sub_socket.setsockopt(zmq.SUBSCRIBE, topics)
+        if type(topics) == str:
+            topics = [topics, ]
+        for topic in topics:
+            self._sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
 
         self._receive_queue = receive_queue
 

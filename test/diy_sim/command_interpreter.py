@@ -19,12 +19,17 @@ class CommandInterpreter(cmd.Cmd):
     """
     def __init__(self):
         cmd.Cmd.__init__(self)
-        self._node_sims = [
-            NodeSim(_temp_dir, i) for i in xrange(_node_count-1)
-        ]
+        self._node_sims = list()
         self._node_sims.append(
-            NodeSim(_temp_dir, _node_count-1, space_accounting=True)
+            NodeSim(
+                _temp_dir, 
+                0, 
+                space_accounting=True, 
+                performance_packager=True
+            )
         )
+        for i in xrange(_node_count-1):
+            self._node_sims.append(NodeSim(_temp_dir, i+1))
 
     def _get_node_from_line(self, line):
         try:

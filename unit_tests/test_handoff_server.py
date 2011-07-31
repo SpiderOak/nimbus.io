@@ -25,8 +25,8 @@ from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
 from diyapi_tools.greenlet_pull_server import GreenletPULLServer
 from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.data_definitions import create_timestamp
-from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_web_server.database_util import node_rows
+from diyapi_tools.database_connection import get_central_connection
+from diyapi_web_server.central_database_util import node_rows
 
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
@@ -82,8 +82,8 @@ class TestHandoffServer(unittest.TestCase):
             self._log = logging.getLogger("TestHandoffServer")
 
         self.tearDown()
-        self._database_connection = get_node_local_connection()
-        node_rows_list = node_rows(self._database_connection)
+        database_connection = get_central_connection()
+        node_rows_list = node_rows(database_connection)
 
         self._key_generator = generate_key()
 

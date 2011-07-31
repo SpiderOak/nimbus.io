@@ -20,10 +20,12 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.pandora_database_connection import \
+        get_node_local_connection, \
+        get_central_connection
 from diyapi_tools.data_definitions import segment_row_template
 
-from diyapi_web_server.database_util import node_rows
+from diyapi_web_server.central_database_util import node_rows
 
 from diyapi_handoff_server.pending_handoffs import PendingHandoffs
 from diyapi_handoff_server.handoff_requestor import HandoffRequestor, \
@@ -302,9 +304,10 @@ def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     status_checkers = list()
 
-    state["database-connection"] = get_node_local_connection()
+    central_connection = get_central_connection()
+    state["node-rows"] = node_rows(central_connection)
+    central_connection.close()
 
-    state["node-rows"] = node_rows(state["database-connection"])
     state["node-id-dict"] = dict(
         [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
     )
@@ -312,6 +315,7 @@ def _setup(_halt_event, state):
         [(node_row.id, node_row.name, ) for node_row in state["node-rows"]]
     )
 
+    state["database-connection"] = get_node_local_connection()
     for node_row, handoff_server_address in zip(
         state["node-rows"], _handoff_server_addresses
     ):

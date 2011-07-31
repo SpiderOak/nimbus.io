@@ -4,7 +4,6 @@ output_value_file.py
 
 manage a single value file, while it is being written
 """
-from collections import namedtuple
 from datetime import datetime
 import hashlib
 import logging
@@ -44,8 +43,8 @@ def _insert_value_file_row(connection, value_file_row):
             sequence_count,
             min_segment_id,
             max_segment_id,
-            distinct_avatar_count,
-            avatar_ids,
+            distinct_collection_count,
+            collection_ids,
             garbage_size_estimate,
             fragmentation_estimate,
             last_cleanup_check_time,
@@ -59,8 +58,8 @@ def _insert_value_file_row(connection, value_file_row):
             %(sequence_count)s,
             %(min_segment_id)s,
             %(max_segment_id)s,
-            %(distinct_avatar_count)s,
-            %(avatar_ids)s,
+            %(distinct_collection_count)s,
+            %(collection_ids)s,
             %(garbage_size_estimate)s,
             %(fragmentation_estimate)s,
             %(last_cleanup_check_time)s::timestamp,
@@ -86,7 +85,7 @@ class OutputValueFile(object):
         self._sequence_count = 0
         self._min_segment_id = None
         self._max_segment_id = None
-        self._avatar_ids = set()
+        self._collection_ids = set()
 
     @property
     def value_file_id(self):
@@ -96,7 +95,7 @@ class OutputValueFile(object):
     def size(self):
         return self._size
 
-    def write_data_for_one_sequence(self, avatar_id, segment_id, data):
+    def write_data_for_one_sequence(self, collection_id, segment_id, data):
         """
         write the data for one sequence, acumulating meta information
         """
@@ -112,7 +111,7 @@ class OutputValueFile(object):
             self._max_segment_id = segment_id
         else:
             self._max_segment_id = max(self._max_segment_id, segment_id)
-        self._avatar_ids.add(avatar_id)
+        self._collection_ids.add(collection_id)
 
     def close(self):
         """close the file and make it visible in the database"""
@@ -138,8 +137,8 @@ class OutputValueFile(object):
             sequence_count=self._sequence_count,
             min_segment_id=self._min_segment_id,
             max_segment_id=self._max_segment_id,
-            distinct_avatar_count=len(self._avatar_ids),
-            avatar_ids=sorted(list(self._avatar_ids)),
+            distinct_collection_count=len(self._collection_ids),
+            collection_ids=sorted(list(self._collection_ids)),
             garbage_size_estimate=0,
             fragmentation_estimate=0,
             last_cleanup_check_time=None,

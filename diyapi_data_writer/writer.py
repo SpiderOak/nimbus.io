@@ -35,7 +35,7 @@ def _insert_segment_row(connection, segment_row):
     connection.execute("""
         insert into diy.segment (
             id,
-            avatar_id,
+            collection_id,
             key,
             timestamp,
             segment_num,
@@ -49,7 +49,7 @@ def _insert_segment_row(connection, segment_row):
             handoff_node_id
         ) values (
             %(id)s,
-            %(avatar_id)s,
+            %(collection_id)s,
             %(key)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
@@ -72,7 +72,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
     segment_row_dict = segment_row._asdict()
     connection.execute("""
         insert into diy.segment (
-            avatar_id,
+            collection_id,
             key,
             timestamp,
             segment_num,
@@ -85,7 +85,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
             file_tombstone,
             handoff_node_id
         ) values (
-            %(avatar_id)s,
+            %(collection_id)s,
             %(key)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
@@ -107,7 +107,7 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
     """
     connection.execute("""
         insert into diy.segment_sequence (
-            "avatar_id",
+            "collection_id",
             "segment_id",
             "value_file_id",
             "sequence_num",
@@ -116,7 +116,7 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
             "hash",
             "adler32"
         ) values (
-            %(avatar_id)s,
+            %(collection_id)s,
             %(segment_id)s,
             %(value_file_id)s,
             %(sequence_num)s,
@@ -128,12 +128,12 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
     """, segment_sequence_row._asdict())
     connection.commit()
 
-def _get_segment_id(connection, avatar_id, key, timestamp, segment_num): 
+def _get_segment_id(connection, collection_id, key, timestamp, segment_num): 
     result = connection.fetch_one_row(""" 
         select id from diy.segment
-        where avatar_id = %s and key = %s and timestamp = %s::timestamp
+        where collection_id = %s and key = %s and timestamp = %s::timestamp
         and segment_num = %s""",
-        [avatar_id, key, timestamp, segment_num, ]
+        [collection_id, key, timestamp, segment_num, ]
     )
     if result is None:
         return None
@@ -166,13 +166,19 @@ class Writer(object):
     def close(self):
         self._value_file.close()
 
-    def start_new_segment(self, avatar_id, key, timestamp_repr, segment_num):
+    def start_new_segment(
+        self, 
+        collection_id, 
+        key, 
+        timestamp_repr, 
+        segment_num
+    ):
         """
         Initiate storing a segment of data for a file
         """
-        segment_key = (avatar_id, key, timestamp_repr, segment_num, )
+        segment_key = (collection_id, key, timestamp_repr, segment_num, )
         self._log.info("start_new_segment %s %s %s %s" % (
-            avatar_id, key, timestamp_repr, segment_num, 
+            collection_id, key, timestamp_repr, segment_num, 
         ))
         if segment_key in self._active_segments:
             raise ValueError("duplicate segment %s" % (segment_key, ))
@@ -182,14 +188,20 @@ class Writer(object):
         }
 
     def store_sequence(
-        self, avatar_id, key, timestamp_repr, segment_num, sequence_num, data
+        self, 
+        collection_id, 
+        key, 
+        timestamp_repr, 
+        segment_num, 
+        sequence_num, 
+        data
     ):
         """
         store one piece (sequence) of segment data
         """
-        segment_key = (avatar_id, key, timestamp_repr, segment_num, )
+        segment_key = (collection_id, key, timestamp_repr, segment_num, )
         self._log.info("store_sequence %s %s %s %s: %s (%s)" % (
-            avatar_id, 
+            collection_id, 
             key, 
             timestamp_repr, 
             segment_num, 
@@ -210,7 +222,7 @@ class Writer(object):
         sequence_md5.update(data)
 
         segment_sequence_row = segment_sequence_template(
-            avatar_id=avatar_id,
+            collection_id=collection_id,
             segment_id=segment_entry["segment-id"],
             value_file_id=self._value_file.value_file_id,
             sequence_num=sequence_num,
@@ -221,14 +233,14 @@ class Writer(object):
         )
 
         self._value_file.write_data_for_one_sequence(
-            avatar_id, segment_entry["segment-id"], data
+            collection_id, segment_entry["segment-id"], data
         )
 
         _insert_segment_sequence_row(self._connection, segment_sequence_row)
 
     def finish_new_segment(
         self, 
-        avatar_id, 
+        collection_id, 
         key, 
         timestamp_repr, 
         segment_num,
@@ -244,9 +256,9 @@ class Writer(object):
         """
         finalize storing one segment of data for a file
         """
-        segment_key = (avatar_id, key, timestamp_repr, segment_num, )
+        segment_key = (collection_id, key, timestamp_repr, segment_num, )
         self._log.info("finish_new_segment %s %s %s %s" % (
-            avatar_id, key, timestamp_repr, segment_num, 
+            collection_id, key, timestamp_repr, segment_num, 
         ))
         segment_entry = self._active_segments.pop(segment_key)
 
@@ -254,7 +266,7 @@ class Writer(object):
 
         segment_row = segment_row_template(
             id=segment_entry["segment-id"],
-            avatar_id=avatar_id,
+            collection_id=collection_id,
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,
@@ -269,23 +281,23 @@ class Writer(object):
         )
         _insert_segment_row(self._connection, segment_row)
     
-    def purge_segment(self, avatar_id, key, timestamp, segment_num):
+    def purge_segment(self, collection_id, key, timestamp, segment_num):
         """
         remove all database rows referring to a segment
         """
         segment_id = _get_segment_id(
-            self._connection, avatar_id, key, timestamp, segment_num
+            self._connection, collection_id, key, timestamp, segment_num
         )
         if segment_id is not None:
             _purge_segment_rows(self._connection, segment_id)
         
-    def set_tombstone(self, avatar_id, key, timestamp, segment_num):
+    def set_tombstone(self, collection_id, key, timestamp, segment_num):
         """
         mark a key as deleted
         """
         segment_row = segment_row_template(
             id=None,
-            avatar_id=avatar_id,
+            collection_id=collection_id,
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,

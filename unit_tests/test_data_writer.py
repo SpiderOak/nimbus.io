@@ -20,6 +20,7 @@ from diyapi_tools.data_definitions import create_timestamp
 from unit_tests.util import random_string, \
         generate_key, \
         start_data_writer, \
+        start_event_publisher, \
         poll_process, \
         terminate_process
 from unit_tests.gevent_zeromq_util import send_request_and_get_reply
@@ -30,6 +31,9 @@ _repository_path = os.path.join(_test_dir, "repository")
 _local_node_name = "multi-node-01"
 _data_writer_address = "tcp://127.0.0.1:8100"
 _client_address = "tcp://127.0.0.1:8900"
+_event_publisher_pull_address = \
+    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (_local_node_name, )
+_event_publisher_pub_address = "tcp://127.0.0.1:8800"
 
 class TestDataWriter(unittest.TestCase):
     """test message handling in data writer"""
@@ -39,9 +43,18 @@ class TestDataWriter(unittest.TestCase):
         os.makedirs(_repository_path)
         self._key_generator = generate_key()
 
+        self._event_publisher_process = start_event_publisher(
+            _local_node_name, 
+            _event_publisher_pull_address,
+            _event_publisher_pub_address
+        )
+        poll_result = poll_process(self._event_publisher_process)
+        self.assertEqual(poll_result, None)
+
         self._data_writer_process = start_data_writer(
             _local_node_name, 
             _data_writer_address, 
+            _event_publisher_pull_address,
             _repository_path
         )
         poll_result = poll_process(self._data_writer_process)
@@ -52,6 +65,12 @@ class TestDataWriter(unittest.TestCase):
         and self._data_writer_process is not None:
             terminate_process(self._data_writer_process)
             self._data_writer_process = None
+
+        if hasattr(self, "_event_publisher_process") \
+        and self._event_publisher_process is not None:
+            terminate_process(self._event_publisher_process)
+            self._event_publisher_process = None
+
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
@@ -60,7 +79,7 @@ class TestDataWriter(unittest.TestCase):
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
         message_id = uuid.uuid1().hex
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         timestamp = create_timestamp()
         segment_num = 2
@@ -71,7 +90,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -107,7 +126,7 @@ class TestDataWriter(unittest.TestCase):
         total_size = slice_size * slice_count
         test_data = random_string(total_size)
 
-        avatar_id = 1001
+        collection_id = 1001
         timestamp = create_timestamp()
         key  = self._key_generator.next()
         segment_num = 4
@@ -123,7 +142,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-start",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -148,7 +167,7 @@ class TestDataWriter(unittest.TestCase):
             message_id = uuid.uuid1().hex
             message = {
                 "message-type"      : "archive-key-next",
-                "avatar-id"         : avatar_id,
+                "collection-id"     : collection_id,
                 "key"               : key, 
                 "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num,
@@ -174,7 +193,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-final",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -199,12 +218,12 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
-    def _destroy(self, avatar_id, key, timestamp, segment_num):
+    def _destroy(self, collection_id, key, timestamp, segment_num):
         message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "destroy-key",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -221,12 +240,12 @@ class TestDataWriter(unittest.TestCase):
         
         return reply
 
-    def _purge(self, avatar_id, key, timestamp, segment_num):
+    def _purge(self, collection_id, key, timestamp, segment_num):
         message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "purge-key",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -245,11 +264,11 @@ class TestDataWriter(unittest.TestCase):
 
     def test_destroy_nonexistent_key(self):
         """test destroying a key that does not exist, with no complications"""
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
         timestamp = create_timestamp()
-        reply = self._destroy(avatar_id, key, timestamp, segment_num)
+        reply = self._destroy(collection_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def test_simple_destroy(self):
@@ -257,7 +276,7 @@ class TestDataWriter(unittest.TestCase):
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
         message_id = uuid.uuid1().hex
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         archive_timestamp = create_timestamp()
         destroy_timestamp = archive_timestamp + timedelta(seconds=1)
@@ -269,7 +288,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
@@ -293,7 +312,9 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
-        reply = self._destroy(avatar_id, key, destroy_timestamp, segment_num)
+        reply = self._destroy(
+            collection_id, key, destroy_timestamp, segment_num
+        )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def test_destroy_tombstone(self):
@@ -301,7 +322,7 @@ class TestDataWriter(unittest.TestCase):
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
         message_id = uuid.uuid1().hex
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         archive_timestamp = create_timestamp()
         destroy_1_timestamp = archive_timestamp + timedelta(seconds=1)
@@ -314,7 +335,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
@@ -338,10 +359,14 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
-        reply = self._destroy(avatar_id, key, destroy_1_timestamp, segment_num)
+        reply = self._destroy(
+            collection_id, key, destroy_1_timestamp, segment_num
+        )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-        reply = self._destroy(avatar_id, key, destroy_2_timestamp, segment_num)
+        reply = self._destroy(
+            collection_id, key, destroy_2_timestamp, segment_num
+        )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def test_old_destroy(self):
@@ -352,7 +377,7 @@ class TestDataWriter(unittest.TestCase):
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
         message_id = uuid.uuid1().hex
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         archive_timestamp = create_timestamp()
         destroy_timestamp = archive_timestamp - timedelta(seconds=1)
@@ -364,7 +389,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
@@ -388,16 +413,18 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
-        reply = self._destroy(avatar_id, key, destroy_timestamp, segment_num)
+        reply = self._destroy(
+            collection_id, key, destroy_timestamp, segment_num
+        )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def test_purge_nonexistent_key(self):
         """test purgeing a key that does not exist, with no complicatons"""
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
         timestamp = create_timestamp()
-        reply = self._purge(avatar_id, key, timestamp, segment_num)
+        reply = self._purge(collection_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply)
 
     def test_simple_purge(self):
@@ -405,7 +432,7 @@ class TestDataWriter(unittest.TestCase):
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
         message_id = uuid.uuid1().hex
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         archive_timestamp = create_timestamp()
         segment_num = 2
@@ -416,7 +443,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
             "segment-num"       : segment_num,
@@ -440,7 +467,7 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
-        reply = self._purge(avatar_id, key, archive_timestamp, segment_num)
+        reply = self._purge(collection_id, key, archive_timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
 if __name__ == "__main__":

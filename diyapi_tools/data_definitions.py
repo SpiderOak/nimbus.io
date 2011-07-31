@@ -73,8 +73,8 @@ value_file_template = namedtuple("ValueFile", [
     "sequence_count",
     "min_segment_id",
     "max_segment_id",
-    "distinct_avatar_count",
-    "avatar_ids",
+    "distinct_collection_count",
+    "collection_ids",
     "garbage_size_estimate",
     "fragmentation_estimate",
     "last_cleanup_check_time",
@@ -84,7 +84,7 @@ value_file_template = namedtuple("ValueFile", [
 segment_row_template = namedtuple(
     "SegmentRow", [
         "id",
-        "avatar_id",
+        "collection_id",
         "key",
         "timestamp",
         "segment_num",
@@ -101,7 +101,7 @@ segment_row_template = namedtuple(
 
 segment_sequence_template = namedtuple(
     "SegmentSequence", [
-        "avatar_id",
+        "collection_id",
         "segment_id",
         "value_file_id",
         "sequence_num",

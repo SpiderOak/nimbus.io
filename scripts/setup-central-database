@@ -1,0 +1,7 @@
+#!/bin/bash
+dropdb "diy_central"
+createdb "diy_central"
+MULTI_CLUSTER_NAME='local_multi_cluster'
+psql -d "diy_central" -f "${HOME}/spideroak_diyapi/sql/central_database_schema.sql"
+psql -d "diy_central" -f "${HOME}/spideroak_diyapi/sql/populate_test_cluster.sql"
+

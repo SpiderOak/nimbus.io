@@ -14,7 +14,7 @@ create table "cluster" (
     name varchar(255) unique not null,
     node_count int4 not null default 10,
     replication_level int4 not null default 3,
-    creation_time timestamp
+    creation_time timestamp default 'now'
 );
 
 create table node (
@@ -24,7 +24,7 @@ create table node (
     name varchar(255) unique not null,
     hostname varchar(255) not null,
     offline bool not null default false,
-    creation_time timestamp
+    creation_time timestamp default 'now'
 );
 
 create sequence collection_id_seq;
@@ -33,7 +33,7 @@ create table collection (
     cluster_id int4 not null references diy_central.cluster(id),
     name varchar(1024) unique not null,
     avatar_id int4 not null,
-    timestamp timestamp not null
+    creation_time timestamp default 'now'
 );
 
 /* get avatar_id for collection name */
@@ -50,10 +50,25 @@ create table space_accounting(
    bytes_retrieved int8 not null default 0
 );
 
+create sequence audit_result_id_sequence;
+create table audit_result(
+   diyapi_audit_result_id int4 not null primary key default nextval('diy_central.audit_result_id_sequence'),
+   avatar_id int4 not null,
+   state text,
+   audit_scheduled timestamp default now(),
+   audit_started timestamp,
+   audit_finished timestamp,
+   reconstruct_scheduled timestamp,
+   reconstruct_started timestamp,
+   reconstruct_finished timestamp
+);
+
+create index audit_result_avatar_id on diy_central.audit_result (avatar_id);
+
 grant all privileges on schema diy_central to pandora;
 grant all privileges on all tables in schema diy_central to pandora;
 grant all privileges on all sequences in schema diy_central to pandora;
 
-rollback;
-/*commit;*/
+/*rollback;*/
+commit;
 

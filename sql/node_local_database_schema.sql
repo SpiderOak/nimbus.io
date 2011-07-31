@@ -183,5 +183,5 @@ grant all privileges on schema diy to pandora;
 grant all privileges on all tables in schema diy to pandora;
 grant all privileges on all sequences in schema diy to pandora;
 
-rollback;
-/*commit;*/
+/*rollback;*/
+commit;

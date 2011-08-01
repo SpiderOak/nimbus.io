@@ -14,7 +14,7 @@ class SpaceAccountingDatabaseAvatarNotFound(SpaceAccountingDatabaseError):
     pass
 
 _insert_command = """
-INSERT INTO diyapi_space_accounting
+INSERT INTO diy_central.space_accounting
 (avatar_id, timestamp, bytes_added, bytes_removed, bytes_retrieved)
 VALUES(%s, '%s'::timestamp, %s, %s, %s);
 """.strip()
@@ -23,12 +23,12 @@ _avatar_query = """
 SELECT COALESCE(SUM(bytes_added), 0), 
 COALESCE(SUM(bytes_removed), 0), 
 COALESCE(SUM(bytes_retrieved), 0)
-FROM diyapi_space_accounting 
+FROM diy_central.space_accounting 
 WHERE avatar_id = %s
 """.strip()
 
 _clear_command = """
-DELETE FROM diyapi_space_accounting 
+DELETE FROM diy_central.space_accounting 
 WHERE avatar_id = %s
 """.strip()
 

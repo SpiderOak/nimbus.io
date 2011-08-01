@@ -148,8 +148,7 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "PANDORA_DB_PW_pandora_storage_server" : \
-            os.environ["PANDORA_DB_PW_pandora_storage_server"],
+        "PANDORA_DB_PW_pandora" : os.environ["PANDORA_DB_PW_pandora"],
         "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
         "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
     }        

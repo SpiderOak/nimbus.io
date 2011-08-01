@@ -72,7 +72,7 @@ def _handle_space_usage_request(state, message, _data):
     reply = {
         "message-type"  : "space-usage-reply",
         "xrep-ident"    : message["xrep-ident"],
-        "message-id"    : message["message-id"],
+        "avatar-id"     : message["avatar-id"],
         "result"        : None,
     }
 
@@ -95,12 +95,9 @@ def _handle_space_usage_request(state, message, _data):
     bytes_added, bytes_removed, bytes_retrieved = stats
 
     # increment sums with data from state
-    current_time = datetime.datetime.now()
-    current_hour = floor_hour(current_time)
-
-    if current_hour in state["data"]:
-        if message["avatar-id"] in state["data"][current_hour]:
-            events = state["data"][current_hour][message["avatar-id"]]
+    for key in state["data"].keys():
+        if message["avatar-id"] in state["data"][key]:
+            events = state["data"][key][message["avatar-id"]]
             bytes_added += events.get("bytes_added", 0)
             bytes_removed += events.get("bytes_removed", 0)
             bytes_retrieved += events.get("bytes_retrieved", 0)

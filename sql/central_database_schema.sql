@@ -43,7 +43,7 @@ create index collection_name_idx on collection("name");
 create index collection_avatar_id_name_idx on collection("avatar_id", "name");
 
 create table space_accounting(
-   collection_id int4 not null references diy_central.collection(id),
+   avatar_id int4 not null,
    timestamp timestamp not null,
    bytes_added int8 not null default 0,
    bytes_removed int8 not null default 0,

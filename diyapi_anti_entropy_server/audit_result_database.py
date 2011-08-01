@@ -2,7 +2,7 @@
 """
 audit_result_database.py
 
-wrap access to the diyapi_audit_result_table 
+wrap access to the diy_central.audit_result_table 
 """
 import logging
 import os
@@ -16,43 +16,43 @@ state_audit_successful = "audit-successful"
 state_audit_error = "audit-error"
 
 _start_audit_command = """
-INSERT INTO diyapi_audit_result
+INSERT INTO diy_central.audit_result
 (avatar_id, state, audit_started)
 VALUES(%s, '%s', '%s'::timestamp)
-RETURNING diyapi_audit_result_id;
+RETURNING diy_central.audit_result_id;
 """.strip()
 
 _audit_retry_command = """
-UPDATE diyapi_audit_result
+UPDATE diy_central.audit_result
 SET state = '%s', audit_started = NULL
-WHERE diyapi_audit_result_id = %s;
+WHERE diy_central.audit_result_id = %s;
 """.strip()
 
 _restart_audit_command = """
-UPDATE diyapi_audit_result
+UPDATE diy_central.audit_result
 SET state = '%s', audit_started = '%s'::timestamp
-WHERE diyapi_audit_result_id = %s;
+WHERE diy_central.audit_result_id = %s;
 """.strip()
 
 _audit_result_command = """
-UPDATE diyapi_audit_result
+UPDATE diy_central.audit_result
 SET state = '%s', audit_finished = '%s'::timestamp
-WHERE diyapi_audit_result_id = %s;
+WHERE diy_central.audit_result_id = %s;
 """.strip()
 
 _ineligible_query = """
-SELECT avatar_id FROM diyapi_audit_result
+SELECT avatar_id FROM diy_central.audit_result
 WHERE COALESCE(state, 'audit-successful') != 'audit-successful'
 OR COALESCE(audit_finished, now()) > '%s'::timestamp;
 """.strip()
 
 _clear_command = """
-DELETE FROM diyapi_audit_result
+DELETE FROM diy_central.audit_result
 WHERE avatar_id = %s
 """.strip()
 
 class AuditResultDatabase(object):
-    """wrap access to the diyapi_audit_result table"""
+    """wrap access to the diy_central.audit_result table"""
     def __init__(self):
         self._log = logging.getLogger("AuditResultDatabase")
         self._connection = get_central_connection()

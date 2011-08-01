@@ -53,7 +53,11 @@ def terminate_process(process):
         process.returncode
 
 def start_data_writer(
-    node_name, address, event_publisher_pull_address, repository_path
+    cluster_name, 
+    node_name, 
+    address, 
+    event_publisher_pull_address, 
+    repository_path
 ):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_data_writer")
@@ -66,6 +70,7 @@ def start_data_writer(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
         "DIYAPI_DATA_WRITER_ADDRESS"        : address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,

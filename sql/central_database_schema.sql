@@ -31,9 +31,10 @@ create sequence collection_id_seq;
 create table collection (
     id int4 unique not null default nextval('diy_central.collection_id_seq'),
     cluster_id int4 not null references diy_central.cluster(id),
-    name varchar(1024) unique not null,
+    name varchar(1024) not null default '(default)',
     avatar_id int4 not null,
-    creation_time timestamp default 'now'
+    creation_time timestamp default 'now',
+    unique (avatar_id, name)
 );
 
 /* get avatar_id for collection name */

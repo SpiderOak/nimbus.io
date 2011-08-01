@@ -26,7 +26,8 @@ from diyapi_tools.greenlet_pull_server import GreenletPULLServer
 from diyapi_tools.deliverator import Deliverator
 from diyapi_tools.data_definitions import create_timestamp
 from diyapi_tools.database_connection import get_central_connection
-from diyapi_web_server.central_database_util import node_rows
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_node_rows
 
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
@@ -93,7 +94,8 @@ class TestHandoffServer(unittest.TestCase):
 
         self.tearDown()
         database_connection = get_central_connection()
-        node_rows_list = node_rows(database_connection)
+        cluster_row = get_cluster_row()
+        node_rows = get_node_rows(database_connection, cluster_row.id)
         database_connection.close()
 
         self._key_generator = generate_key()
@@ -163,13 +165,13 @@ class TestHandoffServer(unittest.TestCase):
         )
         self._pull_server.register(self._pollster)
 
-        backup_nodes = random.sample(node_rows_list[1:], 2)
+        backup_nodes = random.sample(node_rows[1:], 2)
         self._log.debug("backup nodes = %s" % (
             [n.name for n in backup_nodes], 
         ))
 
         self._resilient_clients = list()        
-        for node_row, address in zip(node_rows_list, _data_writer_addresses):
+        for node_row, address in zip(node_rows, _data_writer_addresses):
             if not node_row in backup_nodes:
                 continue
             resilient_client = GreenletResilientClient(
@@ -187,7 +189,7 @@ class TestHandoffServer(unittest.TestCase):
         ))
 
         self._data_writer_handoff_client = DataWriterHandoffClient(
-            node_rows_list[0].name,
+            node_rows[0].name,
             self._resilient_clients
         )
 

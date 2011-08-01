@@ -28,6 +28,7 @@ from unit_tests.gevent_zeromq_util import send_request_and_get_reply
 _log_path = "/var/log/pandora/test_data_writer.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
+_cluster_name = "multi-node-cluster"
 _local_node_name = "multi-node-01"
 _data_writer_address = "tcp://127.0.0.1:8100"
 _client_address = "tcp://127.0.0.1:8900"
@@ -52,6 +53,7 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(poll_result, None)
 
         self._data_writer_process = start_data_writer(
+            _cluster_name,
             _local_node_name, 
             _data_writer_address, 
             _event_publisher_pull_address,

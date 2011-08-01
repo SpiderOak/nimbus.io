@@ -31,6 +31,7 @@ from unit_tests.gevent_zeromq_util import send_request_and_get_reply_and_data, \
 _log_path = "/var/log/pandora/test_data_reader.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
+_cluster_name = "multi-node-cluster"
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _data_writer_address = "tcp://127.0.0.1:8100"
 _data_reader_address = "tcp://127.0.0.1:8200"
@@ -58,6 +59,7 @@ class TestDataReader(unittest.TestCase):
         self.assertEqual(poll_result, None)
 
         self._data_writer_process = start_data_writer(
+            _cluster_name,
             _local_node_name, 
             _data_writer_address,
             _event_publisher_pull_address,

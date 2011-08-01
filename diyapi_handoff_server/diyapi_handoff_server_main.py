@@ -25,7 +25,8 @@ from diyapi_tools.database_connection import \
         get_central_connection
 from diyapi_tools.data_definitions import segment_row_template
 
-from diyapi_web_server.central_database_util import node_rows
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_node_rows
 
 from diyapi_handoff_server.pending_handoffs import PendingHandoffs
 from diyapi_handoff_server.handoff_requestor import HandoffRequestor, \
@@ -283,6 +284,7 @@ _dispatch_table = {
 def _create_state():
     return {
         "database-connection"       : None,
+        "cluster-row"               : None,
         "node-rows"                 : None,
         "node-id-dict"              : None,
         "node-name-dict"            : None,
@@ -305,7 +307,10 @@ def _setup(_halt_event, state):
     status_checkers = list()
 
     central_connection = get_central_connection()
-    state["node-rows"] = node_rows(central_connection)
+    state["cluster-row"] = get_cluster_row(central_connection)
+    state["node-rows"] = get_node_rows(
+        central_connection, state["cluster-row"].id
+    )
     central_connection.close()
 
     state["node-id-dict"] = dict(

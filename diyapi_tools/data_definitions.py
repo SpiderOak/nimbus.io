@@ -56,6 +56,13 @@ def parse_timestamp_repr(timestamp_repr):
 
     return timestamp
 
+cluster_row_template = namedtuple("ClusterRow", [
+    "id",
+    "name",
+    "node_count",
+    "replication_level"]
+)
+
 node_row_template = namedtuple("NodeRow", [
     "id",
     "node_number_in_cluster",

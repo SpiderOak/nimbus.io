@@ -20,7 +20,7 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.pandora_database_connection import \
+from diyapi_tools.database_connection import \
         get_node_local_connection, \
         get_central_connection
 from diyapi_tools.data_definitions import segment_row_template
@@ -81,7 +81,7 @@ def _retrieve_handoffs_for_node(connection, node_id):
 def _convert_dict_to_segment_row(segment_dict):
     return segment_row_template(
         id=segment_dict["id"],
-        avatar_id=segment_dict["avatar_id"],
+        collection_id=segment_dict["collection_id"],
         key=segment_dict["key"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
@@ -210,7 +210,7 @@ def _handle_archive_reply(state, message, _data):
     if result is not None:
         segment_row, source_node_names = result
         log.info("handoff complete %s %s %s %s" % (
-            segment_row.avatar_id,
+            segment_row.collection_id,
             segment_row.key,
             segment_row.timestamp,
             segment_row.segment_num,
@@ -221,7 +221,7 @@ def _handle_archive_reply(state, message, _data):
         # purge the handoff source(s)
         message = {
             "message-type"      : "purge-key",
-            "avatar-id"         : segment_row.avatar_id,
+            "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,

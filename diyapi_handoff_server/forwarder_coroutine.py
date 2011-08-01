@@ -23,14 +23,14 @@ def forwarder_coroutine(
     message = {
         "message-type"      : "retrieve-key-start",
         "message-id"        : message_id,
-        "avatar-id"         : segment_row.avatar_id,
+        "collection-id"     : segment_row.collection_id,
         "key"               : segment_row.key,
         "timestamp-repr"    : repr(segment_row.timestamp),
         "segment-num"       : segment_row.segment_num,
     }
 
     log.debug("sending retrieve-key-start %s %s %s %s" % (
-        segment_row.avatar_id, 
+        segment_row.collection_id, 
         segment_row.key, 
         segment_row.timestamp, 
         segment_row.segment_num
@@ -50,7 +50,7 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : segment_row.avatar_id,
+            "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
@@ -66,7 +66,7 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "archive-key-start",
             "message-id"        : message_id,
-            "avatar-id"         : segment_row.avatar_id,
+            "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
@@ -92,7 +92,7 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "retrieve-key-next",
             "message-id"        : message_id,
-            "avatar-id"         : segment_row.avatar_id,
+            "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
@@ -109,7 +109,7 @@ def forwarder_coroutine(
             message = {
                 "message-type"      : "archive-key-final",
                 "message-id"        : message_id,
-                "avatar-id"         : segment_row.avatar_id,
+                "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
                 "segment-number"    : segment_row.segment_number,
                 "sequence-num"      : sequence,
@@ -125,7 +125,7 @@ def forwarder_coroutine(
             message = {
                 "message-type"      : "archive-key-next",
                 "message-id"        : message_id,
-                "avatar-id"         : segment_row.avatar_id,
+                "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
                 "segment-num"       : segment_row.segment_num,
                 "sequence-num"      : sequence,

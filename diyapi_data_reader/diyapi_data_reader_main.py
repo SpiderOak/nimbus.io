@@ -21,7 +21,7 @@ from diyapi_tools.zeromq_pollster import ZeroMQPollster
 from diyapi_tools.resilient_server import ResilientServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.database_connection import get_node_local_connection
 from diyapi_tools.data_definitions import parse_timestamp_repr
 
 from diyapi_data_reader.reader import Reader
@@ -52,7 +52,7 @@ def _compute_state_key(message):
     compute a key to the state for this message
     """
     return (message["client-tag"],
-            message["avatar-id"], 
+            message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
             message["segment-num"], )
@@ -61,7 +61,7 @@ def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
     state_key = _compute_state_key(message)
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -71,7 +71,7 @@ def _handle_retrieve_key_start(state, message, _data):
         "message-type"  : "retrieve-key-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
-        "avatar-id"     : message["avatar-id"],
+        "collection-id" : message["collection-id"],
         "key"           : message["key"],
         "timestamp-repr": message["timestamp-repr"],
         "segment-num"   : message["segment-num"],
@@ -93,7 +93,7 @@ def _handle_retrieve_key_start(state, message, _data):
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     sequence_generator = state["reader"].generate_all_sequence_rows_for_segment(
-        message["avatar-id"],
+        message["collection-id"],
         message["key"],
         timestamp,
         message["segment-num"]
@@ -145,7 +145,7 @@ def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
     state_key = _compute_state_key(message)
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -155,7 +155,7 @@ def _handle_retrieve_key_next(state, message, _data):
         "message-type"  : "retrieve-key-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
-        "avatar-id"     : message["avatar-id"],
+        "collection-id" : message["collection-id"],
         "key"           : message["key"],
         "timestamp-repr": message["timestamp-repr"],
         "segment-num"   : message["segment-num"],

@@ -13,7 +13,7 @@ from diyapi_web_server.exceptions import (
     AlreadyInProgress,
     RetrieveFailedError,
 )
-from diyapi_web_server.database_util import most_recent_timestamp_for_key
+from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
 
 
 class Retriever(object):
@@ -22,15 +22,15 @@ class Retriever(object):
         self, 
         node_local_connection,
         data_readers, 
-        avatar_id, 
+        collection_id, 
         key, 
         segments_needed
     ):
         self.log = logging.getLogger("Retriever")
-        self.log.info('avatar_id=%d, key=%r' % (avatar_id, key, ))
+        self.log.info('collection_id=%d, key=%r' % (collection_id, key, ))
         self._node_local_connection = node_local_connection
         self.data_readers = data_readers
-        self.avatar_id = avatar_id
+        self.collection_id = collection_id
         self.key = key
         self.segments_needed = segments_needed
         self._pending = gevent.pool.Group()
@@ -68,17 +68,17 @@ class Retriever(object):
 
         # TODO: find a non-blocking way to do this
         file_info = most_recent_timestamp_for_key(
-            self._node_local_connection , self.avatar_id, self.key
+            self._node_local_connection , self.collection_id, self.key
         )
 
         if file_info is None:
             raise RetrieveFailedError("key not found %s %s" % (
-                self.avatar_id, self.key,
+                self.collection_id, self.key,
             ))
 
         if file_info.file_tombstone:
             raise RetrieveFailedError("key is deleted %s %s" % (
-                self.avatar_id, self.key,
+                self.collection_id, self.key,
             ))
 
         for i, data_reader in enumerate(self.data_readers):
@@ -87,7 +87,7 @@ class Retriever(object):
                 segment_number,
                 data_reader,
                 data_reader.retrieve_key_start,
-                self.avatar_id,
+                self.collection_id,
                 self.key,
                 file_info.timestamp,
                 segment_number
@@ -118,7 +118,7 @@ class Retriever(object):
                     segment_number,
                     data_reader,
                     data_reader.retrieve_key_next,
-                    self.avatar_id,
+                    self.collection_id,
                     self.key,
                     file_info.timestamp,
                     segment_number

@@ -26,7 +26,7 @@ class DataWriter(object):
 
     def archive_key_entire(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num,
@@ -40,7 +40,7 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-entire",
-            "avatar-id"         : avatar_id,
+            "collection-id"         : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -68,7 +68,7 @@ class DataWriter(object):
 
     def archive_key_start(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num,
@@ -77,7 +77,7 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-start",
-            "avatar-id"         : avatar_id,
+            "collection-id"         : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -98,7 +98,7 @@ class DataWriter(object):
 
     def archive_key_next(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num,
@@ -107,7 +107,7 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-next",
-            "avatar-id"         : avatar_id,
+            "collection-id"         : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -117,7 +117,7 @@ class DataWriter(object):
             message, data=segment
         )
         self._log.debug(
-            '%(message-type)s: %(avatar-id)s $(key)s '
+            '%(message-type)s: %(collection-id)s $(key)s '
             'sequence = %(sequence-num)s' % message
             )
         reply, _data = delivery_channel.get()
@@ -127,7 +127,7 @@ class DataWriter(object):
 
     def archive_key_final(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num,
@@ -142,7 +142,7 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "archive-key-final",
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -158,7 +158,7 @@ class DataWriter(object):
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
-        self._log.debug('%(message-type)s: %(avatar-id)s %(key)s' % message)
+        self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
         reply, _data = delivery_channel.get()
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
@@ -166,14 +166,14 @@ class DataWriter(object):
 
     def destroy_key(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num
     ):
         message = {
             "message-type"      : "destroy-key",
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,

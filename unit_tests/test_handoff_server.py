@@ -52,6 +52,7 @@ _event_publisher_base_port = 8800
 def _generate_node_name(node_index):
     return "multi-node-%02d" % (node_index+1, )
 
+_cluster_name = "multi-node-cluster"
 _local_node_index = 0
 _local_node_name = _generate_node_name(_local_node_index)
 _node_names = [_generate_node_name(i) for i in range(_node_count)]
@@ -94,7 +95,7 @@ class TestHandoffServer(unittest.TestCase):
 
         self.tearDown()
         database_connection = get_central_connection()
-        cluster_row = get_cluster_row()
+        cluster_row = get_cluster_row(database_connection)
         node_rows = get_node_rows(database_connection, cluster_row.id)
         database_connection.close()
 
@@ -121,6 +122,7 @@ class TestHandoffServer(unittest.TestCase):
             time.sleep(1.0)
 
             process = start_data_writer(
+                _cluster_name,
                 node_name, 
                 _data_writer_addresses[i],
                 _event_publisher_pull_addresses[i],
@@ -142,6 +144,7 @@ class TestHandoffServer(unittest.TestCase):
             time.sleep(1.0)
 
             process = start_handoff_server(
+                _cluster_name,
                 node_name, 
                 _handoff_server_addresses,
                 _handoff_server_pipeline_addresses[i],

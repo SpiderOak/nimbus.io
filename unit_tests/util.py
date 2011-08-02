@@ -162,6 +162,7 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_handoff_server(
+    cluster_name,
     local_node_name, 
     handoff_server_addresses, 
     pipeline_address, 
@@ -180,6 +181,7 @@ def start_handoff_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name, 
         "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
         "DIYAPI_HANDOFF_SERVER_ADDRESSES"        : " ".join(
             handoff_server_addresses

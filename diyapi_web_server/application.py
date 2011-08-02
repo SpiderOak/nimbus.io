@@ -23,11 +23,10 @@ from webob import Response
 from diyapi_tools.data_definitions import create_timestamp
 
 from diyapi_web_server import util
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_collections_for_avatar 
 from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
-        StatFailedError, \
-        DataReaderDownError, \
-        ListmatchFailedError, \
         RetrieveFailedError, \
         ArchiveFailedError, \
         DestroyFailedError
@@ -51,7 +50,6 @@ SLICE_SIZE = 1024 * 1024    # 1MB
 MIN_CONNECTED_CLIENTS = 8
 MIN_SEGMENTS = 8
 MAX_SEGMENTS = 10
-DATABASE_AGREEMENT_LEVEL = 8
 HANDOFF_COUNT = 2
 
 class router(list):
@@ -113,6 +111,7 @@ def _create_data_writers(clients):
 class Application(object):
     def __init__(
         self, 
+        central_connection,
         node_local_connection,
         data_writer_clients, 
         data_readers,
@@ -122,11 +121,14 @@ class Application(object):
     ):
         self._log = logging.getLogger("Application")
         self._data_writer_clients = data_writer_clients
+        self._central_connection = central_connection
         self._node_local_connection = node_local_connection
         self.data_readers = data_readers
         self.authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
+
+        self._cluster_row = get_cluster_row(self._central_connection)
 
     routes = router()
 
@@ -137,6 +139,14 @@ class Application(object):
             req.diy_username = util.get_username_from_req(req) or 'test'
             if not self.authenticator.authenticate(req):
                 raise exc.HTTPUnauthorized()
+            req.collections = dict(
+                get_collections_for_avatar(
+                    self._central_connection,
+                    self._cluster_row.id,
+                    req.avatar_id
+                )
+            )
+            req.default_collection_id = req.collections["(default)"]
             url_matched = False
             for regex, query_args, methods, func_name in self.routes:
                 url_match = regex.match(req.path)
@@ -179,27 +189,29 @@ class Application(object):
 
     @routes.add(r'/usage$')
     def usage(self, req):
-        self._log.debug("usage: avatar_id = %s" % (
-            req.remote_user,
-        ))
-        avatar_id = req.remote_user
+        self._log.debug("usage: %s" % (req.avatar_id, ))
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(avatar_id, REPLY_TIMEOUT)
+            usage = getter.get_space_usage(req.avatar_id, REPLY_TIMEOUT)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
         return Response(json.dumps(usage))
 
     @routes.add(r'/data/(.+)$', action='stat')
     def stat(self, req, path):
+        collection_name = "pork"
+        collection_id = req.collections.get(
+            collection_name, req.default_collection_id
+        )
         key = urllib.unquote_plus(path)
-        self._log.debug("stat: avatar_id = %s key = %r" % (
-            req.remote_user,
+        self._log.debug("stat: %s collection = (%s) %r key = %r" % (
+            req.avatar_id,
+            collection_id, 
+            req.collections[collection_id],
             key
         ))
-        avatar_id = req.remote_user
         getter = StatGetter(self._node_local_connection)
-        file_info = getter.stat(avatar_id, key, REPLY_TIMEOUT)
+        file_info = getter.stat(collection_id, key, REPLY_TIMEOUT)
         file_info_dict = dict()
         for key, value in file_info._asdict().items():
             if key.startswith("file_"):
@@ -210,13 +222,19 @@ class Application(object):
 
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):
-        self._log.debug("listmatch: avatar_id = %s prefix = '%s'" % (
-            req.remote_user, prefix
+        collection_name = "pork"
+        collection_id = req.collections.get(
+            collection_name, req.default_collection_id
+        )
+        self._log.debug("listmatch: %s collection = (%s) %r prefix = '%s'" % (
+            req.avatar_id, 
+            collection_id,
+            req.collections[collection_id],
+            prefix
         ))
-        avatar_id = req.remote_user
         prefix = urllib.unquote_plus(prefix)
         matcher = Listmatcher(self._node_local_connection)
-        keys = matcher.listmatch(avatar_id, prefix, REPLY_TIMEOUT)
+        keys = matcher.listmatch(collection_id, prefix, REPLY_TIMEOUT)
         response = Response(content_type='text/plain', charset='utf8')
         for key in keys:
             response.body_file.write("%s\n" % (key, ))
@@ -225,19 +243,25 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
+        collection_name = "pork"
+        collection_id = req.collections.get(
+            collection_name, req.default_collection_id
+        )
         key = urllib.unquote_plus(key)
-        self._log.debug("destroy: avatar_id = %s key = %s" % (
-            req.remote_user, key,
+        self._log.debug("destroy: %s collection = (%s) %r key = %s" % (
+            req.avatar_id, 
+            collection_id,
+            req.collections[collection_id],
+            key,
         ))
         data_writers = _create_data_writers(self._data_writer_clients)
 
-        avatar_id = req.remote_user
         timestamp = create_timestamp()
 
         destroyer = Destroyer(
             self._node_local_connection,
             data_writers,
-            avatar_id,
+            collection_id,
             key,
             timestamp
         )
@@ -248,7 +272,7 @@ class Application(object):
             raise exc.HTTPInternalServerError(str(e))
 
         self.accounting_client.removed(
-            avatar_id,
+            req.avatar_id,
             timestamp,
             size_deleted
         )
@@ -256,10 +280,17 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
+        collection_name = "pork"
+        collection_id = req.collections.get(
+            collection_name, req.default_collection_id
+        )
         start_time = time.time()
         key = urllib.unquote_plus(key)
-        description = "retrieve: avatar_id = %s key = %s" % (
-            req.remote_user, key
+        description = "retrieve: %s collection = (%s) %r key = %r" % (
+            req.avatar_id, 
+            collection_id,
+            req.collections[collection_id],
+            key
         )
         self._log.debug(description)
         connected_data_readers = _connected_clients(self.data_readers)
@@ -269,14 +300,13 @@ class Application(object):
                 len(connected_data_readers),
             ))
 
-        avatar_id = req.remote_user
         segmenter = ZfecSegmenter(
             MIN_SEGMENTS,
             MAX_SEGMENTS)
         retriever = Retriever(
             self._node_local_connection,
             self.data_readers,
-            avatar_id,
+            collection_id,
             key,
             MIN_SEGMENTS
         )
@@ -315,7 +345,7 @@ class Application(object):
             end_time = time.time()
 
             self.accounting_client.retrieved(
-                avatar_id,
+                req.avatar_id,
                 create_timestamp(),
                 sent
             )
@@ -332,10 +362,18 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
+        collection_name = "pork"
+        collection_id = req.collections.get(
+            collection_name, req.default_collection_id
+        )
         start_time = time.time()
         key = urllib.unquote_plus(key)
-        description = "archive: avatar_id=%s key=%s, content_length=%s" % (
-            req.remote_user, key, req.content_length
+        description = "archive: %s collection = (%s) %r key = %r, size=%s" % (
+            req.avatar_id, 
+            collection_id,
+            req.collections[collection_id],
+            key, 
+            req.content_length
         )
         self._log.debug(description)
 
@@ -345,11 +383,10 @@ class Application(object):
             ) 
 
         data_writers = _create_data_writers(self._data_writer_clients) 
-        avatar_id = req.remote_user
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
-            avatar_id,
+            collection_id,
             key,
             timestamp
         )
@@ -404,7 +441,7 @@ class Application(object):
         end_time = time.time()
 
         self.accounting_client.added(
-            avatar_id,
+            req.avatar_id,
             timestamp,
             file_size
         )

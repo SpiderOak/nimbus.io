@@ -67,7 +67,7 @@ class SqlAuthenticator(object):
             if time.time() > auth_expiration_time:
                 del self._auth_cache[req.diy_username]
             elif key_id == auth_key_id:
-                req.remote_user = auth_avatar_id
+                req.avatar_id = auth_avatar_id
                 req.key_id = auth_key_id
                 return True
 
@@ -99,13 +99,13 @@ class SqlAuthenticator(object):
         if signature != expected:
             return False
 
-        req.remote_user = int(avatar_id)
+        req.avatar_id = int(avatar_id)
         req.key_id = int(key_id)
 
         # cache the authentication results with an expiration time
         self._auth_cache[req.diy_username] = (
             req.key_id, 
-            req.remote_user, 
+            req.avatar_id, 
             time.time() + _auth_cache_expiration_interval,
         )
 

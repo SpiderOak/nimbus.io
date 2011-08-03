@@ -20,10 +20,13 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.database_connection import \
+        get_node_local_connection, \
+        get_central_connection
 from diyapi_tools.data_definitions import segment_row_template
 
-from diyapi_web_server.database_util import node_rows
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_node_rows
 
 from diyapi_handoff_server.pending_handoffs import PendingHandoffs
 from diyapi_handoff_server.handoff_requestor import HandoffRequestor, \
@@ -79,7 +82,7 @@ def _retrieve_handoffs_for_node(connection, node_id):
 def _convert_dict_to_segment_row(segment_dict):
     return segment_row_template(
         id=segment_dict["id"],
-        avatar_id=segment_dict["avatar_id"],
+        collection_id=segment_dict["collection_id"],
         key=segment_dict["key"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
@@ -208,7 +211,7 @@ def _handle_archive_reply(state, message, _data):
     if result is not None:
         segment_row, source_node_names = result
         log.info("handoff complete %s %s %s %s" % (
-            segment_row.avatar_id,
+            segment_row.collection_id,
             segment_row.key,
             segment_row.timestamp,
             segment_row.segment_num,
@@ -219,7 +222,7 @@ def _handle_archive_reply(state, message, _data):
         # purge the handoff source(s)
         message = {
             "message-type"      : "purge-key",
-            "avatar-id"         : segment_row.avatar_id,
+            "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
@@ -281,6 +284,7 @@ _dispatch_table = {
 def _create_state():
     return {
         "database-connection"       : None,
+        "cluster-row"               : None,
         "node-rows"                 : None,
         "node-id-dict"              : None,
         "node-name-dict"            : None,
@@ -302,9 +306,13 @@ def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     status_checkers = list()
 
-    state["database-connection"] = get_node_local_connection()
+    central_connection = get_central_connection()
+    state["cluster-row"] = get_cluster_row(central_connection)
+    state["node-rows"] = get_node_rows(
+        central_connection, state["cluster-row"].id
+    )
+    central_connection.close()
 
-    state["node-rows"] = node_rows(state["database-connection"])
     state["node-id-dict"] = dict(
         [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
     )
@@ -312,6 +320,7 @@ def _setup(_halt_event, state):
         [(node_row.id, node_row.name, ) for node_row in state["node-rows"]]
     )
 
+    state["database-connection"] = get_node_local_connection()
     for node_row, handoff_server_address in zip(
         state["node-rows"], _handoff_server_addresses
     ):

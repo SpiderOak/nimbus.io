@@ -30,10 +30,12 @@ reconstructed and added.
 Any other situation would indicate a data integrity error 
 that should be resolved.
 """
-from collections import deque, namedtuple
+from base64 import b64encode, b64decode
+from collections import deque, namedtuple, defaultdict
 import hashlib
 import logging
 import os
+import cPickle as pickle
 import random
 import sys
 import time
@@ -48,7 +50,11 @@ from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.data_definitions import create_timestamp, \
         parse_timestamp_repr
-from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.database_connection import get_central_connection, \
+        get_node_local_connection
+
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_collections_for_avatar
 
 from diyapi_anti_entropy_server.common import max_retry_count, \
         retry_entry_tuple, \
@@ -77,7 +83,7 @@ _anti_entropy_server_pipeline_address = os.environ.get(
     "tcp://127.0.0.1:8650"
 )
 _request_timeout = 5.0 * 60.0
-_error_hash = "*** error ***"
+_error_reply = "*** error ***"
 
 _request_state_tuple = namedtuple("RequestState", [ 
     "client_tag",
@@ -86,16 +92,27 @@ _request_state_tuple = namedtuple("RequestState", [
     "retry_count",
     "replies",
     "row_id",
+    "collections_dict",
 ])
 
 def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
     log = logging.getLogger("_start_consistency_check")
-    log.info("start consistency check on %s" % (avatar_id, ))
 
     timestamp = create_timestamp()
     state_key = (avatar_id, timestamp, )
 
-    database = AuditResultDatabase()
+    collections_for_avatar = get_collections_for_avatar(
+        state["central-database-connection"], 
+        state["cluster-row"].id, 
+        avatar_id
+    )
+    collections_dict = dict(collections_for_avatar)
+
+    log.info("start consistency check on %s %s connections" % (
+        avatar_id, len(collections_dict),
+    ))
+
+    database = AuditResultDatabase(state["central-database-connection"])
     if row_id is None:
         row_id = database.start_audit(avatar_id, timestamp)
     else:
@@ -108,7 +125,8 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
         timeout=time.time()+_request_timeout,
         retry_count=retry_count,
         replies=dict(), 
-        row_id=row_id
+        row_id=row_id,
+        collections_dict=collections_dict
     )
 
     request = {
@@ -116,18 +134,28 @@ def _start_consistency_check(state, avatar_id, row_id=None, retry_count=0):
         "avatar-id"     : avatar_id,
         "timestamp-repr": repr(timestamp),
     }
+    data = pickle.dumps(collections_dict)
     for anti_entropy_client in state["anti-entropy-clients"]:
-        anti_entropy_client.queue_message_for_send(request)
+        anti_entropy_client.queue_message_for_send(request, data)
 
 def _handle_anti_entropy_audit_request(state, message, _data):
     """handle a requst to audit a specific avatar, not some random one"""
     log = logging.getLogger("_handle_anti_entropy_audit_request")
-    log.info("request for audit on %s" % (message["avatar-id"], )) 
 
     timestamp = create_timestamp()
     state_key = (message["avatar-id"], timestamp, )
 
-    database = AuditResultDatabase()
+    collections_for_avatar = get_collections_for_avatar(
+        state["central-database-connection"], 
+        state["cluster-row"].id, 
+        message["avatar-id"]
+    )
+    collections_dict = dict(collections_for_avatar)
+    log.info("request for audit on %s %s collectons" % (
+        message["avatar-id"], len(collections_dict), 
+    )) 
+
+    database = AuditResultDatabase(state["central-database-connection"])
     row_id = database.start_audit(message["avatar-id"], timestamp)
     database.close()
 
@@ -137,7 +165,8 @@ def _handle_anti_entropy_audit_request(state, message, _data):
         timeout=time.time()+_request_timeout,
         retry_count=max_retry_count,
         replies=dict(), 
-        row_id=row_id
+        row_id=row_id,
+        collections_dict=collections_dict
     )
 
     request = {
@@ -145,8 +174,9 @@ def _handle_anti_entropy_audit_request(state, message, _data):
         "avatar-id"     : message["avatar-id"],
         "timestamp-repr": repr(timestamp),
     }
+    data = pickle.dumps(collections_dict)
     for anti_entropy_client in state["anti-entropy-clients"]:
-        anti_entropy_client.queue_message_for_send(request)
+        anti_entropy_client.queue_message_for_send(request, data)
 
 def _handle_database_avatar_list_reply(state, message, _data):
     log = logging.getLogger("_handle_database_avatar_list_reply")
@@ -154,17 +184,8 @@ def _handle_database_avatar_list_reply(state, message, _data):
     state["avatar-ids"] = set(message["avatar-id-list"])
     log.info("found %s avatar ids" % (len(state["avatar-ids"]), ))
 
-def _handle_consistency_check(state, message, _data):
+def _handle_consistency_check(state, message, data):
     log = logging.getLogger("_handle_consistency_check")
-
-    data_generator = state["local-database-connection"].generate_all_rows(
-        """
-        select key, timestamp, file_hash 
-        from diy.segment where avatar_id = %s
-        order by key
-        """.strip(),
-        [message["avatar-id"], ]
-    )
 
     reply = {
         "message-type"      : "consistency-check-reply",
@@ -176,29 +197,53 @@ def _handle_consistency_check(state, message, _data):
         "error-message"     : None
     }
 
-    count = 0
-    md5 = hashlib.md5()
-    prev_key = None
-    for key, timestamp, file_hash in data_generator:
-        count += 1
-        if key != prev_key:
-            md5.update(key)
-            prev_key = key
-        md5.update(repr(timestamp))
-        md5.update(str(file_hash))
-
-    log.info("found %s rows for avatar %s %s" % (
-        count, message["avatar-id"], message["timestamp-repr"],
-    ))
-
-    if count == 0:
-        reply["result"] = "no-data"
-        reply["error-message"] = "no data for avatar"
-        state["resilient-server"].send_reply(reply)
+    try:
+        collection_dict = pickle.loads(data)
+    except Exception, instance:
+        error_message = "unable to unpickle collection dict %s" % (instance, )
+        log.error("%s %s" % (message["avatar-id"], error_message, ))
+        reply["result"] = "invalid_collection_list"
+        reply["error-message"] = error_message
+        state["resilient-server"].send_reply(reply, None)
         return
 
+    result_dict = dict()
+    for collection_id in collection_dict.keys():
+        data_generator = state["local-database-connection"].generate_all_rows(
+            """
+            select key, timestamp, file_hash 
+            from diy.segment where collection_id = %s
+            order by key
+            """.strip(),
+            [collection_id, ]
+        )
+
+        count = 0
+        md5 = hashlib.md5()
+        prev_key = None
+        for key, timestamp, file_hash in data_generator:
+            count += 1
+            if key != prev_key:
+                md5.update(key)
+                prev_key = key
+            md5.update(repr(timestamp))
+            md5.update(str(file_hash))
+
+        log.info("found %s rows for avatar %s %s collection (%s) %r" % (
+            count, 
+            message["avatar-id"],             
+            message["timestamp-repr"],
+            collection_id,
+            collection_dict[collection_id],
+        ))
+
+        result_dict[collection_id] = {
+            "count"                 : count,
+            "encoded-md5-digest"    : b64encode(md5.digest())
+        }
+
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, str(md5.digest()))
+    state["resilient-server"].send_reply(reply, pickle.dumps(result_dict))
 
 def _handle_consistency_check_reply(state, message, data):
     log = logging.getLogger("_handle_consistency_check_reply")
@@ -229,11 +274,17 @@ def _handle_consistency_check_reply(state, message, data):
             message["error-message"],
             message["node-name"],
         ))
-        hash_value = _error_hash
+        reply_value = _error_reply
     else:
-        hash_value = data
+        try:
+            reply_value = pickle.loads(data)
+        except Exception, instance:
+            log.error("%s unable to unpickle reply from %s %s" % (
+                message["avatar-id"], message["node-name"], instance
+            ))
+            reply_value = _error_reply
 
-    request_state.replies[message["node-name"]] = hash_value
+    request_state.replies[message["node-name"]] = reply_value
 
     # not done yet, wait for more replies
     if len(request_state.replies) < len(state["anti-entropy-clients"]):
@@ -242,12 +293,25 @@ def _handle_consistency_check_reply(state, message, data):
     # at this point we should have a reply from every node, so
     # we don't want to preserve state anymore
     del state["active-requests"][state_key]
-    database = AuditResultDatabase()
+    database = AuditResultDatabase(state["central-database-connection"])
     timestamp = create_timestamp()
     
+    reply_error_count = 0
     # push the results into a set to see how many unique entries there are
-    hash_list = list(set(request_state.replies.values()))
-    
+    collection_sets = defaultdict(set)
+
+    for node_name in request_state.replies.keys():
+        node_reply = request_state.replies[node_name]
+        if node_reply == _error_reply:
+            reply_error_count += 1
+            continue
+
+        for collection_id in request_state.collection_dict.keys():
+            collection_sets[collection_id].add(
+                node_reply[collection_id]["encoded-md5-digest"]
+            )
+
+
     # if this audit was started by an anti-entropy-audit-request message,
     # we want to send a reply
     if request_state.client_tag is not None:
@@ -260,9 +324,19 @@ def _handle_consistency_check_reply(state, message, data):
         }
     else:
         reply = None
+
+    collection_error_count = 0
+    for collection_id in request_state.collection_dict.keys():
+        if len(collection_sets[collection_id]) != 1:
+            log.error("collection set of %s for (%s) %r" % (
+                len(collection_sets[collection_id]), 
+                collection_id,
+                request_state.collection_dict[collection_id]
+            ))
+            collection_error_count += 1
         
-    # ok - all have the same hash
-    if len(hash_list) == 1 and hash_list[0] != _error_hash:
+    # ok = no errors and all nodes have the same hash for every collection
+    if reply_error_count == 0 and collection_error_count == 0:
         log.info("avatar %s compares ok" % (message["avatar-id"], ))
         database.successful_audit(request_state.row_id, timestamp)
         if reply is not None:
@@ -271,17 +345,15 @@ def _handle_consistency_check_reply(state, message, data):
         return
 
     # we have error(s), but the non-errors compare ok
-    if len(hash_list) == 2 and _error_hash in hash_list:
-        error_count = 0
-        for value in request_state.replies.values():
-            if value == _error_hash:
-                error_count += 1
+    if reply_error_count > 0 and collection_error_count == 0:
 
         # if we come from anti-entropy-audit-request, don't retry
         if reply is not None:
             database.audit_error(request_state.row_id, timestamp)
             database.close()
-            error_message = "There were %s error hashes" % (error_count, )
+            error_message = "There were error replies from %s nodes" % (
+                reply_error_count, 
+            )
             log.error(error_message)
             reply["result"] = "error"
             reply["error-message"] = error_message
@@ -291,14 +363,14 @@ def _handle_consistency_check_reply(state, message, data):
         if request_state.retry_count >= max_retry_count:
             log.error("avatar %s %s errors, too many retries" % (
                 message["avatar-id"], 
-                error_count
+                reply_error_count
             ))
             database.audit_error(request_state.row_id, timestamp)
             # TODO: needto do something here
         else:
-            log.warn("avatar %s %s errors, will retry" % (
+            log.warn("%s Error replies from %s nodes, will retry" % (
                 message["avatar-id"], 
-                error_count
+                reply_error_count
             ))
             state["retry-list"].append(
                 retry_entry_tuple(
@@ -314,10 +386,10 @@ def _handle_consistency_check_reply(state, message, data):
 
     # if we make it here, we have some form of mismatch, possibly mixed with
     # errors
-    error_message = "avatar %s hash mismatch" % (message["avatar-id"], )
+    error_message = "%s errors from %s nodes; mismatches on %s collections" % (
+        message["avatar-id"], reply_error_count, collection_error_count
+    )
     log.error(error_message)
-    for node_name, value in request_state.replies.items():
-        log.error("    node %s value %s" % (node_name, value, ))
 
     # if we come from anti-entropy-audit-request, don't retry
     if reply is not None:
@@ -353,6 +425,7 @@ _dispatch_table = {
 
 def _create_state():
     return {
+        "central-database-connection": None,
         "local-database-connection" : None,
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
@@ -374,6 +447,7 @@ def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     status_checkers = list()
 
+    state["central-database-connection"] = get_central_connection()
     state["local-database-connection"] = get_node_local_connection()
 
     local_anti_entropy_server_address = None

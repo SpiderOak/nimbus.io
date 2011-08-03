@@ -53,7 +53,11 @@ def terminate_process(process):
         process.returncode
 
 def start_data_writer(
-    node_name, address, event_publisher_pull_address, repository_path
+    cluster_name, 
+    node_name, 
+    address, 
+    event_publisher_pull_address, 
+    repository_path
 ):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
     server_dir = identify_program_dir(u"diyapi_data_writer")
@@ -66,6 +70,7 @@ def start_data_writer(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
         "DIYAPI_DATA_WRITER_ADDRESS"        : address,
         "DIYAPI_REPOSITORY_PATH"            : repository_path,
@@ -99,6 +104,7 @@ def start_data_reader(node_name, address, repository_path):
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_anti_entropy_server(
+    cluster_name,
     node_names,
     node_name, 
     anti_entropy_server_addresses,
@@ -117,6 +123,7 @@ def start_anti_entropy_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
         "SPIDEROAK_MULTI_NODE_NAME_SEQ"     : \
             " ".join(node_names),
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
@@ -148,8 +155,7 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "PANDORA_DB_PW_pandora_storage_server" : \
-            os.environ["PANDORA_DB_PW_pandora_storage_server"],
+        "PANDORA_DB_PW_pandora" : os.environ["PANDORA_DB_PW_pandora"],
         "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
         "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
     }        
@@ -158,6 +164,7 @@ def start_space_accounting_server(node_name, address, pipeline_address):
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_handoff_server(
+    cluster_name,
     local_node_name, 
     handoff_server_addresses, 
     pipeline_address, 
@@ -176,6 +183,7 @@ def start_handoff_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name, 
         "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
         "DIYAPI_HANDOFF_SERVER_ADDRESSES"        : " ".join(
             handoff_server_addresses

@@ -25,6 +25,7 @@ from unit_tests.util import start_data_writer, \
 def _generate_node_name(node_index):
     return "multi-node-%02d" % (node_index+1, )
 
+_cluster_name = "multi-node-cluster"
 _node_count = 10
 _data_writer_base_port = 8100
 _data_reader_base_port = 8300
@@ -104,12 +105,14 @@ class NodeSim(object):
             self._home_dir
         )
         self._processes["data_writer"] = start_data_writer(
+            _cluster_name,
             self._node_name,
             _data_writer_addresses[self._node_index],
             _event_publisher_pull_addresses[self._node_index],
             self._home_dir
         )
         self._processes["handoff_server"] = start_handoff_server(
+            _cluster_name,
             self._node_name,
             _handoff_server_addresses,
             _handoff_server_pipeline_addresses[self._node_index],
@@ -118,6 +121,7 @@ class NodeSim(object):
             self._home_dir
         )
         self._processes["anti_entropy_server"] = start_anti_entropy_server(
+            _cluster_name,
             _node_names,
             self._node_name,
             _anti_entropy_server_addresses,

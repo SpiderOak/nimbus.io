@@ -14,12 +14,13 @@ import uuid
 import zlib
 
 from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.pandora_database_connection import get_node_local_connection
-from diyapi_web_server.database_util import most_recent_timestamp_for_key
+from diyapi_tools.database_connection import get_node_local_connection
+from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
 from diyapi_tools.data_definitions import create_timestamp
 
 from unit_tests.util import random_string, \
         generate_key, \
+        start_event_publisher, \
         start_data_writer, \
         start_data_reader, \
         poll_process, \
@@ -30,10 +31,14 @@ from unit_tests.gevent_zeromq_util import send_request_and_get_reply_and_data, \
 _log_path = "/var/log/pandora/test_data_reader.log"
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
+_cluster_name = "multi-node-cluster"
 _local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
 _data_writer_address = "tcp://127.0.0.1:8100"
 _data_reader_address = "tcp://127.0.0.1:8200"
 _client_address = "tcp://127.0.0.1:8900"
+_event_publisher_pull_address = \
+    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (_local_node_name, )
+_event_publisher_pub_address = "tcp://127.0.0.1:8800"
 
 class TestDataReader(unittest.TestCase):
     """test message handling in data reader"""
@@ -45,9 +50,19 @@ class TestDataReader(unittest.TestCase):
 
         self._database_connection = get_node_local_connection()
 
+        self._event_publisher_process = start_event_publisher(
+            _local_node_name, 
+            _event_publisher_pull_address,
+            _event_publisher_pub_address
+        )
+        poll_result = poll_process(self._event_publisher_process)
+        self.assertEqual(poll_result, None)
+
         self._data_writer_process = start_data_writer(
+            _cluster_name,
             _local_node_name, 
             _data_writer_address,
+            _event_publisher_pull_address,
             _repository_path
         )
         poll_result = poll_process(self._data_writer_process)
@@ -70,6 +85,10 @@ class TestDataReader(unittest.TestCase):
         and self._data_writer_process is not None:
             terminate_process(self._data_writer_process)
             self._data_writer_process = None
+        if hasattr(self, "_event_publisher_process") \
+        and self._event_publisher_process is not None:
+            terminate_process(self._event_publisher_process)
+            self._event_publisher_process = None
         if hasattr(self, "_database_connection") \
         and self._database_connection is not None:
             self._database_connection.close()
@@ -81,7 +100,7 @@ class TestDataReader(unittest.TestCase):
         """test retrieving content that fits in a single message"""
         file_size = 10 * 64 * 1024
         file_content = random_string(file_size) 
-        avatar_id = 1001
+        collection_id = 1001
         key  = self._key_generator.next()
         timestamp = create_timestamp()
         segment_num = 2
@@ -93,7 +112,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"         : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -119,7 +138,7 @@ class TestDataReader(unittest.TestCase):
 
         # get file info from the local database
         file_info = most_recent_timestamp_for_key(
-            self._database_connection, avatar_id, key
+            self._database_connection, collection_id, key
         )
 
         self.assertNotEqual(file_info, None)
@@ -128,7 +147,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "retrieve-key-start",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"         : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num
@@ -155,7 +174,7 @@ class TestDataReader(unittest.TestCase):
         total_size = slice_size * slice_count
         test_data = random_string(total_size)
 
-        avatar_id = 1001
+        collection_id = 1001
         timestamp = create_timestamp()
         key  = self._key_generator.next()
         segment_num = 4
@@ -171,7 +190,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-start",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -196,7 +215,7 @@ class TestDataReader(unittest.TestCase):
             message_id = uuid.uuid1().hex
             message = {
                 "message-type"      : "archive-key-next",
-                "avatar-id"         : avatar_id,
+                "collection-id"     : collection_id,
                 "key"               : key, 
                 "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num,
@@ -223,7 +242,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-final",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -250,7 +269,7 @@ class TestDataReader(unittest.TestCase):
 
         # get file info from the local database
         file_info = most_recent_timestamp_for_key(
-            self._database_connection, avatar_id, key
+            self._database_connection, collection_id, key
         )
 
         self.assertNotEqual(file_info, None)
@@ -261,7 +280,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "retrieve-key-start",
             "message-id"        : message_id,
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num
@@ -287,7 +306,7 @@ class TestDataReader(unittest.TestCase):
             message = {
                 "message-type"      : "retrieve-key-next",
                 "message-id"        : message_id,
-                "avatar-id"         : avatar_id,
+                "collection-id"     : collection_id,
                 "key"               : key, 
                 "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num

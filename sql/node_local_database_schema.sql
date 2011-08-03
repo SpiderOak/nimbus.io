@@ -3,27 +3,9 @@
 
 begin;
 
+drop schema if exists diy cascade;
 create schema diy;
 set search_path to diy, public;
-
-/* just a mostly informational table to describe the details of the whole cluster */
-create table "cluster" (
-    id serial primary key,
-    name varchar(255) unique not null,
-    node_count int4 not null default 10,
-    replication_level int4 not null default 3,
-    creation_time timestamp
-);
-
-create table node (
-    id serial primary key,
-    cluster_id int4 not null,
-    node_number_in_cluster int4 not null,
-    name varchar(255) unique not null,
-    hostname varchar(255) not null,
-    offline bool not null default false,
-    creation_time timestamp
-);
 
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and
@@ -41,7 +23,7 @@ create table node (
 create sequence segment_id_seq;
 create table segment (
     id int8 not null default nextval('diy.segment_id_seq'),
-    avatar_id int4 not null,
+    collection_id int4 not null,
     key varchar(1024),
     timestamp timestamp not null,
     segment_num int2,
@@ -70,21 +52,18 @@ create table segment (
     constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
 
-
-
-
 /* I need to research more about the actual implementation of multi column
  * indexes.  The goal here is to keep writes reasonably efficient even when the
  * whole index is too large to fit in RAM.  My hope is that just using a multi
  * column index means that the database can keep the parts of the index for
- * avatar IDs that are actively working in memory, and updates will be more
+ * collection IDs that are actively working in memory, and updates will be more
  * grouped into the regions of the index for which this is the case.  (I.e. it
- * has a similar effect to sharding this into a different index per avatar.) 
+ * has a similar effect to sharding this into a different index per collection.) 
  */
-create index segment_key_idx on segment("avatar_id", "key");
+create index segment_key_idx on segment("collection_id", "key");
 /* a partial index just for handoffs, so it's easy to find these records when a
  * node comes back online */
-create index segment_handoff_idx on segment("handoff_node_name") where handoff_node_name is not null;
+create index segment_handoff_idx on segment("handoff_node_id") where handoff_node_id is not null;
 
 /* we store all the values in the diy key/value store in large, sequentially
  * written value data files.  These are pointed to by the segment_sequence table to
@@ -139,7 +118,7 @@ create index segment_handoff_idx on segment("handoff_node_name") where handoff_n
 create sequence value_file_id_seq;
 
 /* this is the only table that isn't easily sharded, because data from multiple
- * avatars/keys will be in the same value files.  However, it should not be
+ * collections/keys will be in the same value files.  However, it should not be
  * necessary.  With 1gb average size value_files, a current storage node could
  * only hold 38,000 of them. */
 create table value_file (
@@ -158,11 +137,11 @@ create table value_file (
      * in this file via >= <= operators. */
     min_segment_id int8,
     max_segment_id int8,
-    distinct_avatar_count int4,
-    /* simple 1-d array to record the set of avatars which have data is this
+    distinct_collection_count int4,
+    /* simple 1-d array to record the set of collections which have data is this
      * file. If we end up sharding the key and segment_sequence tables, this will
      * be very useful for maintenance. */
-    avatar_ids int4[],
+    collection_ids int4[],
     garbage_size_estimate int8,
     fragmentation_estimate int8,
     last_cleanup_check_time timestamp,
@@ -173,7 +152,7 @@ create table value_file (
 /* this will be the largest table, as it will have 1 record for every sequence
  * of every segment. */
 create table segment_sequence (
-    avatar_id int4 not null,
+    collection_id int4 not null,
     segment_id int8 not null,
     value_file_id int4 not null,
     sequence_num int4 not null,
@@ -184,8 +163,21 @@ create table segment_sequence (
     constraint hash_length check (hash is null or length(hash)=16)
 );
 /* again, need more research about the multi column index. it maybe better just
- * to drop the avatar_id column here have the single index. not sure yet. */
-create index segment_sequence_id_idx on segment_sequence (avatar_id, segment_id);
+ * to drop the collection_id column here have the single index. not sure yet. */
+create index segment_sequence_id_idx on segment_sequence (collection_id, segment_id);
+
+create sequence meta_id_seq;
+create table meta (
+    id int8 not null default nextval('diy.meta_id_seq'),
+    collection_id int4 not null,
+    key varchar(1024) not null,
+    meta_key varchar(1024) not null,
+    meta_value varchar(1024) not null,
+    timestamp timestamp not null
+);
+
+/* get all meta data for a key */
+create index meta_collection_id_key_idx on diy.meta("collection_id", "key");
 
 grant all privileges on schema diy to pandora;
 grant all privileges on all tables in schema diy to pandora;

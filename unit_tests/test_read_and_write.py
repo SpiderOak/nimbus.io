@@ -15,9 +15,9 @@ import zlib
 import psycopg2
 
 from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.database_connection import get_node_local_connection
 
-from diyapi_web_server.database_util import most_recent_timestamp_for_key
+from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
 from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
 from diyapi_data_writer.output_value_file import OutputValueFile, \
@@ -60,7 +60,7 @@ class TestReadAndWrite(unittest.TestCase):
 
     def test_simple_output_value_file(self):
         """test writing a simple output value file"""
-        avatar_id = 1001
+        collection_id = 1001
         segment_id = 42
         data_size = 1024
         data = random_string(data_size)
@@ -69,7 +69,7 @@ class TestReadAndWrite(unittest.TestCase):
         )
         self.assertEqual(output_value_file.size, 0)
         output_value_file.write_data_for_one_sequence(
-            avatar_id, segment_id, data
+            collection_id, segment_id, data
         )
         self.assertEqual(output_value_file.size, data_size)
         output_value_file.close()
@@ -84,12 +84,12 @@ class TestReadAndWrite(unittest.TestCase):
         self.assertEqual(value_file_row.sequence_count, 1)
         self.assertEqual(value_file_row.min_segment_id, segment_id)
         self.assertEqual(value_file_row.max_segment_id, segment_id)
-        self.assertEqual(value_file_row.distinct_avatar_count, 1)
-        self.assertEqual(value_file_row.avatar_ids, [avatar_id, ])
+        self.assertEqual(value_file_row.distinct_collection_count, 1)
+        self.assertEqual(value_file_row.collection_ids, [collection_id, ])
 
     def test_simple_segment(self):
         """test writing an reading a simple segment of one sequence"""
-        avatar_id = 1001
+        collection_id = 1001
         key = "aaa/bbb/ccc"
         timestamp = create_timestamp()
         segment_num = 42
@@ -107,20 +107,20 @@ class TestReadAndWrite(unittest.TestCase):
 
         # clean out any segments that are laying around for this (test) keu
         reader = Reader(self._database_connection, _repository_path)
-        for segment_row in reader.get_all_segment_rows_for_key(avatar_id, key):
+        for segment_row in reader.get_all_segment_rows_for_key(collection_id, key):
             writer.purge_segment(
-                avatar_id, 
+                collection_id, 
                 key, 
                 segment_row.timestamp, 
                 segment_row.segment_num
             )
 
-        writer.start_new_segment(avatar_id, key, repr(timestamp), segment_num)
+        writer.start_new_segment(collection_id, key, repr(timestamp), segment_num)
         writer.store_sequence(
-            avatar_id, key, repr(timestamp), segment_num, sequence_num, data
+            collection_id, key, repr(timestamp), segment_num, sequence_num, data
         )
         writer.finish_new_segment(
-            avatar_id, 
+            collection_id, 
             key, 
             repr(timestamp), 
             segment_num,
@@ -136,7 +136,7 @@ class TestReadAndWrite(unittest.TestCase):
         writer.close()
 
         file_info = most_recent_timestamp_for_key(
-            self._database_connection, avatar_id, key
+            self._database_connection, collection_id, key
         )
 
         self.assertEqual(file_info.file_size, data_size) 
@@ -149,7 +149,7 @@ class TestReadAndWrite(unittest.TestCase):
 
         reader = Reader(self._database_connection, _repository_path)
         sequence_generator = reader.generate_all_sequence_rows_for_segment(
-            avatar_id, key, file_info.timestamp, file_info.segment_num
+            collection_id, key, file_info.timestamp, file_info.segment_num
         )
 
         # first yield should be a count

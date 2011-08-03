@@ -43,7 +43,9 @@ class ConsistencyCheckStarter(object):
         cutoff_timestamp = \
             datetime.datetime.now() - \
             datetime.timedelta(days=_audit_cutoff_days)
-        database = AuditResultDatabase()
+        database = AuditResultDatabase(
+            self._state["central-database-connection"]
+        )
         ineligible_avatar_ids = set(
             database.ineligible_avatar_ids(cutoff_timestamp)
         )

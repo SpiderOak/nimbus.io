@@ -19,11 +19,11 @@ from diyapi_web_server.exceptions import (
 
 class Archiver(object):
     """Sends data segments to data writers."""
-    def __init__(self, data_writers, avatar_id, key, timestamp):
+    def __init__(self, data_writers, collection_id, key, timestamp):
         self.log = logging.getLogger(
-            'Archiver(avatar_id=%d, key=%r)' % (avatar_id, key))
+            'Archiver(collection_id=%d, key=%r)' % (collection_id, key))
         self.data_writers = data_writers
-        self.avatar_id = avatar_id
+        self.collection_id = collection_id
         self.key = key
         self.timestamp = timestamp
         self.sequence_num = 0
@@ -71,7 +71,7 @@ class Archiver(object):
                         segment_num,
                         data_writer,
                         data_writer.archive_key_start,
-                        self.avatar_id,
+                        self.collection_id,
                         self.key,
                         self.timestamp,
                         segment_num,
@@ -84,7 +84,7 @@ class Archiver(object):
                         segment_num,
                         data_writer,
                         data_writer.archive_key_next,
-                        self.avatar_id,
+                        self.collection_id,
                         self.key,
                         self.timestamp,
                         segment_num,
@@ -122,7 +122,7 @@ class Archiver(object):
                         segment_num,
                         data_writer,
                         data_writer.archive_key_entire,
-                        self.avatar_id,
+                        self.collection_id,
                         self.key,
                         self.timestamp,
                         segment_num,
@@ -140,7 +140,7 @@ class Archiver(object):
                         segment_num,
                         data_writer,
                         data_writer.archive_key_final,
-                        self.avatar_id,
+                        self.collection_id,
                         self.key,
                         self.timestamp,
                         segment_num,

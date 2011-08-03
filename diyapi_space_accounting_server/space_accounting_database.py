@@ -6,8 +6,7 @@ wrap access to the diyapi_space_accounting_table
 """
 import logging
 
-from diyapi_tools.pandora_database_connection import \
-        get_database_connection
+from diyapi_tools.database_connection import get_central_connection
 
 class SpaceAccountingDatabaseError(Exception):
     pass
@@ -15,7 +14,7 @@ class SpaceAccountingDatabaseAvatarNotFound(SpaceAccountingDatabaseError):
     pass
 
 _insert_command = """
-INSERT INTO diyapi_space_accounting
+INSERT INTO diy_central.space_accounting
 (avatar_id, timestamp, bytes_added, bytes_removed, bytes_retrieved)
 VALUES(%s, '%s'::timestamp, %s, %s, %s);
 """.strip()
@@ -24,12 +23,12 @@ _avatar_query = """
 SELECT COALESCE(SUM(bytes_added), 0), 
 COALESCE(SUM(bytes_removed), 0), 
 COALESCE(SUM(bytes_retrieved), 0)
-FROM diyapi_space_accounting 
+FROM diy_central.space_accounting 
 WHERE avatar_id = %s
 """.strip()
 
 _clear_command = """
-DELETE FROM diyapi_space_accounting 
+DELETE FROM diy_central.space_accounting 
 WHERE avatar_id = %s
 """.strip()
 
@@ -37,7 +36,7 @@ class SpaceAccountingDatabase(object):
     """wrap access to the diyapi_space_accounting_table"""
     def __init__(self, transaction=True):
         self._log = logging.getLogger("SpaceAccountingDatabase")
-        self._connection = get_database_connection()
+        self._connection = get_central_connection()
         if transaction:
             self._connection.execute("BEGIN;")
 

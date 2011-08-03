@@ -20,14 +20,14 @@ class DataReader(object):
 
     def retrieve_key_start(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num
     ):
         message = {
             "message-type"      : "retrieve-key-start",
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -35,7 +35,7 @@ class DataReader(object):
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
         self._log.debug(
-            '%(message-type)s: %(avatar-id)s '
+            '%(message-type)s: %(collection-id)s '
             'key = %(key)r '
             'segment_num = %(segment-num)d' % message
             )
@@ -47,21 +47,21 @@ class DataReader(object):
 
     def retrieve_key_next(
         self,
-        avatar_id,
+        collection_id,
         key,
         timestamp,
         segment_num
     ):
         message = {
             "message-type"      : "retrieve-key-next",
-            "avatar-id"         : avatar_id,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
-        self._log.debug('%(message-type)s: %(avatar-id)s %(key)s' % message)
+        self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
         reply, data = delivery_channel.get()
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))

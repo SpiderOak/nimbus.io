@@ -54,7 +54,9 @@ class StateCleaner(object):
         If we don't hear from all the nodes in a reasonable time,
         put the request in the retry queue
         """
-        database = AuditResultDatabase()
+        database = AuditResultDatabase(
+            self._state["central-database-connection"]
+        )
 
         if request_state.retry_count >= max_retry_count:
             self._log.error("timeout: %s with too many retries %s " % (

@@ -2,12 +2,10 @@
 """
 audit_result_database.py
 
-wrap access to the diyapi_audit_result_table 
+wrap access to the diy_central.audit_result_table 
 """
 import logging
 import os
-
-from diyapi_tools.pandora_database_connection import get_database_connection
 
 state_audit_started = "audit-started"
 state_audit_waiting_retry = "audit-waiting-retry"
@@ -15,53 +13,47 @@ state_audit_too_many_retries = "audit-too-many-retries"
 state_audit_successful = "audit-successful"
 state_audit_error = "audit-error"
 
-_database_user = "diyapi_auditor"
-_database_password = os.environ['PANDORA_DB_PW_diyapi_auditor']
-
 _start_audit_command = """
-INSERT INTO diyapi_audit_result
+INSERT INTO diy_central.audit_result
 (avatar_id, state, audit_started)
 VALUES(%s, '%s', '%s'::timestamp)
-RETURNING diyapi_audit_result_id;
+RETURNING diy_central.audit_result_id;
 """.strip()
 
 _audit_retry_command = """
-UPDATE diyapi_audit_result
+UPDATE diy_central.audit_result
 SET state = '%s', audit_started = NULL
-WHERE diyapi_audit_result_id = %s;
+WHERE diy_central.audit_result_id = %s;
 """.strip()
 
 _restart_audit_command = """
-UPDATE diyapi_audit_result
+UPDATE diy_central.audit_result
 SET state = '%s', audit_started = '%s'::timestamp
-WHERE diyapi_audit_result_id = %s;
+WHERE diy_central.audit_result_id = %s;
 """.strip()
 
 _audit_result_command = """
-UPDATE diyapi_audit_result
+UPDATE diy_central.audit_result
 SET state = '%s', audit_finished = '%s'::timestamp
-WHERE diyapi_audit_result_id = %s;
+WHERE diy_central.audit_result_id = %s;
 """.strip()
 
 _ineligible_query = """
-SELECT avatar_id FROM diyapi_audit_result
+SELECT avatar_id FROM diy_central.audit_result
 WHERE COALESCE(state, 'audit-successful') != 'audit-successful'
 OR COALESCE(audit_finished, now()) > '%s'::timestamp;
 """.strip()
 
 _clear_command = """
-DELETE FROM diyapi_audit_result
+DELETE FROM diy_central.audit_result
 WHERE avatar_id = %s
 """.strip()
 
 class AuditResultDatabase(object):
-    """wrap access to the diyapi_audit_result table"""
-    def __init__(self):
+    """wrap access to the diy_central.audit_result table"""
+    def __init__(self, central_connection):
         self._log = logging.getLogger("AuditResultDatabase")
-        self._connection = get_database_connection(
-            user=_database_user, password=_database_password
-        )
-
+        self._connection = central_connection
     def close(self):
         """commit the updates and close the database connection"""
         self._connection.close()
@@ -126,37 +118,4 @@ class AuditResultDatabase(object):
         command = _clear_command % (avatar_id, )
         self._connection.execute(command)
         self._connection.commit()
-
-if __name__ == "__main__":
-    import datetime
-    avatar_id = 1001
-    start_time = datetime.datetime.now()
-    restart_time = start_time + datetime.timedelta(minutes=1)
-    finished_time = start_time + datetime.timedelta(minutes=3)
-    audit_time = start_time + datetime.timedelta(minutes=2)
-
-    print
-    print "testing"
-
-    audit_result_database = AuditResultDatabase()
-    audit_result_database._clear_avatar(avatar_id)
-
-    ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)
-    assert len(ineligible_list) == 0
-
-    row_id = audit_result_database.start_audit(avatar_id, start_time)
-    print "row_id =", row_id
-
-    audit_result_database.wait_for_retry(row_id)
-
-    audit_result_database.restart_audit(row_id, restart_time)
-    
-    audit_result_database.successful_audit(row_id, finished_time)
-
-    ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)
-    print "ineligible", ineligible_list
-
-    audit_result_database._clear_avatar(avatar_id)
-    audit_result_database.close()
-    print "test complete"
 

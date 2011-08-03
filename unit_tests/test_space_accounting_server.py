@@ -15,7 +15,6 @@ import unittest
 import uuid
 
 from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.data_definitions import create_timestamp
 
 from diyapi_space_accounting_server.space_accounting_database import \
     SpaceAccountingDatabase
@@ -37,7 +36,7 @@ def _detail_generator(
     total_bytes_added, total_bytes_removed, total_bytes_retrieved
 ):
 
-    current_time = create_timestamp()
+    current_time = datetime.now()
 
     for i in xrange(1000):
         message = {
@@ -118,13 +117,12 @@ class TestSpaceAccountingServer(unittest.TestCase):
 
         request = {
             "message-type"  : "space-usage-request",
-            "request-id"    : request_id,
             "avatar-id"     : _avatar_id,
         }
         reply = send_request_and_get_reply(
             _space_accounting_server_address, request
         )
-        self.assertEqual(reply["request-id"], request_id)
+        self.assertEqual(reply["avatar-id"], _avatar_id)
         self.assertEqual(reply["message-type"], "space-usage-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(

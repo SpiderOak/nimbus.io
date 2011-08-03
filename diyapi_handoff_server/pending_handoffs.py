@@ -26,7 +26,8 @@ class PendingHandoffs(object):
         if incoming_segment_row.timestamp in self._dict:
             segment_row, source_node_names = \
                     self._dict[incoming_segment_row.timestamp]
-            assert incoming_segment_row.avatar_id == segment_row.avatar_id, (
+            assert incoming_segment_row.collection_id == \
+                segment_row.collection_id, (
                 incoming_segment_row, segment_row,
             )
             assert incoming_segment_row.key == segment_row.key, (

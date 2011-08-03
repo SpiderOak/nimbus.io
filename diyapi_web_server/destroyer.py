@@ -14,7 +14,7 @@ from diyapi_web_server.exceptions import (
     DestroyFailedError,
 )
 
-from diyapi_web_server.database_util import most_recent_timestamp_for_key
+from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
 
 class Destroyer(object):
     """Performs a destroy query on all data writers."""
@@ -22,15 +22,15 @@ class Destroyer(object):
         self, 
         node_local_connection,
         data_writers,
-        avatar_id, 
+        collection_id, 
         key,
         timestamp        
     ):
         self.log = logging.getLogger('Destroyer')
-        self.log.info('avatar_id=%d, key=%r' % (avatar_id, key, ))
+        self.log.info('collection_id=%d, key=%r' % (collection_id, key, ))
         self._node_local_connection = node_local_connection
         self.data_writers = data_writers
-        self.avatar_id = avatar_id
+        self.collection_id = collection_id
         self.key = key
         self.timestamp = timestamp
         self._pending = gevent.pool.Group()
@@ -64,7 +64,7 @@ class Destroyer(object):
 
         # TODO: find a non-blocking way to do this
         file_info = most_recent_timestamp_for_key(
-            self._node_local_connection , self.avatar_id, self.key
+            self._node_local_connection , self.collection_id, self.key
         )
 
         file_size = (0 if file_info is None else file_info.file_size)
@@ -75,7 +75,7 @@ class Destroyer(object):
                 segment_num,
                 data_writer,
                 data_writer.destroy_key,
-                self.avatar_id,
+                self.collection_id,
                 self.key,
                 self.timestamp,
                 segment_num

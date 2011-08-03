@@ -28,9 +28,11 @@ from diyapi_tools.resilient_server import ResilientServer
 from diyapi_tools.event_push_client import EventPushClient, exception_event
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
-from diyapi_tools.pandora_database_connection import get_node_local_connection
+from diyapi_tools.database_connection import get_node_local_connection, \
+        get_central_connection
 from diyapi_tools.data_definitions import parse_timestamp_repr
-from diyapi_web_server.database_util import node_rows
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_node_rows
 
 from diyapi_data_writer.writer import Writer
 
@@ -49,7 +51,7 @@ _repository_path = os.environ.get(
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -65,14 +67,14 @@ def _handle_archive_key_entire(state, message, data):
     }
 
     state["writer"].start_new_segment(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
     )
 
     state["writer"].store_sequence(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
@@ -89,7 +91,7 @@ def _handle_archive_key_entire(state, message, data):
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
     state["writer"].finish_new_segment(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
@@ -109,7 +111,7 @@ def _handle_archive_key_entire(state, message, data):
 def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -124,14 +126,14 @@ def _handle_archive_key_start(state, message, data):
     }
 
     state["writer"].start_new_segment(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
     )
 
     state["writer"].store_sequence(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
@@ -148,14 +150,14 @@ def _handle_archive_key_start(state, message, data):
 def _handle_archive_key_next(state, message, data):
     log = logging.getLogger("_handle_archive_key_next")
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
     ))
 
     state["writer"].store_sequence(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
@@ -178,14 +180,14 @@ def _handle_archive_key_next(state, message, data):
 def _handle_archive_key_final(state, message, data):
     log = logging.getLogger("_handle_archive_key_final")
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
     ))
 
     state["writer"].store_sequence(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
@@ -199,7 +201,7 @@ def _handle_archive_key_final(state, message, data):
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
     state["writer"].finish_new_segment(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
@@ -228,7 +230,7 @@ def _handle_archive_key_final(state, message, data):
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -237,7 +239,7 @@ def _handle_destroy_key(state, message, _data):
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].set_tombstone(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         timestamp,
         message["segment-num"]
@@ -255,7 +257,7 @@ def _handle_destroy_key(state, message, _data):
 def _handle_purge_key(state, message, _data):
     log = logging.getLogger("_handle_purge_key")
     log.info("%s %s %s %s" % (
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -264,7 +266,7 @@ def _handle_purge_key(state, message, _data):
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].purge_segment(
-        message["avatar-id"], 
+        message["collection-id"], 
         message["key"], 
         timestamp,
         message["segment-num"]
@@ -299,6 +301,7 @@ def _create_state():
         "queue-dispatcher"      : None,
         "writer"                : None,
         "database-connection"   : None,
+        "cluster-row"           : None,
         "node-rows"             : None,
         "node-id-dict"          : None,
     }
@@ -325,12 +328,18 @@ def _setup(_halt_event, state):
         _dispatch_table
     )
 
-    state["database-connection"] = get_node_local_connection()
-    state["node-rows"] = node_rows(state["database-connection"])
+    central_connection = get_central_connection()
+    state["cluster-row"] = get_cluster_row(central_connection)
+    state["node-rows"] = get_node_rows(
+        central_connection, state["cluster-row"].id
+    )
+    central_connection.close()
+
     state["node-id-dict"] = dict(
         [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
     )
 
+    state["database-connection"] = get_node_local_connection()
     state["writer"] = Writer(
         state["database-connection"],
         _repository_path

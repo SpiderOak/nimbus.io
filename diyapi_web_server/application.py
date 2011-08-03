@@ -199,15 +199,14 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', action='stat')
     def stat(self, req, path):
-        collection_name = "pork"
-        collection_id = req.collections.get(
-            collection_name, req.default_collection_id
-        )
+        # TODO: get the collection name from the uri
+        collection_name = "(default)"
+        collection_id = req.collections[collection_name]
         key = urllib.unquote_plus(path)
         self._log.debug("stat: %s collection = (%s) %r key = %r" % (
             req.avatar_id,
             collection_id, 
-            req.collections[collection_id],
+            collection_name,
             key
         ))
         getter = StatGetter(self._node_local_connection)
@@ -222,17 +221,16 @@ class Application(object):
 
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):
-        collection_name = "pork"
-        collection_id = req.collections.get(
-            collection_name, req.default_collection_id
-        )
+        # TODO: get the collection name from the uri
+        collection_name = "(default)"
+        collection_id = req.collections[collection_name]
+        prefix = urllib.unquote_plus(prefix)
         self._log.debug("listmatch: %s collection = (%s) %r prefix = '%s'" % (
             req.avatar_id, 
             collection_id,
-            req.collections[collection_id],
+            collection_name,
             prefix
         ))
-        prefix = urllib.unquote_plus(prefix)
         matcher = Listmatcher(self._node_local_connection)
         keys = matcher.listmatch(collection_id, prefix, REPLY_TIMEOUT)
         response = Response(content_type='text/plain', charset='utf8')
@@ -243,15 +241,14 @@ class Application(object):
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
-        collection_name = "pork"
-        collection_id = req.collections.get(
-            collection_name, req.default_collection_id
-        )
+        # TODO: get the collection name from the uri
+        collection_name = "(default)"
+        collection_id = req.collections[collection_name]
         key = urllib.unquote_plus(key)
         self._log.debug("destroy: %s collection = (%s) %r key = %s" % (
             req.avatar_id, 
             collection_id,
-            req.collections[collection_id],
+            collection_name,
             key,
         ))
         data_writers = _create_data_writers(self._data_writer_clients)
@@ -280,16 +277,15 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
-        collection_name = "pork"
-        collection_id = req.collections.get(
-            collection_name, req.default_collection_id
-        )
+        # TODO: get the collection name from the uri
+        collection_name = "(default)"
+        collection_id = req.collections[collection_name]
         start_time = time.time()
         key = urllib.unquote_plus(key)
         description = "retrieve: %s collection = (%s) %r key = %r" % (
             req.avatar_id, 
             collection_id,
-            req.collections[collection_id],
+            collection_name,
             key
         )
         self._log.debug(description)
@@ -362,16 +358,15 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
-        collection_name = "pork"
-        collection_id = req.collections.get(
-            collection_name, req.default_collection_id
-        )
+        # TODO: get the collection name from the uri
+        collection_name = "(default)"
+        collection_id = req.collections[collection_name]
         start_time = time.time()
         key = urllib.unquote_plus(key)
         description = "archive: %s collection = (%s) %r key = %r, size=%s" % (
             req.avatar_id, 
             collection_id,
-            req.collections[collection_id],
+            collection_name,
             key, 
             req.content_length
         )

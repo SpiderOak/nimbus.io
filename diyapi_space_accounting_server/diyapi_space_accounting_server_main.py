@@ -73,6 +73,7 @@ def _handle_space_usage_request(state, message, _data):
         "message-type"  : "space-usage-reply",
         "xrep-ident"    : message["xrep-ident"],
         "avatar-id"     : message["avatar-id"],
+        "message-id"    : message["message-id"],
         "result"        : None,
     }
 

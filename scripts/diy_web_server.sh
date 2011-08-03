@@ -4,6 +4,7 @@ export PYTHONPATH="${SPIDEROAK_DIY}"
 
 export PANDORA_DATABASE_HOST="localhost"
 
+export SPIDEROAK_MULTI_CLUSTER_NAME="multi-node-cluster"
 export SPIDEROAK_MULTI_NODE_NAME="multi-node-01"
 export DIYAPI_WEB_SERVER_PIPELINE_ADDRESS="tcp://127.0.0.1:8900" 
 export SPIDEROAK_MULTI_NODE_NAME_SEQ="multi-node-01 multi-node-02 multi-node-03 multi-node-04 multi-node-05 multi-node-06 multi-node-07 multi-node-08 multi-node-09 multi-node-10"

@@ -104,6 +104,7 @@ def start_data_reader(node_name, address, repository_path):
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_anti_entropy_server(
+    cluster_name,
     node_names,
     node_name, 
     anti_entropy_server_addresses,
@@ -122,6 +123,7 @@ def start_anti_entropy_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
         "SPIDEROAK_MULTI_NODE_NAME_SEQ"     : \
             " ".join(node_names),
         "SPIDEROAK_MULTI_NODE_NAME"         : node_name,

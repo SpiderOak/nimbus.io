@@ -33,8 +33,10 @@ class AvatarListRequestor(object):
             return
 
         avatar_id_generator = \
-                self._state["local-database-connection"].generate_all_rows(
-                    """select distinct avatar_id from diy.segment"""
+                self._state["central-database-connection"].generate_all_rows(
+                    """
+                    select distinct avatar_id from diy_central.collection
+                    """
                 )
         for (avatar_id, ) in avatar_id_generator:
             self._state["avatar-ids"].add(avatar_id)

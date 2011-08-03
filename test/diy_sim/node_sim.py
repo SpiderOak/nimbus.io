@@ -121,6 +121,7 @@ class NodeSim(object):
             self._home_dir
         )
         self._processes["anti_entropy_server"] = start_anti_entropy_server(
+            _cluster_name,
             _node_names,
             self._node_name,
             _anti_entropy_server_addresses,

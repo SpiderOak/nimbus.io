@@ -7,8 +7,6 @@ wrap access to the diy_central.audit_result_table
 import logging
 import os
 
-from diyapi_tools.database_connection import get_central_connection
-
 state_audit_started = "audit-started"
 state_audit_waiting_retry = "audit-waiting-retry"
 state_audit_too_many_retries = "audit-too-many-retries"
@@ -53,10 +51,9 @@ WHERE avatar_id = %s
 
 class AuditResultDatabase(object):
     """wrap access to the diy_central.audit_result table"""
-    def __init__(self):
+    def __init__(self, central_connection):
         self._log = logging.getLogger("AuditResultDatabase")
-        self._connection = get_central_connection()
-
+        self._connection = central_connection
     def close(self):
         """commit the updates and close the database connection"""
         self._connection.close()
@@ -121,37 +118,4 @@ class AuditResultDatabase(object):
         command = _clear_command % (avatar_id, )
         self._connection.execute(command)
         self._connection.commit()
-
-if __name__ == "__main__":
-    import datetime
-    avatar_id = 1001
-    start_time = datetime.datetime.now()
-    restart_time = start_time + datetime.timedelta(minutes=1)
-    finished_time = start_time + datetime.timedelta(minutes=3)
-    audit_time = start_time + datetime.timedelta(minutes=2)
-
-    print
-    print "testing"
-
-    audit_result_database = AuditResultDatabase()
-    audit_result_database._clear_avatar(avatar_id)
-
-    ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)
-    assert len(ineligible_list) == 0
-
-    row_id = audit_result_database.start_audit(avatar_id, start_time)
-    print "row_id =", row_id
-
-    audit_result_database.wait_for_retry(row_id)
-
-    audit_result_database.restart_audit(row_id, restart_time)
-    
-    audit_result_database.successful_audit(row_id, finished_time)
-
-    ineligible_list = audit_result_database.ineligible_avatar_ids(audit_time)
-    print "ineligible", ineligible_list
-
-    audit_result_database._clear_avatar(avatar_id)
-    audit_result_database.close()
-    print "test complete"
 

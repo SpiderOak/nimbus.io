@@ -98,9 +98,6 @@ segment_row_template = namedtuple(
         "file_size",
         "file_adler32",
         "file_hash",
-        "file_user_id",
-        "file_group_id",
-        "file_permissions",
         "file_tombstone",
         "handoff_node_id",
     ]

@@ -42,9 +42,6 @@ def _insert_segment_row(connection, segment_row):
             file_size,
             file_adler32,
             file_hash,
-            file_user_id,
-            file_group_id,
-            file_permissions,
             file_tombstone,
             handoff_node_id
         ) values (
@@ -56,9 +53,6 @@ def _insert_segment_row(connection, segment_row):
             %(file_size)s,
             %(file_adler32)s,
             %(file_hash)s,
-            %(file_user_id)s,
-            %(file_group_id)s,
-            %(file_permissions)s,
             %(file_tombstone)s,
             %(handoff_node_id)s
         )
@@ -79,9 +73,6 @@ def _insert_segment_tombstone_row(connection, segment_row):
             file_size,
             file_adler32,
             file_hash,
-            file_user_id,
-            file_group_id,
-            file_permissions,
             file_tombstone,
             handoff_node_id
         ) values (
@@ -92,9 +83,6 @@ def _insert_segment_tombstone_row(connection, segment_row):
             %(file_size)s,
             %(file_adler32)s,
             %(file_hash)s,
-            %(file_user_id)s,
-            %(file_group_id)s,
-            %(file_permissions)s,
             %(file_tombstone)s,
             %(handoff_node_id)s
         )
@@ -247,9 +235,6 @@ class Writer(object):
         file_size,
         file_adler32,
         file_hash,
-        file_user_id,
-        file_group_id,
-        file_permissions,
         file_tombstone,
         handoff_node_id
     ): 
@@ -273,9 +258,6 @@ class Writer(object):
             file_size=file_size,
             file_adler32=file_adler32,
             file_hash=psycopg2.Binary(file_hash),
-            file_user_id=file_user_id,
-            file_group_id=file_group_id,
-            file_permissions=file_permissions,
             file_tombstone=file_tombstone,
             handoff_node_id=handoff_node_id
         )
@@ -304,9 +286,6 @@ class Writer(object):
             file_size=0,
             file_adler32=None,
             file_hash=None,
-            file_user_id=None,
-            file_group_id=None,
-            file_permissions=None,
             file_tombstone=True,
             handoff_node_id=None
         )

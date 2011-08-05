@@ -100,9 +100,6 @@ class Archiver(object):
         file_size, 
         file_adler32, 
         file_md5,
-        file_user_id,
-        file_group_id,
-        file_permissions,
         segments, 
         timeout=None
     ):
@@ -129,9 +126,6 @@ class Archiver(object):
                         file_size,
                         file_adler32,
                         file_md5,
-                        file_user_id,
-                        file_group_id,
-                        file_permissions,
                         segment
                     )
             else:
@@ -148,9 +142,6 @@ class Archiver(object):
                         file_size,
                         file_adler32,
                         file_md5,
-                        file_user_id,
-                        file_group_id,
-                        file_permissions,
                         segment
                     )
         self._join(timeout)

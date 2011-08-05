@@ -119,9 +119,6 @@ class TestDataReader(unittest.TestCase):
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5.digest()),
-            "file-user-id"      : None,
-            "file-group-id"     : None,
-            "file-permissions"  : None,
             "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
@@ -250,9 +247,6 @@ class TestDataReader(unittest.TestCase):
             "file-size"         : total_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5.digest()),
-            "file-user-id"      : None,
-            "file-group-id"     : None,
-            "file-permissions"  : None,
             "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(

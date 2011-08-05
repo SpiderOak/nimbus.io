@@ -98,9 +98,6 @@ class TestReadAndWrite(unittest.TestCase):
         data = random_string(data_size)
         data_adler32 = zlib.adler32(data)
         data_md5 = hashlib.md5(data)
-        file_user_id = 1
-        file_group_id = 2
-        file_permissions = 3
         file_tombstone = False
  
         writer = Writer(self._database_connection, _repository_path)
@@ -127,9 +124,6 @@ class TestReadAndWrite(unittest.TestCase):
             data_size,
             data_adler32,
             data_md5.digest(),
-            file_user_id,
-            file_group_id,
-            file_permissions,
             file_tombstone,
             handoff_node_id=None,
         )
@@ -142,9 +136,6 @@ class TestReadAndWrite(unittest.TestCase):
         self.assertEqual(file_info.file_size, data_size) 
         self.assertEqual(file_info.file_adler32, data_adler32) 
         self.assertEqual(str(file_info.file_hash), data_md5.digest()) 
-        self.assertEqual(file_info.file_user_id, file_user_id) 
-        self.assertEqual(file_info.file_group_id, file_group_id) 
-        self.assertEqual(file_info.file_permissions, file_permissions)
         self.assertEqual(file_info.file_tombstone, file_tombstone) 
 
         reader = Reader(self._database_connection, _repository_path)

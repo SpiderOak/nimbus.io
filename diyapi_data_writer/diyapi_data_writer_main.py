@@ -98,9 +98,6 @@ def _handle_archive_key_entire(state, message, data):
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
-        message["file-user-id"],
-        message["file-group-id"],
-        message["file-permissions"],
         file_tombstone=False,
         handoff_node_id=handoff_node_id
     )
@@ -208,9 +205,6 @@ def _handle_archive_key_final(state, message, data):
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
-        message["file-user-id"],
-        message["file-group-id"],
-        message["file-permissions"],
         file_tombstone=False,
         handoff_node_id=handoff_node_id
     )

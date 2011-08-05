@@ -30,9 +30,6 @@ create table segment (
     file_size int8 not null default 0,
     file_adler32 int4,
     file_hash bytea,
-    file_user_id int4,
-    file_group_id int4,
-    file_permissions int4,
     file_tombstone bool not null default false,
     /* XXX: wasn't completely sure if this column belongs in segment or
      * segment_sequence. It's true that every sequence stored on the local node 

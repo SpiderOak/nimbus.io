@@ -274,9 +274,6 @@ class TestHandoffServer(unittest.TestCase):
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5.digest()),
-            "file-user-id"      : None,
-            "file-group-id"     : None,
-            "file-permissions"  : None,
             "handoff-node-name" : None,
         }
         g = gevent.spawn(self._send_message_get_reply, message, file_content)

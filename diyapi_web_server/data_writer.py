@@ -33,9 +33,6 @@ class DataWriter(object):
         file_size,
         file_adler32,
         file_md5,
-        file_user_id,
-        file_group_id,
-        file_permissions,
         segment,
     ):
         message = {
@@ -47,9 +44,6 @@ class DataWriter(object):
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5),
-            "file-user-id"      : file_user_id,
-            "file-group-id"     : file_group_id,
-            "file-permissions"  : file_permissions,
             "handoff-node-name" : None,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
@@ -135,9 +129,6 @@ class DataWriter(object):
         file_size,
         file_adler32,
         file_md5,
-        file_user_id,
-        file_group_id,
-        file_permissions,
         segment,
     ):
         message = {
@@ -150,9 +141,6 @@ class DataWriter(object):
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5),
-            "file-user-id"      : file_user_id,
-            "file-group-id"     : file_group_id,
-            "file-permissions"  : file_permissions,
             "handoff-node-name" : None,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(

@@ -89,9 +89,6 @@ def _convert_dict_to_segment_row(segment_dict):
         file_size=segment_dict["file_size"],
         file_adler32=segment_dict["file_adler32"],
         file_hash=segment_dict["file_hash"],
-        file_user_id=segment_dict["file_user_id"],
-        file_group_id=segment_dict["file_group_id"],
-        file_permissions=segment_dict["file_permissions"],
         file_tombstone=segment_dict["file_tombstone"],
         handoff_node_id=segment_dict["handoff_node_id"]
     )

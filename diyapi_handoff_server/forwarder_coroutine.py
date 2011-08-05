@@ -57,9 +57,6 @@ def forwarder_coroutine(
             "file-size"         : segment_row.file_size,
             "file-adler32"      : segment_row.file_adler32,
             "file-hash"         : b64encode(segment_row.file_hash),
-            "file-user-id"      : segment_row.file_user_id,
-            "file-group-id"     : segment_row.file_group_id,
-            "file-permissions"  : segment_row.file_permissions,
             "handoff-node-name" : None,
         }
     else:
@@ -116,9 +113,6 @@ def forwarder_coroutine(
                 "file-size"         : segment_row.file_size,
                 "file-adler32"      : segment_row.file_adler32,
                 "file-hash"         : b64encode(segment_row.file_hash),
-                "file-user-id"      : segment_row.file_user_id,
-                "file-group-id"     : segment_row.file_group_id,
-                "file-permissions"  : segment_row.file_permissions,
                 "handoff-node-name" : None,
             }
         else:

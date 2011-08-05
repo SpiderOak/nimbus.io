@@ -392,10 +392,6 @@ class Application(object):
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
-        # TODO: get these file attributs from somewhere
-        file_user_id = None
-        file_group_id = None
-        file_permissions = None
         segments = None
         try:
             for slice_item in DataSlicer(req.body_file,
@@ -417,9 +413,6 @@ class Application(object):
                 file_size,
                 file_adler32,
                 file_md5.digest(),
-                file_user_id,
-                file_group_id,
-                file_permissions,
                 segments,
                 REPLY_TIMEOUT
             )

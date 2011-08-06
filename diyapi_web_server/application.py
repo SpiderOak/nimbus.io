@@ -274,7 +274,11 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        return Response('OK')
+        # tell the caller what cluster this collection is in
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(self._cluster_row.name)
+
+        return response
 
     @routes.add(r'/list_collections')
     def list_collections(self, req):

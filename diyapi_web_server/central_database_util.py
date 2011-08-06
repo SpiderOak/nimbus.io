@@ -39,3 +39,14 @@ def get_node_rows(connection, cluster_id):
 
     return [node_row_template._make(row) for row in result]
 
+def get_collections_for_avatar(connection, cluster_id, avatar_id):
+    """
+    return a list of tuples (collection_name, collection_id)
+    listing all the colection the avatar has in a specific cluster
+    """
+    return connection.fetch_all_rows("""
+        select id, name from diyapi_central.collection
+        where avatar_id = %s
+        and cluster_id = %s
+        """, [avatar_id, cluster_id, ]
+        )

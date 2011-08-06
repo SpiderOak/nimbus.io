@@ -50,9 +50,11 @@ class CollectionManager(object):
             begin;
             insert into diy_central.collection
             (cluster_id, name, avatar_id)
-            values (%s, %s, %s);
+            select %s, %s, %s where not exists (
+                select 1 from diy_central.collection where name = %s
+            );
             commit;
-        """, [self._cluster_id, collection_name, avatar_id, ]
+        """, [self._cluster_id, collection_name, avatar_id, collection_name, ]
         )
 
     def list_collections(self, avatar_id):

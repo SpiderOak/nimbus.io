@@ -1,6 +1,9 @@
 class AlreadyInProgress(Exception):
     pass
 
+class CollectionError(Exception):
+    pass
+
 class ArchiveFailedError(Exception):
     pass
 

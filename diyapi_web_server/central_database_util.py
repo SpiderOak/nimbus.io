@@ -39,29 +39,3 @@ def get_node_rows(connection, cluster_id):
 
     return [node_row_template._make(row) for row in result]
 
-def get_collections_for_avatar(connection, cluster_id, avatar_id):
-    """
-    return a list of (collection, collection_id) for all the collections
-    the avatar owns    
-    """
-    # if this avatar doesn't have a row, we'll give him a default
-    # recurse loop back
-    result = connection.fetch_all_rows("""
-        select name, id from diy_central.collection
-        where  cluster_id = %s
-        and avatar_id = %s
-    """, [cluster_id, avatar_id, ]
-    )
-    if result is None or len(result) == 0:
-        connection.execute("""
-            begin;
-            insert into diy_central.collection
-            (cluster_id, avatar_id)
-            values (%s, %s);
-            commit;
-        """, [cluster_id, avatar_id, ]
-        )
-        return get_collections_for_avatar(connection, cluster_id, avatar_id)
-
-    return result
-

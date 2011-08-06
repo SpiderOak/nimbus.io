@@ -32,7 +32,7 @@ from diyapi_web_server.application import Application
 from diyapi_web_server.data_reader import DataReader
 from diyapi_web_server.space_accounting_client import SpaceAccountingClient
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
-
+from diyapi_web_server.collection_manager import CollectionManager
 
 _log_path = "/var/log/pandora/diyapi_web_server.log"
 

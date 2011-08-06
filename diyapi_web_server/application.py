@@ -23,15 +23,16 @@ from webob import Response
 from diyapi_tools.data_definitions import create_timestamp
 
 from diyapi_web_server import util
-from diyapi_web_server.central_database_util import get_cluster_row, \
-        get_collections_for_avatar 
+from diyapi_web_server.central_database_util import get_cluster_row
 from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
         RetrieveFailedError, \
         ArchiveFailedError, \
-        DestroyFailedError
+        DestroyFailedError, \
+        CollectionError
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
+from diyapi_web_server.collection_manager import CollectionManager
 from diyapi_web_server.data_writer import DataWriter
 from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
@@ -120,15 +121,19 @@ class Application(object):
         event_push_client
     ):
         self._log = logging.getLogger("Application")
-        self._data_writer_clients = data_writer_clients
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
+        self._data_writer_clients = data_writer_clients
         self.data_readers = data_readers
         self.authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
 
         self._cluster_row = get_cluster_row(self._central_connection)
+        self._collection_manager = CollectionManager( 
+            self._central_connection,
+            self._cluster_row.id
+        )
 
     routes = router()
 
@@ -139,12 +144,8 @@ class Application(object):
             req.diy_username = util.get_username_from_req(req) or 'test'
             if not self.authenticator.authenticate(req):
                 raise exc.HTTPUnauthorized()
-            req.collections = dict(
-                get_collections_for_avatar(
-                    self._central_connection,
-                    self._cluster_row.id,
-                    req.avatar_id
-                )
+            req.collections = self._collection_manager.get_collection_id_dict(
+                req.avatar_id
             )
             req.default_collection_id = req.collections["(default)"]
             url_matched = False
@@ -202,7 +203,13 @@ class Application(object):
         # TODO: get the collection name from the uri
         collection_name = "(default)"
         collection_id = req.collections[collection_name]
-        key = urllib.unquote_plus(path)
+
+        try:
+            key = urllib.unquote_plus(path)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
         self._log.debug("stat: %s collection = (%s) %r key = %r" % (
             req.avatar_id,
             collection_id, 
@@ -224,7 +231,13 @@ class Application(object):
         # TODO: get the collection name from the uri
         collection_name = "(default)"
         collection_id = req.collections[collection_name]
-        prefix = urllib.unquote_plus(prefix)
+
+        try:
+            key = urllib.unquote_plus(prefix)
+            prefix = prefix.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
         self._log.debug("listmatch: %s collection = (%s) %r prefix = '%s'" % (
             req.avatar_id, 
             collection_id,
@@ -238,14 +251,94 @@ class Application(object):
             response.body_file.write("%s\n" % (key, ))
         return response
 
+    @routes.add(r'/data/(.*)$', action='create_collection')
+    def create_collection(self, req, collection_name):
+        try:
+            collection_name = urllib.unquote_plus(collection_name)
+            collection_name = collection_name.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug("create_collection: %s name = %r" % (
+            req.avatar_id,
+            collection_name,
+        ))
+
+        try:
+            self._collection_manager.add_collection(
+                req.avatar_id, collection_name
+            )
+        except CollectionError, instance:
+            self._log.error("%s error adding collection %r %s" % (
+                req.avatar_id, collection_name, instance,
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        return Response('OK')
+
+    @routes.add(r'/list_collections')
+    def list_collections(self, req):
+        self._log.debug("%s list_collections" % (req.avatar_id,))
+        try:
+            collections = self._collection_manager.list_collections(
+                req.avatar_id
+            )
+        except CollectionError, instance:
+            self._log.error("%s error listing collections %s" % (
+                req.avatar_id, instance,
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        response = Response(content_type='text/plain', charset='utf8')
+        for collection_name, cluster_name in collections:
+            response.body_file.write("%s,%s\n" % (
+                collection_name, cluster_name, 
+            ))
+
+        return response
+
+    @routes.add(r'/data/(.*)$', action='delete_collection')
+    def delete_collection(self, req, collection_name):
+        try:
+            collection_name = urllib.unquote_plus(collection_name)
+            collection_name = collection_name.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug("delete_collection: %s name = %r" % (
+            req.avatar_id,
+            collection_name,
+        ))
+
+        try:
+            self._collection_manager.delete_collection(
+                req.avatar_id, collection_name
+            )
+        except CollectionError, instance:
+            self._log.error("%s error deleting collection %r %s" % (
+                req.avatar_id, collection_name, instance,
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        # TODO: tell the data_writers to delete data for the collection
+        # TODO: record bytes deleted
+
+        return Response('OK')
+
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
         # TODO: get the collection name from the uri
         collection_name = "(default)"
         collection_id = req.collections[collection_name]
-        key = urllib.unquote_plus(key)
-        self._log.debug("destroy: %s collection = (%s) %r key = %s" % (
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug("destroy: %s collection = (%s) %r key = %r" % (
             req.avatar_id, 
             collection_id,
             collection_name,
@@ -281,7 +374,13 @@ class Application(object):
         collection_name = "(default)"
         collection_id = req.collections[collection_name]
         start_time = time.time()
-        key = urllib.unquote_plus(key)
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
         description = "retrieve: %s collection = (%s) %r key = %r" % (
             req.avatar_id, 
             collection_id,
@@ -361,6 +460,13 @@ class Application(object):
         # TODO: get the collection name from the uri
         collection_name = "(default)"
         collection_id = req.collections[collection_name]
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
         start_time = time.time()
         key = urllib.unquote_plus(key)
         description = "archive: %s collection = (%s) %r key = %r, size=%s" % (

@@ -50,7 +50,7 @@ class CollectionManager(object):
             begin;
             insert into diy_central.collection
             (cluster_id, name, avatar_id)
-            values (%s, %s %s);
+            values (%s, %s, %s);
             commit;
         """, [self._cluster_id, collection_name, avatar_id, ]
         )
@@ -78,7 +78,7 @@ class CollectionManager(object):
         """
         self._central_connection.execute("""
             delete from diy_central.collection
-            where cluster_id %s and name = %s and avatar_id =%s
+            where cluster_id = %s and name = %s and avatar_id =%s
         """, [self._cluster_id, collection_name, avatar_id, ]
         )
 

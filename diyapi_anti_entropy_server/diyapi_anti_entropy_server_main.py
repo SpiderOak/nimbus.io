@@ -441,6 +441,7 @@ def _create_state():
         "active-requests"           : dict(),
         "retry-list"                : list(),
         "avatar-ids"                : set(),
+        "cluster-row"               : None,
     }
 
 def _setup(_halt_event, state):
@@ -449,6 +450,10 @@ def _setup(_halt_event, state):
 
     state["central-database-connection"] = get_central_connection()
     state["local-database-connection"] = get_node_local_connection()
+
+    state["cluster-row"] = get_cluster_row(
+        state["central-database-connection"] 
+    )
 
     local_anti_entropy_server_address = None
     for node_name, address in zip(_node_names, _anti_entropy_server_addresses):

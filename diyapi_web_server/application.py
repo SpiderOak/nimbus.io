@@ -218,6 +218,8 @@ class Application(object):
         ))
         getter = StatGetter(self._node_local_connection)
         file_info = getter.stat(collection_id, key, REPLY_TIMEOUT)
+        if file_info is None:
+            raise exc.HTTPNotFound("Not Found: %r" % (key, ))
         file_info_dict = dict()
         for key, value in file_info._asdict().items():
             if key.startswith("file_"):

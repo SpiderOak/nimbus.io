@@ -218,11 +218,11 @@ class Application(object):
         ))
         getter = StatGetter(self._node_local_connection)
         file_info = getter.stat(collection_id, key, REPLY_TIMEOUT)
-        if file_info is None:
+        if file_info is None or file_info.file_tombstone:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
         file_info_dict = dict()
         for key, value in file_info._asdict().items():
-            if key.startswith("file_"):
+            if key.startswith("file_") and key != "file_tombstone":
                 if key == "file_hash" and value is not None:
                     value = hexlify(value)
                 file_info_dict[key] = value

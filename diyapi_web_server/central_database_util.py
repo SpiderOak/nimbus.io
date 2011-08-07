@@ -45,8 +45,9 @@ def get_collections_for_avatar(connection, cluster_id, avatar_id):
     listing all the colection the avatar has in a specific cluster
     """
     return connection.fetch_all_rows("""
-        select id, name from diyapi_central.collection
+        select id, name from diy_central.collection
         where avatar_id = %s
         and cluster_id = %s
         """, [avatar_id, cluster_id, ]
         )
+

@@ -16,8 +16,7 @@ state_audit_error = "audit-error"
 _start_audit_command = """
 INSERT INTO diy_central.audit_result
 (avatar_id, state, audit_started)
-VALUES(%s, '%s', '%s'::timestamp)
-RETURNING diy_central.audit_result_id;
+VALUES(%s, '%s', '%s'::timestamp);
 """.strip()
 
 _audit_retry_command = """
@@ -60,10 +59,14 @@ class AuditResultDatabase(object):
 
     def start_audit(self, avatar_id, timestamp):
         """insert a row to mark the start of an audit"""
-        command = _start_audit_command % (
-            avatar_id, state_audit_started, timestamp, 
+        cursor = self._connection_connection.cursor()
+        cursor.execute(
+            _start_audit_command, 
+            [avatar_id, state_audit_started, timestamp, ]
         )
-        (row_id, ) = self._connection.fetch_one_row(command)
+        row_id = cursor.lastrowid
+        cursor.close()
+
         self._connection.commit()
         return row_id
 

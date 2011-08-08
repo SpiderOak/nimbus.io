@@ -59,7 +59,7 @@ class AuditResultDatabase(object):
 
     def start_audit(self, avatar_id, timestamp):
         """insert a row to mark the start of an audit"""
-        cursor = self._connection_connection.cursor()
+        cursor = self._connection._connection.cursor()
         cursor.execute(
             _start_audit_command, 
             [avatar_id, state_audit_started, timestamp, ]

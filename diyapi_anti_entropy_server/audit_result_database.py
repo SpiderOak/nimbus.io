@@ -38,7 +38,7 @@ WHERE diy_central.audit_result_id = %s;
 
 _ineligible_query = """
 SELECT avatar_id FROM diy_central.audit_result
-WHERE COALESCE(state, audit-successful) != audit-successful
+WHERE COALESCE(state, 'audit-successful') != 'audit-successful'
 OR COALESCE(audit_finished, now()) > %s::timestamp;
 """.strip()
 

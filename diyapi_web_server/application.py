@@ -43,15 +43,16 @@ from diyapi_web_server.space_usage_getter import SpaceUsageGetter
 from diyapi_web_server.stat_getter import StatGetter
 from diyapi_web_server.retriever import Retriever
 
-NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
-REPLY_TIMEOUT = float(
-    os.environ.get("SPIDEROAK_DIYAPI_REPLY_TIMEOUT",  str(5 * 60.0))
+_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+_reply_timeout = float(
+    os.environ.get("SPIDEROAK_DIYAPI__reply_timeout",  str(5 * 60.0))
 )
-SLICE_SIZE = 1024 * 1024    # 1MB
-MIN_CONNECTED_CLIENTS = 8
-MIN_SEGMENTS = 8
-MAX_SEGMENTS = 10
-HANDOFF_COUNT = 2
+_slice_size = 1024 * 1024    # 1MB
+_min_connected_clients = 8
+_min_segments = 8
+_max_segments = 10
+_handoff_count = 2
+_default_collection_name = u"(default)"
 
 class router(list):
     # TODO: document and test this
@@ -75,13 +76,13 @@ def _create_data_writers(clients):
     connected_clients_by_node = list()
     disconnected_clients_by_node = list()
 
-    for node_name, client in zip(NODE_NAMES, clients):
+    for node_name, client in zip(_node_names, clients):
         if client.connected:
             connected_clients_by_node.append((node_name, client))
         else:
             disconnected_clients_by_node.append((node_name, client))
 
-    if len(connected_clients_by_node) < MIN_CONNECTED_CLIENTS:
+    if len(connected_clients_by_node) < _min_connected_clients:
         raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
             len(connected_clients_by_node),
         ))
@@ -93,7 +94,7 @@ def _create_data_writers(clients):
         data_writers_dict[node_name] = DataWriter(node_name, client)
     
     for node_name, client in disconnected_clients_by_node:
-        backup_clients = random.sample(connected_clients, HANDOFF_COUNT)
+        backup_clients = random.sample(connected_clients, _handoff_count)
         assert backup_clients[0] != backup_clients[1]
         data_writer_handoff_client = DataWriterHandoffClient(
             client.server_node_name,
@@ -105,9 +106,9 @@ def _create_data_writers(clients):
         )
 
     # 2011-05-27 dougfort -- the data-writers list must be in 
-    # the same order as NODE_NAMES, because that's the order that
+    # the same order as _node_names, because that's the order that
     # segment numbers get defined in
-    return [data_writers_dict[node_name] for node_name in NODE_NAMES]
+    return [data_writers_dict[node_name] for node_name in _node_names]
 
 class Application(object):
     def __init__(
@@ -193,15 +194,17 @@ class Application(object):
         self._log.debug("usage: %s" % (req.avatar_id, ))
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(req.avatar_id, REPLY_TIMEOUT)
+            usage = getter.get_space_usage(req.avatar_id, _reply_timeout)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
         return Response(json.dumps(usage))
 
     @routes.add(r'/data/(.+)$', action='stat')
     def stat(self, req, path):
-        # TODO: get the collection name from the uri
-        collection_name = "(default)"
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
         collection_id = req.collections[collection_name]
 
         try:
@@ -217,7 +220,7 @@ class Application(object):
             key
         ))
         getter = StatGetter(self._node_local_connection)
-        file_info = getter.stat(collection_id, key, REPLY_TIMEOUT)
+        file_info = getter.stat(collection_id, key, _reply_timeout)
         if file_info is None or file_info.file_tombstone:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
         file_info_dict = dict()
@@ -230,8 +233,10 @@ class Application(object):
 
     @routes.add(r'/data/(.*)$', action='listmatch')
     def listmatch(self, req, prefix):
-        # TODO: get the collection name from the uri
-        collection_name = "(default)"
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
         collection_id = req.collections[collection_name]
 
         try:
@@ -247,19 +252,18 @@ class Application(object):
             prefix
         ))
         matcher = Listmatcher(self._node_local_connection)
-        keys = matcher.listmatch(collection_id, prefix, REPLY_TIMEOUT)
+        keys = matcher.listmatch(collection_id, prefix, _reply_timeout)
         response = Response(content_type='text/plain', charset='utf8')
         for key in keys:
             response.body_file.write("%s\n" % (key, ))
         return response
 
-    @routes.add(r'/data/(.*)$', action='create_collection')
-    def create_collection(self, req, collection_name):
-        try:
-            collection_name = urllib.unquote_plus(collection_name)
-            collection_name = collection_name.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
+    @routes.add(r'/create_collection$')
+    def create_collection(self, req):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            raise exc.HTTPServiceUnavailable("No collection name")
 
         self._log.debug("create_collection: %s name = %r" % (
             req.avatar_id,
@@ -303,19 +307,19 @@ class Application(object):
 
         return response
 
-    @routes.add(r'/data/(.*)$', action='delete_collection')
-    def delete_collection(self, req, collection_name):
-        try:
-            collection_name = urllib.unquote_plus(collection_name)
-            collection_name = collection_name.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
+    @routes.add(r'/delete_collection$')
+    def delete_collection(self, req):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            raise exc.HTTPServiceUnavailable("No collection name")
 
         self._log.debug("delete_collection: %s name = %r" % (
             req.avatar_id,
             collection_name,
         ))
 
+        # TODO: can't delete a collection that contains keys
         try:
             self._collection_manager.delete_collection(
                 req.avatar_id, collection_name
@@ -326,16 +330,15 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        # TODO: tell the data_writers to delete data for the collection
-        # TODO: record bytes deleted
-
         return Response('OK')
 
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
     def destroy(self, req, key):
-        # TODO: get the collection name from the uri
-        collection_name = "(default)"
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
         collection_id = req.collections[collection_name]
 
         try:
@@ -363,7 +366,7 @@ class Application(object):
         )
 
         try:
-            size_deleted = destroyer.destroy(REPLY_TIMEOUT)
+            size_deleted = destroyer.destroy(_reply_timeout)
         except DestroyFailedError, e:            
             raise exc.HTTPInternalServerError(str(e))
 
@@ -376,8 +379,10 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
-        # TODO: get the collection name from the uri
-        collection_name = "(default)"
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
         collection_id = req.collections[collection_name]
         start_time = time.time()
 
@@ -396,23 +401,23 @@ class Application(object):
         self._log.debug(description)
         connected_data_readers = _connected_clients(self.data_readers)
 
-        if len(connected_data_readers) < MIN_CONNECTED_CLIENTS:
+        if len(connected_data_readers) < _min_connected_clients:
             raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
                 len(connected_data_readers),
             ))
 
         segmenter = ZfecSegmenter(
-            MIN_SEGMENTS,
-            MAX_SEGMENTS)
+            _min_segments,
+            _max_segments)
         retriever = Retriever(
             self._node_local_connection,
             self.data_readers,
             collection_id,
             key,
-            MIN_SEGMENTS
+            _min_segments
         )
 
-        retrieved = retriever.retrieve(REPLY_TIMEOUT)
+        retrieved = retriever.retrieve(_reply_timeout)
 
         try:
             first_segments = retrieved.next()
@@ -463,8 +468,10 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'POST')
     def archive(self, req, key):
-        # TODO: get the collection name from the uri
-        collection_name = "(default)"
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
         collection_id = req.collections[collection_name]
 
         try:
@@ -507,12 +514,12 @@ class Application(object):
         segments = None
         try:
             for slice_item in DataSlicer(req.body_file,
-                                    SLICE_SIZE,
+                                    _slice_size,
                                     req.content_length):
                 if segments:
                     archiver.archive_slice(
                         segments,
-                        REPLY_TIMEOUT
+                        _reply_timeout
                     )
                     segments = None
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
@@ -526,7 +533,7 @@ class Application(object):
                 file_adler32,
                 file_md5.digest(),
                 segments,
-                REPLY_TIMEOUT
+                _reply_timeout
             )
         except ArchiveFailedError, instance:
             self._event_push_client.error(

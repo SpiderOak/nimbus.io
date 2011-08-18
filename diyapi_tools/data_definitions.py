@@ -29,6 +29,8 @@ _timestamp_repr_re = re.compile(r"""
 \)$
 """, re.VERBOSE)
 
+nimbus_meta_prefix = "__nimbus_io__"
+
 def compute_value_file_path(repository_path, value_file_id):
     return os.path.join(
         repository_path, 
@@ -113,6 +115,16 @@ segment_sequence_template = namedtuple(
         "size",
         "hash",
         "adler32",
+    ]
+)
+
+meta_row_template = namedtuple(
+    "MetaRow", [
+        "collection_id",
+        "key",
+        "meta_key",
+        "meta_value",
+        "timestamp",
     ]
 )
 

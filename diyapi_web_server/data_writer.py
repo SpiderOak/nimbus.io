@@ -29,6 +29,7 @@ class DataWriter(object):
         collection_id,
         key,
         timestamp,
+        meta_dict,
         segment_num,
         file_size,
         file_adler32,
@@ -46,6 +47,7 @@ class DataWriter(object):
             "file-hash"         : b64encode(file_md5),
             "handoff-node-name" : None,
         }
+        message.update(meta_dict)
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
@@ -124,6 +126,7 @@ class DataWriter(object):
         collection_id,
         key,
         timestamp,
+        meta_dict,
         segment_num,
         sequence_num,
         file_size,
@@ -143,6 +146,7 @@ class DataWriter(object):
             "file-hash"         : b64encode(file_md5),
             "handoff-node-name" : None,
         }
+        message.update(meta_dict)
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )

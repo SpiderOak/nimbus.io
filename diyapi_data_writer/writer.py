@@ -13,7 +13,8 @@ import psycopg2
 
 from diyapi_tools.data_definitions import segment_row_template, \
         segment_sequence_template, \
-        parse_timestamp_repr
+        parse_timestamp_repr, \
+        meta_row_template
 from diyapi_data_writer.output_value_file import OutputValueFile
 
 _max_value_file_size = os.environ.get(
@@ -27,9 +28,10 @@ def _get_next_segment_id(connection):
     connection.commit()
     return next_segment_id
 
-def _insert_segment_row(connection, segment_row):
+def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
     """
-    Insert one segment entry, with pre-assigned row id
+    Insert one segment entry, with pre-assigned row id, along with
+    associated meta rows
     """
     segment_row_dict = segment_row._asdict()
     connection.execute("""
@@ -57,6 +59,24 @@ def _insert_segment_row(connection, segment_row):
             %(handoff_node_id)s
         )
     """, segment_row_dict)
+    for meta_row in meta_rows:
+        meta_row_dict = meta_row._asdict()
+        connection.execute("""
+            insert into diy.meta (
+                collection_id,
+                key,
+                meta_key,
+                meta_value,
+                timestamp
+            ) values (
+                %(collection_id)s,
+                %(key)s,
+                %(meta_key)s,
+                %(meta_value)s,
+                %(timestamp)s::timestamp
+            )
+        """, meta_row_dict)            
+
     connection.commit()
 
 def _insert_segment_tombstone_row(connection, segment_row):
@@ -231,6 +251,7 @@ class Writer(object):
         collection_id, 
         key, 
         timestamp_repr, 
+        meta_dict,
         segment_num,
         file_size,
         file_adler32,
@@ -261,7 +282,18 @@ class Writer(object):
             file_tombstone=file_tombstone,
             handoff_node_id=handoff_node_id
         )
-        _insert_segment_row(self._connection, segment_row)
+        meta_rows = list()
+        for meta_key, meta_value in meta_dict.items():
+            meta_row = meta_row_template(
+                collection_id=collection_id,
+                key=key,
+                meta_key=meta_key,
+                meta_value=meta_value,
+                timestamp=timestamp
+            )
+            meta_rows.append(meta_row)
+
+        _insert_segment_row_with_meta(self._connection, segment_row, meta_rows)
     
     def purge_segment(self, collection_id, key, timestamp, segment_num):
         """

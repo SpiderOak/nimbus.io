@@ -20,7 +20,7 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from diyapi_tools.data_definitions import create_timestamp
+from diyapi_tools.data_definitions import create_timestamp, nimbus_meta_prefix
 
 from diyapi_web_server import util
 from diyapi_web_server.central_database_util import get_cluster_row
@@ -42,6 +42,7 @@ from diyapi_web_server.listmatcher import Listmatcher
 from diyapi_web_server.space_usage_getter import SpaceUsageGetter
 from diyapi_web_server.stat_getter import StatGetter
 from diyapi_web_server.retriever import Retriever
+from diyapi_web_server.meta_manager import get_meta, list_meta
 
 _node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
@@ -53,6 +54,25 @@ _min_segments = 8
 _max_segments = 10
 _handoff_count = 2
 _default_collection_name = u"(default)"
+
+_s3_meta_prefix = "x-amz-meta-"
+_sizeof_s3_meta_prefix = len(_s3_meta_prefix)
+
+def _build_meta_dict(req_get):
+    """
+    create a dict of meta values, conveting the aws prefix to ours
+    """
+    meta_dict = dict()
+    for key in req_get:
+        if key.startswith(_s3_meta_prefix):
+            converted_key = "".join(
+                    [nimbus_meta_prefix, key[_sizeof_s3_meta_prefix:]]
+                )
+            meta_dict[converted_key] = req_get[key]
+        elif key.startswith(nimbus_meta_prefix):
+            meta_dict[key] = req_get[key]
+
+    return meta_dict
 
 class router(list):
     # TODO: document and test this
@@ -478,6 +498,9 @@ class Application(object):
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
         except Exception, instance:
+            self._log.error('unable to prepare key %r %s' % (
+                key, instance
+            ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
         start_time = time.time()
@@ -496,13 +519,16 @@ class Application(object):
                 "cannot archive: content_length = %s" % (req.content_length, )
             ) 
 
+        meta_dict = _build_meta_dict(req.GET)
+
         data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
             collection_id,
             key,
-            timestamp
+            timestamp,
+            meta_dict
         )
         segmenter = ZfecSegmenter(
             8,
@@ -562,4 +588,64 @@ class Application(object):
         )
 
         return Response('OK')
+
+    @routes.add(r'/data/(.+)$', action="get_meta")
+    def get_meta(self, req, key):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
+        collection_id = req.collections[collection_name]
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            self._log.error('unable to prepare key %r %s' % (
+                key, instance
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        meta_value = get_meta(
+            self._node_local_connection,
+            collection_id,
+            key,
+            req.GET["meta_key"]
+        )
+
+        if meta_value is None:
+            raise exc.HTTPNotFound(req.GET["meta_key"])
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(meta_value)
+
+        return response
+
+    @routes.add(r'/data/(.+)$', action="list_meta")
+    def list_meta(self, req, key):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
+        collection_id = req.collections[collection_name]
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            self._log.error('unable to prepare key %r %s' % (
+                key, instance
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        meta_value = list_meta(
+            self._node_local_connection,
+            collection_id,
+            key
+        )
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(meta_value)
+
+        return response
 

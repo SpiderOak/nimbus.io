@@ -19,13 +19,14 @@ from diyapi_web_server.exceptions import (
 
 class Archiver(object):
     """Sends data segments to data writers."""
-    def __init__(self, data_writers, collection_id, key, timestamp):
+    def __init__(self, data_writers, collection_id, key, timestamp, meta_dict):
         self.log = logging.getLogger(
             'Archiver(collection_id=%d, key=%r)' % (collection_id, key))
         self.data_writers = data_writers
         self.collection_id = collection_id
         self.key = key
         self.timestamp = timestamp
+        self._meta_dict = meta_dict
         self.sequence_num = 0
         self._adler32s = {}
         self._md5s = defaultdict(hashlib.md5)
@@ -122,6 +123,7 @@ class Archiver(object):
                         self.collection_id,
                         self.key,
                         self.timestamp,
+                        self._meta_dict,
                         segment_num,
                         file_size,
                         file_adler32,
@@ -137,6 +139,7 @@ class Archiver(object):
                         self.collection_id,
                         self.key,
                         self.timestamp,
+                        self._meta_dict,
                         segment_num,
                         self.sequence_num,
                         file_size,

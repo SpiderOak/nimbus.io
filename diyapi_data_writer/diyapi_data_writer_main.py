@@ -30,7 +30,8 @@ from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 from diyapi_tools.database_connection import get_node_local_connection, \
         get_central_connection
-from diyapi_tools.data_definitions import parse_timestamp_repr
+from diyapi_tools.data_definitions import parse_timestamp_repr, \
+        nimbus_meta_prefix
 from diyapi_web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
@@ -47,6 +48,18 @@ _data_writer_address = os.environ.get(
 _repository_path = os.environ.get(
     "DIYAPI_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
 )
+_sizeof_nimbus_meta_prefix = len(nimbus_meta_prefix)
+
+def _extract_meta(message):
+    """
+    build a dict of meta data, with our meta prefix stripped off
+    """
+    meta_dict = dict()
+    for key in message:
+        if key.startswith(nimbus_meta_prefix):
+            converted_key = key[_sizeof_nimbus_meta_prefix:]
+            meta_dict[converted_key] = message[key]
+    return meta_dict
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
@@ -94,6 +107,7 @@ def _handle_archive_key_entire(state, message, data):
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
+        _extract_meta(message),
         message["segment-num"],
         message["file-size"],
         message["file-adler32"],
@@ -201,6 +215,7 @@ def _handle_archive_key_final(state, message, data):
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
+        _extract_meta(message),
         message["segment-num"],
         message["file-size"],
         message["file-adler32"],

@@ -46,7 +46,7 @@ class CollectionManager(object):
         """
         add a collection to the local cluster
         """
-        self._central_connection.execute("""
+        row_id = self._central_connection.execute("""
             begin;
             insert into diy_central.collection
             (cluster_id, name, avatar_id)
@@ -56,6 +56,8 @@ class CollectionManager(object):
             commit;
         """, [self._cluster_id, collection_name, avatar_id, collection_name, ]
         )
+
+        return row_id
 
     def list_collections(self, avatar_id):
         """

@@ -274,8 +274,7 @@ class Application(object):
         matcher = Listmatcher(self._node_local_connection)
         keys = matcher.listmatch(collection_id, prefix, _reply_timeout)
         response = Response(content_type='text/plain', charset='utf8')
-        for key in keys:
-            response.body_file.write("%s\n" % (key, ))
+        response.text = json.dumps(keys)
         return response
 
     @routes.add(r'/create_collection$')
@@ -300,9 +299,11 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        # update 
+
         # tell the caller what cluster this collection is in
         response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(self._cluster_row.name)
+        response.text = self._cluster_row.name
 
         return response
 
@@ -320,10 +321,7 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         response = Response(content_type='text/plain', charset='utf8')
-        for collection_name, cluster_name in collections:
-            response.body_file.write("%s,%s\n" % (
-                collection_name, cluster_name, 
-            ))
+        response.text = json.dumps(collections)
 
         return response
 
@@ -396,6 +394,66 @@ class Application(object):
             size_deleted
         )
         return Response('OK')
+
+    @routes.add(r'/data/(.+)$', action="get_meta")
+    def get_meta(self, req, key):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
+        collection_id = req.collections[collection_name]
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            self._log.error('unable to prepare key %r %s' % (
+                key, instance
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        meta_value = get_meta(
+            self._node_local_connection,
+            collection_id,
+            key,
+            req.GET["meta_key"]
+        )
+
+        if meta_value is None:
+            raise exc.HTTPNotFound(req.GET["meta_key"])
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.text = meta_value
+
+        return response
+
+    @routes.add(r'/data/(.+)$', action="list_meta")
+    def list_meta(self, req, key):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
+        collection_id = req.collections[collection_name]
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            self._log.error('unable to prepare key %r %s' % (
+                key, instance
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        meta_value = list_meta(
+            self._node_local_connection,
+            collection_id,
+            key
+        )
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.text = json.dumps(meta_value)
+
+        return response
 
     @routes.add(r'/data/(.+)$')
     def retrieve(self, req, key):
@@ -588,64 +646,4 @@ class Application(object):
         )
 
         return Response('OK')
-
-    @routes.add(r'/data/(.+)$', action="get_meta")
-    def get_meta(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            self._log.error('unable to prepare key %r %s' % (
-                key, instance
-            ))
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        meta_value = get_meta(
-            self._node_local_connection,
-            collection_id,
-            key,
-            req.GET["meta_key"]
-        )
-
-        if meta_value is None:
-            raise exc.HTTPNotFound(req.GET["meta_key"])
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(meta_value)
-
-        return response
-
-    @routes.add(r'/data/(.+)$', action="list_meta")
-    def list_meta(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            self._log.error('unable to prepare key %r %s' % (
-                key, instance
-            ))
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        meta_value = list_meta(
-            self._node_local_connection,
-            collection_id,
-            key
-        )
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(meta_value)
-
-        return response
 

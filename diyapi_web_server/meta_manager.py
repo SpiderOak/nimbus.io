@@ -6,12 +6,12 @@ functions for accessing meta data
 """
 _get_meta_query = """
     select meta_value from diy.meta where
-    collection_id = ? and key = ? and meta_key = ?
+    collection_id = %s and key = %s and meta_key = ?
 """.strip()
 
 _list_meta_query = """
     select meta_key, meta_value from diy.meta where
-    collection_id = ? and key = ?
+    collection_id = %s and key = %s
 """.strip()
 
 def get_meta(connection, collection_id, key, meta_key):
@@ -28,6 +28,6 @@ def list_meta(connection, collection_id, key):
     get a list of tuples for all meta data associated wiht the key
     """
     return connection.fetch_all_rows(
-        _list_meta_query, [colection_id, key, ]
+        _list_meta_query, [collection_id, key, ]
     )
 

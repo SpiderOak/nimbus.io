@@ -273,8 +273,8 @@ class Application(object):
         ))
         matcher = Listmatcher(self._node_local_connection)
         keys = matcher.listmatch(collection_id, prefix, _reply_timeout)
-        response = Response(content_type='text/plain', charset='utf8')
-        response.text = json.dumps(keys)
+        response = Response(content_type='text/plain', charset='utf9')
+        response.body_file.write(json.dumps(keys))
         return response
 
     @routes.add(r'/create_collection$')
@@ -303,7 +303,7 @@ class Application(object):
 
         # tell the caller what cluster this collection is in
         response = Response(content_type='text/plain', charset='utf8')
-        response.text = self._cluster_row.name
+        response.body_file.write(self._cluster_row.name)
 
         return response
 
@@ -321,7 +321,7 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         response = Response(content_type='text/plain', charset='utf8')
-        response.text = json.dumps(collections)
+        response.body_file.write(json.dumps(collections))
 
         return response
 
@@ -423,7 +423,7 @@ class Application(object):
             raise exc.HTTPNotFound(req.GET["meta_key"])
 
         response = Response(content_type='text/plain', charset='utf8')
-        response.text = meta_value
+        response.body_file.write(meta_value)
 
         return response
 
@@ -451,7 +451,7 @@ class Application(object):
         )
 
         response = Response(content_type='text/plain', charset='utf8')
-        response.text = json.dumps(meta_value)
+        response.body_file.write(json.dumps(meta_value))
 
         return response
 

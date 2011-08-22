@@ -6,7 +6,7 @@ functions for accessing meta data
 """
 _get_meta_query = """
     select meta_value from diy.meta where
-    collection_id = %s and key = %s and meta_key = ?
+    collection_id = %s and key = %s and meta_key = %s
 """.strip()
 
 _list_meta_query = """

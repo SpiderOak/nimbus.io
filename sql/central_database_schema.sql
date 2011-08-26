@@ -45,9 +45,10 @@ create index collection_avatar_id_name_idx on collection("avatar_id", "name");
 
 create sequence conjoined_id_seq;
 create table conjoined (
-    collection_id int4 not null default nextval('diy_central.conjoined_id_seq'),
+    conjoined_id int4 not null default nextval('diy_central.conjoined_id_seq'),
+    collection_id int4 not null,
+    key varchar(1024) not null,
     identifier bytea not null, 
-    key varchar(1024),
     create_timestamp timestamp not null default current_timestamp,
     abort_timestamp timestamp,
     complete_timestamp timestamp,

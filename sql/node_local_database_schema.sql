@@ -27,7 +27,7 @@ create table segment (
     key varchar(1024),
     timestamp timestamp not null,
     segment_num int2,
-    conjoined_id int8,
+    conjoined_id int4,
     conjoined_num int8,
     conjoined_complete bool,
     file_size int8 not null default 0,

@@ -43,7 +43,10 @@ from diyapi_web_server.space_usage_getter import SpaceUsageGetter
 from diyapi_web_server.stat_getter import StatGetter
 from diyapi_web_server.retriever import Retriever
 from diyapi_web_server.meta_manager import get_meta, list_meta
-from diyapi_web_server.conjoined_manager import list_conjoined_archives
+from diyapi_web_server.conjoined_manager import list_conjoined_archives, \
+        start_conjoined_archive, \
+        abort_conjoined_archive, \
+        finish_conjoined_archive
 
 _node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
@@ -471,6 +474,34 @@ class Application(object):
 
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(conjoined_value))
+
+        return response
+
+    @routes.add(r'/data/(.+)$', action="start_conjoined_archive")
+    def start_conjoined_archive(self, req, key):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
+        collection_id = req.collections[collection_name]
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            self._log.error('unable to prepare key %r %s' % (
+                key, instance
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        conjoined_identifier = start_conjoined_archive(
+            self._central_connection,
+            collection_id,
+            key
+        )
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(conjoined_identifier)
 
         return response
 

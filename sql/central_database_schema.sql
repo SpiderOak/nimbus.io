@@ -43,9 +43,9 @@ create index collection_name_idx on collection("name");
 /* get all collection names for avatar_id */
 create index collection_avatar_id_name_idx on collection("avatar_id", "name");
 
-create sequence multipart_id_seq;
-create table multipart (
-    collection_id int4 not null default nextval('diy_central.multipart_id_seq'),
+create sequence conjoined_id_seq;
+create table conjoined (
+    collection_id int4 not null default nextval('diy_central.conjoined_id_seq'),
     identifier bytea not null, 
     key varchar(1024),
     create_timestamp timestamp not null default current_timestamp,
@@ -54,7 +54,7 @@ create table multipart (
     combined_size int8,
     combined_hash bytea
 );
-create unique index multipart_identifier_idx on diy_central.multipart ("identifier");
+create unique index conjoined_identifier_idx on diy_central.conjoined ("identifier");
 
 create table space_accounting(
    avatar_id int4 not null,

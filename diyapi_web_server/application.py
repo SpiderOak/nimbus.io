@@ -43,6 +43,7 @@ from diyapi_web_server.space_usage_getter import SpaceUsageGetter
 from diyapi_web_server.stat_getter import StatGetter
 from diyapi_web_server.retriever import Retriever
 from diyapi_web_server.meta_manager import get_meta, list_meta
+from diyapi_web_server.conjoined_manager import list_conjoined_archives
 
 _node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
@@ -260,7 +261,7 @@ class Application(object):
         collection_id = req.collections[collection_name]
 
         try:
-            key = urllib.unquote_plus(prefix)
+            prefix = urllib.unquote_plus(prefix)
             prefix = prefix.decode("utf-8")
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
@@ -452,6 +453,24 @@ class Application(object):
 
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(meta_value))
+
+        return response
+
+    @routes.add(r"/list_conjoined_archives")
+    def list_conjoined_archives(self, req):
+        if "collection_name" in req.GET:
+            collection_name = req.GET["collection_name"]
+        else:
+            collection_name = _default_collection_name
+        collection_id = req.collections[collection_name]
+
+        conjoined_value = list_conjoined_archives(
+            self._central_connection,
+            collection_id,
+        )
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(conjoined_value))
 
         return response
 

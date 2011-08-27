@@ -43,20 +43,6 @@ create index collection_name_idx on collection("name");
 /* get all collection names for avatar_id */
 create index collection_avatar_id_name_idx on collection("avatar_id", "name");
 
-create sequence conjoined_id_seq;
-create table conjoined (
-    conjoined_id int4 not null default nextval('diy_central.conjoined_id_seq'),
-    collection_id int4 not null,
-    key varchar(1024) not null,
-    identifier bytea not null, 
-    create_timestamp timestamp not null default current_timestamp,
-    abort_timestamp timestamp,
-    complete_timestamp timestamp,
-    combined_size int8,
-    combined_hash bytea
-);
-create unique index conjoined_identifier_idx on diy_central.conjoined ("identifier");
-
 create table space_accounting(
    avatar_id int4 not null,
    timestamp timestamp not null,

@@ -7,6 +7,20 @@ drop schema if exists diy cascade;
 create schema diy;
 set search_path to diy, public;
 
+create sequence conjoined_id_seq;
+create table conjoined (
+    conjoined_id int4 not null default nextval('diy_central.conjoined_id_seq'),
+    collection_id int4 not null,
+    key varchar(1024) not null,
+    identifier bytea not null, 
+    create_timestamp timestamp not null default current_timestamp,
+    abort_timestamp timestamp,
+    complete_timestamp timestamp,
+    combined_size int8,
+    combined_hash bytea
+);
+create unique index conjoined_identifier_idx on diy_central.conjoined ("identifier");
+
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and
  * can then return each to the web server */

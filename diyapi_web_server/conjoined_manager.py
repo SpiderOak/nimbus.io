@@ -11,10 +11,10 @@ import psycopg2
 
 def list_conjoined_archives(connection, collection_id):
     """
-    get a list of tuples for all  active conjoiined archives
+    get a list of tuples for all active conjoiined archives
     """
     return connection.fetch_all_rows("""
-        select identifier, key from diy_central.conjoined where
+        select identifier, key from diy.conjoined where
         collection_id = %s and abort_timestamp is null 
         and complete_timestamp is null
         """.strip(), [collection_id, ]

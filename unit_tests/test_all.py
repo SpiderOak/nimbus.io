@@ -22,7 +22,9 @@ def _find_in_python_path(path_segments):
         if os.path.isdir(unicode(test_path)):
             return test_path
 
-    raise RuntimeError("Can't find %r in PYTHONPATH" % path_segments)
+    raise RuntimeError("Can't find %r in PYTHONPATH %r" % (
+        path_segments, python_path,
+        ))
 
 def _regression_test():
     """

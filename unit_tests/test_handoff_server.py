@@ -4,599 +4,384 @@ test_handoff_server.py
 
 test the handoff server process
 """
+from base64 import b64encode
+import hashlib
 import logging
 import os
 import os.path
 import shutil
+import random
+import sys
 import time
 import unittest
-import uuid
+import zlib
 
-from diyapi_tools import amqp_connection
+import gevent
+from gevent_zeromq import zmq
+
 from diyapi_tools.standard_logging import initialize_logging
+from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
+from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
+from diyapi_tools.greenlet_pull_server import GreenletPULLServer
+from diyapi_tools.deliverator import Deliverator
+from diyapi_tools.data_definitions import create_timestamp
+from diyapi_tools.database_connection import get_central_connection
+from diyapi_web_server.central_database_util import get_cluster_row, \
+        get_node_rows
 
-from unit_tests.util import random_string, generate_key
+from diyapi_web_server.data_writer_handoff_client import \
+        DataWriterHandoffClient
 
-from messages.hinted_handoff import HintedHandoff
-from messages.hinted_handoff_reply import HintedHandoffReply
-from messages.process_status import ProcessStatus
-
-from messages.archive_key_entire import ArchiveKeyEntire
-from messages.archive_key_start import ArchiveKeyStart
-from messages.archive_key_start_reply import ArchiveKeyStartReply
-from messages.archive_key_next import ArchiveKeyNext
-from messages.archive_key_next_reply import ArchiveKeyNextReply
-from messages.archive_key_final import ArchiveKeyFinal
-from messages.archive_key_final_reply import ArchiveKeyFinalReply
-
-from messages.retrieve_key_start import RetrieveKeyStart
-from messages.retrieve_key_start_reply import RetrieveKeyStartReply
-from messages.retrieve_key_next import RetrieveKeyNext
-from messages.retrieve_key_next_reply import RetrieveKeyNextReply
-from messages.retrieve_key_final import RetrieveKeyFinal
-from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
-
-from messages.purge_key import PurgeKey
-from messages.purge_key_reply import PurgeKeyReply
-
-from messages.database_key_purge import DatabaseKeyPurge
-from messages.database_key_purge_reply import DatabaseKeyPurgeReply
+from unit_tests.util import random_string, \
+        generate_key, \
+        start_data_writer, \
+        start_data_reader, \
+        start_handoff_server, \
+        start_event_publisher, \
+        poll_process, \
+        terminate_process
 
 _log_path = "/var/log/pandora/test_handoff_server.log"
-_test_dir = os.path.join("/tmp", "test_dir")
-_repository_path = os.path.join(_test_dir, "repository")
-os.environ["DIYAPI_REPOSITORY_PATH"] = _repository_path
-_handoff_database_path = os.path.join(_repository_path, "handoff_database")
-_dest_database_path = os.path.join(_repository_path, "dest_database")
+_test_dir = os.path.join("/tmp", "handoff_server_test_dir")
+_node_count = 10
+_data_writer_base_port = 8100
+_data_reader_base_port = 8300
+_handoff_server_base_port = 8700
+_event_publisher_base_port = 8800
 
-from diyapi_database_server.diyapi_database_server_main import \
-        _database_cache, _handle_key_purge
+def _generate_node_name(node_index):
+    return "multi-node-%02d" % (node_index+1, )
 
-from diyapi_data_writer.diyapi_data_writer_main import _routing_header \
-        as data_writer_routing_header
+_cluster_name = "multi-node-cluster"
+_local_node_index = 0
+_local_node_name = _generate_node_name(_local_node_index)
+_node_names = [_generate_node_name(i) for i in range(_node_count)]
 
-from diyapi_data_writer.diyapi_data_writer_main import _handle_purge_key, \
-        _handle_key_purge_reply
+_data_writer_addresses = [
+    "tcp://127.0.0.1:%s" % (_data_writer_base_port+i, ) \
+    for i in range(_node_count)
+]
+_data_reader_addresses = [
+    "tcp://127.0.0.1:%s" % (_data_reader_base_port+i, ) \
+    for i in range(_node_count)
+]
+_handoff_server_addresses = [
+    "tcp://127.0.0.1:%s" % (_handoff_server_base_port+i, ) \
+    for i in range(_node_count)
+]
+_handoff_server_pipeline_addresses = [
+    "tcp://127.0.0.1:%s" % (_handoff_server_base_port+50+i, ) \
+    for i in range(_node_count)
+]
+_client_address = "tcp://127.0.0.1:8900"
+_event_publisher_pull_addresses = [
+    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (node_name, ) \
+    for node_name in _node_names
+]
+_event_publisher_pub_addresses = [
+    "tcp://127.0.0.1:%s" % (_event_publisher_base_port+i, ) \
+    for i in range(_node_count)
+]
 
-from diyapi_handoff_server.diyapi_handoff_server_main import \
-        _handle_hinted_handoff, \
-        _handle_process_status, \
-        _handle_retrieve_key_start_reply, \
-        _handle_retrieve_key_next_reply, \
-        _handle_retrieve_key_final_reply, \
-        _handle_archive_key_start_reply, \
-        _handle_archive_key_next_reply, \
-        _handle_archive_key_final_reply, \
-        _handle_purge_key_reply
-from diyapi_handoff_server.hint_repository import HintRepository
-
-from unit_tests.archive_util import archive_coroutine
-from unit_tests.retrieve_util import retrieve_coroutine
-
-_reply_routing_header = "test_handoff"
-_key_generator = generate_key()
+def _repository_path(node_name):
+    return os.path.join(_test_dir, node_name)
 
 class TestHandoffServer(unittest.TestCase):
     """test message handling in handoff server"""
 
     def setUp(self):
-        logging.root.setLevel(logging.DEBUG)
+        if not hasattr(self, "_log"):
+            self._log = logging.getLogger("TestHandoffServer")
+
         self.tearDown()
-        os.makedirs(_repository_path)
+        database_connection = get_central_connection()
+        cluster_row = get_cluster_row(database_connection)
+        node_rows = get_node_rows(database_connection, cluster_row.id)
+        database_connection.close()
 
-        self._avatar_id = 1001
-        self._key  = _key_generator.next()
-        self._version_number = 0
-        self._segment_number = 2
-        self._timestamp = time.time()
+        self._key_generator = generate_key()
 
-        self._handoff_node_exchange = "handoff-node-exchange"
-        self._web_node_exchange = "web-node-exchange"
-        self._dest_node_exchange = "dest-node-exchange"
+        self._event_publisher_processes = list()
+        self._data_writer_processes = list()
+        self._data_reader_processes = list()
+        self._handoff_server_processes = list()
 
-        self._handoff_server_state = dict()
-        self._handoff_server_state["hint-repository"] = HintRepository()
+        for i in xrange(_node_count):
+            node_name = _generate_node_name(i)
+            repository_path = _repository_path(node_name)
+            os.makedirs(repository_path)
+            
+            process = start_event_publisher(
+                node_name, 
+                _event_publisher_pull_addresses[i],
+                _event_publisher_pub_addresses[i]
+            )
+            poll_result = poll_process(process)
+            self.assertEqual(poll_result, None)
+            self._event_publisher_processes.append(process)
+            time.sleep(1.0)
 
-        self._handoff_data_writer_state = dict()
-        self._handoff_data_reader_state = dict()
-        self._handoff_database_state = {
-            _database_cache : dict(),
-            "database-path" : _handoff_database_path
-        }
+            process = start_data_writer(
+                _cluster_name,
+                node_name, 
+                _data_writer_addresses[i],
+                _event_publisher_pull_addresses[i],
+                repository_path
+            )
+            poll_result = poll_process(process)
+            self.assertEqual(poll_result, None)
+            self._data_writer_processes.append(process)
+            time.sleep(1.0)
 
-        self._dest_data_writer_state = dict()
-        self._dest_data_reader_state = dict()
-        self._dest_database_state = {
-            _database_cache : dict(),
-            "database-path" : _dest_database_path
-        }
+            process = start_data_reader(
+                node_name, 
+                _data_reader_addresses[i],
+                repository_path
+            )
+            poll_result = poll_process(process)
+            self.assertEqual(poll_result, None)
+            self._data_reader_processes.append(process)
+            time.sleep(1.0)
+
+            process = start_handoff_server(
+                _cluster_name,
+                node_name, 
+                _handoff_server_addresses,
+                _handoff_server_pipeline_addresses[i],
+                _data_reader_addresses,
+                _data_writer_addresses,
+                _repository_path(node_name)
+            )
+            poll_result = poll_process(process)
+            self.assertEqual(poll_result, None)
+            self._handoff_server_processes.append(process)
+            time.sleep(1.0)
+
+        self._context = zmq.context.Context()
+        self._pollster = GreenletZeroMQPollster()
+        self._deliverator = Deliverator()
+
+        self._pull_server = GreenletPULLServer(
+            self._context, 
+            _client_address,
+            self._deliverator
+        )
+        self._pull_server.register(self._pollster)
+
+        backup_nodes = random.sample(node_rows[1:], 2)
+        self._log.debug("backup nodes = %s" % (
+            [n.name for n in backup_nodes], 
+        ))
+
+        self._resilient_clients = list()        
+        for node_row, address in zip(node_rows, _data_writer_addresses):
+            if not node_row in backup_nodes:
+                continue
+            resilient_client = GreenletResilientClient(
+                self._context,
+                self._pollster,
+                node_row.name,
+                address,
+                _local_node_name,
+                _client_address,
+                self._deliverator,
+            )
+            self._resilient_clients.append(resilient_client)
+        self._log.debug("%s resilient clients" % (
+            len(self._resilient_clients), 
+        ))
+
+        self._data_writer_handoff_client = DataWriterHandoffClient(
+            node_rows[0].name,
+            self._resilient_clients
+        )
+
+        self._pollster.start()
 
     def tearDown(self):
+        if hasattr(self, "_handoff_server_processes") \
+        and self._handoff_server_processes is not None:
+            print >> sys.stderr, "terminating _handoff_server_processes"
+            for process in self._handoff_server_processes:
+                terminate_process(process)
+            self._handoff_server_processes = None
+        if hasattr(self, "_data_writer_processes") \
+        and self._data_writer_processes is not None:
+            print >> sys.stderr, "terminating _data_writer_processes"
+            for process in self._data_writer_processes:
+                terminate_process(process)
+            self._data_writer_processes = None
+        if hasattr(self, "_data_reader_processes") \
+        and self._data_reader_processes is not None:
+            print >> sys.stderr, "terminating _data_reader_processes"
+            for process in self._data_reader_processes:
+                terminate_process(process)
+            self._data_reader_processes = None
+        if hasattr(self, "_event_publisher_processes") \
+        and self._event_publisher_processes is not None:
+            print >> sys.stderr, "terminating _event_publisher_processes"
+            for process in self._event_publisher_processes:
+                terminate_process(process)
+            self._event_publisher_processes = None
+
+        if hasattr(self, "_pollster") \
+        and self._pollster is not None:
+            print >> sys.stderr, "terminating _pollster"
+            self._pollster.kill()
+            self._pollster.join(timeout=3.0)
+            self._pollster = None
+        
+        if hasattr(self, "_pull_server") \
+        and self._pull_server is not None:
+            print >> sys.stderr, "terminating _pull_server"
+            self._pull_server.close()
+            self._pull_server = None
+ 
+        if hasattr(self, "_resilient_clients") \
+        and self._resilient_clients is not None:
+            print >> sys.stderr, "terminating _resilient_clients"
+            for client in self._resilient_clients:
+                client.close()
+            self._resilient_clients = None
+ 
+        if hasattr(self, "_context") \
+        and self._context is not None:
+            print >> sys.stderr, "terminating _context"
+            self._context.term()
+            self._context = None
+
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
-    def test_small_handoff(self):
-        """
-        test handing off archiving all data for a key in a single message
-        """
-        content_size = 64 * 1024
-        content_item = random_string(content_size) 
+    def test_handoff_small_content(self):
+        """test retrieving content that fits in a single message"""
+        file_size = 10 * 64 * 1024
+        file_content = random_string(file_size) 
+        collection_id = 1001
+        key  = self._key_generator.next()
+        timestamp = create_timestamp()
+        segment_num = 5
 
-        total_size = content_size - 42
-        file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
-        segment_adler32 = 32
-        segment_md5 = "1111111111111111"
+        file_adler32 = zlib.adler32(file_content)
+        file_md5 = hashlib.md5(file_content)
 
-        handoff_request_id = uuid.uuid1().hex
-        handoff_timestamp = time.time()
+        message = {
+            "message-type"      : "archive-key-entire",
+            "collection-id"         : collection_id,
+            "key"               : key, 
+            "timestamp-repr"    : repr(timestamp),
+            "segment-num"       : segment_num,
+            "file-size"         : file_size,
+            "file-adler32"      : file_adler32,
+            "file-hash"         : b64encode(file_md5.digest()),
+            "handoff-node-name" : None,
+        }
+        g = gevent.spawn(self._send_message_get_reply, message, file_content)
+        g.join(timeout=10.0)
+        self.assertEqual(g.ready(), True)
+        reply = g.value
+        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["result"], "success")
 
-        message = ArchiveKeyEntire(
-            handoff_request_id,
-            self._avatar_id,
-            self._handoff_node_exchange,
-            _reply_routing_header,
-            handoff_timestamp,
-            self._key, 
-            self._version_number,
-            self._segment_number,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            content_item
-        )
+        print >> sys.stderr, "archive successful"
+        print >> sys.stderr, "press [Enter] to continue" 
+        raw_input()
 
-        # this archiver gets the handoff, as if the dest_archiver is offline
-        handoff_archiver = archive_coroutine(
-            self, 
-            self._handoff_data_writer_state,
-            self._handoff_database_state,
-            message
-        )
+#    def test_handoff_large_content(self):
+#        """test handing off content that fits in a multiple messages"""
+#        segment_size = 120 * 1024
+#        chunk_count = 10
+#        total_size = int(1.2 * segment_size * chunk_count)
+#        collection_id = 1001
+#        test_data = [random_string(segment_size) for _ in range(chunk_count)]
+#        key  = self._key_generator.next()
+#        version_number = 0
+#        segment_num = 5
+#        sequence = 0
+#        timestamp = time.time()
+#
+#        file_adler32 = -42
+#        file_md5 = "ffffffffffffffff"
+#        segment_adler32 = 32
+#        segment_md5 = "1111111111111111"
+#
+#        message = {
+#            "message-type"      : "archive-key-start",
+#            "collection-id"         : collection_id,
+#            "timestamp"         : timestamp,
+#            "sequence"          : sequence,
+#            "key"               : key, 
+#            "version-number"    : version_number,
+#            "segment-num"    : segment_num,
+#            "segment-size"      : segment_size,
+#        }
+#        g = gevent.spawn(
+#            self._send_message_get_reply, message, test_data[sequence]
+#        )
+#        g.join(timeout=10.0)
+#        self.assertEqual(g.ready(), True)
+#        reply = g.value
+#        self.assertEqual(reply["message-type"], "archive-key-start-reply")
+#        self.assertEqual(reply["result"], "success")
+#
+#        for content_item in test_data[1:-1]:
+#            sequence += 1
+#            message = {
+#                "message-type"      : "archive-key-next",
+#                "collection-id"         : collection_id,
+#                "key"               : key,
+#                "version-number"    : version_number,
+#                "segment-num"    : segment_num,
+#                "sequence"          : sequence,
+#            }
+#            g = gevent.spawn(
+#                self._send_message_get_reply, message, test_data[sequence]
+#            )
+#            g.join(timeout=10.0)
+#            self.assertEqual(g.ready(), True)
+#            reply = g.value
+#            self.assertEqual(reply["message-type"], "archive-key-next-reply")
+#            self.assertEqual(reply["result"], "success")
+#        
+#        sequence += 1
+#        message = {
+#            "message-type"      : "archive-key-final",
+#            "collection-id"         : collection_id,
+#            "key"               : key,
+#            "version-number"    : version_number,
+#            "segment-num"    : segment_num,
+#            "sequence"          : sequence,
+#            "total-size"        : total_size,
+#            "file-adler32"      : file_adler32,
+#            "file-md5"          : b64encode(file_md5),
+#            "segment-adler32"   : segment_adler32,
+#            "segment-md5"       : b64encode(segment_md5),
+#        }
+#        g = gevent.spawn(
+#            self._send_message_get_reply, message, test_data[sequence]
+#        )
+#        g.join(timeout=10.0)
+#        self.assertEqual(g.ready(), True)
+#        reply = g.value
+#        self.assertEqual(reply["message-type"], "archive-key-final-reply")
+#        self.assertEqual(reply["result"], "success")
+#        self.assertEqual(reply["previous-size"], 0)
+#
+#        print >> sys.stderr, "archive successful: starting missing data writer"
+#        self._start_missing_data_writer()
+#        print >> sys.stderr, "data_writer started"
+#        print >> sys.stderr, "press [Enter] to continue" 
+#        raw_input()
 
-        reply = handoff_archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
-
-        self._handoff(handoff_timestamp)
-
-        # now send him a ProcessStatus telling him the data writer at the
-        # dest repository is back online
-        status_timestamp = time.time()
-
-        message = ProcessStatus(
-            status_timestamp, 
-            self._dest_node_exchange,
-            data_writer_routing_header,
-            ProcessStatus.status_startup
-        )
-
-        marshalled_message = message.marshall()
-
-        replies = _handle_process_status(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the handoff server to start retrieving the archive
-        # in order to send it to to the data_writer
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, RetrieveKeyStart)
-
-        # create a retriever to retrieve from the local data_reader
-        handoff_retriever = retrieve_coroutine(
-            self,
-            self._handoff_data_reader_state,
-            self._handoff_database_state,
-            reply
-        )
-
-        reply = handoff_retriever.next()
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.__class__, RetrieveKeyStartReply)
-
-        # pass the reply to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_retrieve_key_start_reply(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the handoff server to send the data it retrieves
-        # to the archive server for which it was originally intended 
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, self._dest_node_exchange)
-        self.assertEqual(reply.__class__, ArchiveKeyEntire)
-
-        # this is the archiver that should have received the data in 
-        # the first place
-        dest_archiver = archive_coroutine(
-            self,
-            self._dest_data_writer_state,
-            self._dest_database_state,
-            reply
-        )
-
-        reply = dest_archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
-
-        # send the archiver's reply back to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_archive_key_final_reply(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the handoff server to send a purge message
-        # to its local data_writer
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, PurgeKey)
-
-        # send the message to the data_writer
-        marshalled_message = reply.marshall()
-        replies = _handle_purge_key(
-            self._handoff_data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the data_writer to send a purge message
-        # to its local database server
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, DatabaseKeyPurge)
-
-        # send the message to the database server
-        marshalled_message = reply.marshall()
-        replies = _handle_key_purge(
-            self._handoff_database_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the database server to send a (successful) reply back 
-        # to the data writer
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, DatabaseKeyPurgeReply)
-
-        # send the reply back to the data_writer
-        marshalled_message = reply.marshall()
-        replies = _handle_key_purge_reply(
-            self._handoff_data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the data_writer to send a (successful) reply back 
-        # to the handoff server
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, PurgeKeyReply)
-
-        # send the reply back to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_purge_key_reply(
-            self._handoff_server_state, marshalled_message
-        )
-
-        # we expect no reply, because we are all done
-        self.assertEqual(len(replies), 0, replies)
-
-    def test_large_handoff(self):
-        """
-        test handing off archiving a file that needs more than one message.
-        For example, a 10 Mb file: each node would get 10 120kb 
-        zefec shares.
-        """
-        segment_size = 120 * 1024
-        chunk_count = 10
-        total_size = segment_size * chunk_count
-        test_data = [random_string(segment_size) for _ in range(chunk_count)]
-        sequence = 0
-        handoff_request_id = uuid.uuid1().hex
-        handoff_timestamp = time.time()
-
-        file_adler32 = -42
-        file_md5 = "ffffffffffffffff"
-        segment_adler32 = 32
-        segment_md5 = "1111111111111111"
-
-        message = ArchiveKeyStart(
-            handoff_request_id,
-            self._avatar_id,
-            self._handoff_node_exchange,
-            _reply_routing_header,
-            handoff_timestamp,
-            sequence,
-            self._key, 
-            self._version_number,
-            self._segment_number,
-            segment_size,
-            test_data[0]
-        )
-
-        handoff_archiver = archive_coroutine(
-            self, 
-            self._handoff_data_reader_state,
-            self._handoff_database_state,
-            message
-        )   
-
-        reply = handoff_archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
-        self.assertEqual(reply.result, 0)
-
-        for content_item in test_data[1:-1]:
-            sequence += 1
-            message = ArchiveKeyNext(
-                handoff_request_id,
-                sequence,
-                content_item
+    def _send_message_get_reply(self, message, content_item):
+        completion_channel = \
+            self._data_writer_handoff_client.queue_message_for_send(
+                message, data=content_item
             )
-            reply = handoff_archiver.send(message)
-            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
-            self.assertEqual(reply.result, 0)
-        
-        sequence += 1
-        message = ArchiveKeyFinal(
-            handoff_request_id,
-            sequence,
-            total_size,
-            file_adler32,
-            file_md5,
-            segment_adler32,
-            segment_md5,
-            test_data[-1]
-        )
-
-        reply = handoff_archiver.send(message)
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
-
-        self._handoff(handoff_timestamp)
-
-        # now send him a ProcessStatus telling him the data writer at the
-        # dest repository is back online
-        status_timestamp = time.time()
-
-        message = ProcessStatus(
-            status_timestamp, 
-            self._dest_node_exchange,
-            data_writer_routing_header,
-            ProcessStatus.status_startup
-        )
-
-        marshalled_message = message.marshall()
-
-        replies = _handle_process_status(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the handoff server to start retrieving the archive
-        # in order to send it to to the data_writer
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, RetrieveKeyStart)
-
-        # create a retriever to retrieve from the local data_reader
-        handoff_retriever = retrieve_coroutine(
-            self,
-            self._handoff_data_reader_state,
-            self._handoff_database_state,
-            reply
-        )
-
-        reply = handoff_retriever.next()
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.__class__, RetrieveKeyStartReply)
-
-        sequence = 0
-        segment_count = reply.segment_count
-
-        # pass the reply to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_retrieve_key_start_reply(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the handoff server to send the data it retrieves
-        # to the archive server for which it was originally intended 
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, self._dest_node_exchange)
-        self.assertEqual(reply.__class__, ArchiveKeyStart)
-
-        # this is the archiver that should have received the data in 
-        # the first place
-        dest_archiver = archive_coroutine(
-            self,
-            self._dest_data_writer_state,
-            self._dest_database_state,
-            reply
-        )
-
-        reply = dest_archiver.next()
-
-        self.assertEqual(reply.__class__, ArchiveKeyStartReply)
-        self.assertEqual(reply.result, 0)
-
-        # pass the reply to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_archive_key_start_reply(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        sequence += 1
-
-        # loop for the intermediagte messages
-        while sequence < segment_count-1:
-        
-            [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-            self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-            self.assertEqual(reply.__class__, RetrieveKeyNext)
-            self.assertEqual(reply.sequence, sequence)
-
-            reply = handoff_retriever.send(reply)
-            self.assertEqual(reply.result, 0)
-            self.assertEqual(reply.__class__, RetrieveKeyNextReply)
-
-            # pass the reply to the handoff server
-            marshalled_message = reply.marshall()
-            replies = _handle_retrieve_key_next_reply(
-                self._handoff_server_state, marshalled_message
-            )
-            self.assertEqual(len(replies), 1)
-
-            [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-            self.assertEqual(reply_exchange, self._dest_node_exchange)
-            self.assertEqual(reply.__class__, ArchiveKeyNext)
-            self.assertEqual(reply.sequence, sequence)
-
-            reply = dest_archiver.send(reply)
-
-            self.assertEqual(reply.__class__, ArchiveKeyNextReply)
-            self.assertEqual(reply.result, 0)
-
-            # pass the reply to the handoff server
-            marshalled_message = reply.marshall()
-            replies = _handle_archive_key_next_reply(
-                self._handoff_server_state, marshalled_message
-            )
-            self.assertEqual(len(replies), 1)
-
-            sequence += 1
-
-        # retrieve and archive the final sequence
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, RetrieveKeyFinal)
-        self.assertEqual(reply.sequence, sequence)
-
-        reply = handoff_retriever.send(reply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.__class__, RetrieveKeyFinalReply)
-
-        # pass the reply to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_retrieve_key_final_reply(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, self._dest_node_exchange)
-        self.assertEqual(reply.__class__, ArchiveKeyFinal)
-        self.assertEqual(reply.sequence, sequence)
-
-        reply = dest_archiver.send(reply)
-
-        self.assertEqual(reply.__class__, ArchiveKeyFinalReply)
-        self.assertEqual(reply.result, 0)
-        self.assertEqual(reply.previous_size, 0)
-
-        # pass the reply to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_archive_key_final_reply(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the handoff server to send a purge message
-        # to its local data_writer
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, PurgeKey)
-
-        # send the message to the data_writer
-        marshalled_message = reply.marshall()
-        replies = _handle_purge_key(
-            self._handoff_data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the data_writer to send a purge message
-        # to its local database server
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, DatabaseKeyPurge)
-
-        # send the message to the database server
-        marshalled_message = reply.marshall()
-        replies = _handle_key_purge(
-            self._handoff_database_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the database server to send a (successful) reply back 
-        # to the data writer
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, DatabaseKeyPurgeReply)
-
-        # send the reply back to the data_writer
-        marshalled_message = reply.marshall()
-        replies = _handle_key_purge_reply(
-            self._handoff_data_writer_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-
-        # we expect the data_writer to send a (successful) reply back 
-        # to the handoff server
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, amqp_connection.local_exchange_name)
-        self.assertEqual(reply.__class__, PurgeKeyReply)
-
-        # send the reply back to the handoff server
-        marshalled_message = reply.marshall()
-        replies = _handle_purge_key_reply(
-            self._handoff_server_state, marshalled_message
-        )
-
-        # we expect no reply, because we are all done
-        self.assertEqual(len(replies), 0, replies)
-
-    def _handoff(self, handoff_timestamp):
-        """send the HintedHandoff message and verify the reply"""
-        request_id = uuid.uuid1().hex
-        message = HintedHandoff(
-            request_id,
-            self._avatar_id,
-            self._web_node_exchange,
-            _reply_routing_header,
-            handoff_timestamp,
-            self._key,
-            self._version_number,
-            self._segment_number,
-            self._dest_node_exchange
-        )
-
-        marshalled_message = message.marshall()
-
-        replies = _handle_hinted_handoff(
-            self._handoff_server_state, marshalled_message
-        )
-        self.assertEqual(len(replies), 1)
-        
-        # after a successful handoff, the server should send us
-        # HintedHandoffReply
-        [(reply_exchange, _reply_routing_key, reply, ), ] = replies
-        self.assertEqual(reply_exchange, self._web_node_exchange)
-        self.assertEqual(reply.__class__, HintedHandoffReply)
-        self.assertEqual(reply.request_id, request_id)
-        self.assertEqual(reply.result, 0, reply.error_message)
-
+        self._log.debug("before completion_channel.get()")
+        reply, _ = completion_channel.get()
+        self._log.debug("after completion_channel.get()")
+        return reply
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

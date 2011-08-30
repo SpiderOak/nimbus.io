@@ -13,21 +13,26 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
+from gevent_zeromq import zmq
 
 import psycopg2
 
-from diyapi_tools.amqp_connection import space_accounting_exchange_name
 from diyapi_tools.standard_logging import initialize_logging
+from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
+from diyapi_tools.greenlet_xreq_client import GreenletXREQClient
+from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
+from diyapi_tools.greenlet_pull_server import GreenletPULLServer
+from diyapi_tools.deliverator import Deliverator
+from diyapi_tools.greenlet_push_client import GreenletPUSHClient
+from diyapi_tools.database_connection import get_central_connection, \
+        get_node_local_connection
+from diyapi_tools.event_push_client import EventPushClient
 
 from diyapi_web_server.application import Application
-from diyapi_web_server.amqp_handler import AMQPHandler
-from diyapi_web_server.amqp_data_writer import AMQPDataWriter
-from diyapi_web_server.amqp_data_reader import AMQPDataReader
-from diyapi_web_server.amqp_database_server import AMQPDatabaseServer
-from diyapi_web_server.amqp_space_accounting_server import (
-    AMQPSpaceAccountingServer)
+from diyapi_web_server.data_reader import DataReader
+from diyapi_web_server.space_accounting_client import SpaceAccountingClient
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
-
+from diyapi_web_server.collection_manager import CollectionManager
 
 _log_path = "/var/log/pandora/diyapi_web_server.log"
 
@@ -36,13 +41,22 @@ DB_NAME = 'pandora'
 DB_USER = 'diyapi'
 DB_PASS = os.environ['PANDORA_DB_PW_diyapi']
 
-EXCHANGES = os.environ['DIY_NODE_EXCHANGES'].split()
-MAX_DOWN_EXCHANGES = 2
-
+NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+LOCAL_NODE_NAME = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+CLIENT_TAG = "web-server-%s" % (LOCAL_NODE_NAME, )
+WEB_SERVER_PIPELINE_ADDRESS = \
+    os.environ["DIYAPI_WEB_SERVER_PIPELINE_ADDRESS"]
+DATA_READER_ADDRESSES = \
+    os.environ["DIYAPI_DATA_READER_ADDRESSES"].split()
+DATA_WRITER_ADDRESSES = \
+    os.environ["DIYAPI_DATA_WRITER_ADDRESSES"].split()
+SPACE_ACCOUNTING_SERVER_ADDRESS = \
+    os.environ["DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS"]
+SPACE_ACCOUNTING_PIPELINE_ADDRESS = \
+    os.environ["DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 
 class WebServer(object):
     def __init__(self):
-        self.amqp_handler = AMQPHandler()
         # TODO: keep a connection pool or something
         db_connection = psycopg2.connect(
             database=DB_NAME,
@@ -51,34 +65,108 @@ class WebServer(object):
             host=DB_HOST
         )
         authenticator = SqlAuthenticator(db_connection)
-        accounting_server = AMQPSpaceAccountingServer(
-            self.amqp_handler, space_accounting_exchange_name)
-        data_writers = [AMQPDataWriter(self.amqp_handler, exchange)
-                        for exchange in EXCHANGES]
-        data_readers = [AMQPDataReader(self.amqp_handler, exchange)
-                        for exchange in EXCHANGES]
-        database_servers = [AMQPDatabaseServer(self.amqp_handler, exchange)
-                            for exchange in EXCHANGES]
+
+        self._central_connection = get_central_connection()
+        self._node_local_connection = get_node_local_connection()
+
+        self._deliverator = Deliverator()
+
+        self._zeromq_context = zmq.context.Context()
+
+        self._pollster = GreenletZeroMQPollster()
+
+        self._pull_server = GreenletPULLServer(
+            self._zeromq_context, 
+            WEB_SERVER_PIPELINE_ADDRESS,
+            self._deliverator
+        )
+        self._pull_server.register(self._pollster)
+
+        self._data_writer_clients = list()
+        for node_name, address in zip(NODE_NAMES, DATA_WRITER_ADDRESSES):
+            resilient_client = GreenletResilientClient(
+                self._zeromq_context, 
+                self._pollster,
+                node_name,
+                address,
+                CLIENT_TAG,
+                WEB_SERVER_PIPELINE_ADDRESS,
+                self._deliverator
+            )
+            self._data_writer_clients.append(resilient_client)
+
+        self._data_readers = list()
+        for node_name, address in zip(NODE_NAMES, DATA_READER_ADDRESSES):
+            resilient_client = GreenletResilientClient(
+                self._zeromq_context, 
+                self._pollster,
+                node_name,
+                address,
+                CLIENT_TAG,
+                WEB_SERVER_PIPELINE_ADDRESS,
+                self._deliverator
+            )
+            data_reader = DataReader(
+                node_name, resilient_client
+            )
+            self._data_readers.append(data_reader)
+
+        xreq_client = GreenletXREQClient(
+            self._zeromq_context, 
+            LOCAL_NODE_NAME, 
+            SPACE_ACCOUNTING_SERVER_ADDRESS
+        )
+        xreq_client.register(self._pollster)
+
+        push_client = GreenletPUSHClient(
+            self._zeromq_context, 
+            LOCAL_NODE_NAME, 
+            SPACE_ACCOUNTING_PIPELINE_ADDRESS,
+        )
+
+        self._accounting_client = SpaceAccountingClient(
+            LOCAL_NODE_NAME,
+            xreq_client,
+            push_client
+        )
+
+        self._event_push_client = EventPushClient(
+            self._zeromq_context,
+            "web-server"
+        )
+
         self.application = Application(
-            self.amqp_handler,
-            data_writers,
-            data_readers,
-            database_servers,
+            self._central_connection,
+            self._node_local_connection,
+            self._data_writer_clients,
+            self._data_readers,
             authenticator,
-            accounting_server
+            self._accounting_client,
+            self._event_push_client
         )
         self.wsgi_server = WSGIServer(('', 8088), self.application)
         self._stopped_event = Event()
 
     def start(self):
         self._stopped_event.clear()
-        self.amqp_handler.start()
+        self._pollster.start()
         self.wsgi_server.start()
 
     def stop(self):
         self.wsgi_server.stop()
-        self.amqp_handler.stop()
         self._stopped_event.set()
+        self._accounting_client.close()
+        for client in self._data_writer_clients:
+            client.close()
+        for data_reader in self._data_readers:
+            data_reader.close()
+        self._pull_server.close()
+        self._pollster.kill()
+        self._pollster.join(timeout=3.0)
+        self._event_push_client.close()
+        self._zeromq_context.term()
+        self._central_connection.close()
+        self._node_local_connection.close()
 
     def serve_forever(self):
         self.start()

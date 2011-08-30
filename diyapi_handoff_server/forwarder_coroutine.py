@@ -5,167 +5,131 @@ forwarder_coroutine.py
 a coroutine that handles message traffic for retrieving and
 re-archiving a segment that was handed off to us
 """
+from base64 import b64encode
 import logging
+import uuid
 
-from diyapi_tools import amqp_connection
-
-from messages.retrieve_key_start import RetrieveKeyStart
-from messages.retrieve_key_next import RetrieveKeyNext
-from messages.retrieve_key_next_reply import RetrieveKeyNextReply
-from messages.retrieve_key_final import RetrieveKeyFinal
-from messages.retrieve_key_final_reply import RetrieveKeyFinalReply
-from messages.archive_key_entire import ArchiveKeyEntire
-from messages.archive_key_start import ArchiveKeyStart
-from messages.archive_key_start_reply import ArchiveKeyStartReply
-from messages.archive_key_next import ArchiveKeyNext
-from messages.archive_key_next_reply import ArchiveKeyNextReply
-from messages.archive_key_final import ArchiveKeyFinal
-from messages.archive_key_final_reply import ArchiveKeyFinalReply
-from messages.purge_key import PurgeKey
-
-def forwarder_coroutine(request_id, hint, reply_routing_header):
+def forwarder_coroutine(
+    segment_row, source_node_names, writer_client, reader_client
+):
     """
     manage the message traffic for retrieving and re-archiving 
     a segment that was handed off to us
     """
     log = logging.getLogger("forwarder_coroutine")
 
-    local_exchange = amqp_connection.local_exchange_name
+    # start retrieving from our reader
+    message_id = uuid.uuid1().hex
+    message = {
+        "message-type"      : "retrieve-key-start",
+        "message-id"        : message_id,
+        "collection-id"     : segment_row.collection_id,
+        "key"               : segment_row.key,
+        "timestamp-repr"    : repr(segment_row.timestamp),
+        "segment-num"       : segment_row.segment_num,
+    }
 
-    # start retrieving from our local data writer
-    message = RetrieveKeyStart(
-        request_id,
-        hint.avatar_id,
-        local_exchange,
-        reply_routing_header,
-        hint.key,
-        hint.version_number,
-        hint.segment_number
-    )
-
-    log.debug("yielding RetrieveKeyStart %s %s %s %s" % (
-        hint.avatar_id, hint.key, hint.version_number, hint.segment_number
+    log.debug("sending retrieve-key-start %s %s %s %s" % (
+        segment_row.collection_id, 
+        segment_row.key, 
+        segment_row.timestamp, 
+        segment_row.segment_num
     ))
     
-    retrieve_key_start_reply = \
-        yield [(local_exchange, message.routing_key, message, )]
+    reader_client.queue_message_for_send(message, data=None)
+    reply, data = yield
 
-    assert retrieve_key_start_reply.result == 0
+    assert reply["message-type"] == "retrieve-key-reply", reply
+    assert reply["result"] == "success", reply
+    completed = reply["completed"]
 
-    segment_count = retrieve_key_start_reply.segment_count
-    sequence = 0
+    sequence = 1
 
-    if retrieve_key_start_reply.segment_count == 1:
-        message = ArchiveKeyEntire(
-            request_id, 
-            hint.avatar_id, 
-            local_exchange,
-            reply_routing_header,
-            hint.timestamp, 
-            hint.key, 
-            hint.version_number,
-            hint.segment_number, 
-            retrieve_key_start_reply.total_size,
-            retrieve_key_start_reply.file_adler32, 
-            retrieve_key_start_reply.file_md5, 
-            retrieve_key_start_reply.segment_adler32, 
-            retrieve_key_start_reply.segment_md5, 
-            retrieve_key_start_reply.data_content
-        )
+    message_id = uuid.uuid1().hex
+    if completed:
+        message = {
+            "message-type"      : "archive-key-entire",
+            "message-id"        : message_id,
+            "collection-id"     : segment_row.collection_id,
+            "key"               : segment_row.key, 
+            "timestamp-repr"    : repr(segment_row.timestamp),
+            "segment-num"       : segment_row.segment_num,
+            "file-size"         : segment_row.file_size,
+            "file-adler32"      : segment_row.file_adler32,
+            "file-hash"         : b64encode(segment_row.file_hash),
+            "handoff-node-name" : None,
+        }
     else:
-        message = ArchiveKeyStart(
-            request_id,
-            hint.avatar_id, 
-            local_exchange,
-            reply_routing_header,
-            hint.timestamp, 
-            sequence, 
-            hint.key, 
-            hint.version_number, 
-            hint.segment_number, 
-            retrieve_key_start_reply.segment_size,
-            retrieve_key_start_reply.data_content
-        )
+        message = {
+            "message-type"      : "archive-key-start",
+            "message-id"        : message_id,
+            "collection-id"     : segment_row.collection_id,
+            "key"               : segment_row.key, 
+            "timestamp-repr"    : repr(segment_row.timestamp),
+            "segment-num"       : segment_row.segment_num,
+            "sequence-num"      : sequence,
+        }
             
-    archive_key_start_reply = \
-        yield [(hint.exchange, message.routing_key, message, )]
+    writer_client.queue_message_for_send(message, data=data)
+    reply = yield
 
-    if archive_key_start_reply.__class__ == ArchiveKeyFinalReply:
-        # tell our local data_writer to purge the key
-        # and then we are done
-        message = PurgeKey(
-            request_id, 
-            hint.avatar_id, 
-            local_exchange,
-            reply_routing_header,
-            hint.timestamp, 
-            hint.key, 
-            hint.version_number,
-            hint.segment_number 
-        )
-        yield [(local_exchange, message.routing_key, message, )]
-        yield hint
+    if completed:
+        # we give back the segment_row and source node names as our last yield
+        yield (segment_row, source_node_names, )
         return 
 
-    assert archive_key_start_reply.__class__ == ArchiveKeyStartReply
-
-    sequence += 1
+    assert reply["message-type"] == "archive-key-start-reply", reply
+    assert reply["result"] == "success", reply
 
     # send the intermediate segments
-    while sequence < segment_count-1:
-        retrieve_messsage = RetrieveKeyNext(request_id, sequence)
-        retrieve_reply = yield [
-            (local_exchange, retrieve_messsage.routing_key, retrieve_messsage, )
-        ]
-        assert retrieve_reply.__class__ == RetrieveKeyNextReply
-        assert retrieve_reply.result == 0
-        archive_message = ArchiveKeyNext(
-            request_id, sequence, retrieve_reply.data_content
-        )
-        archive_reply = yield [
-            (hint.exchange, archive_message.routing_key, archive_message, )
-        ]
-        assert archive_reply.__class__ == ArchiveKeyNextReply
-        assert archive_reply.result == 0
+    while not completed:
+        sequence += 1
 
-        sequence +=1
+        message_id = uuid.uuid1().hex
+        message = {
+            "message-type"      : "retrieve-key-next",
+            "message-id"        : message_id,
+            "collection-id"     : segment_row.collection_id,
+            "key"               : segment_row.key,
+            "timestamp-repr"    : repr(segment_row.timestamp),
+            "segment-num"       : segment_row.segment_num,
+            "sequence-num"      : sequence,
+        }
+        reader_client.queue_message_for_send(message, data=None)
+        reply, data = yield
+        assert reply["message-type"] == "retrieve-key-next-reply", reply
+        assert reply["result"] == "success", reply
+        completed = message["completed"]
 
-    # retrieve and archive the last segment
-    retrieve_messsage = RetrieveKeyFinal(request_id, sequence)
-    retrieve_reply = yield [
-        (local_exchange, retrieve_messsage.routing_key, retrieve_messsage, )
-    ]
-    assert retrieve_reply.__class__ == RetrieveKeyFinalReply
-    assert retrieve_reply.result == 0
-    archive_message = ArchiveKeyFinal(
-        request_id, 
-        sequence,
-        retrieve_key_start_reply.total_size,
-        retrieve_key_start_reply.file_adler32,
-        retrieve_key_start_reply.file_md5,
-        retrieve_key_start_reply.segment_adler32,
-        retrieve_key_start_reply.segment_md5,
-        retrieve_key_start_reply.data_content
-    )
-    archive_reply = yield [
-        (hint.exchange, archive_message.routing_key, archive_message, )
-    ]
-    assert archive_reply.__class__ == ArchiveKeyFinalReply
-    assert archive_reply.result == 0
+        message_id = uuid.uuid1().hex
+        if completed:
+            message = {
+                "message-type"      : "archive-key-final",
+                "message-id"        : message_id,
+                "collection-id"     : segment_row.collection_id,
+                "key"               : segment_row.key,
+                "segment-number"    : segment_row.segment_number,
+                "sequence-num"      : sequence,
+                "file-size"         : segment_row.file_size,
+                "file-adler32"      : segment_row.file_adler32,
+                "file-hash"         : b64encode(segment_row.file_hash),
+                "handoff-node-name" : None,
+            }
+        else:
+            message = {
+                "message-type"      : "archive-key-next",
+                "message-id"        : message_id,
+                "collection-id"     : segment_row.collection_id,
+                "key"               : segment_row.key,
+                "segment-num"       : segment_row.segment_num,
+                "sequence-num"      : sequence,
+            }
+        
+        writer_client.queue_message_for_send(message, data=data)
+        reply = yield
+        assert reply["message-type"] == "archive-key-next-reply", reply
+        assert reply["result"] == "success", reply
 
-    # tell our local data_writer to purge the key
-    message = PurgeKey(
-        request_id, 
-        hint.avatar_id, 
-        local_exchange,
-        reply_routing_header,
-        hint.timestamp, 
-        hint.key, 
-        hint.version_number,
-        hint.segment_number 
-    )
-    yield [(local_exchange, message.routing_key, message, )]
-
-    # now we are done, give back our hint so it can be removed
-    yield hint
+    # we give back the segment_row and source node names as our last yield
+    yield (segment_row, source_node_names, )
 

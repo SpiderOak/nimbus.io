@@ -4,6 +4,7 @@ persistent_state.py
 
 common code for saving and loading stagte
 """
+import errno
 import logging
 import cPickle
 import os
@@ -15,8 +16,13 @@ _repository_path = os.environ.get(
 
 def _state_path(name):
     state_dir = os.path.join(_repository_path, "state")
-    if not os.path.exists(state_dir):
+
+    try:
         os.mkdir(state_dir)
+    except OSError, instance:
+        if instance.errno != errno.EEXIST:
+            raise
+
     return os.path.join(state_dir, ".".join([name, "state", ]))
 
 def save_state(state, name):

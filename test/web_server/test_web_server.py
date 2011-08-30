@@ -4,9 +4,6 @@ test_web_server.py
 
 test diyapi_web_server/diyapi_web_server_main.py
 """
-# importing this monkey-patches socket, putting us in geventland
-from diyapi_web_server.diyapi_web_server_main import WebServer
-
 import os
 import re
 import sys
@@ -35,6 +32,7 @@ _test_username = os.environ['DIYAPI_TEST_USERNAME']
 _test_key_id = int(os.environ['DIYAPI_TEST_KEY_ID'])
 _test_key = os.environ['DIYAPI_TEST_KEY']
 
+_key_generator = generate_key()
 
 class TestWebServer(unittest.TestCase):
     """test diyapi_web_server/diyapi_web_server_main.py"""
@@ -43,7 +41,6 @@ class TestWebServer(unittest.TestCase):
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
         os.makedirs(_repository_path)
-        self._key_generator = generate_key()
 
         if 'prod' not in sys.argv[1:]:
             self.server = WebServer()
@@ -54,6 +51,7 @@ class TestWebServer(unittest.TestCase):
             self.server.stop()
 
     def _auth_headers(self, method, key=None):
+        log = logging.getLogger("_auth_headers")
         if key is None:
             key = _test_key
         timestamp = str(int(time.time()))
@@ -102,41 +100,20 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_0_bytes')
         log.info('start')
         content = ''
-        key = self._key_generator.next()
-        result = self._make_request(
-            _base_url + '/data/' + key, content)
-        self.assertEqual(result, 'OK')
-
-    def test_upload_0_bytes_and_listmatch(self):
-        log = logging.getLogger('test_upload_0_bytes_and_listmatch')
-        log.info('start')
-        content = ''
-        key = self._key_generator.next()
-        result = self._make_request(
-            _base_url + '/data/' + key, content)
-        log.info('listmatch')
-        result = self._make_request(
-            _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(json.loads(result), [key])
-
-    def test_upload_0_bytes_and_retrieve(self):
-        log = logging.getLogger('test_upload_0_bytes_and_retrieve')
-        log.info('start')
-        content = ''
-        key = self._key_generator.next()
-        result = self._make_request(
-            _base_url + '/data/' + key, content)
-        log.info('retrieve')
-        result = self._make_request(
-            _base_url + '/data/' + key)
-        self.assertEqual(len(result), len(content))
-        self.assertEqual(result, content)
+        key = _key_generator.next()
+        try:
+            result = self._make_request(
+                _base_url + '/data/' + key, content)
+        except urllib2.HTTPError, err:
+            self.assertEqual(err.code, 403)
+        else:
+            raise AssertionError('was expecting a 403 but got %d: %r' % (resp.code, resp.read()))
 
     def test_upload_small(self):
         log = logging.getLogger('test_upload_small')
         log.info('start')
         content = random_string(64 * 1024)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         self.assertEqual(result, 'OK')
@@ -145,19 +122,20 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_small_and_listmatch')
         log.info('start')
         content = random_string(64 * 1024)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(json.loads(result), [key])
+        result_list = json.loads(result)
+        self.assertTrue(key in result_list)
 
     def test_upload_small_and_retrieve(self):
         log = logging.getLogger('test_upload_small_and_retrieve')
         log.info('start')
         content = random_string(64 * 1024)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         log.info('retrieve')
@@ -170,7 +148,7 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_small_and_stat')
         log.info('start')
         content = random_string(64 * 1024)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         stat = {
             'timestamp': time.time(),
             'total_size': len(content),
@@ -194,9 +172,9 @@ class TestWebServer(unittest.TestCase):
     def test_retrieve_nonexistent_key(self):
         log = logging.getLogger('test_retrieve_nonexistent_key')
         log.info('start')
-        key = self._key_generator.next()
-        result = self._make_request(
-            _base_url + '/data/%s?action=delete' % (key,), '')
+        key = _key_generator.next()
+#        result = self._make_request(
+#            _base_url + '/data/%s?action=delete' % (key,), '')
         log.info('retrieve')
         try:
             resp = self._make_request(
@@ -210,7 +188,7 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_large')
         log.info('start')
         content = random_string(1024 * 1024 * 3)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         self.assertEqual(result, 'OK')
@@ -219,7 +197,7 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_large_and_retrieve')
         log.info('start')
         content = random_string(1024 * 1024 * 3)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         log.info('retrieve')
@@ -241,7 +219,7 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_large_and_stat')
         log.info('start')
         content = random_string(1024 * 1024 * 3)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         stat = {
             'timestamp': time.time(),
             'total_size': len(content),
@@ -266,7 +244,7 @@ class TestWebServer(unittest.TestCase):
         log = logging.getLogger('test_upload_small_then_delete_and_listmatch')
         log.info('start')
         content = random_string(64 * 1024)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         log.info('delete')
@@ -275,13 +253,14 @@ class TestWebServer(unittest.TestCase):
         log.info('listmatch')
         result = self._make_request(
             _base_url + '/data/test-key?action=listmatch')
-        self.assertEqual(json.loads(result), [])
+        result_list = json.loads(result)
+        self.assertTrue(key not in result_list)
 
     def test_upload_small_then_delete_and_retrieve(self):
         log = logging.getLogger('test_upload_small_then_delete_and_retrieve')
         log.info('start')
         content = random_string(64 * 1024)
-        key = self._key_generator.next()
+        key = _key_generator.next()
         result = self._make_request(
             _base_url + '/data/' + key, content)
         log.info('delete')

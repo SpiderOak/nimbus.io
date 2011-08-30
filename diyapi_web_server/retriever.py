@@ -5,47 +5,47 @@ retriever.py
 A class that retrieves data from data readers.
 """
 import logging
-import uuid
 
 import gevent
-from gevent.pool import GreenletSet
-
-from messages.retrieve_key_start import RetrieveKeyStart
-from messages.retrieve_key_next import RetrieveKeyNext
-from messages.retrieve_key_final import RetrieveKeyFinal
-from messages.retrieve_key_start_reply import RetrieveKeyStartReply
+import gevent.pool
 
 from diyapi_web_server.exceptions import (
     AlreadyInProgress,
     RetrieveFailedError,
 )
+from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
 
 
 class Retriever(object):
     """Retrieves data from data readers."""
-    def __init__(self, data_readers, avatar_id, key, segments_needed):
-        self.log = logging.getLogger(
-            'Retriever(avatar_id=%d, key=%r)' % (
-                avatar_id, key))
+    def __init__(
+        self, 
+        node_local_connection,
+        data_readers, 
+        collection_id, 
+        key, 
+        segments_needed
+    ):
+        self.log = logging.getLogger("Retriever")
+        self.log.info('collection_id=%d, key=%r' % (collection_id, key, ))
+        self._node_local_connection = node_local_connection
         self.data_readers = data_readers
-        self.avatar_id = avatar_id
+        self.collection_id = collection_id
         self.key = key
-        self.version_number = 0
         self.segments_needed = segments_needed
-        self.sequence_number = 0
-        self.n_slices = None
-        self._request_ids = {}
-        self._pending = GreenletSet()
+        self._pending = gevent.pool.Group()
         self._done = []
 
     def _join(self, timeout):
-        self._pending.join(timeout)
+        self._pending.join(timeout, raise_error=True)
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)
         if self._pending:
             raise RetrieveFailedError()
         if len(self._done) < self.segments_needed:
-            raise RetrieveFailedError()
+            raise RetrieveFailedError("too few segments done %s" % (
+                len(self._done),
+            ))
 
     def _done_link(self, task):
         if isinstance(task.value, gevent.GreenletExit):
@@ -63,56 +63,83 @@ class Retriever(object):
         return task
 
     def retrieve(self, timeout=None):
-        if self._pending or self.n_slices is not None:
+        if self._pending:
             raise AlreadyInProgress()
+
+        # TODO: find a non-blocking way to do this
+        file_info = most_recent_timestamp_for_key(
+            self._node_local_connection , self.collection_id, self.key
+        )
+
+        if file_info is None:
+            raise RetrieveFailedError("key not found %s %s" % (
+                self.collection_id, self.key,
+            ))
+
+        if file_info.file_tombstone:
+            raise RetrieveFailedError("key is deleted %s %s" % (
+                self.collection_id, self.key,
+            ))
+
         for i, data_reader in enumerate(self.data_readers):
             segment_number = i + 1
-            self._request_ids[segment_number] = uuid.uuid1().hex
             self._spawn(
                 segment_number,
                 data_reader,
                 data_reader.retrieve_key_start,
-                self._request_ids[segment_number],
-                self.avatar_id,
+                self.collection_id,
                 self.key,
-                self.version_number,
+                file_info.timestamp,
                 segment_number
             )
-        self._join(timeout)
-        self.n_slices = self._done[0].value.segment_count
-        yield dict((task.segment_number, task.value.data_content)
-                   for task in self._done[:self.segments_needed])
-        self._done = []
-        self.sequence_number += 1
+        self._join(timeout)  
 
-        while self.sequence_number < self.n_slices - 1:
+        # we expect retrieve_key_start to return the tuple
+        # (<data-segment>, <completion-status>, )
+        # where completion-status is a boolean
+
+        yield dict((task.segment_number, task.value[0])
+                   for task in self._done[:self.segments_needed])
+        completed_list = \
+            [task.value[1] for task in self._done[:self.segments_needed]]
+        completed = all(completed_list)
+        if completed:
+            return
+        if any(completed_list):
+            raise RetrieveFailedError("inconsistent completed status %s" % (
+                completed_list,
+            ))
+            
+        while True:
+            self._done = []
             for i, data_reader in enumerate(self.data_readers):
                 segment_number = i + 1
                 self._spawn(
                     segment_number,
                     data_reader,
                     data_reader.retrieve_key_next,
-                    self._request_ids[segment_number],
-                    self.sequence_number
+                    self.collection_id,
+                    self.key,
+                    file_info.timestamp,
+                    segment_number
                 )
             self._join(timeout)
-            yield dict((task.segment_number, task.value)
-                       for task in self._done[:self.segments_needed])
-            self._done = []
-            self.sequence_number += 1
 
-        if self.sequence_number >= self.n_slices:
-            return
-        for i, data_reader in enumerate(self.data_readers):
-            segment_number = i + 1
-            self._spawn(
-                segment_number,
-                data_reader,
-                data_reader.retrieve_key_final,
-                self._request_ids[segment_number],
-                self.sequence_number
-            )
-        self._join(timeout)
-        yield dict((task.segment_number, task.value)
-                   for task in self._done[:self.segments_needed])
-        self._done = []
+            # we expect retrieve_key_next to return the tuple
+            # (<data-segment>, <completion-status>, )
+            # where completion-status is a boolean
+
+            yield dict((task.segment_number, task.value[0])
+                       for task in self._done[:self.segments_needed])
+            completed_list = \
+                [task.value[1] for task in self._done[:self.segments_needed]]
+            completed = all(completed_list)
+            if completed:
+                return
+            if any(completed_list):
+                raise RetrieveFailedError(
+                    "inconsistent completed status %s" % (
+                        completed_list,
+                    )
+                )
+

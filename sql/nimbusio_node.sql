@@ -1,15 +1,15 @@
 /* this schema describes the database that exists on each storage node involved
- * in DIY */
+ * in nimbus.io */
 
 begin;
 
-drop schema if exists diy cascade;
-create schema diy;
-set search_path to diy, public;
+drop schema if exists nimbusio_node cascade;
+create schema nimbusio_node;
+set search_path to nimbusio_node, public;
 
 create sequence conjoined_id_seq;
 create table conjoined (
-    conjoined_id int4 not null default nextval('diy.conjoined_id_seq'),
+    id int8 primary key default nextval('nimbusio_node.conjoined_id_seq'),
     collection_id int4 not null,
     key varchar(1024) not null,
     identifier bytea not null, 
@@ -19,7 +19,7 @@ create table conjoined (
     combined_size int8,
     combined_hash bytea
 );
-create unique index conjoined_identifier_idx on diy.conjoined ("identifier");
+create unique index conjoined_identifier_idx on nimbusio_node.conjoined ("identifier");
 
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and
@@ -36,7 +36,7 @@ create unique index conjoined_identifier_idx on diy.conjoined ("identifier");
 
 create sequence segment_id_seq;
 create table segment (
-    id int8 not null default nextval('diy.segment_id_seq'),
+    id int8 primary key default nextval('nimbusio_node.segment_id_seq'),
     collection_id int4 not null,
     key varchar(1024),
     timestamp timestamp not null,
@@ -74,12 +74,12 @@ create table segment (
  * grouped into the regions of the index for which this is the case.  (I.e. it
  * has a similar effect to sharding this into a different index per collection.) 
  */
-create index segment_key_idx on segment("collection_id", "key");
+create index segment_key_idx on nimbusio_node.segment("collection_id", "key");
 /* a partial index just for handoffs, so it's easy to find these records when a
  * node comes back online */
-create index segment_handoff_idx on segment("handoff_node_id") where handoff_node_id is not null;
+create index segment_handoff_idx on nimbusio_node.segment("handoff_node_id") where handoff_node_id is not null;
 
-/* we store all the values in the diy key/value store in large, sequentially
+/* we store all the values in the nimbusio_node key/value store in large, sequentially
  * written value data files.  These are pointed to by the segment_sequence table to
  * find sequences and segments of stored keys (and handoffs).  
 
@@ -136,7 +136,7 @@ create sequence value_file_id_seq;
  * necessary.  With 1gb average size value_files, a current storage node could
  * only hold 38,000 of them. */
 create table value_file (
-    id int4 not null primary key default nextval('diy.value_file_id_seq'),
+    id int4 primary key default nextval('nimbusio_node.value_file_id_seq'),
     creation_time timestamp not null default current_timestamp,
     close_time timestamp,
     size int8,
@@ -182,7 +182,7 @@ create index segment_sequence_id_idx on segment_sequence (collection_id, segment
 
 create sequence meta_id_seq;
 create table meta (
-    id int8 not null default nextval('diy.meta_id_seq'),
+    id int8 not null default nextval('nimbusio_node.meta_id_seq'),
     collection_id int4 not null,
     key varchar(1024) not null,
     meta_key varchar(1024) not null,
@@ -191,11 +191,12 @@ create table meta (
 );
 
 /* get all meta data for a key */
-create index meta_collection_id_key_idx on diy.meta("collection_id", "key");
+create index meta_collection_id_key_idx on nimbusio_node.meta("collection_id", "key");
 
-grant all privileges on schema diy to pandora;
-grant all privileges on all tables in schema diy to pandora;
-grant all privileges on all sequences in schema diy to pandora;
+grant all privileges on schema nimbusio_node to pandora;
+grant all privileges on all tables in schema nimbusio_node to pandora;
+grant all privileges on all sequences in schema nimbusio_node to pandora;
 
-rollback;
-/*commit;*/
+/* rollback; */
+commit;
+

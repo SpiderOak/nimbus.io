@@ -81,10 +81,6 @@ create table audit_result(
 
 create index audit_result_collection_id on nimbusio_central.audit_result (collection_id);
 
-grant all privileges on schema nimbusio_central to pandora;
-grant all privileges on all tables in schema nimbusio_central to pandora;
-grant all privileges on all sequences in schema nimbusio_central to pandora;
-
 /* rollback; */
 commit;
 

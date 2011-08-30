@@ -193,10 +193,6 @@ create table meta (
 /* get all meta data for a key */
 create index meta_collection_id_key_idx on nimbusio_node.meta("collection_id", "key");
 
-grant all privileges on schema nimbusio_node to pandora;
-grant all privileges on all tables in schema nimbusio_node to pandora;
-grant all privileges on all sequences in schema nimbusio_node to pandora;
-
 /* rollback; */
 commit;
 

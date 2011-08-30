@@ -29,30 +29,27 @@ create table node (
 
 create sequence customer_id_seq;
 create table customer (
-    id int4 unique not null default nextval('nimbusio_central.customer_id_seq'),
+    id int4 primary key default nextval('nimbusio_central.customer_id_seq'),
     creation_time timestamp not null default now(),
     username varchar(60) unique not null
 );
-
-/* get customer row for username */
-create index customer_usernname_idx on nimbusio_central.customer("username");
 
 create sequence customer_key_id_seq;
 create table customer_key(
    id int4 unique not null default nextval('nimbusio_central.customer_key_id_seq'),  
    customer_id int4 not null references nimbusio_central.customer(id),
-   key text not null,
-   unique (customer_id, key)
+   key text unique not null
 );
 
 create index customer_key_customer_idx on nimbusio_central.customer_key("customer_id");
 
 create sequence collection_id_seq;
 create table collection (
-    id int4 unique not null default nextval('nimbusio_central.collection_id_seq'),
+    id int4 primary key default nextval('nimbusio_central.collection_id_seq'),
     name varchar(1024) unique not null,
     customer_id int4 not null references nimbusio_central.customer(id),
-    creation_time timestamp not null default 'now'
+    creation_time timestamp not null default 'now',
+    deletion_time timestamp
 );
 
 /* get collection_row for collection name */
@@ -71,7 +68,7 @@ create table space_accounting(
 
 create sequence audit_result_id_sequence;
 create table audit_result(
-   diyapi_audit_result_id int4 not null primary key default nextval('nimbusio_central.audit_result_id_sequence'),
+   id int4 primary key default nextval('nimbusio_central.audit_result_id_sequence'),
    collection_id int4 not null references nimbusio_central.collection(id),
    state text,
    audit_scheduled timestamp default now(),
@@ -88,6 +85,6 @@ grant all privileges on schema nimbusio_central to pandora;
 grant all privileges on all tables in schema nimbusio_central to pandora;
 grant all privileges on all sequences in schema nimbusio_central to pandora;
 
-/*rollback;*/
+/* rollback; */
 commit;
 

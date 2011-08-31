@@ -10,10 +10,6 @@ import os.path
 import subprocess
 import sys
 
-def random_string(size):
-    with open('/dev/urandom', 'rb') as f:
-        return f.read(size)
-
 def generate_key():
     """generate a unique key for data storage"""
     n = 0

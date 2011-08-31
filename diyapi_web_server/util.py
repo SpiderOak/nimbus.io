@@ -9,7 +9,9 @@ import re
 
 
 _HOST_USERNAME_RE = re.compile(r'([^.]+)\.diy\.spideroak\.com(?::\d+)?$')
-
+_host_collection_name_re = re.compile(
+    r'(?P<collection_name>[^.]+)\.nimbus.io(?::\d+)?$'
+)
 
 def get_username_from_req(req):
     m = _HOST_USERNAME_RE.match(req.host)

@@ -46,7 +46,7 @@ create index customer_key_customer_idx on nimbusio_central.customer_key("custome
 create sequence collection_id_seq;
 create table collection (
     id int4 primary key default nextval('nimbusio_central.collection_id_seq'),
-    name varchar(1024) unique not null,
+    name varchar(63) unique not null,
     customer_id int4 not null references nimbusio_central.customer(id),
     creation_time timestamp not null default 'now',
     deletion_time timestamp

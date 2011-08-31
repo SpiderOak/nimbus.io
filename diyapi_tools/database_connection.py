@@ -2,12 +2,17 @@
 """
 database_connecton.py
 
-provice a connection to the SpiderOak pandora database
+provide connections to the nimbus.io databases
 """
 import os
 
+_central_database_name = "nimbusio_central"
+_central_database_user = "nimbusio_central_user"
+_node_database_name_prefix = "nimbusio_node"
+_node_database_user_prefix = "nimbusio_node_user"
+
 class DatabaseConnection(object):
-    """A connection to the SpiderOak pandora database"""
+    """A connection to the nimbus.io databases"""
     def __init__(
         self, 
         database_name, 
@@ -81,30 +86,33 @@ class DatabaseConnection(object):
         self._connection.close()
 
 def get_central_connection():
-    local_database_user = "pandora"
-    local_database_password = os.environ['PANDORA_DB_PW_pandora']
-    database_host = os.environ.get("SPIDEROAK_LOCAL_DATABASE_HOST", "localhost")
-    database_port = int(os.environ.get("SPIDEROAK_LOCAL_DATABASE_PORT", "5432"))
-    database_name = "diy_central"
+    central_database_password = os.environ["NIMBUSIO_CENTRAL_USER_PASSWORD"]
+    database_host = os.environ.get(
+        "NIMBUSIO_CENTRAL_DATABASE_HOST", "localhost"
+    )
+    database_port = int(os.environ.get(
+        "NIMBUSIO_CENTRAL_DATABASE_PORT", "5432"
+    ))
     connection = DatabaseConnection(
-        database_name=database_name,
-        database_user=local_database_user,
-        database_password=local_database_password,
+        database_name=_central_database_name,
+        database_user=_central_database_user,
+        database_password=central_database_password,
         database_host=database_host,
         database_port=database_port
     )
     return connection
 
 def get_node_local_connection():
-    local_database_user = "pandora"
-    local_database_password = os.environ['PANDORA_DB_PW_pandora']
-    database_host = os.environ.get("SPIDEROAK_LOCAL_DATABASE_HOST", "localhost")
-    database_port = int(os.environ.get("SPIDEROAK_LOCAL_DATABASE_PORT", "5432"))
-    database_name = "diy.%s" % (os.environ["SPIDEROAK_MULTI_NODE_NAME"], )
+    node_name = os.environ["NIMBUSIO_NODE_NAME"]
+    database_name = ".".join([_node_database_name_prefix, node_name, ])
+    database_user = ".".join([_node_database_user_prefix, node_name, ])
+    database_password = os.environ['NIMBUSIO_NODE_USER_PASSWORD']
+    database_host = os.environ.get("NIMBUSIO_NODE_DATABASE_HOST", "localhost")
+    database_port = int(os.environ.get("NIMBUSIO_NODE_DATABASE_PORT", "5432"))
     connection = DatabaseConnection(
         database_name=database_name,
-        database_user=local_database_user,
-        database_password=local_database_password,
+        database_user=database_user,
+        database_password=database_password,
         database_host=database_host,
         database_port=database_port
     )

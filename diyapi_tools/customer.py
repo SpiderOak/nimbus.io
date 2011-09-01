@@ -5,8 +5,8 @@ customer.py
 tools for managing the customer table
 """
 import base64
+from collections import namedtuple
 import re
-import sys
 
 from diyapi_tools.data_definitions import random_string
 from diyapi_tools.collection import create_default_collection
@@ -14,6 +14,7 @@ from diyapi_tools.collection import create_default_collection
 _max_username_size = 60
 
 _username_re = re.compile(r'[a-z0-9][a-z0-9-]*[a-z0-9]$')
+_customer_key_template = namedtuple("CustomerKey", ["key_id", "key"])
 
 def _generate_key():
     """generate a key string"""
@@ -32,13 +33,20 @@ def purge_customer(connection, username):
     remove a customer and all keys. 
     This is intended mostly for convenience in testing
     """
-    connection.execute("""
-        delete from nimbusio_central.customer_key
-        where customer_id = (select id from nimbusio_central.customer
-                             where username = %s);
-        delete from nimbusio_central.customer 
+    result = connection.fetch_one_row("""
+        select id as customer_id from nimbusio_central.customer 
         where username = %s;
-    """.strip(), [username, username, ])
+    """.strip(), [username, ])
+    if result is None:
+        return
+    (customer_id, ) = result
+    connection.execute("""
+        delete from nimbusio_central.collection 
+        where customer_id = %(customer_id)s;
+        delete from nimbusio_central.customer_key
+        where customer_id = %(customer_id)s;
+        delete from nimbusio_central.customer where id = %(customer_id)s;
+    """.strip(), {"customer_id" : customer_id})
     
 def create_customer(connection, username):
     """
@@ -66,5 +74,32 @@ def add_key_to_customer(connection, username):
 
     return (key_id, key, )
 
+def list_customer_keys(connection, username):
+    """
+    list pairs of (key_id, key) for customer
+    """
+    return connection.fetch_all_rows("""
+        select id, key from nimbusio_central.customer_key
+        where customer_id = (select id from nimbusio_central.customer
+                             where username = %s)
+    """, [username, ])
 
+def get_customer_key(connection, username, key_id):
+    """
+    retrieve a specific key for the customer
+    """
+    # we could just select on id, but we want to make sure this key
+    # belongs to this user
+    result = connection.fetch_one_row("""
+        select key from nimbusio_central.customer_key
+        where customer_id = (select id from nimbusio_central.customer
+                             where username = %s)
+        and id = %s
+    """, [username, key_id, ])
+
+    if result is None:
+        return None
+
+    ( key, ) = result
+    return _customer_key_template(key_id=key_id, key=key)
 

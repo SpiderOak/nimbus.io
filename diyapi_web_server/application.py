@@ -32,7 +32,7 @@ from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         CollectionError
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
-from diyapi_web_server.collection_manager import CollectionManager
+from tools.collection import parse_hostname
 from diyapi_web_server.data_writer import DataWriter
 from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter

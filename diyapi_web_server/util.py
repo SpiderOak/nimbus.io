@@ -5,18 +5,6 @@ util.py
 Utility functions for web server
 """
 from itertools import izip
-import re
-
-
-_HOST_USERNAME_RE = re.compile(r'([^.]+)\.diy\.spideroak\.com(?::\d+)?$')
-_host_collection_name_re = re.compile(
-    r'(?P<collection_name>[^.]+)\.nimbus.io(?::\d+)?$'
-)
-
-def get_username_from_req(req):
-    m = _HOST_USERNAME_RE.match(req.host)
-    if m:
-        return m.group(1).lower()
 
 def sec_str_eq(str1, str2):
     "efficient constant time string comparison for arbirtrary strings"

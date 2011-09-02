@@ -30,8 +30,9 @@ create table node (
 create sequence customer_id_seq;
 create table customer (
     id int4 primary key default nextval('nimbusio_central.customer_id_seq'),
+    username varchar(60) unique not null,
     creation_time timestamp not null default now(),
-    username varchar(60) unique not null
+    deletion_time timestamp
 );
 
 create sequence customer_key_id_seq;

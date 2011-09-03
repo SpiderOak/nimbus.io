@@ -76,7 +76,7 @@ def get_collection_id_dict(connection, customer_id):
 
     return dict(result)
 
-def create_collection(connection, customer_id, collection_name):
+def create_collection(connection, username, collection_name):
     """
     create a collection for the customer
     """
@@ -84,9 +84,10 @@ def create_collection(connection, customer_id, collection_name):
     (row_id, ) = connection.fetch_one_row("""
         insert into nimbusio_central.collection
         (name, customer_id)
-        values (%s, %s)
+        values (%s, 
+                (select id from nimbusio_central.customer where username = %s))
         returning id
-    """, [collection_name, customer_id, ]
+    """, [collection_name, username, ]
     )
 
     return row_id
@@ -98,14 +99,16 @@ def create_default_collection(connection, customer_id, username):
     collection_name = "-".join([_default_collection_prefix, username, ])
     return create_collection(connection, customer_id, collection_name)
 
-def list_collections(connection, customer_id):
+def list_collections(connection, username):
     """
     list all collections for the avatar, for all clusters
     """
     result = connection.fetch_all_rows("""
         select name, creation_time from nimbusio_central.collection   
-        where customer_id = %s and deletion_time is null
-    """, [customer_id, ]
+        where customer_id = (select id from nimbusio_central.customer 
+                                       where username = %s) 
+        and deletion_time is null
+    """, [username, ]
     )
 
     return result

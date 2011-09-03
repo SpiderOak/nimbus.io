@@ -18,14 +18,16 @@ class SpaceUsageGetter(object):
     def __init__(self, accounting_server):
         self.accounting_server = accounting_server
 
-    def get_space_usage(self, avatar_id, timeout=None):
+    def get_space_usage(self, collection_id, timeout=None):
         task = gevent.spawn(
             self.accounting_server.get_space_usage,
-            avatar_id
+            collection_id
         )
+
         try:
             usage = task.get(timeout=timeout)
         except gevent.Timeout:
             raise SpaceUsageFailedError()
+
         return usage
 

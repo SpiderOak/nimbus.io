@@ -15,8 +15,6 @@ from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 from gevent_zeromq import zmq
 
-import psycopg2
-
 from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
 from diyapi_tools.greenlet_xreq_client import GreenletXREQClient
@@ -32,39 +30,26 @@ from diyapi_web_server.application import Application
 from diyapi_web_server.data_reader import DataReader
 from diyapi_web_server.space_accounting_client import SpaceAccountingClient
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
-from diyapi_web_server.collection_manager import CollectionManager
 
 _log_path = "/var/log/pandora/diyapi_web_server.log"
 
-DB_HOST = os.environ['PANDORA_DATABASE_HOST']
-DB_NAME = 'pandora'
-DB_USER = 'diyapi'
-DB_PASS = os.environ['PANDORA_DB_PW_diyapi']
-
-NODE_NAMES = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
-LOCAL_NODE_NAME = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-CLIENT_TAG = "web-server-%s" % (LOCAL_NODE_NAME, )
-WEB_SERVER_PIPELINE_ADDRESS = \
-    os.environ["DIYAPI_WEB_SERVER_PIPELINE_ADDRESS"]
-DATA_READER_ADDRESSES = \
-    os.environ["DIYAPI_DATA_READER_ADDRESSES"].split()
-DATA_WRITER_ADDRESSES = \
-    os.environ["DIYAPI_DATA_WRITER_ADDRESSES"].split()
-SPACE_ACCOUNTING_SERVER_ADDRESS = \
-    os.environ["DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS"]
-SPACE_ACCOUNTING_PIPELINE_ADDRESS = \
-    os.environ["DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
+_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_client_tag = "web-server-%s" % (_local_node_name, )
+_web_server_pipeline_address = \
+    os.environ["DIYAPI__web_server_pipeline_address"]
+_data_reader_addresses = \
+    os.environ["DIYAPI__data_reader_addresses"].split()
+_data_writer_addresses = \
+    os.environ["DIYAPI__data_writer_addresses"].split()
+_space_accounting_server_address = \
+    os.environ["DIYAPI__space_accounting_server_address"]
+_space_accounting_pipeline_address = \
+    os.environ["DIYAPI__space_accounting_pipeline_address"]
 
 class WebServer(object):
     def __init__(self):
-        # TODO: keep a connection pool or something
-        db_connection = psycopg2.connect(
-            database=DB_NAME,
-            user=DB_USER,
-            password=DB_PASS,
-            host=DB_HOST
-        )
-        authenticator = SqlAuthenticator(db_connection)
+        authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
         self._node_local_connection = get_node_local_connection()
@@ -77,33 +62,33 @@ class WebServer(object):
 
         self._pull_server = GreenletPULLServer(
             self._zeromq_context, 
-            WEB_SERVER_PIPELINE_ADDRESS,
+            _web_server_pipeline_address,
             self._deliverator
         )
         self._pull_server.register(self._pollster)
 
         self._data_writer_clients = list()
-        for node_name, address in zip(NODE_NAMES, DATA_WRITER_ADDRESSES):
+        for node_name, address in zip(_node_names, _data_writer_addresses):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
                 self._pollster,
                 node_name,
                 address,
-                CLIENT_TAG,
-                WEB_SERVER_PIPELINE_ADDRESS,
+                _client_tag,
+                _web_server_pipeline_address,
                 self._deliverator
             )
             self._data_writer_clients.append(resilient_client)
 
         self._data_readers = list()
-        for node_name, address in zip(NODE_NAMES, DATA_READER_ADDRESSES):
+        for node_name, address in zip(_node_names, _data_reader_addresses):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
                 self._pollster,
                 node_name,
                 address,
-                CLIENT_TAG,
-                WEB_SERVER_PIPELINE_ADDRESS,
+                _client_tag,
+                _web_server_pipeline_address,
                 self._deliverator
             )
             data_reader = DataReader(
@@ -113,19 +98,19 @@ class WebServer(object):
 
         xreq_client = GreenletXREQClient(
             self._zeromq_context, 
-            LOCAL_NODE_NAME, 
-            SPACE_ACCOUNTING_SERVER_ADDRESS
+            _local_node_name, 
+            _space_accounting_server_address
         )
         xreq_client.register(self._pollster)
 
         push_client = GreenletPUSHClient(
             self._zeromq_context, 
-            LOCAL_NODE_NAME, 
-            SPACE_ACCOUNTING_PIPELINE_ADDRESS,
+            _local_node_name, 
+            _space_accounting_pipeline_address,
         )
 
         self._accounting_client = SpaceAccountingClient(
-            LOCAL_NODE_NAME,
+            _local_node_name,
             xreq_client,
             push_client
         )

@@ -22,30 +22,30 @@ class SpaceAccountingClient(object):
         self._xreq_socket.close()
         self._push_socket.close()
 
-    def added(self, avatar_id, timestamp, bytes_added):
+    def added(self, collection_id, timestamp, bytes_added):
         message = {
             "message-type"  : "space-accounting-detail",
-            "avatar-id"     : avatar_id,
+            "collection-id" : collection_id,
             "timestamp-repr": repr(timestamp),
             "event"         : "bytes_added",
             "value"         : bytes_added,
         }
         self._push_socket.send(message)
 
-    def retrieved(self, avatar_id, timestamp, bytes_retrieved):
+    def retrieved(self, collection_id, timestamp, bytes_retrieved):
         message = {
             "message-type"  : "space-accounting-detail",
-            "avatar-id"     : avatar_id,
+            "collection-id" : collection_id,
             "timestamp-repr": repr(timestamp),
             "event"         : "bytes_retrieved",
             "value"         : bytes_retrieved,
         }
         self._push_socket.send(message)
 
-    def removed(self, avatar_id, timestamp, bytes_removed):
+    def removed(self, collection_id, timestamp, bytes_removed):
         message = {
             "message-type"  : "space-accounting-detail",
-            "avatar-id"     : avatar_id,
+            "collection-id" : collection_id,
             "timestamp-repr": repr(timestamp),
             "event"         : "bytes_removed",
             "value"         : bytes_removed,
@@ -54,11 +54,11 @@ class SpaceAccountingClient(object):
 
     def get_space_usage(
         self,
-        avatar_id
+        collection_id
     ):
         request = {
             "message-type"  : "space-usage-request",
-            "avatar-id"     : avatar_id,
+            "collection-id" : collection_id,
         }
         delivery_channel = self._xreq_socket.queue_message_for_send(request)
 

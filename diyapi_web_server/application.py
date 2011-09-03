@@ -22,7 +22,11 @@ from webob import Response
 
 from diyapi_tools.data_definitions import create_timestamp, nimbus_meta_prefix
 
-from diyapi_web_server import util
+from diyapi_tools.collection import get_collection_from_hostname, \
+        create_collection, \
+        list_collections, \
+        delete_collection
+
 from diyapi_web_server.central_database_util import get_cluster_row
 from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
@@ -32,7 +36,6 @@ from diyapi_web_server.exceptions import SpaceAccountingServerDownError, \
         CollectionError
 from diyapi_web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
-from tools.collection import parse_hostname
 from diyapi_web_server.data_writer import DataWriter
 from diyapi_web_server.data_slicer import DataSlicer
 from diyapi_web_server.zfec_segmenter import ZfecSegmenter
@@ -57,7 +60,6 @@ _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
 _handoff_count = 2
-_default_collection_name = u"(default)"
 
 _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
@@ -150,15 +152,11 @@ class Application(object):
         self._node_local_connection = node_local_connection
         self._data_writer_clients = data_writer_clients
         self.data_readers = data_readers
-        self.authenticator = authenticator
+        self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
 
         self._cluster_row = get_cluster_row(self._central_connection)
-        self._collection_manager = CollectionManager( 
-            self._central_connection,
-            self._cluster_row.id
-        )
 
     routes = router()
 
@@ -166,13 +164,21 @@ class Application(object):
     def __call__(self, req):
         # TODO: test this
         try:
-            req.diy_username = util.get_username_from_req(req) or 'test'
-            if not self.authenticator.authenticate(req):
-                raise exc.HTTPUnauthorized()
-            req.collections = self._collection_manager.get_collection_id_dict(
-                req.avatar_id
+            collection_entry = get_collection_from_hostname(
+                self._central_connection, req.host
             )
-            req.default_collection_id = req.collections["(default)"]
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator(
+            self._central_connection,
+            collection_entry.username
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
             url_matched = False
             for regex, query_args, methods, func_name in self.routes:
                 url_match = regex.match(req.path)
@@ -199,7 +205,10 @@ class Application(object):
 
                 try:
                     result = method(
-                        req, *url_match.groups(), **url_match.groupdict()
+                        collection_entry, 
+                        req, 
+                        *url_match.groups(), 
+                        **url_match.groupdict()
                     )
                     return result
                 except Exception:
@@ -214,113 +223,110 @@ class Application(object):
             raise
 
     @routes.add(r'/usage$')
-    def usage(self, req):
-        self._log.debug("usage: %s" % (req.avatar_id, ))
+    def usage(self, collection_entry, _req):
+        self._log.debug("usage: %r %r" % (
+            collection_entry.username, collection_entry.collection_name
+        ))
+
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(req.avatar_id, _reply_timeout)
+            usage = getter.get_space_usage(
+                collection_entry.collection_id, _reply_timeout
+            )
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
+
         return Response(json.dumps(usage))
 
     @routes.add(r'/data/(.+)$', action='stat')
-    def stat(self, req, path):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def stat(self, collection_entry, _req, path):
         try:
             key = urllib.unquote_plus(path)
             key = key.decode("utf-8")
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug("stat: %s collection = (%s) %r key = %r" % (
-            req.avatar_id,
-            collection_id, 
-            collection_name,
+        self._log.debug("stat: collection = (%s) %r username = %r key = %r" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
             key
         ))
+
         getter = StatGetter(self._node_local_connection)
-        file_info = getter.stat(collection_id, key, _reply_timeout)
+        file_info = getter.stat(
+            collection_entry.collection_id, key, _reply_timeout
+        )
         if file_info is None or file_info.file_tombstone:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
+
         file_info_dict = dict()
         for key, value in file_info._asdict().items():
             if key.startswith("file_") and key != "file_tombstone":
                 if key == "file_hash" and value is not None:
                     value = hexlify(value)
                 file_info_dict[key] = value
+
         return Response(json.dumps(file_info_dict))
 
     @routes.add(r'/data/(.*)$', action='listmatch')
-    def listmatch(self, req, prefix):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def listmatch(self, collection_entry, _req, prefix):
         try:
             prefix = urllib.unquote_plus(prefix)
             prefix = prefix.decode("utf-8")
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug("listmatch: %s collection = (%s) %r prefix = '%s'" % (
-            req.avatar_id, 
-            collection_id,
-            collection_name,
-            prefix
-        ))
+        self._log.debug(
+            "listmatch: collection = (%s) username = %r %r prefix = '%s'" % (
+                collection_entry.collection_id,
+                collection_entry.collection_name,
+                collection_entry.username,
+                prefix
+            )
+        )
         matcher = Listmatcher(self._node_local_connection)
-        keys = matcher.listmatch(collection_id, prefix, _reply_timeout)
-        response = Response(content_type='text/plain', charset='utf9')
+        keys = matcher.listmatch(
+            collection_entry.collection_id, prefix, _reply_timeout
+        )
+        response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(keys))
         return response
 
     @routes.add(r'/create_collection$')
-    def create_collection(self, req):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            raise exc.HTTPServiceUnavailable("No collection name")
-
+    def create_collection(self, collection_entry, req):
         self._log.debug("create_collection: %s name = %r" % (
-            req.avatar_id,
-            collection_name,
+            collection_entry.username,
+            req.GET["collection_name"],
         ))
 
         try:
-            self._collection_manager.add_collection(
-                req.avatar_id, collection_name
+            create_collection(
+                self._central_connection, 
+                collection_entry.username,
+                req.GET["collection_name"]
             )
-        except CollectionError, instance:
+        except Exception, instance:
             self._log.error("%s error adding collection %r %s" % (
-                req.avatar_id, collection_name, instance,
+                collection_entry.username, 
+                req.GET["collection_name"], 
+                instance,
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        # update 
-
-        # tell the caller what cluster this collection is in
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(self._cluster_row.name)
-
-        return response
+        return Response('OK')
 
     @routes.add(r'/list_collections')
-    def list_collections(self, req):
-        self._log.debug("%s list_collections" % (req.avatar_id,))
+    def list_collections(self, collection_entry, _req):
+        self._log.debug("%s list_collections" % (collection_entry.username, ))
         try:
-            collections = self._collection_manager.list_collections(
-                req.avatar_id
+            collections = list_collections(
+                self._central_connection,
+                collection_entry.username
             )
-        except CollectionError, instance:
+        except Exception, instance:
             self._log.error("%s error listing collections %s" % (
-                req.avatar_id, instance,
+                collection_entry, instance,
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
@@ -330,25 +336,17 @@ class Application(object):
         return response
 
     @routes.add(r'/delete_collection$')
-    def delete_collection(self, req):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            raise exc.HTTPServiceUnavailable("No collection name")
-
-        self._log.debug("delete_collection: %s name = %r" % (
-            req.avatar_id,
-            collection_name,
-        ))
+    def delete_collection(self, collection_entry, _req):
+        self._log.debug("delete_collection: %s" % (collection_entry, ))
 
         # TODO: can't delete a collection that contains keys
         try:
-            self._collection_manager.delete_collection(
-                req.avatar_id, collection_name
+            delete_collection(
+                self._central_connection, collection_entry.collection_name
             )
-        except CollectionError, instance:
-            self._log.error("%s error deleting collection %r %s" % (
-                req.avatar_id, collection_name, instance,
+        except Exception, instance:
+            self._log.error("%s error deleting collection %s" % (
+                collection_entry, instance,
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
@@ -356,24 +354,19 @@ class Application(object):
 
     @routes.add(r'/data/(.+)$', 'DELETE')
     @routes.add(r'/data/(.+)$', 'POST', action='delete')
-    def destroy(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def destroy(self, collection_entry, _req, key):
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug("destroy: %s collection = (%s) %r key = %r" % (
-            req.avatar_id, 
-            collection_id,
-            collection_name,
-            key,
+        self._log.debug(
+            "destroy: collection = (%s) %r customer = %r key = %r" % (
+                collection_entry.collection_id,
+                collection_entry.collection_name,
+                collection_entry.username,
+                key,
         ))
         data_writers = _create_data_writers(self._data_writer_clients)
 
@@ -382,7 +375,7 @@ class Application(object):
         destroyer = Destroyer(
             self._node_local_connection,
             data_writers,
-            collection_id,
+            collection_entry.collection_id,
             key,
             timestamp
         )
@@ -393,20 +386,14 @@ class Application(object):
             raise exc.HTTPInternalServerError(str(e))
 
         self.accounting_client.removed(
-            req.avatar_id,
+            collection_entry.collection_id,
             timestamp,
             size_deleted
         )
         return Response('OK')
 
     @routes.add(r'/data/(.+)$', action="get_meta")
-    def get_meta(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def get_meta(self, collection_entry, req, key):
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -418,7 +405,7 @@ class Application(object):
 
         meta_value = get_meta(
             self._node_local_connection,
-            collection_id,
+            collection_entry.collection_id,
             key,
             req.GET["meta_key"]
         )
@@ -432,13 +419,7 @@ class Application(object):
         return response
 
     @routes.add(r'/data/(.+)$', action="list_meta")
-    def list_meta(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def list_meta(self, collection_entry, _req, key):
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -450,7 +431,7 @@ class Application(object):
 
         meta_value = list_meta(
             self._node_local_connection,
-            collection_id,
+            collection_entry.collection_id,
             key
         )
 
@@ -460,16 +441,10 @@ class Application(object):
         return response
 
     @routes.add(r"/list_conjoined_archives")
-    def list_conjoined_archives(self, req):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def list_conjoined_archives(self, collection_entry, _req):
         conjoined_value = list_conjoined_archives(
             self._central_connection,
-            collection_id,
+            collection_entry.collection_id,
         )
 
         response = Response(content_type='text/plain', charset='utf8')
@@ -478,13 +453,7 @@ class Application(object):
         return response
 
     @routes.add(r'/data/(.+)$', action="start_conjoined_archive")
-    def start_conjoined_archive(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def start_conjoined_archive(self, collection_entry, _req, key):
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -496,7 +465,7 @@ class Application(object):
 
         conjoined_identifier = start_conjoined_archive(
             self._central_connection,
-            collection_id,
+            collection_entry.collection_id,
             key
         )
 
@@ -506,12 +475,7 @@ class Application(object):
         return response
 
     @routes.add(r'/data/(.+)$')
-    def retrieve(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
+    def retrieve(self, collection_entry, _req, key):
         start_time = time.time()
 
         try:
@@ -520,10 +484,10 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        description = "retrieve: %s collection = (%s) %r key = %r" % (
-            req.avatar_id, 
-            collection_id,
-            collection_name,
+        description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
+            collection_entry.collection_id,
+            collection_entry.collection_name,
+            collection_entry.username,
             key
         )
         self._log.debug(description)
@@ -540,7 +504,7 @@ class Application(object):
         retriever = Retriever(
             self._node_local_connection,
             self.data_readers,
-            collection_id,
+            collection_entry.collection_id,
             key,
             _min_segments
         )
@@ -579,7 +543,7 @@ class Application(object):
             end_time = time.time()
 
             self.accounting_client.retrieved(
-                req.avatar_id,
+                collection_entry.collection_id,
                 create_timestamp(),
                 sent
             )
@@ -595,13 +559,7 @@ class Application(object):
         return Response(app_iter=app_iter())
 
     @routes.add(r'/data/(.+)$', 'POST')
-    def archive(self, req, key):
-        if "collection_name" in req.GET:
-            collection_name = req.GET["collection_name"]
-        else:
-            collection_name = _default_collection_name
-        collection_id = req.collections[collection_name]
-
+    def archive(self, collection_entry, req, key):
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -613,10 +571,11 @@ class Application(object):
 
         start_time = time.time()
         key = urllib.unquote_plus(key)
-        description = "archive: %s collection = (%s) %r key = %r, size=%s" % (
-            req.avatar_id, 
-            collection_id,
-            collection_name,
+        description = \
+                "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
+            collection_entry.collection_id,
+            collection_entry.collection_name,
+            collection_entry.username,
             key, 
             req.content_length
         )
@@ -633,7 +592,7 @@ class Application(object):
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
-            collection_id,
+            collection_entry.collection_id,
             key,
             timestamp,
             meta_dict
@@ -682,7 +641,7 @@ class Application(object):
         end_time = time.time()
 
         self.accounting_client.added(
-            req.avatar_id,
+            collection_entry.collection_id,
             timestamp,
             file_size
         )

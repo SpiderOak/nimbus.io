@@ -17,7 +17,7 @@ from diyapi_tools.data_definitions import compute_value_file_path, \
 
 def _get_next_value_file_id(connection):
     (next_value_file_id, ) = connection.fetch_one_row(
-        "select nextval('diy.value_file_id_seq');"
+        "select nextval('nimbusio_node.value_file_id_seq');"
     )
     connection.commit()
     return next_value_file_id
@@ -34,7 +34,7 @@ def _insert_value_file_row(connection, value_file_row):
     """
     cursor = connection._connection.cursor()
     cursor.execute("""
-        insert into diy.value_file (
+        insert into nimbusio_node.value_file (
             id,
             creation_time,
             close_time,

@@ -73,6 +73,7 @@ def start_data_writer(
         "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
         "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
             event_publisher_pull_address,
+        "NIMBUSIO_CENTRAL_USER_PASSWORD"          : "pork",
         "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
     }        
 

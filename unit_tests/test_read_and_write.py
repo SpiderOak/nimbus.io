@@ -24,9 +24,8 @@ from diyapi_data_writer.output_value_file import OutputValueFile, \
         value_file_template
 from diyapi_data_writer.writer import Writer
 from diyapi_data_reader.reader import Reader
-from diyapi_tools.data_definitions import create_timestamp
-
-from unit_tests.util import random_string
+from diyapi_tools.data_definitions import create_timestamp, \
+        random_string
 
 _log_path = "%s/test_read_and_write.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "test_read_and_write")

@@ -23,7 +23,7 @@ _max_value_file_size = os.environ.get(
 
 def _get_next_segment_id(connection):
     (next_segment_id, ) = connection.fetch_one_row(
-        "select nextval('nimbusio_nede.segment_id_seq');"
+        "select nextval('nimbusio_node.segment_id_seq');"
     )
     connection.commit()
     return next_segment_id
@@ -35,7 +35,7 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
     """
     segment_row_dict = segment_row._asdict()
     connection.execute("""
-        insert into nimbusio_nede.segment (
+        insert into nimbusio_node.segment (
             id,
             collection_id,
             key,
@@ -62,7 +62,7 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
     for meta_row in meta_rows:
         meta_row_dict = meta_row._asdict()
         connection.execute("""
-            insert into nimbusio_nede.meta (
+            insert into nimbusio_node.meta (
                 collection_id,
                 key,
                 meta_key,
@@ -85,7 +85,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
     """
     segment_row_dict = segment_row._asdict()
     connection.execute("""
-        insert into nimbusio_nede.segment (
+        insert into nimbusio_node.segment (
             collection_id,
             key,
             timestamp,
@@ -114,7 +114,7 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
     Insert one segment_sequence entry
     """
     connection.execute("""
-        insert into nimbusio_nede.segment_sequence (
+        insert into nimbusio_node.segment_sequence (
             "collection_id",
             "segment_id",
             "value_file_id",
@@ -138,7 +138,7 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
 
 def _get_segment_id(connection, collection_id, key, timestamp, segment_num): 
     result = connection.fetch_one_row(""" 
-        select id from nimbusio_nede.segment
+        select id from nimbusio_node.segment
         where collection_id = %s and key = %s and timestamp = %s::timestamp
         and segment_num = %s""",
         [collection_id, key, timestamp, segment_num, ]
@@ -150,8 +150,8 @@ def _get_segment_id(connection, collection_id, key, timestamp, segment_num):
 
 def _purge_segment_rows(connection, segment_id):
     connection.execute("""
-        delete from nimbusio_nede.segment_sequence where segment_id = %s;
-        delete from nimbusio_nede.segment where id = %s;
+        delete from nimbusio_node.segment_sequence where segment_id = %s;
+        delete from nimbusio_node.segment where id = %s;
         """, [segment_id, segment_id]
     )
     connection.commit()

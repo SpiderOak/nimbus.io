@@ -36,9 +36,7 @@ _data_reader_address = os.environ.get(
     "tcp://127.0.0.1:8200"
 )
 _retrieve_timeout = 30 * 60.0
-_repository_path = os.environ.get(
-    "NIMBUSIO_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
-)
+_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
     "generator",

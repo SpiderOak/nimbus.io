@@ -8,7 +8,7 @@ import logging
 import os
 import sys
 
-from test.diy_sim.command_interpreter import CommandInterpreter
+from test.nimbusio_sim.command_interpreter import CommandInterpreter
 
 _log_path = u"%s/nimbusio_sim.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'

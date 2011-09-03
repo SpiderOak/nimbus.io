@@ -8,7 +8,7 @@ import cmd
 import os
 import time
 
-from test.diy_sim.node_sim import NodeSim
+from test.nimbusio_sim.node_sim import NodeSim
 
 _temp_dir = os.environ.get("TEMP", "/tmp")
 _node_count = 10

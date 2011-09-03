@@ -53,8 +53,7 @@ from diyapi_tools.data_definitions import create_timestamp, \
 from diyapi_tools.database_connection import get_central_connection, \
         get_node_local_connection
 
-from diyapi_web_server.central_database_util import get_cluster_row, \
-        get_collections_for_collection
+from diyapi_web_server.central_database_util import get_cluster_row
 
 from diyapi_anti_entropy_server.common import max_retry_count, \
         retry_entry_tuple, \
@@ -62,7 +61,7 @@ from diyapi_anti_entropy_server.common import max_retry_count, \
 from diyapi_anti_entropy_server.audit_result_database import \
         AuditResultDatabase
 from diyapi_anti_entropy_server.collection_list_requestor import \
-        collectionListRequestor
+        CollectionListRequestor
 from diyapi_anti_entropy_server.consistency_check_starter import \
         ConsistencyCheckStarter
 from diyapi_anti_entropy_server.retry_manager import \
@@ -92,7 +91,6 @@ _request_state_tuple = namedtuple("RequestState", [
     "retry_count",
     "replies",
     "row_id",
-    "collections_dict",
 ])
 
 def _start_consistency_check(state, collection_id, row_id=None, retry_count=0):
@@ -100,17 +98,6 @@ def _start_consistency_check(state, collection_id, row_id=None, retry_count=0):
 
     timestamp = create_timestamp()
     state_key = (collection_id, timestamp, )
-
-    collections_for_collection = get_collections_for_collection(
-        state["central-database-connection"], 
-        state["cluster-row"].id, 
-        collection_id
-    )
-    collections_dict = dict(collections_for_collection)
-
-    log.info("start consistency check on %s %s connections" % (
-        collection_id, len(collections_dict),
-    ))
 
     database = AuditResultDatabase(state["central-database-connection"])
     if row_id is None:
@@ -126,7 +113,6 @@ def _start_consistency_check(state, collection_id, row_id=None, retry_count=0):
         retry_count=retry_count,
         replies=dict(), 
         row_id=row_id,
-        collections_dict=collections_dict
     )
 
     request = {
@@ -134,9 +120,8 @@ def _start_consistency_check(state, collection_id, row_id=None, retry_count=0):
         "collection-id"     : collection_id,
         "timestamp-repr": repr(timestamp),
     }
-    data = pickle.dumps(collections_dict)
     for anti_entropy_client in state["anti-entropy-clients"]:
-        anti_entropy_client.queue_message_for_send(request, data)
+        anti_entropy_client.queue_message_for_send(request)
 
 def _handle_anti_entropy_audit_request(state, message, _data):
     """handle a requst to audit a specific collection, not some random one"""
@@ -144,16 +129,6 @@ def _handle_anti_entropy_audit_request(state, message, _data):
 
     timestamp = create_timestamp()
     state_key = (message["collection-id"], timestamp, )
-
-    collections_for_collection = get_collections_for_collection(
-        state["central-database-connection"], 
-        state["cluster-row"].id, 
-        message["collection-id"]
-    )
-    collections_dict = dict(collections_for_collection)
-    log.info("request for audit on %s %s collectons" % (
-        message["collection-id"], len(collections_dict), 
-    )) 
 
     database = AuditResultDatabase(state["central-database-connection"])
     row_id = database.start_audit(message["collection-id"], timestamp)
@@ -166,7 +141,6 @@ def _handle_anti_entropy_audit_request(state, message, _data):
         retry_count=max_retry_count,
         replies=dict(), 
         row_id=row_id,
-        collections_dict=collections_dict
     )
 
     request = {
@@ -174,9 +148,8 @@ def _handle_anti_entropy_audit_request(state, message, _data):
         "collection-id"     : message["collection-id"],
         "timestamp-repr": repr(timestamp),
     }
-    data = pickle.dumps(collections_dict)
     for anti_entropy_client in state["anti-entropy-clients"]:
-        anti_entropy_client.queue_message_for_send(request, data)
+        anti_entropy_client.queue_message_for_send(request)
 
 def _handle_database_collection_list_reply(state, message, _data):
     log = logging.getLogger("_handle_database_collection_list_reply")
@@ -505,7 +478,7 @@ def _setup(_halt_event, state):
         _dispatch_table
     )
 
-    state["collection-list-requestor"] = collectionListRequestor(state)
+    state["collection-list-requestor"] = CollectionListRequestor(state)
     state["consistency-check-starter"] = ConsistencyCheckStarter(
         state, _start_consistency_check
     )

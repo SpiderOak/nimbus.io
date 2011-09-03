@@ -39,7 +39,7 @@ from diyapi_space_accounting_server.util import floor_hour
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_space_accounting_server_%s.log" % (
-    os.environ["NIMBUSIO_LOG_DIR}, _local_node_name,
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 
 _space_accounting_server_address = os.environ.get(

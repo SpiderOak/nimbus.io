@@ -10,7 +10,7 @@ from diyapi_tools.database_connection import get_central_connection
 
 class SpaceAccountingDatabaseError(Exception):
     pass
-class SpaceAccountingDatabasecollectionNotFound(SpaceAccountingDatabaseError):
+class SpaceAccountingDatabaseCollectionNotFound(SpaceAccountingDatabaseError):
     pass
 
 _insert_command = """

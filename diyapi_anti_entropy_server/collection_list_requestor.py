@@ -12,12 +12,12 @@ _collection_polling_interval = float(os.environ.get(
     "NIMBUSIO_ANTI_ENTROPY_COLLECTION_POLLING_INTERVAL", "86400.0")
 )
 
-class collectionListRequestor(object):
+class CollectionListRequestor(object):
     """
     A time queue action to periodically request a list of collections
     """
     def __init__(self, state):
-        self._log = logging.getLogger("CcollectionListRequestor")
+        self._log = logging.getLogger("CollectionListRequestor")
         self._state = state
 
     @classmethod
@@ -35,8 +35,9 @@ class collectionListRequestor(object):
         collection_id_generator = \
                 self._state["central-database-connection"].generate_all_rows(
                     """
-                    select distinct collection_id 
+                    select id 
                     from nimbusio_central.collection
+                    where deletion_time is null
                     """
                 )
         for (collection_id, ) in collection_id_generator:

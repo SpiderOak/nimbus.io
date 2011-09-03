@@ -13,7 +13,7 @@ def most_recent_timestamp_for_key(connection, collection_id, key):
     timestamp.
     """
     result = connection.fetch_one_row("""
-        select %s from diy.segment 
+        select %s from nimbusio_node.segment 
         where collection_id = %%s and key = %%s and handoff_node_id is null
         order by timestamp desc
         limit 1
@@ -31,7 +31,7 @@ def segment_row_for_key(
     Retrieve the row from the segment table
     """
     result = connection.fetch_one_row("""
-        select %s from diy.segment 
+        select %s from nimbusio_node.segment 
         where collection_id = %%s 
         and key = %%s 
         and timestamp=%%s::timestamp,

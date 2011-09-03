@@ -17,7 +17,7 @@ from diyapi_tools.standard_logging import initialize_logging
 from diyapi_tools.database_connection import get_node_local_connection
 from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
 from diyapi_tools.data_definitions import create_timestamp, \
-    random_string,
+    random_string
 
 from unit_tests.util import generate_key, \
         start_event_publisher, \
@@ -32,7 +32,7 @@ _log_path = "%s/test_data_reader.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _cluster_name = "multi-node-cluster"
-_local_node_name = os.environ["nimbusio_MULTI_NODE_NAME"]
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _data_writer_address = "tcp://127.0.0.1:8100"
 _data_reader_address = "tcp://127.0.0.1:8200"
 _client_address = "tcp://127.0.0.1:8900"

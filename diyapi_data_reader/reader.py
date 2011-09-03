@@ -17,7 +17,7 @@ def _all_segment_rows_for_key(connection, collection_id, key):
     the caller must be prepared to deal with multiple rows
     """
     result = connection.fetch_all_rows("""
-        select %s from diy.segment 
+        select %s from nimbusio_node.segment 
         where collection_id = %%s and key = %%s
         order by timestamp desc, segment_num asc
     """ % (",".join(segment_row_template._fields), ), [collection_id, key, ])
@@ -31,9 +31,9 @@ def _all_sequence_rows_for_segment(
     (collection_id, key, timestamp, segment_num)
     """
     result = connection.fetch_all_rows("""
-        select %s from diy.segment_sequence
+        select %s from nimbusio_node.segment_sequence
         where segment_id = (
-            select id from diy.segment 
+            select id from nimbusio_node.segment 
             where collection_id = %%s and key = %%s 
             and timestamp=%%s::timestamp and segment_num=%%s
         )

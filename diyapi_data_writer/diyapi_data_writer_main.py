@@ -37,17 +37,15 @@ from diyapi_web_server.central_database_util import get_cluster_row, \
 
 from diyapi_data_writer.writer import Writer
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_data_writer_%s.log" % (
-    _local_node_name,
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/nimbusio_data_writer_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 _data_writer_address = os.environ.get(
-    "DIYAPI_DATA_WRITER_ADDRESS",
+    "NIMBUSIO_DATA_WRITER_ADDRESS",
     "tcp://127.0.0.1:8100"
 )
-_repository_path = os.environ.get(
-    "DIYAPI_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
-)
+_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _sizeof_nimbus_meta_prefix = len(nimbus_meta_prefix)
 
 def _extract_meta(message):
@@ -95,8 +93,8 @@ def _handle_archive_key_entire(state, message, data):
         data
     )
 
-    Statgrabber.accumulate('diy_write_requests', 1)
-    Statgrabber.accumulate('diy_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_requests', 1)
+    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
     if message["handoff-node-name"] is None:
         handoff_node_id = None
@@ -155,8 +153,8 @@ def _handle_archive_key_start(state, message, data):
         data
     )
 
-    Statgrabber.accumulate('diy_write_requests', 1)
-    Statgrabber.accumulate('diy_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_requests', 1)
+    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
@@ -179,8 +177,8 @@ def _handle_archive_key_next(state, message, data):
         data
     )
 
-    Statgrabber.accumulate('diy_write_requests', 1)
-    Statgrabber.accumulate('diy_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_requests', 1)
+    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
     reply = {
         "message-type"  : "archive-key-next-reply",
@@ -230,8 +228,8 @@ def _handle_archive_key_final(state, message, data):
         handoff_node_id=handoff_node_id
     )
 
-    Statgrabber.accumulate('diy_write_requests', 1)
-    Statgrabber.accumulate('diy_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_requests', 1)
+    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
     reply = {
         "message-type"  : "archive-key-final-reply",

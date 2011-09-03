@@ -10,26 +10,26 @@ from diyapi_tools.database_connection import get_central_connection
 
 class SpaceAccountingDatabaseError(Exception):
     pass
-class SpaceAccountingDatabaseAvatarNotFound(SpaceAccountingDatabaseError):
+class SpaceAccountingDatabasecollectionNotFound(SpaceAccountingDatabaseError):
     pass
 
 _insert_command = """
-INSERT INTO diy_central.space_accounting
-(avatar_id, timestamp, bytes_added, bytes_removed, bytes_retrieved)
+INSERT INTO nimbusio_central.space_accounting
+(collection_id, timestamp, bytes_added, bytes_removed, bytes_retrieved)
 VALUES(%s, '%s'::timestamp, %s, %s, %s);
 """.strip()
 
-_avatar_query = """
+_collection_query = """
 SELECT COALESCE(SUM(bytes_added), 0), 
 COALESCE(SUM(bytes_removed), 0), 
 COALESCE(SUM(bytes_retrieved), 0)
-FROM diy_central.space_accounting 
-WHERE avatar_id = %s
+FROM nimbusio_central.space_accounting 
+WHERE collection_id = %s
 """.strip()
 
 _clear_command = """
-DELETE FROM diy_central.space_accounting 
-WHERE avatar_id = %s
+DELETE FROM nimbusio_central.space_accounting 
+WHERE collection_id = %s
 """.strip()
 
 class SpaceAccountingDatabase(object):
@@ -48,17 +48,17 @@ class SpaceAccountingDatabase(object):
     def close(self):
         self._connection.close()
 
-    def store_avatar_stats(
+    def store_collection_stats(
         self,
-        avatar_id,
+        collection_id,
         timestamp,
         bytes_added,
         bytes_removed,
         bytes_retrieved
     ):
-        """store one row for an avatar"""
+        """store one row for an collection"""
         command = _insert_command % (
-            avatar_id,
+            collection_id,
             timestamp,
             bytes_added,
             bytes_removed,
@@ -66,18 +66,18 @@ class SpaceAccountingDatabase(object):
         )
         self._connection.execute(command)
     
-    def retrieve_avatar_stats(self, avatar_id):
-        """get the consolidated stats for an avatar"""
-        query = _avatar_query % (avatar_id, )
+    def retrieve_collection_stats(self, collection_id):
+        """get the consolidated stats for an collection"""
+        query = _collection_query % (collection_id, )
         result = self._connection.fetch_one_row(query)
         if result is None:
-            raise SpaceAccountingDatabaseAvatarNotFound(str(avatar_id))
+            raise SpaceAccountingDatabasecollectionNotFound(str(collection_id))
         [bytes_added, bytes_removed, bytes_retrieved, ] = result
         return bytes_added, bytes_removed, bytes_retrieved, 
 
-    def clear_avatar_stats(self, avatar_id):
-        """clear all stats for an avatar *** for use in testing ***"""
-        command = _clear_command % (avatar_id, )
+    def clear_collection_stats(self, collection_id):
+        """clear all stats for an collection *** for use in testing ***"""
+        command = _clear_command % (collection_id, )
         self._connection.execute(command)
 
 if __name__ == "__main__":
@@ -85,7 +85,7 @@ if __name__ == "__main__":
     print
     print "testing"
     space_accounting_database = SpaceAccountingDatabase()
-    space_accounting_database.store_avatar_stats(
+    space_accounting_database.store_collection_stats(
         1001, 
         datetime.datetime.now(),
         1,

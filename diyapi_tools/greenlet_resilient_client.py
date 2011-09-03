@@ -22,7 +22,7 @@ from gevent_zeromq import zmq
 # our internal message format
 _message_format = namedtuple("Message", "control body")
 _polling_interval = 3.0
-_ack_timeout = float(os.environ.get("SPIDEROAK_DIYAPI_ACK_TIMEOOUT", "10.0"))
+_ack_timeout = float(os.environ.get("NIMBUSIO_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
 _max_idle_time = 10 * 60.0
 _reporting_interval = 60.0

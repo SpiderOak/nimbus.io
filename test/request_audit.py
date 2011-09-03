@@ -2,8 +2,8 @@
 """
 request_audit.py
 
-request anti entroy audit of an avatar
-arguments <avatar-id> <anti-entropy-exchange>
+request anti entroy audit of an collection
+arguments <collection-id>
 """
 from collections import deque
 import logging
@@ -20,10 +20,11 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 
-_log_path = u"/var/log/pandora/request_audit.log"
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_log_path = u"%s/request_audit.log" % (s.environ["NIMBUSIO_LOG_DIR"], )
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _client_tag = "request-audit-%s" % (_local_node_name, )
-_anti_entropy_server_address = os.environ["DIYAPI_ANTI_ENTROPY_SERVER_ADDRESS"]
+_anti_entropy_server_address = \
+    os.environ["NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESS"]
 _pipeline_address = "tcp://127.0.0.1:6666"
 
 def _handle_anti_entropy_audit_reply(state, message, _data):
@@ -54,7 +55,7 @@ def _create_state():
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
-    avatar_id = int(sys.argv[1])
+    collection_id = int(sys.argv[1])
 
     log.info("binding pull-server to %s" % (_pipeline_address, ))
     state["pull-server"] = PULLServer(
@@ -82,14 +83,14 @@ def _setup(_halt_event, state):
         _dispatch_table
     )
 
-    info = "requesting audit of %s" % (avatar_id, )
+    info = "requesting audit of %s" % (collection_id, )
     log.info(info)
     print >> sys.stderr, ""
     print >> sys.stderr, info
 
     message = {
         "message-type"  : "anti-entropy-audit-request",
-        "avatar-id"     : avatar_id,
+        "collection-id"     : collection_id,
     }
     state["anti-entropy-client"].queue_message_for_send(message)
 

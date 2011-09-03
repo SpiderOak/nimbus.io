@@ -19,14 +19,16 @@ from diyapi_tools.resilient_client import ResilientClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/resilient_client_shell.log"
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/resilient_client_shell.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"],
+)
 _test_server_address = os.environ.get(
-    "DIYAPI_TEST_SERVER_ADDRESS",
+    "NIMBUSIO_TEST_SERVER_ADDRESS",
     "tcp://127.0.0.1:8000"
 )
 _test_client_address = os.environ.get(
-    "DIYAPI_TEST_CLIENT_ADDRESS",
+    "NIMBUSIO_TEST_CLIENT_ADDRESS",
     "tcp://127.0.0.1:9000"
 )
 

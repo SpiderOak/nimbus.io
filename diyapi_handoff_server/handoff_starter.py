@@ -14,7 +14,7 @@ import time
 from diyapi_handoff_server.forwarder_coroutine import forwarder_coroutine
 
 handoff_starter_delay = float(os.environ.get(
-    "DIYAPI_HANDOFF_STARTER_DELAY", str(15.0 * 60.0)
+    "NIMBUSIO_HANDOFF_STARTER_DELAY", str(15.0 * 60.0)
 ))
 
 class HandoffStarter(object):

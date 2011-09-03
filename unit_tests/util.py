@@ -66,13 +66,14 @@ def start_data_writer(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_DATA_WRITER_ADDRESS"        : address,
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-        "DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS" : \
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
+        "NIMBUSIO_NODE_NAME"         : node_name,
+        "NIMBUSIO_DATA_WRITER_ADDRESS"        : address,
+        "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
             event_publisher_pull_address,
-        "PANDORA_DB_PW_pandora"             : "pork",
+        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -90,10 +91,11 @@ def start_data_reader(node_name, address, repository_path):
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_DATA_READER_ADDRESS"        : address,
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-        "PANDORA_DB_PW_pandora"             : "pork",
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_NODE_NAME"         : node_name,
+        "NIMBUSIO_DATA_READER_ADDRESS"        : address,
+        "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -119,18 +121,16 @@ def start_anti_entropy_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
-        "SPIDEROAK_MULTI_NODE_NAME_SEQ"     : \
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
+        "NIMBUSIO_NODE_NAME_SEQ"     : \
             " ".join(node_names),
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESSES": \
+        "NIMBUSIO_NODE_NAME"         : node_name,
+        "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
             " ".join(anti_entropy_server_addresses),
-        "DIYAPI_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
-        "PANDORA_DB_PW_pandora_storage_server" : \
-            os.environ["PANDORA_DB_PW_pandora_storage_server"],
-        "PANDORA_DB_PW_pandora" : os.environ["PANDORA_DB_PW_pandora"],
-        "PANDORA_DB_PW_diyapi_auditor" : \
-            os.environ["PANDORA_DB_PW_diyapi_auditor"]
+        "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
+        "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -150,10 +150,9 @@ def start_space_accounting_server(node_name, address, pipeline_address):
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "PANDORA_DB_PW_pandora" : os.environ["PANDORA_DB_PW_pandora"],
-        "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
-        "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_NODE_NAME"         : node_name,
+        "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -179,16 +178,18 @@ def start_handoff_server(
 
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name, 
-        "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
-        "DIYAPI_HANDOFF_SERVER_ADDRESSES"        : " ".join(
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_CLUSTER_NAME"      : cluster_name, 
+        "NIMBUSIO_NODE_NAME"         : local_node_name,
+        "NIMBUSIO_HANDOFF_SERVER_ADDRESSES"        : " ".join(
             handoff_server_addresses
         ),
-        "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
-        "DIYAPI_DATA_READER_ADDRESSES"    : " ".join(data_reader_addresses),
-        "DIYAPI_DATA_WRITER_ADDRESSES"    : " ".join(data_writer_addresses),
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-        "PANDORA_DB_PW_pandora" :  os.environ["PANDORA_DB_PW_pandora"],
+        "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
+        "NIMBUSIO_DATA_READER_ADDRESSES"    : " ".join(data_reader_addresses),
+        "NIMBUSIO_DATA_WRITER_ADDRESSES"    : " ".join(data_writer_addresses),
+        "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+        "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -206,9 +207,10 @@ def start_event_publisher(node_name, pull_address, pub_address):
 
     environment = {
         "PYTHONPATH"                            : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"             : node_name,
-        "DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS"   : pull_address,
-        "DIYAPI_EVENT_PUBLISHER_PUB_ADDRESS"    : pub_address,
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_NODE_NAME"             : node_name,
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS"   : pull_address,
+        "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS"    : pub_address,
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -228,8 +230,9 @@ def start_performance_packager(node_name, pub_addresses):
 
     environment = {
         "PYTHONPATH"                            : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"             : node_name,
-        "DIYAPI_EVENT_PUBLISHER_PUB_ADDRESSES"  : " ".join(pub_addresses),
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_NODE_NAME"             : node_name,
+        "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES"  : " ".join(pub_addresses),
     }        
 
     log.info("starting %s %s" % (args, environment, ))

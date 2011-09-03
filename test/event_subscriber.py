@@ -17,10 +17,10 @@ from diyapi_tools.sub_client import SUBClient
 from diyapi_tools.callback_dispatcher import CallbackDispatcher
 from diyapi_tools import time_queue_driven_process
 
-_log_path = u"/var/log/pandora/event_subscriber.log"
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_log_path = u"%s/event_subscriber.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _event_publisher_pub_address = \
-        os.environ["DIYAPI_EVENT_PUBLISHER_PUB_ADDRESS"]
+        os.environ["NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS"]
 
 def _handle_incoming_message(state, message, _data):
     log = logging.getLogger("_handle_incoming_message")

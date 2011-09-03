@@ -31,21 +31,21 @@ from diyapi_web_server.data_reader import DataReader
 from diyapi_web_server.space_accounting_client import SpaceAccountingClient
 from diyapi_web_server.sql_authenticator import SqlAuthenticator
 
-_log_path = "/var/log/pandora/diyapi_web_server.log"
+_log_path = "%s/nimbusio_web_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
-_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _client_tag = "web-server-%s" % (_local_node_name, )
 _web_server_pipeline_address = \
-    os.environ["DIYAPI__web_server_pipeline_address"]
+    os.environ["NIMBUSIO_WEB_SERVER_PIPELINE_ADDRESS"]
 _data_reader_addresses = \
-    os.environ["DIYAPI__data_reader_addresses"].split()
+    os.environ["NIMBUSIO_DATA_READER_ADDRESSES"].split()
 _data_writer_addresses = \
-    os.environ["DIYAPI__data_writer_addresses"].split()
+    os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"].split()
 _space_accounting_server_address = \
-    os.environ["DIYAPI__space_accounting_server_address"]
+    os.environ["NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS"]
 _space_accounting_pipeline_address = \
-    os.environ["DIYAPI__space_accounting_pipeline_address"]
+    os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 
 class WebServer(object):
     def __init__(self):

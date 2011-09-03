@@ -14,7 +14,7 @@ def retry_time():
 
 retry_entry_tuple = namedtuple("RetryEntry", [
     "retry_time", 
-    "avatar_id", 
+    "collection_id", 
     "row_id",
     "retry_count"
 ])

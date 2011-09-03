@@ -41,7 +41,7 @@ from unit_tests.util import random_string, \
         poll_process, \
         terminate_process
 
-_log_path = "/var/log/pandora/test_handoff_server.log"
+_log_path = "%s/test_handoff_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "handoff_server_test_dir")
 _node_count = 10
 _data_writer_base_port = 8100
@@ -75,7 +75,7 @@ _handoff_server_pipeline_addresses = [
 ]
 _client_address = "tcp://127.0.0.1:8900"
 _event_publisher_pull_addresses = [
-    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (node_name, ) \
+    "ipc:///tmp/nimbusio-event-publisher-%s/socket" % (node_name, ) \
     for node_name in _node_names
 ]
 _event_publisher_pub_addresses = [

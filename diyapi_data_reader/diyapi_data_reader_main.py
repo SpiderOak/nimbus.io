@@ -27,17 +27,17 @@ from diyapi_tools.data_definitions import parse_timestamp_repr
 from diyapi_data_reader.reader import Reader
 from diyapi_data_reader.state_cleaner import StateCleaner
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_data_reader_%s.log" % (
-    _local_node_name,
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/nimbusio_data_reader_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 _data_reader_address = os.environ.get(
-    "DIYAPI_DATA_READER_ADDRESS",
+    "NIMBUSIO_DATA_READER_ADDRESS",
     "tcp://127.0.0.1:8200"
 )
 _retrieve_timeout = 30 * 60.0
 _repository_path = os.environ.get(
-    "DIYAPI_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
+    "NIMBUSIO_REPOSITORY_PATH", os.environ.get("PANDORA_REPOSITORY_PATH")
 )
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
@@ -120,8 +120,8 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    Statgrabber.accumulate('diy_read_requests', 1)
-    Statgrabber.accumulate('diy_read_bytes', len(data_content))
+    Statgrabber.accumulate('nimbusio_read_requests', 1)
+    Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
 
     state_entry = _retrieve_state_tuple(
         generator=sequence_generator,
@@ -185,8 +185,8 @@ def _handle_retrieve_key_next(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    Statgrabber.accumulate('diy_read_requests', 1)
-    Statgrabber.accumulate('diy_read_bytes', len(data_content))
+    Statgrabber.accumulate('nimbusio_read_requests', 1)
+    Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
 
     sequence_read_count = state_entry.sequence_read_count + 1
 

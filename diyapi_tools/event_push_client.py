@@ -12,7 +12,7 @@ import sys
 from diyapi_tools.push_client import PUSHClient
 
 _event_publisher_pull_address = \
-        os.environ["DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS"]
+        os.environ["NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS"]
 
 def exception_event(state):
     """

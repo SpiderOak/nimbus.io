@@ -19,15 +19,15 @@ from diyapi_tools.pull_server import PULLServer
 from diyapi_tools.callback_dispatcher import CallbackDispatcher
 from diyapi_tools import time_queue_driven_process
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_event_publisher_%s.log" % (
-    _local_node_name,
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/nimbusio_event_publisher_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 
 _event_publisher_pull_address = \
-        os.environ["DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS"]
+        os.environ["NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS"]
 _event_publisher_pub_address = \
-        os.environ["DIYAPI_EVENT_PUBLISHER_PUB_ADDRESS"]
+        os.environ["NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS"]
 
 def _handle_incoming_message(state, message, _data):
     log = logging.getLogger("_handle_incoming_message")

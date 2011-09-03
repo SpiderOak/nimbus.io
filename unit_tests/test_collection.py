@@ -16,7 +16,7 @@ from diyapi_tools.customer import purge_customer, \
 
 from diyapi_tools.collection import get_collection_from_hostname
 
-_log_path = "/var/log/pandora/test_collection.log"
+_log_path = "%s/test_collection.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _cluster_name = "multi-node-cluster"
 _local_node_name = "multi-node-01"
 _test_username = "test-collection-user"

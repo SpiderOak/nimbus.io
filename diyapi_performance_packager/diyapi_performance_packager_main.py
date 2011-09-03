@@ -17,12 +17,12 @@ from diyapi_tools.sub_client import SUBClient
 from diyapi_tools.deque_dispatcher import DequeDispatcher
 from diyapi_tools import time_queue_driven_process
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_performance_packager_%s.log" % (
-    _local_node_name,
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/nimbusio_performance_packager_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 _event_publisher_pub_addresses = \
-        os.environ["DIYAPI_EVENT_PUBLISHER_PUB_ADDRESSES"].split()
+        os.environ["NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES"].split()
 _sub_topics = ["archive-stats", "retrieve-stats", ]
 _report_template = "%s %-8s %6d bytes/sec"
 

@@ -25,12 +25,14 @@ from unit_tests.util import start_space_accounting_server, \
 from unit_tests.zeromq_util import send_to_pipeline, \
     send_request_and_get_reply
 
-_log_path = "/var/log/pandora/test_space_accounting_server.log"
+_log_path = "%s/test_space_accounting_server.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], 
+)
 _local_node_name = "node01"
 _space_accounting_server_address = "tcp://127.0.0.1:8300"
 _space_accounting_pipeline_address = "tcp://127.0.0.1:8350"
 
-_avatar_id = 1001
+_collection_id = 1001
 
 def _detail_generator(
     total_bytes_added, total_bytes_removed, total_bytes_retrieved
@@ -41,7 +43,7 @@ def _detail_generator(
     for i in xrange(1000):
         message = {
             "message-type"  : "space-accounting-detail",
-            "avatar-id"     : _avatar_id,
+            "collection-id"     : _collection_id,
             "timestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_added",
             "value"         : total_bytes_added / 1000,
@@ -53,7 +55,7 @@ def _detail_generator(
     for i in xrange(50):
         message = {
             "message-type"  : "space-accounting-detail",
-            "avatar-id"     : _avatar_id,
+            "collection-id"     : _collection_id,
             "timestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_removed",
             "value"         : total_bytes_removed / 50,
@@ -63,7 +65,7 @@ def _detail_generator(
     for i in xrange(25):
         message = {
             "message-type"  : "space-accounting-detail",
-            "avatar-id"     : _avatar_id,
+            "collection-id"     : _collection_id,
             "timestamp-repr": repr(current_time + timedelta(seconds=i)),
             "event"         : "bytes_retrieved",
             "value"         : total_bytes_retrieved / 25,
@@ -80,7 +82,7 @@ class TestSpaceAccountingServer(unittest.TestCase):
 
         # clear out any old stats
         space_accounting_database = SpaceAccountingDatabase()
-        space_accounting_database.clear_avatar_stats(_avatar_id)
+        space_accounting_database.clear_collection_stats(_collection_id)
         space_accounting_database.commit()
 
         self._space_accounting_server_process = \
@@ -117,12 +119,12 @@ class TestSpaceAccountingServer(unittest.TestCase):
 
         request = {
             "message-type"  : "space-usage-request",
-            "avatar-id"     : _avatar_id,
+            "collection-id"     : _collection_id,
         }
         reply = send_request_and_get_reply(
             _space_accounting_server_address, request
         )
-        self.assertEqual(reply["avatar-id"], _avatar_id)
+        self.assertEqual(reply["collection-id"], _collection_id)
         self.assertEqual(reply["message-type"], "space-usage-reply")
         self.assertEqual(reply["result"], "success")
         self.assertEqual(

@@ -2,7 +2,7 @@
 """
 application.py
 
-The diyapi wsgi application
+The nimbus.io wsgi application
 """
 import logging
 import os
@@ -51,9 +51,9 @@ from diyapi_web_server.conjoined_manager import list_conjoined_archives, \
         abort_conjoined_archive, \
         finish_conjoined_archive
 
-_node_names = os.environ['SPIDEROAK_MULTI_NODE_NAME_SEQ'].split()
+_node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
-    os.environ.get("SPIDEROAK_DIYAPI__reply_timeout",  str(5 * 60.0))
+    os.environ.get("NIMBUSIO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
 _slice_size = 1024 * 1024    # 1MB
 _min_connected_clients = 8
@@ -212,7 +212,7 @@ class Application(object):
                     )
                     return result
                 except Exception:
-                    self._log.exception("%s" % (req.diy_username, ))
+                    self._log.exception("%s" % (collection_entry, ))
                     raise
 
             if url_matched:

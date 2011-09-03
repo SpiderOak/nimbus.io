@@ -60,7 +60,7 @@ class StateCleaner(object):
 
         if request_state.retry_count >= max_retry_count:
             self._log.error("timeout: %s with too many retries %s " % (
-                request_state.avatar_id, request_state.retry_count
+                request_state.collection_id, request_state.retry_count
             ))
             database.too_many_retries(request_state.row_id)
             database.close()
@@ -68,12 +68,12 @@ class StateCleaner(object):
             return
 
         self._log.error("timeout %s. will retry in %s seconds" % (
-            request_state.avatar_id, retry_interval,
+            request_state.collection_id, retry_interval,
         ))
         self._state["retry-list"].append(
             retry_entry_tuple(
                 retry_time=retry_time(), 
-                avatar_id=request_state.avatar_id,
+                collection_id=request_state.collection_id,
                 row_id=request_state.row_id,
                 retry_count=request_state.retry_count, 
             )

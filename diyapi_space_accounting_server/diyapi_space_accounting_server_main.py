@@ -4,8 +4,8 @@ diyapi_space_accounting_server.py
 
 Runs on every server (for symmetry.)
 Receives space accounting messages.
-Accumulates diffs for each avatar in memory.
-Diffs are grouped by hour. I.e added = [hournumber][avatar_id] = bytes added. 
+Accumulates diffs for each collection in memory.
+Diffs are grouped by hour. I.e added = [hournumber][collection_id] = bytes added. 
 Similar for bytes retrieved and bytes removed.
 5 minutes into the next hour, the lowest numbered node dumps stats to the 
 database, and announces to other nodes that it has done so.
@@ -33,22 +33,22 @@ from diyapi_tools import time_queue_driven_process
 from diyapi_tools.data_definitions import parse_timestamp_repr
 
 from diyapi_space_accounting_server.space_accounting_database import \
-        SpaceAccountingDatabase, SpaceAccountingDatabaseAvatarNotFound
+        SpaceAccountingDatabase, SpaceAccountingDatabaseCollectionNotFound
 from diyapi_space_accounting_server.state_cleaner import StateCleaner
 from diyapi_space_accounting_server.util import floor_hour
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_space_accounting_server_%s.log" % (
-    _local_node_name,
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/nimbusio_space_accounting_server_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR}, _local_node_name,
 )
 
 _space_accounting_server_address = os.environ.get(
-    "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS",
+    "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS",
     "tcp://127.0.0.1:8300"
 )
 
 _space_accounting_pipeline_address = os.environ.get(
-    "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
+    "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
     "tcp://127.0.0.1:8350"
 )
 
@@ -56,23 +56,23 @@ def _handle_space_accounting_detail(state, message, _data):
     log = logging.getLogger("_handle_space_accounting_detail")
     message_datetime = parse_timestamp_repr(message["timestamp-repr"])
     message_hour = floor_hour(message_datetime)
-    log.info("hour = %s avatar_id = %s, event = %s, value = %s" % (
-        message_hour, message["avatar-id"], message["event"], message["value"]
+    log.info("hour = %s collection_id = %s, event = %s, value = %s" % (
+        message_hour, message["collection-id"], message["event"], message["value"]
     ))
 
     hour_entry = state["data"].setdefault(message_hour, dict())
-    avatar_entry = hour_entry.setdefault(message["avatar-id"], dict())
-    avatar_entry[message["event"]] = \
-        avatar_entry.setdefault(message["event"], 0) + message["value"]
+    collection_entry = hour_entry.setdefault(message["collection-id"], dict())
+    collection_entry[message["event"]] = \
+        collection_entry.setdefault(message["event"], 0) + message["value"]
 
 def _handle_space_usage_request(state, message, _data):
     log = logging.getLogger("_handle_space_usage_request")
-    log.info("request for avatar %s" % (message["avatar-id"],))
+    log.info("request for collection %s" % (message["collection-id"],))
 
     reply = {
         "message-type"  : "space-usage-reply",
         "xrep-ident"    : message["xrep-ident"],
-        "avatar-id"     : message["avatar-id"],
+        "collection-id"     : message["collection-id"],
         "message-id"    : message["message-id"],
         "result"        : None,
     }
@@ -80,13 +80,13 @@ def _handle_space_usage_request(state, message, _data):
     # get sums of stats from the database
     space_accounting_database = SpaceAccountingDatabase(transaction=False)
     try:
-        stats = space_accounting_database.retrieve_avatar_stats(
-            message["avatar-id"]
+        stats = space_accounting_database.retrieve_collection_stats(
+            message["collection-id"]
         )
-    except SpaceAccountingDatabaseAvatarNotFound, instance:
-        error_message = "avatar not found %s" % (instance, )
+    except SpaceAccountingDatabasecollectionNotFound, instance:
+        error_message = "collection not found %s" % (instance, )
         log.warn(error_message)
-        reply["result"] = "unknown-avatar"
+        reply["result"] = "unknown-collection"
         reply["error-message"] = error_message
         state["xrep-server"].queue_message_for_send(reply)
         return
@@ -97,8 +97,8 @@ def _handle_space_usage_request(state, message, _data):
 
     # increment sums with data from state
     for key in state["data"].keys():
-        if message["avatar-id"] in state["data"][key]:
-            events = state["data"][key][message["avatar-id"]]
+        if message["collection-id"] in state["data"][key]:
+            events = state["data"][key][message["collection-id"]]
             bytes_added += events.get("bytes_added", 0)
             bytes_removed += events.get("bytes_removed", 0)
             bytes_retrieved += events.get("bytes_retrieved", 0)

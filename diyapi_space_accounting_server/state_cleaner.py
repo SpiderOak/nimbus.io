@@ -57,9 +57,9 @@ class StateCleaner(object):
 
         self._log.info("storing data for %s" % (hour, ))
         space_accounting_database = SpaceAccountingDatabase()
-        for avatar_id, events in self._state["data"][hour].items():
-            space_accounting_database.store_avatar_stats(
-                avatar_id,
+        for collection_id, events in self._state["data"][hour].items():
+            space_accounting_database.store_collection_stats(
+                collection_id,
                 hour,
                 events.get("bytes_added", 0),
                 events.get("bytes_removed", 0),

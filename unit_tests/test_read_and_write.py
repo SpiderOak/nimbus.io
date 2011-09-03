@@ -28,10 +28,10 @@ from diyapi_tools.data_definitions import create_timestamp
 
 from unit_tests.util import random_string
 
-_log_path = "/var/log/pandora/test_read_and_write.log"
+_log_path = "%s/test_read_and_write.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "test_read_and_write")
 _repository_path = os.path.join(_test_dir, "diyapi")
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
 def _retrieve_value_file_row(connection, value_file_id):
     result = connection.fetch_one_row("""

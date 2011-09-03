@@ -14,7 +14,7 @@ import time
 from diyapi_tools.data_definitions import create_timestamp
 
 handoff_polling_interval = float(os.environ.get(
-    "DIYAPI_HANDOFF_POLLING_INTERVAL", str(15.0 * 60.0)
+    "NIMBUSIO_HANDOFF_POLLING_INTERVAL", str(15.0 * 60.0)
 ))
 
 class HandoffRequestor(object):

@@ -101,7 +101,7 @@ def create_default_collection(connection, customer_id, username):
 
 def list_collections(connection, username):
     """
-    list all collections for the avatar, for all clusters
+    list all collections for the customer, for all clusters
     """
     result = connection.fetch_all_rows("""
         select name, creation_time from nimbusio_central.collection   

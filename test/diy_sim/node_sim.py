@@ -60,7 +60,7 @@ _handoff_server_pipeline_addresses = [
 ]
 _node_names = [_generate_node_name(i) for i in range(_node_count)]
 _event_publisher_pull_addresses = [
-    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (node_name, ) \
+    "ipc:///tmp/nimbusio-event-publisher-%s/socket" % (node_name, ) \
     for node_name in _node_names
 ]
 _event_publisher_pub_addresses = [

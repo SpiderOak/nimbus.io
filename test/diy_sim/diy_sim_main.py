@@ -2,14 +2,15 @@
 """
 diy_sim_main.py
 
-Main module for SpiderOak DIY simulator
+Main module for nimbus.io simulator
 """
 import logging
+import os
 import sys
 
 from test.diy_sim.command_interpreter import CommandInterpreter
 
-_log_path = u"/var/log/pandora/diy_sim.log"
+_log_path = u"%s/diy_sim.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
 
 def _initialize_logging():

@@ -22,7 +22,9 @@ from diyapi_web_server.sql_authenticator import SqlAuthenticator
 class MockRequest(object):
     pass
 
-_log_path = "/var/log/pandora/test_sql_authenticator.log"
+_log_path = "%s/test_sql_authenticator.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], 
+)
 _cluster_name = "multi-node-cluster"
 _local_node_name = "multi-node-01"
 _test_username = "test-sqlauthenticator-user"

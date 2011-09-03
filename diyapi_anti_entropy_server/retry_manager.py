@@ -31,7 +31,7 @@ class RetryManager(object):
             if current_time >= retry_entry.retry_timestamp:
                 self._start_consistency_check(
                     self._state,
-                    retry_entry.avatar_id, 
+                    retry_entry.collection_id, 
                     row_id=retry_entry.row_id,
                     retry_count=retry_entry.retry_count +1
                 )

@@ -37,19 +37,19 @@ from diyapi_handoff_server.forwarder_coroutine import forwarder_coroutine
 class HandoffError(Exception):
     pass
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/diyapi_handoff_server_%s.log" % (
-    _local_node_name,
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/nimbusio_handoff_server_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 _data_reader_addresses = \
-    os.environ["DIYAPI_DATA_READER_ADDRESSES"].split()
+    os.environ["NIMBUSIO_DATA_READER_ADDRESSES"].split()
 _data_writer_addresses = \
-    os.environ["DIYAPI_DATA_WRITER_ADDRESSES"].split()
+    os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"].split()
 _client_tag = "handoff_server-%s" % (_local_node_name, )
 _handoff_server_addresses = \
-    os.environ["DIYAPI_HANDOFF_SERVER_ADDRESSES"].split()
+    os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
 _handoff_server_pipeline_address = os.environ.get(
-    "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS",
+    "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS",
     "tcp://127.0.0.1:8700"
 )
 
@@ -58,7 +58,7 @@ _retrieve_timeout = 30 * 60.0
 
 def _retrieve_handoffs_for_node(connection, node_id):
     result = connection.fetch_all_rows("""
-        select %s from diy.segment 
+        select %s from nimbusio_node.segment 
         where handoff_node_id = %%s
         order by timestamp desc
     """ % (",".join(segment_row_template._fields), ), [node_id, ])

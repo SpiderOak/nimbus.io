@@ -47,7 +47,7 @@ class ConsistencyCheckStarter(object):
             self._state["central-database-connection"]
         )
         ineligible_collection_ids = set(
-            database.ineligible_collectionr_ids(cutoff_timestamp)
+            database.ineligible_collection_ids(cutoff_timestamp)
         )
         eligible_collection_ids = self._state["collection-ids"] \
                             - ineligible_collection_ids

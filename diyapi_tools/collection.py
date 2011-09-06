@@ -97,7 +97,7 @@ def create_default_collection(connection, customer_id, username):
     create the customer's default collection, based on username
     """
     collection_name = "-".join([_default_collection_prefix, username, ])
-    return create_collection(connection, customer_id, collection_name)
+    return create_collection(connection, username, collection_name)
 
 def list_collections(connection, username):
     """

@@ -44,12 +44,12 @@ _log_path = u"%s/nimbusio_space_accounting_server_%s.log" % (
 
 _space_accounting_server_address = os.environ.get(
     "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS",
-    "tcp://127.0.0.1:8300"
+    "tcp://127.0.0.1:8500"
 )
 
 _space_accounting_pipeline_address = os.environ.get(
     "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
-    "tcp://127.0.0.1:8350"
+    "tcp://127.0.0.1:8550"
 )
 
 def _handle_space_accounting_detail(state, message, _data):

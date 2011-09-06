@@ -16,7 +16,7 @@ from diyapi_tools.customer import create_customer, \
    list_customer_keys, \
    purge_customer
 
-_create_customer = "create_user"
+_create_customer = "create_customer"
 _add_key = "add_key"
 _list_keys = "list_keys"
 _delete_customer = "delete_customer"
@@ -108,6 +108,7 @@ def main():
         _dispatch_table[options.command](connection, options.username)
     except Exception:
         connection.rollback()
+        raise
     else:
         connection.commit()
     finally:

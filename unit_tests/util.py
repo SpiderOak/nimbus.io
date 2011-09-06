@@ -153,6 +153,8 @@ def start_space_accounting_server(node_name, address, pipeline_address):
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
         "NIMBUSIO_NODE_NAME"         : node_name,
+        "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
+        "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
         "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
     }        
 

@@ -171,9 +171,10 @@ class Application(object):
             self._log.error("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator(
+        authenticated = self._authenticator.authenticate(
             self._central_connection,
-            collection_entry.username
+            collection_entry.username,
+            req
         )
         if not authenticated:
             raise exc.HTTPUnauthorized()
@@ -330,8 +331,11 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        # json won't dump datetime
+        json_collections = [(n, t.isoformat()) for (n, t) in collections]
+
         response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(collections))
+        response.body_file.write(json.dumps(json_collections))
 
         return response
 

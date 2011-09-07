@@ -60,7 +60,7 @@ create index collection_name_idx on nimbusio_central.collection("name");
 create index collection_customer_id_name_idx on nimbusio_central.collection("customer_id", "name");
 
 create table space_accounting(
-   collecton_id int4 not null references nimbusio_central.collection(id),
+   collection_id int4 not null references nimbusio_central.collection(id),
    timestamp timestamp not null,
    bytes_added int8 not null default 0,
    bytes_removed int8 not null default 0,

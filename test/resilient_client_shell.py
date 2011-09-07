@@ -13,11 +13,11 @@ import uuid
 
 import zmq
 
-from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.pull_server import PULLServer
-from diyapi_tools.resilient_client import ResilientClient
-from diyapi_tools.deque_dispatcher import DequeDispatcher
-from diyapi_tools import time_queue_driven_process
+from tools.zeromq_pollster import ZeroMQPollster
+from tools.pull_server import PULLServer
+from tools.resilient_client import ResilientClient
+from tools.deque_dispatcher import DequeDispatcher
+from tools import time_queue_driven_process
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/resilient_client_shell.log" % (

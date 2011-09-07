@@ -1,6 +1,6 @@
 #!/bin/bash
 source ${TOOL}/bin/env.sh
-export NIMBUSIO="${HOME}/spideroak_diyapi"
+export NIMBUSIO="${HOME}/nimbusio"
 export PYTHONPATH="${NIMBUSIO}"
 export NIMBUSIO_LOG_DIR="/var/log/nimbusio"
 export NIMBUSIO_REPOSITORY_PATH="/var/nimbusio"

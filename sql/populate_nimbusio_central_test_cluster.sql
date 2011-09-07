@@ -1,5 +1,5 @@
 /*
-load cluster and node tables from diy schema
+load cluster and node tables from nimbusio_central schema
 */
 delete from nimbusio_central.cluster;
 insert into nimbusio_central.cluster (name) values ('multi-node-cluster');

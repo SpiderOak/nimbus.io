@@ -10,14 +10,14 @@ import unittest
 from lumberyard.http_util import compute_authentication_string, \
     current_timestamp
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.database_connection import get_central_connection
-from diyapi_tools.customer import purge_customer, \
+from tools.standard_logging import initialize_logging
+from tools.database_connection import get_central_connection
+from tools.customer import purge_customer, \
         create_customer, \
         add_key_to_customer, \
         list_customer_keys
 
-from diyapi_web_server.sql_authenticator import SqlAuthenticator
+from web_server.sql_authenticator import SqlAuthenticator
 
 class MockRequest(object):
     pass

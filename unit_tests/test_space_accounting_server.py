@@ -14,9 +14,9 @@ import time
 import unittest
 import uuid
 
-from diyapi_tools.standard_logging import initialize_logging
+from tools.standard_logging import initialize_logging
 
-from diyapi_space_accounting_server.space_accounting_database import \
+from space_accounting_server.space_accounting_database import \
     SpaceAccountingDatabase
 
 from unit_tests.util import start_space_accounting_server, \

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-diy_sim_main.py
+nimbusio_sim_main.py
 
 Main module for nimbus.io simulator
 """
@@ -31,7 +31,7 @@ def main():
 
     log.info("entering main loop")
     command_interpreter = CommandInterpreter()
-    command_interpreter.cmdloop("diy")
+    command_interpreter.cmdloop("nimbus.io")
     log.info("leaving main loop")
 
     log.info("program ends normally")

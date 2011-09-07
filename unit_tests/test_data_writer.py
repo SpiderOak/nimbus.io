@@ -14,8 +14,8 @@ import unittest
 import uuid
 import zlib
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.data_definitions import create_timestamp, \
+from tools.standard_logging import initialize_logging
+from tools.data_definitions import create_timestamp, \
         nimbus_meta_prefix, \
         random_string
 

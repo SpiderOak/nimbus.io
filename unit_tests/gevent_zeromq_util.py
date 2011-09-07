@@ -10,11 +10,11 @@ import logging
 import gevent
 from gevent_zeromq import zmq
 
-from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
-from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
-from diyapi_tools.greenlet_pull_server import GreenletPULLServer
-from diyapi_tools.deliverator import Deliverator
-from diyapi_tools.greenlet_push_client import GreenletPUSHClient
+from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
+from tools.greenlet_resilient_client import GreenletResilientClient
+from tools.greenlet_pull_server import GreenletPULLServer
+from tools.deliverator import Deliverator
+from tools.greenlet_push_client import GreenletPUSHClient
 
 def send_request_and_get_reply(
     server_node_name,

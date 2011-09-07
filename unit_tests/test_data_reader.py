@@ -13,10 +13,10 @@ import unittest
 import uuid
 import zlib
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.database_connection import get_node_local_connection
-from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
-from diyapi_tools.data_definitions import create_timestamp, \
+from tools.standard_logging import initialize_logging
+from tools.database_connection import get_node_local_connection
+from web_server.local_database_util import most_recent_timestamp_for_key
+from tools.data_definitions import create_timestamp, \
     random_string
 
 from unit_tests.util import generate_key, \

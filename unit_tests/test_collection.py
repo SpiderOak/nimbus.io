@@ -8,13 +8,13 @@ import unittest
 
 from lumberyard.http_util import compute_default_hostname
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.database_connection import get_central_connection
-from diyapi_tools.customer import purge_customer, \
+from tools.standard_logging import initialize_logging
+from tools.database_connection import get_central_connection
+from tools.customer import purge_customer, \
         create_customer, \
         add_key_to_customer
 
-from diyapi_tools.collection import get_collection_from_hostname
+from tools.collection import get_collection_from_hostname
 
 _log_path = "%s/test_collection.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _cluster_name = "multi-node-cluster"

@@ -19,18 +19,18 @@ import zlib
 import gevent
 from gevent_zeromq import zmq
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
-from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
-from diyapi_tools.greenlet_pull_server import GreenletPULLServer
-from diyapi_tools.deliverator import Deliverator
-from diyapi_tools.data_definitions import create_timestamp, \
+from tools.standard_logging import initialize_logging
+from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
+from tools.greenlet_resilient_client import GreenletResilientClient
+from tools.greenlet_pull_server import GreenletPULLServer
+from tools.deliverator import Deliverator
+from tools.data_definitions import create_timestamp, \
         random_strin
-from diyapi_tools.database_connection import get_central_connection
-from diyapi_web_server.central_database_util import get_cluster_row, \
+from tools.database_connection import get_central_connection
+from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
-from diyapi_web_server.data_writer_handoff_client import \
+from web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
 
 from unit_tests.util import generate_key, \

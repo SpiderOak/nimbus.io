@@ -56,8 +56,8 @@ def start_data_writer(
     repository_path
 ):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_data_writer")
-    server_path = os.path.join(server_dir, "diyapi_data_writer_main.py")
+    server_dir = identify_program_dir(u"data_writer")
+    server_path = os.path.join(server_dir, "data_writer_main.py")
     
     args = [
         sys.executable,
@@ -82,8 +82,8 @@ def start_data_writer(
 
 def start_data_reader(node_name, address, repository_path):
     log = logging.getLogger("start_data_reader_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_data_reader")
-    server_path = os.path.join(server_dir, "diyapi_data_reader_main.py")
+    server_dir = identify_program_dir(u"data_reader")
+    server_path = os.path.join(server_dir, "data_reader_main.py")
     
     args = [
         sys.executable,
@@ -110,9 +110,9 @@ def start_anti_entropy_server(
     pipeline_address,
 ):
     log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_anti_entropy_server")
+    server_dir = identify_program_dir(u"anti_entropy_server")
     server_path = os.path.join(
-        server_dir, "diyapi_anti_entropy_server_main.py"
+        server_dir, "anti_entropy_server_main.py"
     )
     
     args = [
@@ -139,9 +139,9 @@ def start_anti_entropy_server(
 
 def start_space_accounting_server(node_name, address, pipeline_address):
     log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_space_accounting_server")
+    server_dir = identify_program_dir(u"space_accounting_server")
     server_path = os.path.join(
-        server_dir, "diyapi_space_accounting_server_main.py"
+        server_dir, "space_accounting_server_main.py"
     )
     
     args = [
@@ -171,8 +171,8 @@ def start_handoff_server(
     repository_path
 ):
     log = logging.getLogger("start_handoff_server_%s" % (local_node_name, ))
-    server_dir = identify_program_dir(u"diyapi_handoff_server")
-    server_path = os.path.join(server_dir, "diyapi_handoff_server_main.py")
+    server_dir = identify_program_dir(u"handoff_server")
+    server_path = os.path.join(server_dir, "handoff_server_main.py")
     
     args = [
         sys.executable,
@@ -200,8 +200,8 @@ def start_handoff_server(
 
 def start_event_publisher(node_name, pull_address, pub_address):
     log = logging.getLogger("start_event_publisher_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_event_publisher")
-    server_path = os.path.join(server_dir, "diyapi_event_publisher_main.py")
+    server_dir = identify_program_dir(u"event_publisher")
+    server_path = os.path.join(server_dir, "event_publisher_main.py")
     
     args = [
         sys.executable,
@@ -221,9 +221,9 @@ def start_event_publisher(node_name, pull_address, pub_address):
 
 def start_performance_packager(node_name, pub_addresses):
     log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_performance_packager")
+    server_dir = identify_program_dir(u"performance_packager")
     server_path = os.path.join(
-        server_dir, "diyapi_performance_packager_main.py"
+        server_dir, "performance_packager_main.py"
     )
     
     args = [

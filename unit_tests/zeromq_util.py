@@ -10,9 +10,9 @@ import time
 
 import zmq
 
-from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.xreq_client import XREQClient
-from diyapi_tools.push_client import PUSHClient
+from tools.zeromq_pollster import ZeroMQPollster
+from tools.xreq_client import XREQClient
+from tools.push_client import PUSHClient
 
 def send_request_and_get_reply(address, request, data=None):
     reply, _ = send_request_and_get_reply_and_data(address, request, data)

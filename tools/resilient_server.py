@@ -10,6 +10,7 @@ import logging
 import zmq
 
 from tools.zeromq_util import prepare_ipc_path
+from tools.push_client import PUSHClient
 
 # our internal message format
 _message_format = namedtuple("Message", "ident control body")

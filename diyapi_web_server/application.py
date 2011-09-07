@@ -23,6 +23,7 @@ from webob import Response
 from diyapi_tools.data_definitions import create_timestamp, nimbus_meta_prefix
 
 from diyapi_tools.collection import get_collection_from_hostname, \
+        compute_default_collection_name, \
         create_collection, \
         list_collections, \
         delete_collection
@@ -313,7 +314,10 @@ class Application(object):
                 req.GET["collection_name"], 
                 instance,
             ))
+            self._central_connection.rollback()
             raise exc.HTTPServiceUnavailable(str(instance))
+        else:
+            self._central_connection.commit()
 
         return Response('OK')
 
@@ -340,19 +344,31 @@ class Application(object):
         return response
 
     @routes.add(r'/delete_collection$')
-    def delete_collection(self, collection_entry, _req):
+    def delete_collection(self, collection_entry, req):
         self._log.debug("delete_collection: %s" % (collection_entry, ))
+
+        collection_name = req.GET["collection_name"]
+
+        # you can't delete your default collection
+        default_collection_name = compute_default_collection_name(
+            collection_entry.username
+        )
+        if collection_name == default_collection_name:
+            raise exc.HTTPForbidden("Can't delete default collection %r" % (
+                collection_name,
+            ))
 
         # TODO: can't delete a collection that contains keys
         try:
-            delete_collection(
-                self._central_connection, collection_entry.collection_name
-            )
+            delete_collection(self._central_connection, collection_name)
         except Exception, instance:
             self._log.error("%s error deleting collection %s" % (
                 collection_entry, instance,
             ))
+            self._central_connection.rollback()
             raise exc.HTTPServiceUnavailable(str(instance))
+        else:
+            self._central_connection.commit()
 
         return Response('OK')
 

@@ -81,6 +81,22 @@ def create_collection(connection, username, collection_name):
     create a collection for the customer
     """
     assert valid_collection_name(collection_name)
+
+    # if the collecton already exists, use it
+    result = connection.fetch_one_row("""
+        select id, deletion_time from nimbusio_central.collection
+        where name = %s""", [collection_name, ]
+    )
+    if result is not None:
+        (row_id, deletion_time) = result
+        # if the existong collection is deleted, undelete it
+        if deletion_time is not None:
+            connection.execute("""
+                update nimbusio_central.collection
+                set deletion_time = null
+            """)
+        return row_id
+
     (row_id, ) = connection.fetch_one_row("""
         insert into nimbusio_central.collection
         (name, customer_id)
@@ -92,11 +108,17 @@ def create_collection(connection, username, collection_name):
 
     return row_id
 
+def compute_default_collection_name(username):
+    """
+    return the name of the customer's default collection, based on username
+    """
+    return "-".join([_default_collection_prefix, username, ])
+
 def create_default_collection(connection, customer_id, username):
     """
     create the customer's default collection, based on username
     """
-    collection_name = "-".join([_default_collection_prefix, username, ])
+    collection_name = compute_default_collection_name(username)
     return create_collection(connection, username, collection_name)
 
 def list_collections(connection, username):
@@ -118,8 +140,8 @@ def delete_collection(connection, collection_name):
     mark the collection as deleted
     """
     connection.execute("""
-        update from nimbusio_central.collection
-        set deletion_tme = current_timestamp
+        update nimbusio_central.collection
+        set deletion_time = current_timestamp
         where name = %s
     """, [collection_name, ]
     )

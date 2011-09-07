@@ -5,12 +5,12 @@ meta_manager.py
 functions for accessing meta data
 """
 _get_meta_query = """
-    select meta_value from diy.meta where
+    select meta_value from nimbusio_node.meta where
     collection_id = %s and key = %s and meta_key = %s
 """.strip()
 
 _list_meta_query = """
-    select meta_key, meta_value from diy.meta where
+    select meta_key, meta_value from nimbusio_node.meta where
     collection_id = %s and key = %s
 """.strip()
 

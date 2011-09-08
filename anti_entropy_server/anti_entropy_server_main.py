@@ -30,12 +30,11 @@ reconstructed and added.
 Any other situation would indicate a data integrity error 
 that should be resolved.
 """
-from base64 import b64encode, b64decode
-from collections import deque, namedtuple, defaultdict
+from base64 import b64encode
+from collections import deque, namedtuple
 import hashlib
 import logging
 import os
-import cPickle as pickle
 import random
 import sys
 import time
@@ -117,7 +116,7 @@ def _start_consistency_check(state, collection_id, row_id=None, retry_count=0):
 
     request = {
         "message-type"  : "consistency-check",
-        "collection-id"     : collection_id,
+        "collection-id" : collection_id,
         "timestamp-repr": repr(timestamp),
     }
     for anti_entropy_client in state["anti-entropy-clients"]:
@@ -157,68 +156,53 @@ def _handle_database_collection_list_reply(state, message, _data):
     state["collection-ids"] = set(message["collection-id-list"])
     log.info("found %s collection ids" % (len(state["collection-ids"]), ))
 
-def _handle_consistency_check(state, message, data):
+def _handle_consistency_check(state, message, _data):
     log = logging.getLogger("_handle_consistency_check")
 
     reply = {
         "message-type"      : "consistency-check-reply",
         "client-tag"        : message["client-tag"],
         "node-name"         : _local_node_name,
-        "collection-id"         : message["collection-id"],
+        "collection-id"     : message["collection-id"],
         "timestamp-repr"    : message["timestamp-repr"],
         "result"            : None,
+        "count"             : None,
+        "encoded-md5-digest": None,
         "error-message"     : None
     }
 
-    try:
-        collection_dict = pickle.loads(data)
-    except Exception, instance:
-        error_message = "unable to unpickle collection dict %s" % (instance, )
-        log.error("%s %s" % (message["collection-id"], error_message, ))
-        reply["result"] = "invalid_collection_list"
-        reply["error-message"] = error_message
-        state["resilient-server"].send_reply(reply, None)
-        return
+    data_generator = state["local-database-connection"].generate_all_rows(
+        """
+        select key, timestamp, file_hash 
+        from nimbusio_node.segment where collection_id = %s
+        order by key
+        """.strip(),
+        [message["collection-id"], ]
+    )
 
-    result_dict = dict()
-    for collection_id in collection_dict.keys():
-        data_generator = state["local-database-connection"].generate_all_rows(
-            """
-            select key, timestamp, file_hash 
-            from nimbusio_node.segment where collection_id = %s
-            order by key
-            """.strip(),
-            [collection_id, ]
-        )
+    count = 0
+    md5 = hashlib.md5()
+    prev_key = None
+    for key, timestamp, file_hash in data_generator:
+        count += 1
+        if key != prev_key:
+            md5.update(key)
+            prev_key = key
+        md5.update(repr(timestamp))
+        md5.update(str(file_hash))
 
-        count = 0
-        md5 = hashlib.md5()
-        prev_key = None
-        for key, timestamp, file_hash in data_generator:
-            count += 1
-            if key != prev_key:
-                md5.update(key)
-                prev_key = key
-            md5.update(repr(timestamp))
-            md5.update(str(file_hash))
-
-        log.info("found %s rows for collection %s %s collection (%s) %r" % (
-            count, 
-            message["collection-id"],             
-            message["timestamp-repr"],
-            collection_id,
-            collection_dict[collection_id],
-        ))
-
-        result_dict[collection_id] = {
-            "count"                 : count,
-            "encoded-md5-digest"    : b64encode(md5.digest())
-        }
+    log.info("found %s rows for collection %s %s" % (
+        count, 
+        message["collection-id"],             
+        message["timestamp-repr"],
+    ))
 
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, pickle.dumps(result_dict))
+    reply["count"]  = count,
+    reply["encoded-md5-digest"] = b64encode(md5.digest())
+    state["resilient-server"].send_reply(reply, None)
 
-def _handle_consistency_check_reply(state, message, data):
+def _handle_consistency_check_reply(state, message, _data):
     log = logging.getLogger("_handle_consistency_check_reply")
     
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
@@ -249,13 +233,7 @@ def _handle_consistency_check_reply(state, message, data):
         ))
         reply_value = _error_reply
     else:
-        try:
-            reply_value = pickle.loads(data)
-        except Exception, instance:
-            log.error("%s unable to unpickle reply from %s %s" % (
-                message["collection-id"], message["node-name"], instance
-            ))
-            reply_value = _error_reply
+        reply_value = (message["count"], message["encoded-md5-digest"], )
 
     request_state.replies[message["node-name"]] = reply_value
 
@@ -270,8 +248,9 @@ def _handle_consistency_check_reply(state, message, data):
     timestamp = create_timestamp()
     
     reply_error_count = 0
+
     # push the results into a set to see how many unique entries there are
-    collection_sets = defaultdict(set)
+    md5_digest_set = set()
 
     for node_name in request_state.replies.keys():
         node_reply = request_state.replies[node_name]
@@ -279,11 +258,8 @@ def _handle_consistency_check_reply(state, message, data):
             reply_error_count += 1
             continue
 
-        for collection_id in request_state.collection_dict.keys():
-            collection_sets[collection_id].add(
-                node_reply[collection_id]["encoded-md5-digest"]
-            )
-
+        _count, encoded_md5_digest = node_reply
+        md5_digest_set.add(encoded_md5_digest)
 
     # if this audit was started by an anti-entropy-audit-request message,
     # we want to send a reply
@@ -291,7 +267,7 @@ def _handle_consistency_check_reply(state, message, data):
         reply = {
             "message-type"  : "anti-entropy-audit-reply",
             "client-tag"    : request_state.client_tag,
-            "collection-id"     : message["collection-id"],
+            "collection-id" : message["collection-id"],
             "result"        : None,
             "error-message" : None,
         }
@@ -299,14 +275,13 @@ def _handle_consistency_check_reply(state, message, data):
         reply = None
 
     collection_error_count = 0
-    for collection_id in request_state.collection_dict.keys():
-        if len(collection_sets[collection_id]) != 1:
-            log.error("collection set of %s for (%s) %r" % (
-                len(collection_sets[collection_id]), 
-                collection_id,
-                request_state.collection_dict[collection_id]
-            ))
-            collection_error_count += 1
+
+    if len(md5_digest_set) != 1:
+        log.error("md5_digest_set set of %s for (%s)" % (
+            len(md5_digest_set), 
+            message["collection-id"],
+        ))
+        collection_error_count += 1
         
     # ok = no errors and all nodes have the same hash for every collection
     if reply_error_count == 0 and collection_error_count == 0:
@@ -405,7 +380,7 @@ def _create_state():
         "resilient-server"          : None,
         "pull-server"               : None,
         "anti-entropy-clients"      : None,
-        "collection-list-requestor"     : None,
+        "collection-list-requestor" : None,
         "consistency-check-starter" : None,
         "retry_manager"             : None,
         "state-cleaner"             : None,
@@ -413,7 +388,7 @@ def _create_state():
         "queue-dispatcher"          : None,
         "active-requests"           : dict(),
         "retry-list"                : list(),
-        "collection-ids"                : set(),
+        "collection-ids"            : set(),
         "cluster-row"               : None,
     }
 

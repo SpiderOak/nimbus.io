@@ -1,5 +1,5 @@
 #!/bin/bash
-NIMBUSIO="${HOME}/nimbusio"
+NIMBUSIO="${HOME}/nimbus.io"
 DATABASE_NAME="nimbusio_central"
 USER_NAME="nimbusio_central_user"
 

@@ -89,12 +89,13 @@ def create_collection(connection, username, collection_name):
     )
     if result is not None:
         (row_id, deletion_time) = result
-        # if the existong collection is deleted, undelete it
+        # if the existing collection is deleted, undelete it
         if deletion_time is not None:
             connection.execute("""
                 update nimbusio_central.collection
                 set deletion_time = null
-            """)
+                where name = %s
+            """, [collection_name, ])
         return row_id
 
     (row_id, ) = connection.fetch_one_row("""

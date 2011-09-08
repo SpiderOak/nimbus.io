@@ -345,9 +345,10 @@ class Application(object):
 
     @routes.add(r'/delete_collection$')
     def delete_collection(self, collection_entry, req):
-        self._log.debug("delete_collection: %s" % (collection_entry, ))
-
         collection_name = req.GET["collection_name"]
+        self._log.debug("delete_collection: %r  %s" % (
+            collection_name, collection_entry, 
+        ))
 
         # you can't delete your default collection
         default_collection_name = compute_default_collection_name(

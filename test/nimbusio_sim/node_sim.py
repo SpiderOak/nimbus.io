@@ -102,6 +102,7 @@ class NodeSim(object):
         self._processes["data_reader"] = start_data_reader(
             self._node_name, 
             _data_reader_addresses[self._node_index],
+            _event_publisher_pull_addresses[self._node_index],
             self._home_dir
         )
         self._processes["data_writer"] = start_data_writer(
@@ -118,6 +119,7 @@ class NodeSim(object):
             _handoff_server_pipeline_addresses[self._node_index],
             _data_reader_addresses,
             _data_writer_addresses,
+            _event_publisher_pull_addresses[self._node_index],
             self._home_dir
         )
         self._processes["anti_entropy_server"] = start_anti_entropy_server(
@@ -125,7 +127,8 @@ class NodeSim(object):
             _node_names,
             self._node_name,
             _anti_entropy_server_addresses,
-            _anti_entropy_server_pipeline_addresses[self._node_index]
+            _anti_entropy_server_pipeline_addresses[self._node_index],
+            _event_publisher_pull_addresses[self._node_index]
         )
 
         if self._space_accounting:
@@ -133,7 +136,8 @@ class NodeSim(object):
                 start_space_accounting_server(
                     self._node_name,
                     _space_accounting_server_address,
-                    _space_accounting_pipeline_address
+                    _space_accounting_pipeline_address,
+                    _event_publisher_pull_addresses[self._node_index]
                 )
 
         if self._performance_packager:

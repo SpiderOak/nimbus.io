@@ -213,8 +213,13 @@ class Application(object):
                         **url_match.groupdict()
                     )
                     return result
-                except Exception:
+                except Exception, instance:
                     self._log.exception("%s" % (collection_entry, ))
+                    self._event_push_client.exception(
+                        "unhandled_exception",
+                        str(instance),
+                        exctype=instance.__class__.__name__
+                    )
                     raise
 
             if url_matched:

@@ -19,6 +19,7 @@ import Statgrabber
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection
@@ -210,6 +211,7 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "event-push-client"     : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
@@ -229,6 +231,11 @@ def _setup(_halt_event, state):
     )
     state["resilient-server"].register(state["pollster"])
 
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "data_reader"
+    )
+
     state["queue-dispatcher"] = DequeDispatcher(
         state,
         state["receive-queue"],
@@ -244,6 +251,8 @@ def _setup(_halt_event, state):
         _repository_path
     )
 
+    state["event-push-client"].info("program-start", "data_reader starts")  
+
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
@@ -255,6 +264,7 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
+    state["event-push-client"].close()
 
     state["zmq-context"].term()
 
@@ -270,7 +280,8 @@ if __name__ == "__main__":
             _log_path,
             state,
             pre_loop_actions=[_setup, ],
-            post_loop_actions=[_tear_down, ]
+            post_loop_actions=[_tear_down, ],
+            exception_action=exception_event
         )
     )
 

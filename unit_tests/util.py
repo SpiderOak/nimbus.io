@@ -80,7 +80,12 @@ def start_data_writer(
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_data_reader(node_name, address, repository_path):
+def start_data_reader(
+    node_name, 
+    address, 
+    event_publisher_pull_address, 
+    repository_path
+):
     log = logging.getLogger("start_data_reader_%s" % (node_name, ))
     server_dir = identify_program_dir(u"data_reader")
     server_path = os.path.join(server_dir, "data_reader_main.py")
@@ -96,6 +101,8 @@ def start_data_reader(node_name, address, repository_path):
         "NIMBUSIO_NODE_NAME"         : node_name,
         "NIMBUSIO_DATA_READER_ADDRESS"        : address,
         "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+            event_publisher_pull_address,
         "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
     }        
 
@@ -108,6 +115,7 @@ def start_anti_entropy_server(
     node_name, 
     anti_entropy_server_addresses,
     pipeline_address,
+    event_publisher_pull_address, 
 ):
     log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
     server_dir = identify_program_dir(u"anti_entropy_server")
@@ -132,12 +140,19 @@ def start_anti_entropy_server(
         "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
         "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
         "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+            event_publisher_pull_address,
     }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_space_accounting_server(node_name, address, pipeline_address):
+def start_space_accounting_server(
+    node_name, 
+    address, 
+    pipeline_address,
+    event_publisher_pull_address, 
+):
     log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
     server_dir = identify_program_dir(u"space_accounting_server")
     server_path = os.path.join(
@@ -156,6 +171,8 @@ def start_space_accounting_server(node_name, address, pipeline_address):
         "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
         "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
         "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+            event_publisher_pull_address,
     }        
 
     log.info("starting %s %s" % (args, environment, ))
@@ -168,6 +185,7 @@ def start_handoff_server(
     pipeline_address, 
     data_reader_addresses, 
     data_writer_addresses, 
+    event_publisher_pull_address, 
     repository_path
 ):
     log = logging.getLogger("start_handoff_server_%s" % (local_node_name, ))
@@ -190,6 +208,8 @@ def start_handoff_server(
         "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
         "NIMBUSIO_DATA_READER_ADDRESSES"    : " ".join(data_reader_addresses),
         "NIMBUSIO_DATA_WRITER_ADDRESSES"    : " ".join(data_writer_addresses),
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+            event_publisher_pull_address,
         "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
         "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
         "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",

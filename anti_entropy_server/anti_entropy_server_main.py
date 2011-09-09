@@ -43,6 +43,7 @@ import zmq
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.event_push_client import EventPushClient, exception_event
 from tools.pull_server import PULLServer
 from tools.resilient_client import ResilientClient
 from tools.deque_dispatcher import DequeDispatcher
@@ -378,6 +379,7 @@ def _create_state():
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
         "resilient-server"          : None,
+        "event-push-client"         : None,
         "pull-server"               : None,
         "anti-entropy-clients"      : None,
         "collection-list-requestor" : None,
@@ -430,6 +432,11 @@ def _setup(_halt_event, state):
     )
     state["pull-server"].register(state["pollster"])
 
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "anti_entropy_server"
+    )
+
     state["anti-entropy-clients"] = list()
     for node_name, anti_entropy_server_address in zip(
         _node_names, _anti_entropy_server_addresses
@@ -462,6 +469,10 @@ def _setup(_halt_event, state):
     )
     state["state-cleaner"] = StateCleaner(state)
 
+    state["event-push-client"].info(
+        "program-start", "anti_entropy_server starts"
+    )  
+
     # start the collection list requestor right away
     # start the consistency check starter a little later, when
     # we presumably have some collection ids
@@ -487,6 +498,8 @@ def _tear_down(_state):
     for anti_entropy_client in state["anti-entropy-clients"]:
         anti_entropy_client.close()
 
+    state["event-push-client"].close()
+
     state["zmq-context"].term()
     state["local-database-connection"].close()
 
@@ -499,7 +512,8 @@ if __name__ == "__main__":
             _log_path,
             state,
             pre_loop_actions=[_setup, ],
-            post_loop_actions=[_tear_down, ]
+            post_loop_actions=[_tear_down, ],
+            exception_action=exception_event
         )
     )
 

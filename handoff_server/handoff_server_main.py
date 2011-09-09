@@ -16,6 +16,7 @@ import zmq
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.event_push_client import EventPushClient, exception_event
 from tools.resilient_client import ResilientClient
 from tools.pull_server import PULLServer
 from tools.deque_dispatcher import DequeDispatcher
@@ -291,6 +292,7 @@ def _create_state():
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
         "resilient-server"          : None,
+        "event-push-client"         : None,
         "pull-server"               : None,
         "reader-client-dict"        : dict(),
         "writer-client-dict"        : dict(),
@@ -350,6 +352,11 @@ def _setup(_halt_event, state):
                  time.time() + random.random() * 60.0, )
             )        
 
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "handoff_server"
+    )
+
     log.info("binding pull-server to %s" % (_handoff_server_pipeline_address, ))
     state["pull-server"] = PULLServer(
         state["zmq-context"],
@@ -403,6 +410,8 @@ def _setup(_halt_event, state):
     state["handoff-requestor"] = HandoffRequestor(state, _local_node_name)
     state["handoff-starter"] = HandoffStarter(state, _local_node_name)
 
+    state["event-push-client"].info("program-start", "handoff_server starts")  
+
     timer_driven_callbacks = [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
@@ -434,6 +443,8 @@ def _tear_down(state):
     for handoff_server_client in state["handoff-server-clients"]:
         handoff_server_client.close()
 
+    state["event-push-client"].close()
+
     state["zmq-context"].term()
 
     state["database-connection"].close()
@@ -445,7 +456,8 @@ if __name__ == "__main__":
             _log_path,
             state,
             pre_loop_actions=[_setup, ],
-            post_loop_actions=[_tear_down, ]
+            post_loop_actions=[_tear_down, ],
+            exception_action=exception_event
         )
     )
 

@@ -27,6 +27,7 @@ import zmq
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.xrep_server import XREPServer
+from tools.event_push_client import EventPushClient, exception_event
 from tools.pull_server import PULLServer
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
@@ -120,6 +121,7 @@ def _create_state():
         "pollster"              : ZeroMQPollster(),
         "pull-server"           : None,
         "xrep-server"           : None,
+        "event-push-client"     : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
@@ -136,6 +138,11 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["xrep-server"].register(state["pollster"])
+
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "space_accounting_server"
+    )
 
     log.info("binding pull-server to %s" % (
         _space_accounting_pipeline_address, 
@@ -155,6 +162,10 @@ def _setup(_halt_event, state):
 
     state["state-cleaner"] = StateCleaner(state)
 
+    state["event-push-client"].info(
+        "program-start", "space_accounting_server starts"
+    )  
+
     # hand the pollster and the queue-dispatcher to the time-queue 
     return [
         (state["pollster"].run, time.time(), ), 
@@ -171,6 +182,8 @@ def _tear_down(_state):
     log.debug("stopping pull server")
     state["pull-server"].close()
 
+    state["event-push-client"].close()
+
     state["zmq-context"].term()
 
     log.debug("teardown complete")
@@ -182,7 +195,8 @@ if __name__ == "__main__":
             _log_path,
             state,
             pre_loop_actions=[_setup, ],
-            post_loop_actions=[_tear_down, ]
+            post_loop_actions=[_tear_down, ],
+            exception_action=exception_event
         )
     )
 

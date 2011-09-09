@@ -46,6 +46,8 @@ _space_accounting_server_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS"]
 _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
+_web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
+_web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
 
 class WebServer(object):
     def __init__(self):
@@ -129,7 +131,10 @@ class WebServer(object):
             self._accounting_client,
             self._event_push_client
         )
-        self.wsgi_server = WSGIServer(('', 8088), self.application)
+        self.wsgi_server = WSGIServer(
+            (_web_server_host, _web_server_port), 
+            self.application
+        )
         self._stopped_event = Event()
 
     def start(self):

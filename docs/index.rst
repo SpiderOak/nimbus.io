@@ -12,7 +12,10 @@ Contents:
    :maxdepth: 2
 
    intro
-   tools
+   installation
+   configuration
+   operation
+   software_components
 
 Indices and tables
 ==================

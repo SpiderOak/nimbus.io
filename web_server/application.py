@@ -213,6 +213,13 @@ class Application(object):
                         **url_match.groupdict()
                     )
                     return result
+                except exc.HTTPException, instance:
+                    self._log.error("%s %s %s" % (
+                        instance.__class__.__name__, 
+                        instance, 
+                        collection_entry,
+                    ))
+                    raise
                 except Exception, instance:
                     self._log.exception("%s" % (collection_entry, ))
                     self._event_push_client.exception(

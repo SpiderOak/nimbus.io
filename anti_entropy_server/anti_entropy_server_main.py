@@ -490,7 +490,7 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
-    log.debug("stopping xrep server")
+    log.debug("stopping server")
     state["resilient-server"].close()
 
     log.debug("stopping anti entropy clients")

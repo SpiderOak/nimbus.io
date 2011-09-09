@@ -2,7 +2,7 @@
 """
 resilient_client.py
 
-a class that manages a zeromq XREQ socket as a client,
+a class that manages a zeromq DEALER (aka XREQ) socket as a client,
 to a resilient server
 """
 from collections import deque, namedtuple
@@ -82,7 +82,7 @@ class ResilientClient(object):
         self._server_node_name = server_node_name
         self._server_address = server_address
 
-        self._xreq_socket = None
+        self._dealer_socket = None
 
         self._send_queue = deque()
 
@@ -120,13 +120,13 @@ class ResilientClient(object):
         if elapsed_time < _handshake_retry_interval:
             return
 
-        assert self._xreq_socket is None
-        self._xreq_socket = self._context.socket(zmq.XREQ)
-        self._xreq_socket.setsockopt(zmq.LINGER, 1000)
+        assert self._dealer_socket is None
+        self._dealer_socket = self._context.socket(zmq.XREQ)
+        self._dealer_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting to server")
-        self._xreq_socket.connect(self._server_address)
+        self._dealer_socket.connect(self._server_address)
         self._pollster.register_read(
-            self._xreq_socket, self._pollster_callback
+            self._dealer_socket, self._pollster_callback
         )
 
         message = {
@@ -187,16 +187,16 @@ class ResilientClient(object):
         self._pending_message_start_time = None
 
     def _disconnect(self):
-        assert self._xreq_socket is not None
-        self._pollster.unregister(self._xreq_socket)
-        self._xreq_socket.close()
-        self._xreq_socket = None
+        assert self._dealer_socket is not None
+        self._pollster.unregister(self._dealer_socket)
+        self._dealer_socket.close()
+        self._dealer_socket = None
 
         self._status = _status_disconnected
         self._status_time = time.time()
 
     def close(self):
-        if self._xreq_socket is not None:
+        if self._dealer_socket is not None:
             self._disconnect()
 
     def queue_message_for_send(self, message_control, data=None):
@@ -273,25 +273,25 @@ class ResilientClient(object):
                 message = message._replace(body=[message.body, ])
 
         if message.body is None:
-            self._xreq_socket.send_json(message.control)
+            self._dealer_socket.send_json(message.control)
         else:
-            self._xreq_socket.send_json(message.control, zmq.SNDMORE)
+            self._dealer_socket.send_json(message.control, zmq.SNDMORE)
             for segment in message.body[:-1]:
-                self._xreq_socket.send(segment, zmq.SNDMORE)
-            self._xreq_socket.send(message.body[-1])
+                self._dealer_socket.send(segment, zmq.SNDMORE)
+            self._dealer_socket.send(message.body[-1])
 
     def _receive_message(self):
         # we should only be receiving ack, so we don't
         # check for multipart messages
         try:
-            return self._xreq_socket.recv_json(zmq.NOBLOCK)
+            return self._dealer_socket.recv_json(zmq.NOBLOCK)
         except zmq.ZMQError, instance:
             if instance.errno == zmq.EAGAIN:
                 self._log.warn("socket would have blocked")
                 return None
             raise
 
-        assert not self._xreq_socket.rcvmore()
+        assert not self._dealer_socket.rcvmore()
 
     def run(self, halt_event):
         """

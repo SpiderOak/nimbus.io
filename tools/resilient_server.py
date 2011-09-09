@@ -2,7 +2,8 @@
 """
 resilient_server.py
 
-a class that manages an XREP socket some PUSH clients as a resilient server
+a class that manages a ROUTER (aka XREP) socket and some PUSH clients 
+as a resilient server
 """
 from collections import namedtuple
 import logging
@@ -17,15 +18,15 @@ _message_format = namedtuple("Message", "ident control body")
 
 class ResilientServer(object):
     """
-    a class that manages an XREP socket and some PUSH clients 
+    a class that manages an ROUTER (aka XREP) socket and some PUSH clients 
     as a resilient server
     """
     def __init__(self, context, address, receive_queue):
         self._log = logging.getLogger("ResilientServer-%s" % (address, ))
 
         self._context = context
-        self._xrep_socket = context.socket(zmq.XREP)
-        self._xrep_socket.setsockopt(zmq.LINGER, 1000)
+        self._router_socket = context.socket(zmq.XREP)
+        self._router_socket.setsockopt(zmq.LINGER, 1000)
 
         # a server can bind to multiple zeromq addresses
         if type(address) in [list, tuple, ]:
@@ -39,7 +40,7 @@ class ResilientServer(object):
                 prepare_ipc_path(bind_address)
 
             self._log.debug("binding to %s" % (bind_address, ))
-            self._xrep_socket.bind(bind_address)
+            self._router_socket.bind(bind_address)
 
         self._receive_queue = receive_queue
 
@@ -53,13 +54,13 @@ class ResilientServer(object):
         self._active_clients = dict()
 
     def register(self, pollster):
-        pollster.register_read(self._xrep_socket, self._pollster_callback)
+        pollster.register_read(self._router_socket, self._pollster_callback)
 
     def unregister(self, pollster):
-        pollster.unregister(self._xrep_socket)
+        pollster.unregister(self._router_socket)
 
     def close(self):
-        self._xrep_socket.close()
+        self._router_socket.close()
         for client in self._active_clients.values():
             client.close()
 
@@ -124,25 +125,25 @@ class ResilientServer(object):
             "message-id"   : message_id,
             "incoming-type": incoming_type,
         }
-        self._xrep_socket.send(message_ident, zmq.SNDMORE)
-        self._xrep_socket.send_json(ack_message)
+        self._router_socket.send(message_ident, zmq.SNDMORE)
+        self._router_socket.send_json(ack_message)
 
     def _receive_message(self):
         try:
-            ident = self._xrep_socket.recv(zmq.NOBLOCK)        
+            ident = self._router_socket.recv(zmq.NOBLOCK)        
         except zmq.ZMQError, instance:
             if instance.errno == zmq.EAGAIN:
                 self._log.warn("socket would have blocked")
                 return None
             raise
 
-        assert self._xrep_socket.rcvmore(), \
+        assert self._router_socket.rcvmore(), \
             "Unexpected missing message control part."
-        control = self._xrep_socket.recv_json()
+        control = self._router_socket.recv_json()
 
         body = []
-        while self._xrep_socket.rcvmore():
-            body.append(self._xrep_socket.recv())
+        while self._router_socket.rcvmore():
+            body.append(self._router_socket.recv())
 
         # 2011-04-06 dougfort -- if someone is expecting a list and we only get
         # one segment, they are going to have to deal with it.

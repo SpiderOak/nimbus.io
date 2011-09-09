@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-greenlet_xreq_client.py
+greenlet_dealer_client.py
 
-a class that manages a zeromq XREQ socket as a client,
-to an XREP server
+a class that manages a zeromq DEALER (aka XREQ) socket as a client,
+to a ROUTER (aka XREP) server
 """
 from collections import namedtuple
 import logging
@@ -16,31 +16,31 @@ from gevent_zeromq import zmq
 # our internal message format
 _message_format = namedtuple("Message", "control body")
 
-class GreenletXREQClient(object):
+class GreenletDealerClient(object):
     """
-    a class that manages a zeromq XREQ socket as a client
+    a class that manages a zeromq DEALER (aka XREQ) socket as a client
     """
     def __init__(self, context, node_name, address):
-        self._log = logging.getLogger("XREQClient-%s" % (node_name, ))
+        self._log = logging.getLogger("DealerClient-%s" % (node_name, ))
 
-        self._xreq_socket = context.socket(zmq.XREQ)
-        self._xreq_socket.setsockopt(zmq.LINGER, 1000)
+        self._dealer_socket = context.socket(zmq.XREQ)
+        self._dealer_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting to %s" % (address, ))
-        self._xreq_socket.connect(address)
+        self._dealer_socket.connect(address)
 
         self._send_queue = Queue(maxsize=None)
         self._delivery_queues = dict()
 
     def register(self, pollster):
         pollster.register_read_or_write(
-            self._xreq_socket, self._pollster_callback
+            self._dealer_socket, self._pollster_callback
         )
 
     def unregister(self, pollster):
-        pollster.unregister(self._xreq_socket)
+        pollster.unregister(self._dealer_socket)
 
     def close(self):
-        self._xreq_socket.close()
+        self._dealer_socket.close()
 
     def queue_message_for_send(self, message_control, data=None):
         """
@@ -100,16 +100,16 @@ class GreenletXREQClient(object):
                 message = message._replace(body=[message.body, ])
 
         if message.body is None:
-            self._xreq_socket.send_json(message.control)
+            self._dealer_socket.send_json(message.control)
         else:
-            self._xreq_socket.send_json(message.control, zmq.SNDMORE)
+            self._dealer_socket.send_json(message.control, zmq.SNDMORE)
             for segment in message.body[:-1]:
-                self._xreq_socket.send(segment, zmq.SNDMORE)
-            self._xreq_socket.send(message.body[-1])
+                self._dealer_socket.send(segment, zmq.SNDMORE)
+            self._dealer_socket.send(message.body[-1])
 
     def _receive_message(self):
         try:
-            control = self._xreq_socket.recv_json(zmq.NOBLOCK)
+            control = self._dealer_socket.recv_json(zmq.NOBLOCK)
         except zmq.ZMQError, instance:
             if instance.errno == zmq.EAGAIN:
                 self._log.warn("socket would have blocked")
@@ -117,8 +117,8 @@ class GreenletXREQClient(object):
             raise
 
         body = []
-        while self._xreq_socket.rcvmore():
-            body.append(self._xreq_socket.recv())
+        while self._dealer_socket.rcvmore():
+            body.append(self._dealer_socket.recv())
 
         # 2011-04-06 dougfort -- if someone is expecting a list and we only get
         # one segment, they are going to have to deal with it.

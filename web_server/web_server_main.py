@@ -17,7 +17,7 @@ from gevent_zeromq import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
-from tools.greenlet_xreq_client import GreenletXREQClient
+from tools.greenlet_dealer_client import GreenletDealerClient
 from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer
 from tools.deliverator import Deliverator
@@ -98,12 +98,12 @@ class WebServer(object):
             )
             self._data_readers.append(data_reader)
 
-        xreq_client = GreenletXREQClient(
+        dealer_client = GreenletDealerClient(
             self._zeromq_context, 
             _local_node_name, 
             _space_accounting_server_address
         )
-        xreq_client.register(self._pollster)
+        dealer_client.register(self._pollster)
 
         push_client = GreenletPUSHClient(
             self._zeromq_context, 
@@ -113,7 +113,7 @@ class WebServer(object):
 
         self._accounting_client = SpaceAccountingClient(
             _local_node_name,
-            xreq_client,
+            dealer_client,
             push_client
         )
 

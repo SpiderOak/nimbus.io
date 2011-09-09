@@ -26,7 +26,7 @@ import time
 import zmq
 
 from tools.zeromq_pollster import ZeroMQPollster
-from tools.xrep_server import XREPServer
+from tools.router_server import RouterServer
 from tools.event_push_client import EventPushClient, exception_event
 from tools.pull_server import PULLServer
 from tools.deque_dispatcher import DequeDispatcher
@@ -72,8 +72,8 @@ def _handle_space_usage_request(state, message, _data):
 
     reply = {
         "message-type"  : "space-usage-reply",
-        "xrep-ident"    : message["xrep-ident"],
-        "collection-id"     : message["collection-id"],
+        "router-ident"    : message["router-ident"],
+        "collection-id" : message["collection-id"],
         "message-id"    : message["message-id"],
         "result"        : None,
     }
@@ -89,7 +89,7 @@ def _handle_space_usage_request(state, message, _data):
         log.warn(error_message)
         reply["result"] = "unknown-collection"
         reply["error-message"] = error_message
-        state["xrep-server"].queue_message_for_send(reply)
+        state["router-server"].queue_message_for_send(reply)
         return
     finally:
         space_accounting_database.close()
@@ -108,7 +108,7 @@ def _handle_space_usage_request(state, message, _data):
     reply["bytes-added"] = long(bytes_added)
     reply["bytes-removed"] = long(bytes_removed)
     reply["bytes-retrieved"] = long(bytes_retrieved)
-    state["xrep-server"].queue_message_for_send(reply)
+    state["router-server"].queue_message_for_send(reply)
 
 _dispatch_table = {
     "space-accounting-detail"   : _handle_space_accounting_detail,
@@ -120,7 +120,7 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "pull-server"           : None,
-        "xrep-server"           : None,
+        "router-server"           : None,
         "event-push-client"     : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
@@ -131,13 +131,13 @@ def _create_state():
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
-    log.info("binding xrep-server to %s" % (_space_accounting_server_address, ))
-    state["xrep-server"] = XREPServer(
+    log.info("binding router-server to %s" % (_space_accounting_server_address, ))
+    state["router-server"] = RouterServer(
         state["zmq-context"],
         _space_accounting_server_address,
         state["receive-queue"]
     )
-    state["xrep-server"].register(state["pollster"])
+    state["router-server"].register(state["pollster"])
 
     state["event-push-client"] = EventPushClient(
         state["zmq-context"],
@@ -176,8 +176,8 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
-    log.debug("stopping xrep server")
-    state["xrep-server"].close()
+    log.debug("stopping router server")
+    state["router-server"].close()
 
     log.debug("stopping pull server")
     state["pull-server"].close()

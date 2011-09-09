@@ -11,7 +11,7 @@ import time
 import zmq
 
 from tools.zeromq_pollster import ZeroMQPollster
-from tools.xreq_client import XREQClient
+from tools.dealer_client import DealerClient
 from tools.push_client import PUSHClient
 
 def send_request_and_get_reply(address, request, data=None):
@@ -22,14 +22,14 @@ def send_request_and_get_reply_and_data(address, request, data=None):
     context = zmq.Context()
     pollster = ZeroMQPollster()
     receive_queue = deque()
-    xreq_client = XREQClient(
+    dealer_client = DealerClient(
         context,
         address,
         receive_queue
     )
-    xreq_client.register(pollster)
+    dealer_client.register(pollster)
 
-    xreq_client.queue_message_for_send(request, data)
+    dealer_client.queue_message_for_send(request, data)
 
     halt_event = Event()
     retry_count = 0
@@ -46,7 +46,7 @@ def send_request_and_get_reply_and_data(address, request, data=None):
         else:
             break
 
-    xreq_client.close()
+    dealer_client.close()
     context.term()
     return reply, data
 

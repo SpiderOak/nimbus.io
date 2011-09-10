@@ -12,10 +12,9 @@ Contents:
    :maxdepth: 2
 
    intro
-   installation
-   configuration
-   operation
-   software_components
+   developers_guide
+   administrators_guide
+   hackers_guide
 
 Indices and tables
 ==================

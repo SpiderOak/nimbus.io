@@ -11,6 +11,8 @@ import sys
 
 from tools.push_client import PUSHClient
 
+unhandled_exception_topic = "unhandled_exception"
+
 _event_publisher_pull_address = \
         os.environ["NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS"]
 
@@ -21,8 +23,8 @@ def exception_event(state):
     """
     exctype, value = sys.exc_info()[:2]
     state["event-push-client"].exception(
-        "unhandled_exception",
-        value,
+        unhandled_exception_topic,
+        str(value),
         exctype=exctype.__name__
     )
 

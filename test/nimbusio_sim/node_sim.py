@@ -11,7 +11,8 @@ import os.path
 class SimError(Exception):
     pass
 
-from unit_tests.util import start_data_writer, \
+from unit_tests.util import start_event_aggregator, \
+        start_data_writer, \
         start_data_reader, \
         start_data_writer, \
         start_space_accounting_server, \
@@ -34,6 +35,7 @@ _space_accounting_pipeline_address = "tcp://127.0.0.1:8550"
 _anti_entropy_server_base_port = 8600
 _handoff_server_base_port = 8700
 _event_publisher_base_port = 8800
+_event_aggregator_base_port = 8900
 _data_writer_addresses = [
     "tcp://127.0.0.1:%s" % (_data_writer_base_port+i, ) \
     for i in range(_node_count)
@@ -67,6 +69,9 @@ _event_publisher_pub_addresses = [
     "tcp://127.0.0.1:%s" % (_event_publisher_base_port+i, ) \
     for i in range(_node_count)
 ]
+_event_aggregator_address = "tcp://127.0.0.1:%s" % (
+    _event_aggregator_base_port 
+)
 
 class NodeSim(object):
     """simulate one node in a cluster"""
@@ -76,7 +81,8 @@ class NodeSim(object):
         test_dir, 
         node_index, 
         space_accounting=False,
-        performance_packager=False
+        performance_packager=False,
+        event_aggregator=False
     ):
         self._node_index = node_index
         self._node_name = _generate_node_name(node_index)
@@ -87,6 +93,7 @@ class NodeSim(object):
         self._processes = dict()
         self._space_accounting = space_accounting
         self._performance_packager = performance_packager
+        self._event_aggregator = event_aggregator
 
     def __str__(self):
         return self._node_name
@@ -144,6 +151,14 @@ class NodeSim(object):
             self._processes["performance-packager"] = \
                 start_performance_packager(
                     self._node_name,
+                    _event_publisher_pub_addresses
+                )
+
+        if self._event_aggregator:
+            self._processes["event_aggregator"] = \
+                start_event_aggregator(
+                    _event_aggregator_address,
+                    _event_publisher_pull_addresses[self._node_index],
                     _event_publisher_pub_addresses
                 )
 

@@ -25,7 +25,8 @@ class CommandInterpreter(cmd.Cmd):
                 _temp_dir, 
                 0, 
                 space_accounting=True, 
-                performance_packager=True
+                performance_packager=True,
+                event_aggregator=True
             )
         )
         for i in xrange(_node_count-1):

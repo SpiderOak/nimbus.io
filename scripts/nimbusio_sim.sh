@@ -1,5 +1,4 @@
 #!/bin/bash
-source ${TOOL}/bin/env.sh
 export NIMBUSIO="${HOME}/nimbus.io"
 export PYTHONPATH="${NIMBUSIO}"
 export NIMBUSIO_LOG_DIR="/var/log/nimbusio"

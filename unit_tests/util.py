@@ -48,6 +48,33 @@ def terminate_process(process):
     assert process.returncode == 0, \
         process.returncode
 
+def start_event_aggregator(
+    address, 
+    event_publisher_pull_address, 
+    event_publisher_pub_addresses 
+):
+    log = logging.getLogger("start_event_aggregator")
+    server_dir = identify_program_dir(u"event_aggregator")
+    server_path = os.path.join(server_dir, "event_aggregator_main.py")
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    environment = {
+        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+        "NIMBUSIO_EVENT_AGGREGATOR_ADDRESS"        : address,
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+            event_publisher_pull_address,
+        "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES" : \
+            " ".join(event_publisher_pub_addresses),
+    }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+
 def start_data_writer(
     cluster_name, 
     node_name, 

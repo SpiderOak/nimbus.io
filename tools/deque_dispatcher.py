@@ -12,13 +12,19 @@ class DequeDispatcher(object):
     a time_queue object to dispatch to functions based on message-type
     """    
     def __init__(
-        self, state, input_queue, dispatch_table, polling_interval=1.0
+        self, 
+        state, 
+        input_queue, 
+        dispatch_table, 
+        polling_interval=1.0,
+        default_handler=None
     ):
         self._log = logging.getLogger("deque_dispatcher")
         self._state = state
         self._input_queue = input_queue
         self._dispatch_table = dispatch_table
         self._polling_interval = polling_interval
+        self._default_handler = default_handler
 
     def run(self, halt_event):
         """
@@ -46,9 +52,14 @@ class DequeDispatcher(object):
         return next_tasks
 
     def _dispatch_message(self, message, data):
+        handler = self._default_handler
+
         try:
             handler = self._dispatch_table[message["message-type"]]
         except KeyError:
+            pass
+
+        if handler is None:
             self._log.error("Unknown message type: %s" % (message,))
             return None
 

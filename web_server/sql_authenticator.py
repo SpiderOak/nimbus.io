@@ -78,6 +78,7 @@ class SqlAuthenticator(object):
         except (TypeError, ValueError):
             return False
 
+        # The timestamp must agree within 10 minutes of that on the server
         if abs(time.time() - timestamp) > 600:
             return False
 

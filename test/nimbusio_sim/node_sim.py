@@ -69,7 +69,7 @@ _event_publisher_pub_addresses = [
     "tcp://127.0.0.1:%s" % (_event_publisher_base_port+i, ) \
     for i in range(_node_count)
 ]
-_event_aggregator_address = "tcp://127.0.0.1:%s" % (
+_event_aggregator_pub_address = "tcp://127.0.0.1:%s" % (
     _event_aggregator_base_port 
 )
 
@@ -157,7 +157,7 @@ class NodeSim(object):
         if self._event_aggregator:
             self._processes["event_aggregator"] = \
                 start_event_aggregator(
-                    _event_aggregator_address,
+                    _event_aggregator_pub_address,
                     _event_publisher_pull_addresses[self._node_index],
                     _event_publisher_pub_addresses
                 )

@@ -97,7 +97,7 @@ class router(list):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
-def _create_data_writers(clients):
+def _create_data_writers(event_push_client, clients):
     data_writers_dict = dict()
 
     connected_clients_by_node = list()
@@ -122,6 +122,13 @@ def _create_data_writers(clients):
     
     for node_name, client in disconnected_clients_by_node:
         backup_clients = random.sample(connected_clients, _handoff_count)
+        event_push_client.info(
+            "handoff-start",
+            "start handoff of %s to %s %s",
+            start_time=time.time(),
+            disconnected_node=node_name,
+            backup_nodes=[b.server_node_name for b in backup_clients],
+        )
         assert backup_clients[0] != backup_clients[1]
         data_writer_handoff_client = DataWriterHandoffClient(
             client.server_node_name,
@@ -180,61 +187,57 @@ class Application(object):
         if not authenticated:
             raise exc.HTTPUnauthorized()
 
-        try:
-            url_matched = False
-            for regex, query_args, methods, func_name in self.routes:
-                url_match = regex.match(req.path)
-                if not url_match:
-                    continue
-                args_matched = False
-                for arg, arg_regex in query_args.iteritems():
-                    if arg not in req.GET:
-                        break
-                    arg_match = arg_regex.match(req.GET[arg])
-                    if not arg_match:
-                        break
-                else:
-                    args_matched = True
-                if not args_matched:
-                    continue
-                url_matched = True
-                if req.method not in methods:
-                    continue
-                try:
-                    method = getattr(self, func_name)
-                except AttributeError:
-                    continue
+        url_matched = False
+        for regex, query_args, methods, func_name in self.routes:
+            url_match = regex.match(req.path)
+            if not url_match:
+                continue
+            args_matched = False
+            for arg, arg_regex in query_args.iteritems():
+                if arg not in req.GET:
+                    break
+                arg_match = arg_regex.match(req.GET[arg])
+                if not arg_match:
+                    break
+            else:
+                args_matched = True
+            if not args_matched:
+                continue
+            url_matched = True
+            if req.method not in methods:
+                continue
+            try:
+                method = getattr(self, func_name)
+            except AttributeError:
+                continue
 
-                try:
-                    result = method(
-                        collection_entry, 
-                        req, 
-                        *url_match.groups(), 
-                        **url_match.groupdict()
-                    )
-                    return result
-                except exc.HTTPException, instance:
-                    self._log.error("%s %s %s" % (
-                        instance.__class__.__name__, 
-                        instance, 
-                        collection_entry,
-                    ))
-                    raise
-                except Exception, instance:
-                    self._log.exception("%s" % (collection_entry, ))
-                    self._event_push_client.exception(
-                        "unhandled_exception",
-                        str(instance),
-                        exctype=instance.__class__.__name__
-                    )
-                    raise
+            try:
+                result = method(
+                    collection_entry, 
+                    req, 
+                    *url_match.groups(), 
+                    **url_match.groupdict()
+                )
+                return result
+            except exc.HTTPException, instance:
+                self._log.error("%s %s %s" % (
+                    instance.__class__.__name__, 
+                    instance, 
+                    collection_entry,
+                ))
+                raise
+            except Exception, instance:
+                self._log.exception("%s" % (collection_entry, ))
+                self._event_push_client.exception(
+                    "unhandled_exception",
+                    str(instance),
+                    exctype=instance.__class__.__name__
+                )
+                raise
 
-            if url_matched:
-                raise exc.HTTPMethodNotAllowed()
-            raise exc.HTTPNotFound(req.path)
-        except:
-            self._log.exception('error in __call__')
-            raise
+        if url_matched:
+            raise exc.HTTPMethodNotAllowed()
+        raise exc.HTTPNotFound(req.path)
 
     @routes.add(r'/usage$')
     def usage(self, collection_entry, _req):
@@ -401,7 +404,10 @@ class Application(object):
                 collection_entry.username,
                 key,
         ))
-        data_writers = _create_data_writers(self._data_writer_clients)
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            self._data_writer_clients
+        )
 
         timestamp = create_timestamp()
 
@@ -621,7 +627,10 @@ class Application(object):
 
         meta_dict = _build_meta_dict(req.GET)
 
-        data_writers = _create_data_writers(self._data_writer_clients) 
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            self._data_writer_clients
+        ) 
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,

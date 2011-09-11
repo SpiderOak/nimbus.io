@@ -33,12 +33,17 @@ def _run_until_halt(
     # run any pre-loop actions.
     # they have the opportunity to modify state
     # and can return tasks to be added to the time queue
+    # if a pre-loop actions raises an exception, we must halt
     log.debug("pre_loop_action(s)")
     for pre_loop_action in pre_loop_actions:
         if halt_event.is_set():
             log.info("halt_event signaled during pre_loop")
             return
-        result_list = pre_loop_action(halt_event, state)
+        try:
+            result_list = pre_loop_action(halt_event, state)
+        except Exception:
+            halt_event.set()
+            raise
         if result_list is not None:
             for task, start_time in result_list:
                 time_queue.put(task, start_time=start_time)

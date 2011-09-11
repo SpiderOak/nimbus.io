@@ -65,7 +65,7 @@ def start_event_aggregator(
     environment = {
         "PYTHONPATH"                        : os.environ["PYTHONPATH"],
         "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
-        "NIMBUSIO_EVENT_AGGREGATOR_ADDRESS"        : address,
+        "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"        : address,
         "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
             event_publisher_pull_address,
         "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES" : \

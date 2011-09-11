@@ -147,19 +147,19 @@ class NodeSim(object):
                     _event_publisher_pull_addresses[self._node_index]
                 )
 
-        if self._performance_packager:
-            self._processes["performance-packager"] = \
-                start_performance_packager(
-                    self._node_name,
-                    _event_publisher_pub_addresses
-                )
-
         if self._event_aggregator:
             self._processes["event_aggregator"] = \
                 start_event_aggregator(
                     _event_aggregator_pub_address,
                     _event_publisher_pull_addresses[self._node_index],
                     _event_publisher_pub_addresses
+                )
+
+        if self._performance_packager:
+            self._processes["performance-packager"] = \
+                start_performance_packager(
+                    self._node_name,
+                    _event_aggregator_pub_address
                 )
 
     def stop(self):

@@ -266,7 +266,7 @@ def start_event_publisher(node_name, pull_address, pub_address):
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_performance_packager(node_name, pub_addresses):
+def start_performance_packager(node_name, event_aggregator_pub_address):
     log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
     server_dir = identify_program_dir(u"performance_packager")
     server_path = os.path.join(
@@ -282,7 +282,8 @@ def start_performance_packager(node_name, pub_addresses):
         "PYTHONPATH"                            : os.environ["PYTHONPATH"],
         "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
         "NIMBUSIO_NODE_NAME"             : node_name,
-        "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES"  : " ".join(pub_addresses),
+        "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"  : \
+            event_aggregator_pub_address,
     }        
 
     log.info("starting %s %s" % (args, environment, ))

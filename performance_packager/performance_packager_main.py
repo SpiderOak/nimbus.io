@@ -21,8 +21,8 @@ _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_performance_packager_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
-_event_publisher_pub_addresses = \
-        os.environ["NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES"].split()
+_event_aggregator_pub_address = \
+        os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _sub_topics = ["archive-stats", "retrieve-stats", ]
 _report_template = "%s %-8s %6d bytes/sec"
 
@@ -59,7 +59,7 @@ def _create_state():
     return {
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
-        "sub-clients"           : list(),
+        "sub-client"            : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
     }
@@ -67,16 +67,14 @@ def _create_state():
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
-    for pub_address in _event_publisher_pub_addresses:
-        log.info("connecting sub-client to %s" % (pub_address, ))
-        sub_client = SUBClient(
-                state["zmq-context"],
-                pub_address,
-                _sub_topics,
-                state["receive-queue"]
-            )
-        sub_client.register(state["pollster"])
-        state["sub-clients"].append(sub_client)
+    log.info("connecting sub-client to %s" % (_event_aggregator_pub_address, ))
+    state["sub-client"] = SUBClient(
+        state["zmq-context"],
+        _event_aggregator_pub_address,
+        _sub_topics,
+        state["receive-queue"]
+    )
+    state["sub-client"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -93,9 +91,8 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
-    log.debug("stopping sub clients")
-    for sub_client in state["sub-clients"]:
-        sub_client.close()
+    log.debug("stopping sub client")
+    state["sub-client"].close()
 
     log.debug("stopping zeromq context")
     state["zmq-context"].term()

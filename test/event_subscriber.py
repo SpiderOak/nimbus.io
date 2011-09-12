@@ -16,15 +16,21 @@ from tools.zeromq_pollster import ZeroMQPollster
 from tools.sub_client import SUBClient
 from tools.callback_dispatcher import CallbackDispatcher
 from tools import time_queue_driven_process
+from tools.event_push_client import level_cmp
 
 _log_path = u"%s/event_subscriber.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _event_aggregator_pub_address = \
         os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
+_report_line_template = "%20(node-name)s %20(source)s %(description)"
 
 def _handle_incoming_message(state, message, _data):
     log = logging.getLogger("_handle_incoming_message")
-    log.debug(str(message))
-    print str(message)
+    if level_cmp(message["level"], state["min-level"]) < 0:
+        return
+
+    report_line = _report_line_template % message
+    log.info(report_line)
+    print report_line
 
 def _create_state():
     return {
@@ -33,10 +39,20 @@ def _create_state():
         "receive-queue"             : deque(),
         "callback-dispatcher"       : None,
         "sub-client"                : None,
+        "min-level"                 : None,
     }
 
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
+
+    if len(sys.argv) < 2:
+        state["min-level"] = "debug"
+    else:
+        state["min-level"] = sys.argv[1]
+
+    # verify that we have a valid level
+    assert level_cmp(state["min-level"], state["min-level"]) == 0
+    log.info("minimum event level = %s" % (state["min-level"], ))
 
     log.info("connecting sub-client to %s" % (_event_aggregator_pub_address, ))
     state["sub-client"] = SUBClient(

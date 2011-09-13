@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import logging
 import time
+import urllib
 
 from tools.LRUCache import LRUCache
 from tools.customer import get_customer_key
@@ -22,7 +23,7 @@ def _string_to_sign(username, req):
         username,
         req.method,
         req.headers['x-nimbus-io-timestamp'],
-        req.path_qs,
+        urllib.unquote_plus(req.path_qs),
     ))
 
 class SqlAuthenticator(object):

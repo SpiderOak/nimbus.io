@@ -181,17 +181,6 @@ class GreenletResilientClient(object):
 
     def _handle_status_connected(self):
 
-        # if we think we are connected, but we haven't sent anything
-        # recently, disconnect until we have something to send
-        if  self._pending_message is None:
-            elapsed_time = time.time() - self._last_successful_ack_time
-            if elapsed_time >= _max_idle_time:
-                self._log.info("idle for %s seconds, disconnecting" % (
-                    elapsed_time,
-                ))
-                self._disconnect()
-            return
-
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
             return

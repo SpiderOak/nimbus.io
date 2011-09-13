@@ -50,14 +50,16 @@ def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     log.info("starting up")
 
-    state["pub-server"] = PUBServer(
-        state["zmq-context"],
-        _event_aggregator_pub_address 
-    )
-
+    # do the event push client first, because we may need to
+    # push an execption event from setup
     state["event-push-client"] = EventPushClient(
         state["zmq-context"],
         "event_aggregator"
+    )
+
+    state["pub-server"] = PUBServer(
+        state["zmq-context"],
+        _event_aggregator_pub_address 
     )
 
     state["sub-clients"] = list()

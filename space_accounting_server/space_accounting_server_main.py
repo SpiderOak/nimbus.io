@@ -131,6 +131,13 @@ def _create_state():
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
+    # do the event push client first, because we may need to
+    # push an execption event from setup
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "space_accounting_server"
+    )
+
     log.info("binding router-server to %s" % (_space_accounting_server_address, ))
     state["router-server"] = RouterServer(
         state["zmq-context"],
@@ -138,11 +145,6 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["router-server"].register(state["pollster"])
-
-    state["event-push-client"] = EventPushClient(
-        state["zmq-context"],
-        "space_accounting_server"
-    )
 
     log.info("binding pull-server to %s" % (
         _space_accounting_pipeline_address, 

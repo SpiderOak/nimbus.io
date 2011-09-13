@@ -77,7 +77,7 @@ class TestDataWriter(unittest.TestCase):
         if os.path.exists(_test_dir):
             shutil.rmtree(_test_dir)
 
-    def xxxtest_archive_key_entire(self):
+    def test_archive_key_entire(self):
         """test archiving all data for a key in a single message"""
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
@@ -157,7 +157,7 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["result"], "success")
 
-    def xxxtest_large_archive(self):
+    def test_large_archive(self):
 
         """
         test archiving a file that needs more than one message.
@@ -302,7 +302,7 @@ class TestDataWriter(unittest.TestCase):
 
         return reply
 
-    def xxxtest_destroy_nonexistent_key(self):
+    def test_destroy_nonexistent_key(self):
         """test destroying a key that does not exist, with no complications"""
         collection_id = 1001
         key  = self._key_generator.next()
@@ -311,7 +311,7 @@ class TestDataWriter(unittest.TestCase):
         reply = self._destroy(collection_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def xxxtest_simple_destroy(self):
+    def test_simple_destroy(self):
         """test destroying a key that exists, with no complicatons"""
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
@@ -354,7 +354,7 @@ class TestDataWriter(unittest.TestCase):
         )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def xxxtest_destroy_tombstone(self):
+    def test_destroy_tombstone(self):
         """test destroying a key that has already been destroyed"""
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 
@@ -403,7 +403,7 @@ class TestDataWriter(unittest.TestCase):
         )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def xxxtest_old_destroy(self):
+    def test_old_destroy(self):
         """
         test destroying a key that exists, but is newer than the destroy
         message
@@ -449,7 +449,7 @@ class TestDataWriter(unittest.TestCase):
         )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def xxxtest_purge_nonexistent_key(self):
+    def test_purge_nonexistent_key(self):
         """test purgeing a key that does not exist, with no complicatons"""
         collection_id = 1001
         key  = self._key_generator.next()
@@ -458,7 +458,7 @@ class TestDataWriter(unittest.TestCase):
         reply = self._purge(collection_id, key, timestamp, segment_num)
         self.assertEqual(reply["result"], "success", reply)
 
-    def xxxtest_simple_purge(self):
+    def test_simple_purge(self):
         """test purging a key that exists, with no complicatons"""
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 

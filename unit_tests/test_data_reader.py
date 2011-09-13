@@ -32,7 +32,7 @@ _log_path = "%s/test_data_reader.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _cluster_name = "multi-node-cluster"
-_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_local_node_name = "multi-node-01"
 _data_writer_address = "tcp://127.0.0.1:8100"
 _data_reader_address = "tcp://127.0.0.1:8200"
 _client_address = "tcp://127.0.0.1:8900"
@@ -71,6 +71,7 @@ class TestDataReader(unittest.TestCase):
         self._data_reader_process = start_data_reader(
             _local_node_name, 
             _data_reader_address,
+            _event_publisher_pull_address,
             _repository_path
         )
         poll_result = poll_process(self._data_reader_process)
@@ -329,5 +330,7 @@ class TestDataReader(unittest.TestCase):
 
 if __name__ == "__main__":
     initialize_logging(_log_path)
+    os.environ["NIMBUSIO_NODE_NAME"] = _local_node_name
+    os.environ["NIMBUSIO_NODE_USER_PASSWORD"] = "pork"
     unittest.main()
 

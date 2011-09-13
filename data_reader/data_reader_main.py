@@ -223,6 +223,13 @@ def _create_state():
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
+    # do the event push client first, because we may need to
+    # push an execption event from setup
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "data_reader"
+    )
+
     log.info("binding resilient-server to %s" % (_data_reader_address, ))
     state["resilient-server"] = ResilientServer(
         state["zmq-context"],
@@ -230,11 +237,6 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["resilient-server"].register(state["pollster"])
-
-    state["event-push-client"] = EventPushClient(
-        state["zmq-context"],
-        "data_reader"
-    )
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,

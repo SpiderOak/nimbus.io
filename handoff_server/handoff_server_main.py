@@ -308,6 +308,13 @@ def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     status_checkers = list()
 
+    # do the event push client first, because we may need to
+    # push an execption event from setup
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "handoff_server"
+    )
+
     central_connection = get_central_connection()
     state["cluster-row"] = get_cluster_row(central_connection)
     state["node-rows"] = get_node_rows(
@@ -351,11 +358,6 @@ def _setup(_halt_event, state):
                 (handoff_server_client.run, 
                  time.time() + random.random() * 60.0, )
             )        
-
-    state["event-push-client"] = EventPushClient(
-        state["zmq-context"],
-        "handoff_server"
-    )
 
     log.info("binding pull-server to %s" % (_handoff_server_pipeline_address, ))
     state["pull-server"] = PULLServer(

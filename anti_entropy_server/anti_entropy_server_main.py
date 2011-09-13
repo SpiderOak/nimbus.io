@@ -398,6 +398,13 @@ def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
     status_checkers = list()
 
+    # do the event push client first, because we may need to
+    # push an execption event from setup
+    state["event-push-client"] = EventPushClient(
+        state["zmq-context"],
+        "anti_entropy_server"
+    )
+
     state["central-database-connection"] = get_central_connection()
     state["local-database-connection"] = get_node_local_connection()
 
@@ -431,11 +438,6 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["pull-server"].register(state["pollster"])
-
-    state["event-push-client"] = EventPushClient(
-        state["zmq-context"],
-        "anti_entropy_server"
-    )
 
     state["anti-entropy-clients"] = list()
     for node_name, anti_entropy_server_address in zip(

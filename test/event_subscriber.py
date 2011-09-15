@@ -21,7 +21,7 @@ from tools.event_push_client import level_cmp
 _log_path = u"%s/event_subscriber.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _event_aggregator_pub_address = \
         os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
-_report_line_template = "%20(node-name)s %20(source)s %(description)"
+_report_line_template = "%20(node-name)s %20(source)s %(description)s"
 
 def _handle_incoming_message(state, message, _data):
     log = logging.getLogger("_handle_incoming_message")

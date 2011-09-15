@@ -181,6 +181,9 @@ class GreenletResilientClient(object):
 
     def _handle_status_connected(self):
 
+        if self._pending_message_start_time is None:
+            return
+
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
             return

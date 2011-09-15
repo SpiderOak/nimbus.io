@@ -93,7 +93,9 @@ class SqlAuthenticator(object):
         ).digest()
 
         if not sec_str_eq(signature, expected):
-            self._log.debug("signature comparison failed %r" % (username, ))
+            self._log.debug("signature comparison failed %r %r" % (
+                username, string_to_sign
+            ))
             return False
 
         # cache the authentication results with an expiration time

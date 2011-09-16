@@ -13,7 +13,7 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
-from gevent_zeromq import zmq
+import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
@@ -58,7 +58,7 @@ class WebServer(object):
 
         self._deliverator = Deliverator()
 
-        self._zeromq_context = zmq.context.Context()
+        self._zeromq_context = zmq.Context()
 
         self._pollster = GreenletZeroMQPollster()
 

@@ -33,7 +33,7 @@ def _parse_command_line():
     )
     parser.add_option(
         '-c', "--create-customer", dest="command", action="store_const", 
-        const=_create_customer, help="create a new customer with his first key"
+        const=_create_customer, help="create a new customer with no keys"
     )
     parser.add_option(
         '-a', "--add-key", dest="command", action="store_const",

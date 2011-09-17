@@ -132,19 +132,89 @@ Resulting HTTP Headers:
 
 API Usage
 ^^^^^^^^^
-Storing data using the nimbus.io API follows the REST model. The 'resources' 
-identified by URLs in the system represent your stored data. You act on that 
-data by performing various actions against those URLs. 
+The basic idea of REST is that you have "resources" (URLs) that represent 
+ideas or concepts in your problem domain, and then you use HTTP verbs to 
+perform actions on the resources.
+
+nimbus.io resources for a customer:
+* The customer's account
+* The collections owned by the customer
+* The keys within a collection
+* The data (and meta data) for a key
+
+These are represented as:
+
+::
+
+   https://nimbus.io/customers/<username>
+   https://nimbus.io/customers/<username>/collections
+   https://<collection name>.numbus.io/data/
+   https://<collection name>.nimbus.io/data/<key>
+
+Customer's Account
+##################
+
+List Collections
+++++++++++++++++
+.. http:get:: /customer/<username>/collections
+
+List all collection names for this customer. The reply body will contain a JSON 
+list of pairs. Each pair will be collection name and date created.
+
+:statuscode 200: no error
+
+Collections
+###########
+
+Creating a Collection
++++++++++++++++++++++
+.. http:post:: /customer/<username>/collections
+
+Create a new collection. 
+
+If you try to create a collection with the same name as an existng collection,
+This query will NOT fail. It will reuse the existing collection. If the 
+existing collection has been deleted, it will be un-deleted.
+
+:query action: create 
+:query name: the name of the new collection 
+:statuscode 200: no error
+ 
+Deleting a Collection
++++++++++++++++++++++
+.. http:delete:: /customer/<username>/collections/<collection-name>
+.. http:post:: /customer/<username>/collections/<collection-name>
+
+Delete an existing collection. [1]_ 
+
+:query action: delete (POST only) 
+:statuscode 200: no error
+:statuscode 403: forbidden to delete the default collection, or a collection contaning data.
+:statuscode 404: unknown collection
+
+Getting Space Usage Information
++++++++++++++++++++++++++++++++
+To get information on space usage by a collection 
+
+.. http:get /customer/username/collections/<collection-name>
+
+Get usage information on the collection specified in the hostname 
+
+:query action: space_usage
+:statuscode 200: no error
+
+Keys
+####
 
 Collections as Hostnames
-########################
+++++++++++++++++++++++++
 
 nimbus.io organizes the objects that you store into collections. Every 
-nimbus.io action is associated with a collection. For efficient access to your 
-collections, nimbus.io uses the collection name as part of the hostname_.
+nimbus.io key is a member of a collection. For efficient access to your 
+data nimbus.io uses the collection name as part of the hostname_.
 
-For example, to act on the collection 'my-temperature-readings', your HTTP 
-query would be directed to hostname 'my-temperature-readings.nimbus.io'
+For example, to act on objects in the collection 'my-temperature-readings', 
+your HTTP query would be directed to hostname 'my-temperature-readings.nimbus.io'
 
 This approach requires some restrictions on your collection names:
 
@@ -170,14 +240,12 @@ restrictons mentioned above.
 
 .. _hostname: http://en.wikipedia.org/wiki/Hostname
 
-Keys
-####
+Object Keys
++++++++++++
 
 Each object within a collection is uniquely identified by a key. The key must 
 be between 1 and 1024 characters long. When used in an HTTP request, the key
-must meet the standard HTTP restrictions. However, nimbus.io will recognize the
-standard  %xx escapes, so effectively the key can be any unicode value that 
-can be encoded to utf-8.
+must meet the standard HTTP restrictions. 
 
 nimbus.io does not impose, or recognize, any structure or hierarchy among the 
 keys in a collection. 
@@ -192,72 +260,10 @@ standard delimiter for URLs. For example:
 * https://dd-alice.nimbus.io/data/maui/beach.jpg
 
 You can list the keys you have stored in a collection by performing a 
-listmatch query (See Listing Data for details). The nimbus.io API uses the 
+listmatch query (See listing_keys_ for details). The nimbus.io API uses the 
 JSON format for transferring information about your data, but the data itself 
 is transferred as it is stored.
 
-Managing Collections
-####################
-
-Creating a Collection
-+++++++++++++++++++++
-.. http:get:: /create_collection
-
-Create a new collection. 
-
-If you try to create a collection with the same name as an existng collection,
-This query will NOT fail. It will reuse the existing collection. If the 
-existing collection has been deleted, it will be un-deleted.
-
-Note that the hostname must contain a valid existing
-collection. You can use your default collection name for this.
-
-:query collection-name: The name of the new collection. 
-:statuscode 200: no error
-:statuscode 500: internal error
- 
-List Collections
-++++++++++++++++
-.. http:get:: /list_collections
-
-List all collection names for this user. The reply body will contain a JSON 
-list of pairs. Each pair will be collection name and date created.
-
-Note that the hostname must contain a valid existing
-collection. You can use your default collection name for this.
-
-:statuscode 200: no error
-:statuscode 500: internal error
- 
-Deleting a Collection
-+++++++++++++++++++++
-.. http:get:: /delete_collection
-
-Delete an existing collection. 
-
-Note that the hostname must contain a valid existing
-collection. You can use your default collection name for this.
-
-:query collection-name: The name of the collection to be deleted. 
-:statuscode 200: no error
-:statuscode 403: forbidden to delete the default collection, or a collection contaning data.
-:statuscode 404: unknown collection
-:statuscode 500: internal error
-
-Getting Space Usage Information
-+++++++++++++++++++++++++++++++
-To get information on space usage by a colection 
-
-.. http:get /usage
-
-Get usage information on the collection specified in the hostname 
-
-:statuscode 200: no error
-:statuscode 500: internal error
-
-Managing Keys
-#############
- 
 Uploading to a Key
 ++++++++++++++++++
 To upload data to a collection in your account using the nimbus.io API, issue 
@@ -274,61 +280,71 @@ Data to be uploaded comprises the body of the request.
 :statuscode 200: no error
 :statuscode 403: invalid data (probably zero size)
 :statuscode 404: unknown collection
-:statuscode 500: internal error
+
+.. _listing_keys:
 
 Listing Keys
 ++++++++++++
 To list the keys in a collection, issue a listmatch request. 
 
-.. http:get:: /data/<prefix>
+.. http:get:: /data/
 
-<prefix> limits the query to keys starting with <prefix>
-The API does not take any delimiters into account. This means that if you have 
+<prefix> The API does not take any delimiters into account. This means that if you have 
 data stored at "/maui/beach.jpg" and "/maui-documents/rental-car-invoice.pdf", 
 then both will be returned if you do a listmatch on "maui". You can avoid this 
 by making sure the trailing delimiter ("/") is included in the URL
 
-:query action=listmatch: listmatch request
+:query prefix: (optional) limit the query to keys starting with <prefix>
 
 :statuscode 200: no error
-:statuscode 500: internal error
 
 Downloading From a Key
 ++++++++++++++++++++++
 Downloading an object from a collection is just a simple GET request. 
 The server will return exactly what you uploaded to that URL:
 
-.. http:get:: /data/key
+.. http:get:: /data/<key>
 
 :statuscode 200: no error
-:statuscode 500: internal error
 
 Deleting a key
 ++++++++++++++
 To delete a resource, 
 * issue a DELETE request
-* issue a POST request for delete
+* issue a POST request for delete [1]_
 
-.. http:delete:: /data/key
-.. http:post:: /data/key
+.. http:delete:: /data/<key>
+.. http:post:: /data/<key>
 
 :query action=delete: delete action for post request
-
 :statuscode 200: no error
-:statuscode 500: internal error
 
-Getting Information about a key
-+++++++++++++++++++++++++++++++
-To some information about a key issue a 'stat' request.
+Getting File Information About a Key
+++++++++++++++++++++++++++++++++++++
+To retrieve file information about a key issue a 'stat' request.
 
 * file_size
 * adler32 sum of file contents
 * md5 digest of file contents
 
-.. http:get:: /data/key
+.. http:get:: /data/<key>/
 
 :query action=stat: request stat
 :statuscode 200: no error
 :statuscode 404: not found
-:statuscode 500: internal error
+
+Getting Meta Information About a Key
+++++++++++++++++++++++++++++++++++++
+To retrieve the meta data stored with a key issue a 'meta' request.
+
+body will be a JSON list of key/value pairs
+
+.. http:get:: /data/<key>/
+
+:query action=meta: request meta
+:statuscode 200: no error
+:statuscode 404: not found
+
+.. [1] In an ideal world, we would just need DELETE for the this. But due to limited browser support for the DELETE verb, we also provide an alternative via POST with action=delete. 
+
 

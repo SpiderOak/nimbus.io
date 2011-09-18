@@ -52,9 +52,10 @@ class AuditResultDatabase(object):
     def __init__(self, central_connection):
         self._log = logging.getLogger("AuditResultDatabase")
         self._connection = central_connection
+
     def close(self):
         """commit the updates and close the database connection"""
-        self._connection.close()
+        pass
 
     def start_audit(self, collection_id, timestamp):
         """insert a row to mark the start of an audit"""

@@ -504,6 +504,7 @@ def _tear_down(_state):
 
     state["zmq-context"].term()
     state["local-database-connection"].close()
+    state["central-database-connection"].close()
 
     log.debug("teardown complete")
 

@@ -137,6 +137,7 @@ ideas or concepts in your problem domain, and then you use HTTP verbs to
 perform actions on the resources.
 
 nimbus.io resources for a customer:
+
 * The customer's account
 * The collections owned by the customer
 * The keys within a collection
@@ -148,7 +149,7 @@ These are represented as:
 
    https://nimbus.io/customers/<username>
    https://nimbus.io/customers/<username>/collections
-   https://<collection name>.numbus.io/data/
+   https://<collection name>.nimbus.io/data/
    https://<collection name>.nimbus.io/data/<key>
 
 Customer's Account
@@ -196,7 +197,7 @@ Getting Space Usage Information
 +++++++++++++++++++++++++++++++
 To get information on space usage by a collection 
 
-.. http:get /customer/username/collections/<collection-name>
+.. http:get:: /customer/username/collections/<collection-name>
 
 Get usage information on the collection specified in the hostname 
 

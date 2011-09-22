@@ -17,7 +17,7 @@ from web_server.url_discriminator import parse_url, \
         action_list_keys, \
         action_retrieve_key, \
         action_delete_key, \
-        action_stat_key
+        action_head_key
 
 _log_path = "%s/test_url_discriminator.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], 
@@ -66,6 +66,11 @@ _valid_urls_with_actions = [
     ),
     (
         "GET", 
+        "https://test-collection-name.nimbus.io/data?prefix=test-prefix",
+        action_list_keys
+    ),
+    (
+        "GET", 
         "https://test-collection-name.nimbus.io/data/test-key",
         action_retrieve_key
     ),
@@ -80,9 +85,9 @@ _valid_urls_with_actions = [
         action_delete_key
     ),
     (
-        "GET", 
-        "https://test-collection-name.nimbus.io/data/test-key?action=stat",
-        action_stat_key
+        "HEAD", 
+        "https://test-collection-name.nimbus.io/data/test-key",
+        action_head_key
     ),
 ]
 
@@ -98,8 +103,15 @@ def _valid_delete_collection(match_object):
     and match_object.group("collection_name") == "test-collection-name"
 
 def _valid_space_usage(match_object):
-    return match_object.group("username") == "test-user-name" \
-    and match_object.group("collection_name") == "test-collection-name"
+    if match_object.group("username") != "test-user-name":
+        return False
+    if match_object.group("collection_name") != "test-collection-name":
+        return False
+    try:
+        prefix = match_object.group("prefix")
+    except IndexError:
+        prefix = ""
+    return prefix in ["test-prefix", "", ]
 
 def _valid_archive_key(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
@@ -116,7 +128,7 @@ def _valid_delete_key(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
     and match_object.group("key") == "test-key"
 
-def _valid_stat_key(match_object):
+def _valid_head_key(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
     and match_object.group("key") == "test-key"
 
@@ -129,7 +141,7 @@ _match_object_dispatch_table = {
     action_list_keys            : _valid_list_keys,
     action_retrieve_key         : _valid_retrieve_key,
     action_delete_key           : _valid_delete_key,
-    action_stat_key             : _valid_stat_key,
+    action_head_key             : _valid_head_key,
 }
 
 class TestUrlDiscriminator(unittest.TestCase):
@@ -150,7 +162,7 @@ class TestUrlDiscriminator(unittest.TestCase):
         """run through all the URLs we should be able to parse"""
         for method, url, expected_action in _valid_urls_with_actions:
             result = parse_url(method, url)
-            self.assertNotEqual(result, None)
+            self.assertNotEqual(result, None, (method, url, ))
             action, match_object = result
             self.assertEqual(
                 action, expected_action, 

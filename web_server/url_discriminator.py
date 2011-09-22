@@ -20,7 +20,7 @@ action_archive_key = "archive-key"
 action_list_keys = "list-keys"
 action_retrieve_key = "retrieve-key"
 action_delete_key = "delete-key"
-action_stat_key = "stat-key"
+action_head_key = "head-key"
 
 _list_collections_re = re.compile(
     r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-z0-9-]+)/collections$"
@@ -46,7 +46,7 @@ _archive_key_re = re.compile(
 )
 
 _list_keys_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/$"
+    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>[a-z0-9-]+))$"
 )
 
 _retrieve_key_re = re.compile(
@@ -60,8 +60,8 @@ _delete_key2_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)\?action=delete$"
 )
 
-_stat_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)\?action=stat$"
+_head_key_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)$"
 )
 
 _regex_by_method = {
@@ -70,7 +70,6 @@ _regex_by_method = {
         (_space_usage_re, action_space_usage, ),
         (_list_keys_re, action_list_keys, ),
         (_retrieve_key_re, action_retrieve_key, ),
-        (_stat_key_re, action_stat_key, ),
     ],
     "POST"  : [
         (_create_collection_re, action_create_collection, ),
@@ -81,6 +80,9 @@ _regex_by_method = {
     "DELETE"  : [
         (_delete_collection1_re, action_delete_collection, ),
         (_delete_key1_re, action_delete_key, ),
+    ],
+    "HEAD"  : [
+        (_head_key_re, action_head_key, ),
     ],
 }
 

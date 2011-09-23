@@ -21,19 +21,19 @@ VALUES(%s, %s, %s::timestamp);
 _audit_retry_command = """
 UPDATE nimbusio_central.audit_result
 SET state = %s, audit_started = NULL
-WHERE nimbusio_central.audit_result_id = %s;
+WHERE nimbusio_central.audit_result.id = %s;
 """.strip()
 
 _restart_audit_command = """
 UPDATE nimbusio_central.audit_result
 SET state = %s, audit_started = %s::timestamp
-WHERE nimbusio_central.audit_result_id = %s;
+WHERE nimbusio_central.audit_result.id = %s;
 """.strip()
 
 _audit_result_command = """
 UPDATE nimbusio_central.audit_result
 SET state = %s, audit_finished = %s::timestamp
-WHERE nimbusio_central.audit_result_id = %s;
+WHERE nimbusio_central.audit_result.id = %s;
 """.strip()
 
 _ineligible_query = """

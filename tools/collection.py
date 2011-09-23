@@ -24,16 +24,10 @@ _collection_entry_template = namedtuple(
     ["collection_name", "collection_id", "username"]
 )
 
-def get_collection_from_hostname(connection, hostname):
+def get_username_and_collection_id(connection, collection_name):
     """
-    parse a hostname for collection name, 
     fetch collection_id and username from the database
-    raise UnparseableCollection on failure
     """
-    match_object = _host_collection_name_re.match(hostname)
-    if match_object is None:
-        raise UnparseableCollection("regex cannot parse %r" % (hostname, ))
-    collection_name = match_object.group("collection_name").lower()
     result = connection.fetch_one_row("""
         select nimbusio_central.collection.id, 
                nimbusio_central.customer.username
@@ -43,10 +37,10 @@ def get_collection_from_hostname(connection, hostname):
         where nimbusio_central.collection.name = %s
           and nimbusio_central.collection.deletion_time is null
           and nimbusio_central.customer.deletion_time is null
-    """.strip(), [collection_name, ])
+    """.strip(), [collection_name.lower(), ])
     if result is None:
-        raise UnparseableCollection("collection name %r not in database %r" % (
-            collection_name, hostname, 
+        raise UnparseableCollection("collection name %r not in database" % (
+            collection_name, 
         ))
     (collection_id, username, ) = result
     return _collection_entry_template(
@@ -63,18 +57,21 @@ def valid_collection_name(collection_name):
         and not '--' in collection_name \
         and _collection_name_re.match(collection_name) is not None
 
-def get_collection_id_dict(connection, customer_id):
+def get_collection_id(connection, collection_name):
     """
-    return a list of (collection, collection_id) for all the collections
-    the customer owns
+    return collection_id for the collection_name
     """
-    result = connection.fetch_all_rows("""
-        select name, id from nimbusio_central.collection
-        where customer_id = %s deletion_time is null
-    """, [customer_id, ]
+    result = connection.fetch_one_rows("""
+        select id from nimbusio_central.collection
+        where name = %s and deletion_time is null
+    """, [collection_name, ]
     )
 
-    return dict(result)
+    if result is None:
+        return None
+
+    (collection_id, ) = result
+    return collection_id
 
 def create_collection(connection, username, collection_name):
     """
@@ -115,7 +112,7 @@ def compute_default_collection_name(username):
     """
     return "-".join([_default_collection_prefix, username, ])
 
-def create_default_collection(connection, customer_id, username):
+def create_default_collection(connection, username):
     """
     create the customer's default collection, based on username
     """

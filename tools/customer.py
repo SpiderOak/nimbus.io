@@ -53,11 +53,10 @@ def create_customer(connection, username):
     create a customer record for this username
     """
     assert valid_username(username)
-    (customer_id, ) = connection.fetch_one_row("""
+    connection.execute("""
         insert into nimbusio_central.customer (username) values (%s)
-        returning id
     """, [username, ])
-    create_default_collection(connection, customer_id, username)
+    create_default_collection(connection, username)
 
 def add_key_to_customer(connection, username):
     """

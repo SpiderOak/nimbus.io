@@ -4,9 +4,9 @@ application.py
 
 The nimbus.io wsgi application
 """
+from base64 import b64encode
 import logging
 import os
-import re
 import random
 import zlib
 import hashlib
@@ -22,7 +22,8 @@ from webob import Response
 
 from tools.data_definitions import create_timestamp, nimbus_meta_prefix
 
-from tools.collection import get_collection_from_hostname, \
+from tools.collection import get_username_and_collection_id, \
+        get_collection_id, \
         compute_default_collection_name, \
         create_collection, \
         list_collections, \
@@ -51,6 +52,17 @@ from web_server.conjoined_manager import list_conjoined_archives, \
         start_conjoined_archive, \
         abort_conjoined_archive, \
         finish_conjoined_archive
+from web_server.url_discriminator import parse_url, \
+        action_list_collections, \
+        action_create_collection, \
+        action_delete_collection, \
+        action_space_usage, \
+        action_archive_key, \
+        action_list_keys, \
+        action_retrieve_key, \
+        action_delete_key, \
+        action_head_key
+
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
@@ -80,19 +92,6 @@ def _build_meta_dict(req_get):
             meta_dict[key] = req_get[key]
 
     return meta_dict
-
-class router(list):
-    # TODO: document and test this
-    def add(self, regex, *methods, **query_args):
-        if not methods:
-            methods = ('GET', 'HEAD')
-        regex = re.compile(regex)
-        for k in query_args:
-            query_args[k] = re.compile(query_args[k])
-        def dec(func):
-            self.append((regex, query_args, methods, func.__name__))
-            return func
-        return dec
 
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
@@ -166,14 +165,187 @@ class Application(object):
 
         self._cluster_row = get_cluster_row(self._central_connection)
 
-    routes = router()
+        self._dispatch_table = {
+            action_list_collections     : self._list_collections,
+            action_create_collection    : self._create_collection,
+            action_delete_collection    : self._delete_collection,
+            action_space_usage          : self._collection_space_usage,
+            action_archive_key          : self._archive_key,
+            action_list_keys            : self._list_keys,
+            action_retrieve_key         : self._retrieve_key,
+            action_delete_key           : self._delete_key,
+            action_head_key             : self._head_key,
+        }
 
     @wsgify
     def __call__(self, req):
-        # TODO: test this
+
+        result = parse_url(req.method, req.url)
+        if result is None:
+            self._log.error("Unparseable URL: %r" % (req.url, ))
+            raise exc.HTTPNotFound(req.url)
+
+        action_tag, match_object = result
         try:
-            collection_entry = get_collection_from_hostname(
-                self._central_connection, req.host
+            return self._dispatch_table[action_tag](req, match_object)
+        except exc.HTTPException, instance:
+            self._log.error("%s %s %s %r" % (
+                instance.__class__.__name__, 
+                instance, 
+                action_tag,
+                req.url
+            ))
+            raise
+        except Exception, instance:
+            self._log.exception("%s" % (req.url, ))
+            self._event_push_client.exception(
+                "unhandled_exception",
+                str(instance),
+                exctype=instance.__class__.__name__
+            )
+            raise
+
+    def _list_collections(self, req, match_object):
+        username = match_object.group("username")
+        self._log.debug("_list_collections %r" % (username, ))
+
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            collections = list_collections(
+                self._central_connection,
+                username
+            )
+        except Exception, instance:
+            self._log.error("%r error listing collections %s" % (
+                username, instance,
+            ))
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        # json won't dump datetime
+        json_collections = [(n, t.isoformat()) for (n, t) in collections]
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(json_collections))
+
+        return response
+
+    def _create_collection(self, req, match_object):
+        username = match_object.group("username")
+        collection_name = match_object.group("collection_name")
+
+        self._log.debug("_create_collection: %s name = %r" % (
+            username,
+            collection_name,
+        ))
+
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            create_collection(
+                self._central_connection, 
+                username,
+                collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s error adding collection %r %s" % (
+                username, 
+                collection_name, 
+                instance,
+            ))
+            self._central_connection.rollback()
+            raise exc.HTTPServiceUnavailable(str(instance))
+        else:
+            self._central_connection.commit()
+
+        return Response('OK')
+
+    def _delete_collection(self, req, match_object):
+        username = match_object.group("username")
+        collection_name = match_object.group("collection_name")
+
+        self._log.debug("_delete_collection: %r %r" % (
+            username, collection_name, 
+        ))
+
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        # you can't delete your default collection
+        default_collection_name = compute_default_collection_name(username)
+        if collection_name == default_collection_name:
+            raise exc.HTTPForbidden("Can't delete default collection %r" % (
+                collection_name,
+            ))
+
+        # TODO: can't delete a collection that contains keys
+        try:
+            delete_collection(self._central_connection, collection_name)
+        except Exception, instance:
+            self._log.error("%r %r error deleting collection %s" % (
+                username, collection_name, instance,
+            ))
+            self._central_connection.rollback()
+            raise exc.HTTPServiceUnavailable(str(instance))
+        else:
+            self._central_connection.commit()
+
+        return Response('OK')
+
+    def _collection_space_usage(self, req, match_object):
+        username = match_object.group("username")
+        collection_name = match_object.group("collection_name")
+
+        self._log.debug("_collection_space_usage: %r %r" % (
+            username, collection_name
+        ))
+
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        collection_id = get_collection_id(
+            self._central_connection, collection_name
+        )        
+        if collection_id is None:
+            raise exc.HTTPNotFound(collection_name)
+
+        getter = SpaceUsageGetter(self.accounting_client)
+        try:
+            usage = getter.get_space_usage(collection_id, _reply_timeout)
+        except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
+            raise exc.HTTPServiceUnavailable(str(e))
+
+        return Response(json.dumps(usage))
+
+    def _archive_key(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
             )
         except Exception, instance:
             self._log.error("%s" % (instance, ))
@@ -187,418 +359,6 @@ class Application(object):
         if not authenticated:
             raise exc.HTTPUnauthorized()
 
-        url_matched = False
-        for regex, query_args, methods, func_name in self.routes:
-            url_match = regex.match(req.path)
-            if not url_match:
-                continue
-            args_matched = False
-            for arg, arg_regex in query_args.iteritems():
-                if arg not in req.GET:
-                    break
-                arg_match = arg_regex.match(req.GET[arg])
-                if not arg_match:
-                    break
-            else:
-                args_matched = True
-            if not args_matched:
-                continue
-            url_matched = True
-            if req.method not in methods:
-                continue
-            try:
-                method = getattr(self, func_name)
-            except AttributeError:
-                continue
-
-            try:
-                result = method(
-                    collection_entry, 
-                    req, 
-                    *url_match.groups(), 
-                    **url_match.groupdict()
-                )
-                return result
-            except exc.HTTPException, instance:
-                self._log.error("%s %s %s" % (
-                    instance.__class__.__name__, 
-                    instance, 
-                    collection_entry,
-                ))
-                raise
-            except Exception, instance:
-                self._log.exception("%s" % (collection_entry, ))
-                self._event_push_client.exception(
-                    "unhandled_exception",
-                    str(instance),
-                    exctype=instance.__class__.__name__
-                )
-                raise
-
-        if url_matched:
-            raise exc.HTTPMethodNotAllowed()
-        raise exc.HTTPNotFound(req.path)
-
-    @routes.add(r'/usage$')
-    def usage(self, collection_entry, _req):
-        self._log.debug("usage: %r %r" % (
-            collection_entry.username, collection_entry.collection_name
-        ))
-
-        getter = SpaceUsageGetter(self.accounting_client)
-        try:
-            usage = getter.get_space_usage(
-                collection_entry.collection_id, _reply_timeout
-            )
-        except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
-            raise exc.HTTPServiceUnavailable(str(e))
-
-        return Response(json.dumps(usage))
-
-    @routes.add(r'/data/(.+)$', action='stat')
-    def stat(self, collection_entry, _req, path):
-        try:
-            key = urllib.unquote_plus(path)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        self._log.debug("stat: collection = (%s) %r username = %r key = %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
-            key
-        ))
-
-        getter = StatGetter(self._node_local_connection)
-        file_info = getter.stat(
-            collection_entry.collection_id, key, _reply_timeout
-        )
-        if file_info is None or file_info.file_tombstone:
-            raise exc.HTTPNotFound("Not Found: %r" % (key, ))
-
-        file_info_dict = dict()
-        for key, value in file_info._asdict().items():
-            if key.startswith("file_") and key != "file_tombstone":
-                if key == "file_hash" and value is not None:
-                    value = hexlify(value)
-                file_info_dict[key] = value
-
-        return Response(json.dumps(file_info_dict))
-
-    @routes.add(r'/data/(.*)$', action='listmatch')
-    def listmatch(self, collection_entry, _req, prefix):
-        try:
-            prefix = urllib.unquote_plus(prefix)
-            prefix = prefix.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        self._log.debug(
-            "listmatch: collection = (%s) username = %r %r prefix = '%s'" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                prefix
-            )
-        )
-        matcher = Listmatcher(self._node_local_connection)
-        keys = matcher.listmatch(
-            collection_entry.collection_id, prefix, _reply_timeout
-        )
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(keys))
-        return response
-
-    @routes.add(r'/create_collection$')
-    def create_collection(self, collection_entry, req):
-        self._log.debug("create_collection: %s name = %r" % (
-            collection_entry.username,
-            req.GET["collection_name"],
-        ))
-
-        try:
-            create_collection(
-                self._central_connection, 
-                collection_entry.username,
-                req.GET["collection_name"]
-            )
-        except Exception, instance:
-            self._log.error("%s error adding collection %r %s" % (
-                collection_entry.username, 
-                req.GET["collection_name"], 
-                instance,
-            ))
-            self._central_connection.rollback()
-            raise exc.HTTPServiceUnavailable(str(instance))
-        else:
-            self._central_connection.commit()
-
-        return Response('OK')
-
-    @routes.add(r'/list_collections')
-    def list_collections(self, collection_entry, _req):
-        self._log.debug("%s list_collections" % (collection_entry.username, ))
-        try:
-            collections = list_collections(
-                self._central_connection,
-                collection_entry.username
-            )
-        except Exception, instance:
-            self._log.error("%s error listing collections %s" % (
-                collection_entry, instance,
-            ))
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        # json won't dump datetime
-        json_collections = [(n, t.isoformat()) for (n, t) in collections]
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(json_collections))
-
-        return response
-
-    @routes.add(r'/delete_collection$')
-    def delete_collection(self, collection_entry, req):
-        collection_name = req.GET["collection_name"]
-        self._log.debug("delete_collection: %r  %s" % (
-            collection_name, collection_entry, 
-        ))
-
-        # you can't delete your default collection
-        default_collection_name = compute_default_collection_name(
-            collection_entry.username
-        )
-        if collection_name == default_collection_name:
-            raise exc.HTTPForbidden("Can't delete default collection %r" % (
-                collection_name,
-            ))
-
-        # TODO: can't delete a collection that contains keys
-        try:
-            delete_collection(self._central_connection, collection_name)
-        except Exception, instance:
-            self._log.error("%s error deleting collection %s" % (
-                collection_entry, instance,
-            ))
-            self._central_connection.rollback()
-            raise exc.HTTPServiceUnavailable(str(instance))
-        else:
-            self._central_connection.commit()
-
-        return Response('OK')
-
-    @routes.add(r'/data/(.+)$', 'DELETE')
-    @routes.add(r'/data/(.+)$', 'POST', action='delete')
-    def destroy(self, collection_entry, _req, key):
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        self._log.debug(
-            "destroy: collection = (%s) %r customer = %r key = %r" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                key,
-        ))
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            self._data_writer_clients
-        )
-
-        timestamp = create_timestamp()
-
-        destroyer = Destroyer(
-            self._node_local_connection,
-            data_writers,
-            collection_entry.collection_id,
-            key,
-            timestamp
-        )
-
-        try:
-            size_deleted = destroyer.destroy(_reply_timeout)
-        except DestroyFailedError, e:            
-            raise exc.HTTPInternalServerError(str(e))
-
-        self.accounting_client.removed(
-            collection_entry.collection_id,
-            timestamp,
-            size_deleted
-        )
-        return Response('OK')
-
-    @routes.add(r'/data/(.+)$', action="get_meta")
-    def get_meta(self, collection_entry, req, key):
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            self._log.error('unable to prepare key %r %s' % (
-                key, instance
-            ))
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        meta_value = get_meta(
-            self._node_local_connection,
-            collection_entry.collection_id,
-            key,
-            req.GET["meta_key"]
-        )
-
-        if meta_value is None:
-            raise exc.HTTPNotFound(req.GET["meta_key"])
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(meta_value)
-
-        return response
-
-    @routes.add(r'/data/(.+)$', action="list_meta")
-    def list_meta(self, collection_entry, _req, key):
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            self._log.error('unable to prepare key %r %s' % (
-                key, instance
-            ))
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        meta_value = list_meta(
-            self._node_local_connection,
-            collection_entry.collection_id,
-            key
-        )
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(meta_value))
-
-        return response
-
-    @routes.add(r"/list_conjoined_archives")
-    def list_conjoined_archives(self, collection_entry, _req):
-        conjoined_value = list_conjoined_archives(
-            self._central_connection,
-            collection_entry.collection_id,
-        )
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(conjoined_value))
-
-        return response
-
-    @routes.add(r'/data/(.+)$', action="start_conjoined_archive")
-    def start_conjoined_archive(self, collection_entry, _req, key):
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            self._log.error('unable to prepare key %r %s' % (
-                key, instance
-            ))
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        conjoined_identifier = start_conjoined_archive(
-            self._central_connection,
-            collection_entry.collection_id,
-            key
-        )
-
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(conjoined_identifier)
-
-        return response
-
-    @routes.add(r'/data/(.+)$')
-    def retrieve(self, collection_entry, _req, key):
-        start_time = time.time()
-
-        try:
-            key = urllib.unquote_plus(key)
-            key = key.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
-
-        description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
-            key
-        )
-        self._log.debug(description)
-        connected_data_readers = _connected_clients(self.data_readers)
-
-        if len(connected_data_readers) < _min_connected_clients:
-            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
-                len(connected_data_readers),
-            ))
-
-        segmenter = ZfecSegmenter(
-            _min_segments,
-            _max_segments)
-        retriever = Retriever(
-            self._node_local_connection,
-            self.data_readers,
-            collection_entry.collection_id,
-            key,
-            _min_segments
-        )
-
-        retrieved = retriever.retrieve(_reply_timeout)
-
-        try:
-            first_segments = retrieved.next()
-        except RetrieveFailedError, instance:
-            self._log.error("retrieve failed: %s %s" % (
-                description, instance,
-            ))
-            self._event_push_client.error(
-                "retrieve-failed",
-                "%s: %s" % (description, instance, )
-            )
-            return exc.HTTPNotFound(str(instance))
-
-        def app_iter():
-            sent = 0
-            try:
-                for segments in chain([first_segments], retrieved):
-                    data = segmenter.decode(segments.values())
-                    sent += len(data)
-                    yield data
-            except RetrieveFailedError, instance:
-                self._event_push_client.error(
-                    "retrieve-failed",
-                    "%s: %s" % (description, instance, )
-                )
-                self._log.error('retrieve failed: %s %s' % (
-                    description, instance
-                ))
-                raise exc.HTTPInternalServerError(str(instance))
-
-            end_time = time.time()
-
-            self.accounting_client.retrieved(
-                collection_entry.collection_id,
-                create_timestamp(),
-                sent
-            )
-
-            self._event_push_client.info(
-                "retrieve-stats",
-                description,
-                start_time=start_time,
-                end_time=end_time,
-                bytes_retrieved=sent
-            )
-
-        return Response(app_iter=app_iter())
-
-    @routes.add(r'/data/(.+)$', 'POST')
-    def archive(self, collection_entry, req, key):
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -609,7 +369,6 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         start_time = time.time()
-        key = urllib.unquote_plus(key)
         description = \
                 "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
             collection_entry.collection_id,
@@ -698,3 +457,338 @@ class Application(object):
 
         return Response('OK')
 
+    def _list_keys(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            prefix = match_object.group("prefix")
+            prefix = urllib.unquote_plus(prefix)
+            prefix = prefix.decode("utf-8")
+        except IndexError:
+            prefix = u""
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "_list_keys: collection = (%s) username = %r %r prefix = '%s'" % (
+                collection_entry.collection_id,
+                collection_entry.collection_name,
+                collection_entry.username,
+                prefix
+            )
+        )
+        matcher = Listmatcher(self._node_local_connection)
+        keys = matcher.listmatch(
+            collection_entry.collection_id, prefix, _reply_timeout
+        )
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(keys))
+        return response
+
+    def _retrieve_key(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
+            collection_entry.collection_id,
+            collection_entry.collection_name,
+            collection_entry.username,
+            key
+        )
+        self._log.debug(description)
+
+        start_time = time.time()
+        connected_data_readers = _connected_clients(self.data_readers)
+
+        if len(connected_data_readers) < _min_connected_clients:
+            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
+                len(connected_data_readers),
+            ))
+
+        segmenter = ZfecSegmenter(
+            _min_segments,
+            _max_segments)
+        retriever = Retriever(
+            self._node_local_connection,
+            self.data_readers,
+            collection_entry.collection_id,
+            key,
+            _min_segments
+        )
+
+        retrieved = retriever.retrieve(_reply_timeout)
+
+        try:
+            first_segments = retrieved.next()
+        except RetrieveFailedError, instance:
+            self._log.error("retrieve failed: %s %s" % (
+                description, instance,
+            ))
+            self._event_push_client.error(
+                "retrieve-failed",
+                "%s: %s" % (description, instance, )
+            )
+            return exc.HTTPNotFound(str(instance))
+
+        def app_iter():
+            sent = 0
+            try:
+                for segments in chain([first_segments], retrieved):
+                    data = segmenter.decode(segments.values())
+                    sent += len(data)
+                    yield data
+            except RetrieveFailedError, instance:
+                self._event_push_client.error(
+                    "retrieve-failed",
+                    "%s: %s" % (description, instance, )
+                )
+                self._log.error('retrieve failed: %s %s' % (
+                    description, instance
+                ))
+                raise exc.HTTPInternalServerError(str(instance))
+
+            end_time = time.time()
+
+            self.accounting_client.retrieved(
+                collection_entry.collection_id,
+                create_timestamp(),
+                sent
+            )
+
+            self._event_push_client.info(
+                "retrieve-stats",
+                description,
+                start_time=start_time,
+                end_time=end_time,
+                bytes_retrieved=sent
+            )
+
+        return Response(app_iter=app_iter())
+
+    def _delete_key(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "_delete_key: collection = (%s) %r customer = %r key = %r" % (
+                collection_entry.collection_id,
+                collection_entry.collection_name,
+                collection_entry.username,
+                key,
+        ))
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            self._data_writer_clients
+        )
+
+        timestamp = create_timestamp()
+
+        destroyer = Destroyer(
+            self._node_local_connection,
+            data_writers,
+            collection_entry.collection_id,
+            key,
+            timestamp
+        )
+
+        try:
+            size_deleted = destroyer.destroy(_reply_timeout)
+        except DestroyFailedError, e:            
+            raise exc.HTTPInternalServerError(str(e))
+
+        self.accounting_client.removed(
+            collection_entry.collection_id,
+            timestamp,
+            size_deleted
+        )
+        return Response('OK')
+
+    def _head_key(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "head_key: collection = (%s) %r username = %r key = %r" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            key
+        ))
+
+        getter = StatGetter(self._node_local_connection)
+        file_info = getter.stat(
+            collection_entry.collection_id, key, _reply_timeout
+        )
+        if file_info is None or file_info.file_tombstone:
+            raise exc.HTTPNotFound("Not Found: %r" % (key, ))
+
+        response = Response(status=200, content_type=None)
+        response.content_length = file_info.file_size 
+        response.content_md5 = b64encode(file_info.file_hash)
+
+        return response
+
+#    @routes.add(r'/data/(.+)$', action="get_meta")
+#    def get_meta(self, collection_entry, req, key):
+#        try:
+#            key = urllib.unquote_plus(key)
+#            key = key.decode("utf-8")
+#        except Exception, instance:
+#            self._log.error('unable to prepare key %r %s' % (
+#                key, instance
+#            ))
+#            raise exc.HTTPServiceUnavailable(str(instance))
+#
+#        meta_value = get_meta(
+#            self._node_local_connection,
+#            collection_entry.collection_id,
+#            key,
+#            req.GET["meta_key"]
+#        )
+#
+#        if meta_value is None:
+#            raise exc.HTTPNotFound(req.GET["meta_key"])
+#
+#        response = Response(content_type='text/plain', charset='utf8')
+#        response.body_file.write(meta_value)
+#
+#        return response
+#
+#    @routes.add(r'/data/(.+)$', action="list_meta")
+#    def list_meta(self, collection_entry, _req, key):
+#        try:
+#            key = urllib.unquote_plus(key)
+#            key = key.decode("utf-8")
+#        except Exception, instance:
+#            self._log.error('unable to prepare key %r %s' % (
+#                key, instance
+#            ))
+#            raise exc.HTTPServiceUnavailable(str(instance))
+#
+#        meta_value = list_meta(
+#            self._node_local_connection,
+#            collection_entry.collection_id,
+#            key
+#        )
+#
+#        response = Response(content_type='text/plain', charset='utf8')
+#        response.body_file.write(json.dumps(meta_value))
+#
+#        return response
+#
+#    @routes.add(r"/list_conjoined_archives")
+#    def list_conjoined_archives(self, collection_entry, _req):
+#        conjoined_value = list_conjoined_archives(
+#            self._central_connection,
+#            collection_entry.collection_id,
+#        )
+#
+#        response = Response(content_type='text/plain', charset='utf8')
+#        response.body_file.write(json.dumps(conjoined_value))
+#
+#        return response
+#
+#    @routes.add(r'/data/(.+)$', action="start_conjoined_archive")
+#    def start_conjoined_archive(self, collection_entry, _req, key):
+#        try:
+#            key = urllib.unquote_plus(key)
+#            key = key.decode("utf-8")
+#        except Exception, instance:
+#            self._log.error('unable to prepare key %r %s' % (
+#                key, instance
+#            ))
+#            raise exc.HTTPServiceUnavailable(str(instance))
+#
+#        conjoined_identifier = start_conjoined_archive(
+#            self._central_connection,
+#            collection_entry.collection_id,
+#            key
+#        )
+#
+#        response = Response(content_type='text/plain', charset='utf8')
+#        response.body_file.write(conjoined_identifier)
+#
+#        return response
+#

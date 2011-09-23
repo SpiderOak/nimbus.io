@@ -18,10 +18,10 @@ class SpaceUsageGetter(object):
     def __init__(self, accounting_server):
         self.accounting_server = accounting_server
 
-    def get_space_usage(self, collection_id, timeout=None):
+    def get_space_usage(self, collection_name, timeout=None):
         task = gevent.spawn(
             self.accounting_server.get_space_usage,
-            collection_id
+            collection_name
         )
 
         try:

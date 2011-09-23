@@ -54,11 +54,11 @@ class SpaceAccountingClient(object):
 
     def get_space_usage(
         self,
-        collection_id
+        collection_name
     ):
         request = {
             "message-type"  : "space-usage-request",
-            "collection-id" : collection_id,
+            "collection-name" : collection_name,
         }
         delivery_channel = self._dealer_socket.queue_message_for_send(request)
 

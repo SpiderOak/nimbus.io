@@ -322,15 +322,13 @@ To delete a resource,
 
 Getting File Information About a Key
 ++++++++++++++++++++++++++++++++++++
-To retrieve file information about a key issue a 'stat' request.
+To retrieve file information about a key issue a HEAD request.
 
 * file_size
-* adler32 sum of file contents
 * md5 digest of file contents
 
-.. http:get:: /data/<key>/
+.. http:head:: /data/<key>
 
-:query action=stat: request stat
 :statuscode 200: no error
 :statuscode 404: not found
 

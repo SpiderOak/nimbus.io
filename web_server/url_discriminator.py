@@ -23,47 +23,50 @@ action_delete_key = "delete-key"
 action_head_key = "head-key"
 
 _list_collections_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-z0-9-]+)/collections$"
+    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections$"
 )
 
 _create_collection_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-z0-9-]+)/collections\?action=create\&name=(?P<collection_name>[a-z0-9-]+)$"
+    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections\?action=create\&name=(?P<collection_name>[a-zA-Z0-9-]+)$"
 )
 
 _delete_collection1_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-z0-9-]+)/collections/(?P<collection_name>[a-z0-9-]+)$"
+    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)$"
 )
 _delete_collection2_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-z0-9-]+)/collections/(?P<collection_name>[a-z0-9-]+)\?action=delete$"
+    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=delete$"
 )
 
 _space_usage_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-z0-9-]+)/collections/(?P<collection_name>[a-z0-9-]+)\?action=space_usage$"
+    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=space_usage$"
 )
 
 _archive_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)(\?.*)?$"
 )
 
 _list_keys_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>[a-z0-9-]+))$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>[a-zA-Z0-9-]+))$"
 )
 
 _retrieve_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)$"
 )
 
 _delete_key1_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)$"
 )
 _delete_key2_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)\?action=delete$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)\?action=delete$"
 )
 
 _head_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)$"
 )
 
+# note that order is significant here, 
+# specifically _archive_key_re has a grab bag ?.* that will pick up
+# ?action=delete, so we need to check for that first
 _regex_by_method = {
     "GET"   : [
         (_list_collections_re, action_list_collections, ),
@@ -74,8 +77,8 @@ _regex_by_method = {
     "POST"  : [
         (_create_collection_re, action_create_collection, ),
         (_delete_collection2_re, action_delete_collection, ),
-        (_archive_key_re, action_archive_key, ),
         (_delete_key2_re, action_delete_key, ),
+        (_archive_key_re, action_archive_key, ),
     ],
     "DELETE"  : [
         (_delete_collection1_re, action_delete_collection, ),

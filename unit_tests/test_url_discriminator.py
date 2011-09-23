@@ -60,6 +60,11 @@ _valid_urls_with_actions = [
         action_archive_key
     ),
     (
+        "POST", 
+        'http://test-collection-name.nimbus.io:8088/data/test-key?__nimbus_io__meta_key=pork',
+        action_archive_key
+    ),    
+    (
         "GET", 
         "https://test-collection-name.nimbus.io/data/",
         action_list_keys

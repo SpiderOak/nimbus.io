@@ -204,6 +204,15 @@ Get usage information on the collection specified in the hostname
 :query action: space_usage
 :statuscode 200: no error
 
+Listing Conjoined Archives
+++++++++++++++++++++++++++
+List the conjoined archives active for this collection 
+
+.. http:get:: /customer/username/collections/<collection-name>
+
+:query action: list_conjoined
+:statuscode 200: no error
+
 Keys
 ####
 
@@ -331,6 +340,54 @@ To retrieve file information about a key issue a HEAD request.
 
 :statuscode 200: no error
 :statuscode 404: not found
+
+Start a Conjoined Archive
++++++++++++++++++++++++++
+Start a conjoined archive, where multiple uploads can combine to fomr the key
+The body of the return contains a JSON conjoined_identified
+
+.. http:post:: /data/<key>
+
+:query action=conjoined: start a conjoined archive
+:statuscode 200: no error
+
+Upload to a Conjoined Archive
++++++++++++++++++++++++++++++
+Upload one part of the full key. These can be done in parallel.
+
+.. http:put:: /data/<key>
+
+:query conjoined_identifier=<conjoined-identifier>: returned by start
+:query conjoined_part=<sequence-number>: number of this upload
+:statuscode 200: no error
+
+Finish Conjoined Archive
+++++++++++++++++++++++++
+Mark the archive as completed. Assemble the conjoined uploads in order by 
+sequence. This could run for a long time.
+
+.. http:post:: /data/<key>
+
+:query conjoined_identifier=<conjoined-identifier>: finish
+:statuscode 200: no error
+
+Abort Conjoined Archive
+++++++++++++++++++++++++
+Remove the conjoined archive and release all resources.
+
+.. http:delete:: /data/<key>
+
+:query conjoined_identifier=<conjoined-identifier>: remove
+:statuscode 200: no error
+
+List Uploads of Conjoined Archive
++++++++++++++++++++++++++++++++++
+List the known uploads in sequence
+
+.. http:get:: /data/<key>
+
+:query conjoined_identifier=<conjoined-identifier>: remove
+:statuscode 200: no error
 
 Getting Meta Information About a Key
 ++++++++++++++++++++++++++++++++++++

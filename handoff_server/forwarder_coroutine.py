@@ -97,7 +97,7 @@ def forwarder_coroutine(
         }
         reader_client.queue_message_for_send(message, data=None)
         reply, data = yield
-        assert reply["message-type"] == "retrieve-key-next-reply", reply
+        assert reply["message-type"] == "retrieve-key-reply", reply
         assert reply["result"] == "success", reply
         completed = message["completed"]
 
@@ -127,7 +127,7 @@ def forwarder_coroutine(
         
         writer_client.queue_message_for_send(message, data=data)
         reply = yield
-        assert reply["message-type"] == "archive-key-next-reply", reply
+        assert reply["message-type"] == "", reply
         assert reply["result"] == "success", reply
 
     # we give back the segment_row and source node names as our last yield

@@ -478,11 +478,15 @@ class Application(object):
 
         try:
             prefix = match_object.group("prefix")
-            prefix = urllib.unquote_plus(prefix)
-            prefix = prefix.decode("utf-8")
+            if prefix is None:
+                prefix = u""
+            else:
+                prefix = urllib.unquote_plus(prefix)
+                prefix = prefix.decode("utf-8")
         except IndexError:
             prefix = u""
         except Exception, instance:
+            self._log.exception(req.url)
             raise exc.HTTPServiceUnavailable(str(instance))
 
         self._log.debug(

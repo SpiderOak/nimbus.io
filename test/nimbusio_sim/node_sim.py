@@ -26,6 +26,7 @@ from unit_tests.util import start_event_aggregator, \
 def _generate_node_name(node_index):
     return "multi-node-%02d" % (node_index+1, )
 
+_test_base_path = os.environ["TEST_BASE_PATH"]
 _cluster_name = "multi-node-cluster"
 _node_count = 10
 _data_writer_base_port = 8100
@@ -78,7 +79,6 @@ class NodeSim(object):
 
     def __init__(
         self, 
-        test_dir, 
         node_index, 
         space_accounting=False,
         performance_packager=False,
@@ -87,7 +87,7 @@ class NodeSim(object):
         self._node_index = node_index
         self._node_name = _generate_node_name(node_index)
         self._log = logging.getLogger(self._node_name)
-        self._home_dir = os.path.join(test_dir, self._node_name)
+        self._home_dir = os.path.join(_test_base_path, self._node_name)
         if not os.path.exists(self._home_dir):
             os.makedirs(self._home_dir)
         self._processes = dict()

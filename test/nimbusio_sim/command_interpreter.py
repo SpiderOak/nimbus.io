@@ -5,12 +5,10 @@ command_interpreter.py
 accept commands while running simulated nodes
 """
 import cmd
-import os
 import time
 
 from test.nimbusio_sim.node_sim import NodeSim
 
-_temp_dir = os.environ.get("TEMP", "/tmp")
 _node_count = 10
 
 class CommandInterpreter(cmd.Cmd):
@@ -22,7 +20,6 @@ class CommandInterpreter(cmd.Cmd):
         self._node_sims = list()
         self._node_sims.append(
             NodeSim(
-                _temp_dir, 
                 0, 
                 space_accounting=True, 
                 performance_packager=True,
@@ -30,7 +27,7 @@ class CommandInterpreter(cmd.Cmd):
             )
         )
         for i in xrange(_node_count-1):
-            self._node_sims.append(NodeSim(_temp_dir, i+1))
+            self._node_sims.append(NodeSim(i+1))
 
     def _get_node_from_line(self, line):
         try:

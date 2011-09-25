@@ -99,7 +99,7 @@ def forwarder_coroutine(
         reply, data = yield
         assert reply["message-type"] == "retrieve-key-reply", reply
         assert reply["result"] == "success", reply
-        completed = message["completed"]
+        completed = reply["completed"]
 
         message_id = uuid.uuid1().hex
         if completed:
@@ -108,7 +108,8 @@ def forwarder_coroutine(
                 "message-id"        : message_id,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
-                "segment-number"    : segment_row.segment_number,
+                "timestamp-repr"    : repr(segment_row.timestamp),
+                "segment-number"    : segment_row.segment_num,
                 "sequence-num"      : sequence,
                 "file-size"         : segment_row.file_size,
                 "file-adler32"      : segment_row.file_adler32,
@@ -121,13 +122,13 @@ def forwarder_coroutine(
                 "message-id"        : message_id,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
+                "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
                 "sequence-num"      : sequence,
             }
         
         writer_client.queue_message_for_send(message, data=data)
         reply = yield
-        assert reply["message-type"] == "", reply
         assert reply["result"] == "success", reply
 
     # we give back the segment_row and source node names as our last yield

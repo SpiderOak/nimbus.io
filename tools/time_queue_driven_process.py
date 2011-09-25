@@ -96,9 +96,9 @@ def main(
         except Exception, instance:
             log.exception(instance)
             print >> sys.stderr, instance.__class__.__name__, str(instance)
-            if exception_action is None:
-                return 12
-            exception_action(state)
+            if exception_action is not None:
+                exception_action(state)
+            return 12
 
     log.info("normal termination")
     return 0

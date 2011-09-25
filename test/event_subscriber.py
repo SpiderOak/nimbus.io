@@ -2,7 +2,7 @@
 """
 event_subscriber.py
 
-subscribe to one node's event_publisher
+subscribe to the event aggregator
 """
 from collections import deque
 import logging

@@ -210,16 +210,27 @@ def _handle_archive_reply(state, message, _data):
     result = state["forwarder"].send(message)
 
     if result is not None:
+        state["forwarder"] = None
+
         segment_row, source_node_names = result
-        log.info("handoff complete %s %s %s %s" % (
+
+        description = "handoff complete %s %s %s %s" % (
             segment_row.collection_id,
             segment_row.key,
             segment_row.timestamp,
             segment_row.segment_num,
-        ))
+        )
+        log.info(description)
 
-        state["forwarder"] = None
-
+        state["event-push-client"].info(
+            "handoff-complete",
+            description,
+            backup_sources=source_node_names,
+            collection_id=segment_row.collection_id,
+            key=segment_row.key,
+            timestamp_repr=repr(segment_row.timestamp)
+        )
+        
         # purge the handoff source(s)
         message = {
             "message-type"      : "purge-key",
@@ -410,7 +421,9 @@ def _setup(_halt_event, state):
     )
 
     state["handoff-requestor"] = HandoffRequestor(state, _local_node_name)
-    state["handoff-starter"] = HandoffStarter(state, _local_node_name)
+    state["handoff-starter"] = HandoffStarter(
+        state, _local_node_name, state["event-push-client"]
+    )
 
     state["event-push-client"].info("program-start", "handoff_server starts")  
 

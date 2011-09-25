@@ -22,10 +22,11 @@ class HandoffStarter(object):
     A time queue action to start handoffs if any nodes have sent us a reply to
     handoff-request 
     """
-    def __init__(self, state, local_node_name):
+    def __init__(self, state, local_node_name, event_push_client):
         self._log = logging.getLogger("HandoffStarter")
         self._state = state
         self._local_node_name = local_node_name
+        self._event_push_client = event_push_client
 
     @classmethod
     def next_run(cls):
@@ -48,7 +49,7 @@ class HandoffStarter(object):
             # run the handoff requestor again, after the polling interval
             return [(self._state["handoff-requestor"].run, 
                      self._state["handoff-requestor"].next_run(), )]
-        
+
         # we pick the first source name, because it's easy, and because,
         # since that source responded to us first, it might have better 
         # response
@@ -56,6 +57,23 @@ class HandoffStarter(object):
         source_node_name = source_node_names[0]
         reader_client = self._state["reader-client-dict"][source_node_name]
 
+        description = "start handoff from %s to %s (%s) %r" % (
+            source_node_name,
+            self._local_node_name,
+            segment_row.collection_id,
+            segment_row.key
+        )
+        self._log.info(description)
+
+        self._state["event-push-client"].info(
+            "handoff-start",
+            description,
+            backup_source=source_node_name,
+            collection_id=segment_row.collection_id,
+            key=segment_row.key,
+            timestamp_repr=repr(segment_row.timestamp)
+        )
+        
         self._state["forwarder"] = forwarder_coroutine(
             segment_row, 
             source_node_names, 

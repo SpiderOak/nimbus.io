@@ -109,7 +109,7 @@ def forwarder_coroutine(
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
                 "timestamp-repr"    : repr(segment_row.timestamp),
-                "segment-number"    : segment_row.segment_num,
+                "segment-num"       : segment_row.segment_num,
                 "sequence-num"      : sequence,
                 "file-size"         : segment_row.file_size,
                 "file-adler32"      : segment_row.file_adler32,

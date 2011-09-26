@@ -33,9 +33,10 @@ def _all_sequence_rows_for_segment(
     result = connection.fetch_all_rows("""
         select %s from nimbusio_node.segment_sequence
         where segment_id = (
-            select id from nimbusio_node.segment 
+            select distinct id from nimbusio_node.segment 
             where collection_id = %%s and key = %%s 
             and timestamp=%%s::timestamp and segment_num=%%s
+            and file_tombstone=false
         )
         order by sequence_num asc
     """ % (",".join(segment_sequence_template._fields), ), 

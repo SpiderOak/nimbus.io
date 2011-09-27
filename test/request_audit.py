@@ -19,13 +19,38 @@ from tools.pull_server import PULLServer
 from tools.resilient_client import ResilientClient
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
+from tools.database_connection import get_central_connection
 
-_log_path = u"%s/request_audit.log" % (s.environ["NIMBUSIO_LOG_DIR"], )
+_log_path = u"%s/request_audit.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _client_tag = "request-audit-%s" % (_local_node_name, )
 _anti_entropy_server_address = \
     os.environ["NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESS"]
 _pipeline_address = "tcp://127.0.0.1:6666"
+
+def _load_collection_id_queue(collection_id_queue):
+    """
+    load every known collection into the queue
+    """
+    connection = get_central_connection()
+    rows = connection.fetch_all_rows(
+        "select id from nimbusio_central.collection order by id"
+    )
+    connection.close()
+    for (collection_id, ) in rows:
+        collection_id_queue.append(collection_id)
+
+def _request_audit(anti_entropy_client, collection_id):
+    log = logging.getLogger("_request_audit")
+    info = "requesting audit of %s" % (collection_id, )
+    log.info(info)
+    print >> sys.stderr, info
+
+    message = {
+        "message-type"  : "anti-entropy-audit-request",
+        "collection-id"     : collection_id,
+    }
+    anti_entropy_client.queue_message_for_send(message)
 
 def _handle_anti_entropy_audit_reply(state, message, _data):
     log = logging.getLogger("_handle_anti_entropy_audit_reply")
@@ -39,7 +64,12 @@ def _handle_anti_entropy_audit_reply(state, message, _data):
         log.error(info)
         print >> sys.stderr, info
 
-    state["halt-event"].set()
+    try:
+        collection_id = state["collection-id-queue"].popleft()
+    except IndexError:
+        state["halt-event"].set()
+    else:
+        _request_audit(state["anti-entropy-client"], collection_id)
 
 def _create_state():
     return {
@@ -50,12 +80,16 @@ def _create_state():
         "queue-dispatcher"          : None,
         "pull-server"               : None,
         "anti-entropy-client"       : None,
+        "collection-id-queue"       : deque() 
     }
 
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
-    collection_id = int(sys.argv[1])
+    if len(sys.argv) == 1:
+        state["collection-id-queue"].append(int(sys.argv[1]))
+    else:
+        _load_collection_id_queue(state["collection-id-queue"])
 
     log.info("binding pull-server to %s" % (_pipeline_address, ))
     state["pull-server"] = PULLServer(
@@ -83,16 +117,10 @@ def _setup(_halt_event, state):
         _dispatch_table
     )
 
-    info = "requesting audit of %s" % (collection_id, )
-    log.info(info)
-    print >> sys.stderr, ""
-    print >> sys.stderr, info
-
-    message = {
-        "message-type"  : "anti-entropy-audit-request",
-        "collection-id"     : collection_id,
-    }
-    state["anti-entropy-client"].queue_message_for_send(message)
+    _request_audit(
+        state["anti-entropy-client"], 
+        state["collection-id-queue"].popleft()
+    )
 
     return [
         (state["pollster"].run, time.time(), ), 

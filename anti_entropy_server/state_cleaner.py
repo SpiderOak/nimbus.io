@@ -34,13 +34,9 @@ class StateCleaner(object):
         current_time = time.time()
         expired_requests = list()
         # see if we have any timeouts
-        for request_id, request_state in self._state["active-requests"]:
+        for request_id, request_state in self._state["active-requests"].items():
             if current_time > request_state.timeout:
-                self._log.warn(
-                    "%s timed out waiting message" % (
-                        request_id
-                    )
-                )   
+                self._log.warn( "%s timed out waiting message" % (request_id))   
                 expired_requests.append(request_id)
                 self._timeout(request_state)
 

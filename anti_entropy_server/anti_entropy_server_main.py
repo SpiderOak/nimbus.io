@@ -275,18 +275,24 @@ def _handle_consistency_check_reply(state, message, _data):
     else:
         reply = None
 
-    collection_error_count = 0
+    collection_audit_error = False
 
     if len(md5_digest_set) != 1:
         log.error("md5_digest_set set of %s for (%s)" % (
             len(md5_digest_set), 
             message["collection-id"],
         ))
-        collection_error_count += 1
+        collection_audit_error = True
         
     # ok = no errors and all nodes have the same hash for every collection
-    if reply_error_count == 0 and collection_error_count == 0:
-        log.info("collection %s compares ok" % (message["collection-id"], ))
+    if reply_error_count == 0 and not collection_audit_error:
+        description = "collection %s compares ok" % (
+            message["collection-id"], 
+        )
+        log.info(description)
+        state["event-push-client"].info(
+            "audit-ok", description, collection_id=message["collection-id"]
+        )  
         database.successful_audit(request_state.row_id, timestamp)
         if reply is not None:
             reply["result"] = "success"
@@ -294,33 +300,50 @@ def _handle_consistency_check_reply(state, message, _data):
         return
 
     # we have error(s), but the non-errors compare ok
-    if reply_error_count > 0 and collection_error_count == 0:
+    if reply_error_count > 0 and not collection_audit_error:
 
         # if we come from anti-entropy-audit-request, don't retry
         if reply is not None:
             database.audit_error(request_state.row_id, timestamp)
             database.close()
-            error_message = "There were error replies from %s nodes" % (
+            description = "There were error replies from %s nodes" % (
                 reply_error_count, 
             )
-            log.error(error_message)
+            log.error(description)
+            state["event-push-client"].error(
+                "audit-errors", 
+                description, 
+                collection_id=message["collection-id"]
+            )  
             reply["result"] = "error"
-            reply["error-message"] = error_message
+            reply["error-message"] = description
             state["resilient-server"].send_reply(reply)
             return
         
         if request_state.retry_count >= max_retry_count:
-            log.error("collection %s %s errors, too many retries" % (
+            description = "collection %s %s errors, too many retries" % (
                 message["collection-id"], 
                 reply_error_count
-            ))
+            )
+            log.error(description)
+            state["event-push-client"].error(
+                "audit-errors", 
+                description, 
+                collection_id=message["collection-id"]
+            )  
             database.audit_error(request_state.row_id, timestamp)
             # TODO: needto do something here
         else:
-            log.warn("%s Error replies from %s nodes, will retry" % (
+            description = "%s Error replies from %s nodes, will retry" % (
                 message["collection-id"], 
                 reply_error_count
-            ))
+            )
+            log.warn(description)
+            state["event-push-client"].warn(
+                "audit-retry", 
+                description, 
+                collection_id=message["collection-id"]
+            )  
             state["retry-list"].append(
                 retry_entry_tuple(
                     retry_time=retry_time(), 
@@ -335,17 +358,22 @@ def _handle_consistency_check_reply(state, message, _data):
 
     # if we make it here, we have some form of mismatch, possibly mixed with
     # errors
-    error_message = "%s errors from %s nodes; mismatches on %s collections" % (
-        message["collection-id"], reply_error_count, collection_error_count
+    description = "%s errors from %s nodes; mismatch on collection = %r" % (
+        message["collection-id"], reply_error_count, collection_audit_error
     )
-    log.error(error_message)
+    log.error(description)
+    state["event-push-client"].warn(
+        "audit-retry", 
+        description, 
+        collection_id=message["collection-id"]
+    )  
 
     # if we come from anti-entropy-audit-request, don't retry
     if reply is not None:
         database.audit_error(request_state.row_id, timestamp)
         database.close()
         reply["result"] = "audit-error"
-        reply["error-message"] = error_message
+        reply["error-message"] = description
         state["resilient-server"].send_reply(reply)
         return
 

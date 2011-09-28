@@ -175,20 +175,18 @@ def _handle_consistency_check(state, message, _data):
     data_generator = state["local-database-connection"].generate_all_rows(
         """
         select key, timestamp, file_hash 
-        from nimbusio_node.segment where collection_id = %s
-        order by key
+        from nimbusio_node.segment 
+        where collection_id = %s and file_tombstone = false
+        order by key, timestamp
         """.strip(),
         [message["collection-id"], ]
     )
 
     count = 0
     md5 = hashlib.md5()
-    prev_key = None
     for key, timestamp, file_hash in data_generator:
         count += 1
-        if key != prev_key:
-            md5.update(key)
-            prev_key = key
+        md5.update(key)
         md5.update(repr(timestamp))
         md5.update(str(file_hash))
 
@@ -199,7 +197,7 @@ def _handle_consistency_check(state, message, _data):
     ))
 
     reply["result"] = "success"
-    reply["count"]  = count,
+    reply["count"]  = count
     reply["encoded-md5-digest"] = b64encode(md5.digest())
     state["resilient-server"].send_reply(reply, None)
 

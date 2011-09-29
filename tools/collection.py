@@ -61,7 +61,7 @@ def get_collection_id(connection, collection_name):
     """
     return collection_id for the collection_name
     """
-    result = connection.fetch_one_rows("""
+    result = connection.fetch_one_row("""
         select id from nimbusio_central.collection
         where name = %s and deletion_time is null
     """, [collection_name, ]

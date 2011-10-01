@@ -176,7 +176,9 @@ def _handle_consistency_check(state, message, _data):
         """
         select key, timestamp, file_hash 
         from nimbusio_node.segment 
-        where collection_id = %s and file_tombstone = false
+        where collection_id = %s 
+        and file_tombstone = false
+        and handoff_node_id is null
         order by key, timestamp
         """.strip(),
         [message["collection-id"], ]
@@ -246,19 +248,20 @@ def _handle_consistency_check_reply(state, message, _data):
     database = AuditResultDatabase(state["central-database-connection"])
     timestamp = create_timestamp()
     
-    reply_error_count = 0
-
-    # push the results into a set to see how many unique entries there are
-    md5_digest_set = set()
+    # push the results into a dict to see how many unique entries there are
+    md5_digest_dict = dict()
+    md5_digest_dict[_error_reply] = list()
 
     for node_name in request_state.replies.keys():
         node_reply = request_state.replies[node_name]
         if node_reply == _error_reply:
-            reply_error_count += 1
+            md5_digest_dict[_error_reply].append(node_name)
             continue
 
         _count, encoded_md5_digest = node_reply
-        md5_digest_set.add(encoded_md5_digest)
+        if not encoded_md5_digest in md5_digest_dict:
+            md5_digest_dict[encoded_md5_digest] = list()
+        md5_digest_dict[encoded_md5_digest].append(node_name)
 
     # if this audit was started by an anti-entropy-audit-request message,
     # we want to send a reply
@@ -273,17 +276,23 @@ def _handle_consistency_check_reply(state, message, _data):
     else:
         reply = None
 
-    collection_audit_error = False
+    error_reply_list = md5_digest_dict.pop(_error_reply)
+    if reply is not None:
+        reply["error-reply-nodes"] = error_reply_list
 
-    if len(md5_digest_set) != 1:
-        log.error("md5_digest_set set of %s for (%s)" % (
-            len(md5_digest_set), 
+
+    if len(md5_digest_dict) > 1:
+        log.error("found %s different hashes for (%s)" % (
+            len(md5_digest_dict), 
             message["collection-id"],
         ))
-        collection_audit_error = True
+        for index, value in enumerate(md5_digest_dict.values()):
+            log.info(str(value))
+            if reply is not None:
+                reply["mistmatch-nodes-%s" % (index+1, )] = value
         
     # ok = no errors and all nodes have the same hash for every collection
-    if reply_error_count == 0 and not collection_audit_error:
+    if len(error_reply_list) == 0 and len(md5_digest_dict) == 1:
         description = "collection %s compares ok" % (
             message["collection-id"], 
         )
@@ -298,20 +307,21 @@ def _handle_consistency_check_reply(state, message, _data):
         return
 
     # we have error(s), but the non-errors compare ok
-    if reply_error_count > 0 and not collection_audit_error:
+    if len(error_reply_list) > 0 and len(md5_digest_dict) == 1:
 
         # if we come from anti-entropy-audit-request, don't retry
         if reply is not None:
             database.audit_error(request_state.row_id, timestamp)
             database.close()
             description = "There were error replies from %s nodes" % (
-                reply_error_count, 
+                len(error_reply_list) , 
             )
             log.error(description)
             state["event-push-client"].error(
-                "audit-errors", 
+                "consistency-check-errors-replies", 
                 description, 
-                collection_id=message["collection-id"]
+                collection_id=message["collection-id"],
+                error_reply_nodes=error_reply_list
             )  
             reply["result"] = "error"
             reply["error-message"] = description
@@ -321,7 +331,7 @@ def _handle_consistency_check_reply(state, message, _data):
         if request_state.retry_count >= max_retry_count:
             description = "collection %s %s errors, too many retries" % (
                 message["collection-id"], 
-                reply_error_count
+                len(error_reply_list) 
             )
             log.error(description)
             state["event-push-client"].error(
@@ -334,7 +344,7 @@ def _handle_consistency_check_reply(state, message, _data):
         else:
             description = "%s Error replies from %s nodes, will retry" % (
                 message["collection-id"], 
-                reply_error_count
+                len(error_reply_list) 
             )
             log.warn(description)
             state["event-push-client"].warn(
@@ -356,8 +366,10 @@ def _handle_consistency_check_reply(state, message, _data):
 
     # if we make it here, we have some form of mismatch, possibly mixed with
     # errors
-    description = "%s errors from %s nodes; mismatch on collection = %r" % (
-        message["collection-id"], reply_error_count, collection_audit_error
+    description = "%s error replies from %s nodes; hash mismatch(es) = %r" % (
+        message["collection-id"], 
+        len(error_reply_list),
+        md5_digest_dict.values()
     )
     log.error(description)
     state["event-push-client"].warn(

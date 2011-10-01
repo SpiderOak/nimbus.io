@@ -17,6 +17,7 @@ class Listmatcher(object):
             select key from nimbusio_node.segment
             where collection_id = %s
             and file_tombstone = false
+            and handoff_node_id is null
             and key like %s
             """.strip(),
             [collection_id, "%s%%" % prefix, ]

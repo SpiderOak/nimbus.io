@@ -76,6 +76,7 @@ _handoff_count = 2
 
 _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
+_archive_retry_interval = 120
 
 def _build_meta_dict(req_get):
     """
@@ -430,7 +431,11 @@ class Application(object):
             self._log.error("archive failed: %s %s" % (
                 description, instance, 
             ))
-            raise exc.HTTPInternalServerError(str(instance))
+            # 2009-09-30 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
         
         end_time = time.time()
 

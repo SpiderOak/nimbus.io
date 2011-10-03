@@ -97,16 +97,35 @@ class Retriever(object):
         # we expect retrieve_key_start to return the tuple
         # (<data-segment>, <completion-status>, )
         # where completion-status is a boolean
+        # if the retrieve failed in some way, retrieve_key_start
+        # returns None
 
-        yield dict((task.segment_number, task.value[0])
-                   for task in self._done[:self.segments_needed])
-        completed_list = \
-            [task.value[1] for task in self._done[:self.segments_needed]]
-        completed = all(completed_list)
-        if completed:
+        result_dict = dict()
+        completed_list = list()
+
+        for task in self._done:
+            if task.value is None:
+                continue
+
+            data_segment, completion_status = task.value
+            result_dict[task.segment_number] = data_segment
+            completed_list.append(completion_status)
+
+            if len(result_dict) >= self.segments_needed:
+                break
+
+        if len(result_dict) < self.segments_needed:
+            raise RetrieveFailedError("too few valid results %s" % (
+                len(result_dict),
+            ))
+
+        yield result_dict
+
+        if all(completed_list):
             return
+
         if any(completed_list):
-            raise RetrieveFailedError("inconsistent completed status %s" % (
+            raise RetrieveFailedError("inconsistent completed %s" % (
                 completed_list,
             ))
             
@@ -128,18 +147,37 @@ class Retriever(object):
             # we expect retrieve_key_next to return the tuple
             # (<data-segment>, <completion-status>, )
             # where completion-status is a boolean
+            # if the retrieve failed in some way, retrieve_key_start
+            # returns None
 
-            yield dict((task.segment_number, task.value[0])
-                       for task in self._done[:self.segments_needed])
-            completed_list = \
-                [task.value[1] for task in self._done[:self.segments_needed]]
-            completed = all(completed_list)
-            if completed:
+            result_dict = dict()
+            completed_list = list()
+
+            for task in self._done:
+                if task.value is None:
+                    continue
+
+                data_segment, completion_status = task.value
+                result_dict[task.segment_number] = data_segment
+                completed_list.append(completion_status)
+
+                if len(result_dict) >= self.segments_needed:
+                    break
+
+            if len(result_dict) < self.segments_needed:
+                raise RetrieveFailedError("too few valid results %s" % (
+                    len(result_dict),
+                ))
+
+            yield result_dict
+
+            if all(completed_list):
                 return
+
             if any(completed_list):
-                raise RetrieveFailedError(
-                    "inconsistent completed status %s" % (
-                        completed_list,
-                    )
-                )
+                raise RetrieveFailedError("inconsistent completed %s" % (
+                    completed_list,
+                ))
+            
+
 

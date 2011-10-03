@@ -38,12 +38,18 @@ class DataWriter(object):
         file_md5,
         segment,
     ):
+        segment_md5 = hashlib.md5()
+        segment_md5.update(segment)
+
         message = {
             "message-type"      : "archive-key-entire",
             "collection-id"         : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : len(segment),
+            "segment-md5-digest": b64encode(segment_md5.digest()),
+            "segment-adler32"   : zlib.adler32(segment),
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5),

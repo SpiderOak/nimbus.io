@@ -141,9 +141,9 @@ def _handle_retrieve_key_start(state, message, _data):
         state["active-requests"][state_key] = state_entry
 
     reply["sequence-num"] = state_entry.sequence_read_count
-    reply["segment-size"] = sequence_row.size,
-    reply["segment-adler32"] = sequence_row.adler32,
-    reply["segment-md5-digest"] = b64encode(sequence_row.hash),
+    reply["segment-size"] = sequence_row.size
+    reply["segment-adler32"] = sequence_row.adler32
+    reply["segment-md5-digest"] = b64encode(sequence_row.hash)
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=data_content)
 
@@ -208,9 +208,9 @@ def _handle_retrieve_key_next(state, message, _data):
         )
 
     reply["sequence-num"] = sequence_read_count
-    reply["segment-size"] = sequence_row.size,
-    reply["segment-adler32"] = sequence_row.adler32,
-    reply["segment-md5-digest"] = b64encode(sequence_row.hash),
+    reply["segment-size"] = sequence_row.size
+    reply["segment-adler32"] = sequence_row.adler32
+    reply["segment-md5-digest"] = b64encode(sequence_row.hash)
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=data_content)
 

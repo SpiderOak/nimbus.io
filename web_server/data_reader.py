@@ -4,9 +4,9 @@ data_reader.py
 
 A class that represents a data reader in the system.
 """
+from base64 import b64decode
+import hashlib
 import logging
-
-from web_server.exceptions import RetrieveFailedError
 
 class DataReader(object):
 
@@ -39,10 +39,27 @@ class DataReader(object):
             'key = %(key)r '
             'segment_num = %(segment-num)d' % message
             )
+
         reply, data = delivery_channel.get()
+
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
-            raise RetrieveFailedError(reply["error-message"])
+            return None
+
+        # Ticket #1307 danger of zfec bit rot
+        # we must make sure we are handing zfec valid segments to reassemble
+
+        if len(data) != reply["segment-size"]:
+            self._log.error("failed: data size is %s expecting %s %s" % (
+                reply["segment-size"], len(data), reply
+            ))
+            return None
+
+        segment_md5 = hashlib.md5(data)
+        if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
+            self._log.error("md5 digest mismatch %s" % (reply, ))
+            return None
+
         return data, reply["completed"]
 
     def retrieve_key_next(
@@ -61,10 +78,28 @@ class DataReader(object):
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
-        self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
+        self._log.debug(
+            '%(message-type)s: %(collection-id)s %(key)s' % message
+        )
         reply, data = delivery_channel.get()
+
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
-            raise RetrieveFailedError(reply["error-message"])
+            return None
+
+        # Ticket #1307 danger of zfec bit rot
+        # we must make sure we are handing zfec valid segments to reassemble
+
+        if len(data) != reply["segment-size"]:
+            self._log.error("failed: data size is %s expecting %s %s" % (
+                reply["segment-size"], len(data), reply
+            ))
+            return None
+
+        segment_md5 = hashlib.md5(data)
+        if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
+            self._log.error("md5 digest mismatch %s" % (reply, ))
+            return None
+
         return data, reply["completed"]
 

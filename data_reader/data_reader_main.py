@@ -7,6 +7,7 @@ Looks up pointers to data by querying the database server
 Looks for files in both the hashfanout area 
 Responds with content or "not available"
 """
+from base64 import b64encode
 from collections import deque, namedtuple
 import logging
 import os.path
@@ -67,17 +68,20 @@ def _handle_retrieve_key_start(state, message, _data):
     ))
 
     reply = {
-        "message-type"  : "retrieve-key-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "collection-id" : message["collection-id"],
-        "key"           : message["key"],
-        "timestamp-repr": message["timestamp-repr"],
-        "segment-num"   : message["segment-num"],
-        "sequence-num"  : None,
-        "completed"     : None,
-        "result"        : None,
-        "error-message" : None,
+        "message-type"      : "retrieve-key-reply",
+        "client-tag"        : message["client-tag"],
+        "message-id"        : message["message-id"],
+        "collection-id"     : message["collection-id"],
+        "key"               : message["key"],
+        "timestamp-repr"    : message["timestamp-repr"],
+        "segment-num"       : message["segment-num"],
+        "segment-size"      : None,
+        "segment-adler32"   : None,
+        "segment-md5-digest": None,
+        "sequence-num"      : None,
+        "completed"         : None,
+        "result"            : None,
+        "error-message"     : None,
     }
 
     # if we already have a state entry for this request, something is wrong
@@ -111,7 +115,7 @@ def _handle_retrieve_key_start(state, message, _data):
     log.debug("found %s sequence rows" % (sequence_row_count, ))
 
     try:
-        data_content = sequence_generator.next()
+        sequence_row, data_content = sequence_generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -137,6 +141,9 @@ def _handle_retrieve_key_start(state, message, _data):
         state["active-requests"][state_key] = state_entry
 
     reply["sequence-num"] = state_entry.sequence_read_count
+    reply["segment-size"] = sequence_row.size,
+    reply["segment-adler32"] = sequence_row.adler32,
+    reply["segment-md5-digest"] = b64encode(sequence_row.hash),
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=data_content)
 
@@ -151,17 +158,20 @@ def _handle_retrieve_key_next(state, message, _data):
     ))
 
     reply = {
-        "message-type"  : "retrieve-key-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "collection-id" : message["collection-id"],
-        "key"           : message["key"],
-        "timestamp-repr": message["timestamp-repr"],
-        "segment-num"   : message["segment-num"],
-        "sequence-num"  : None,
-        "completed"     : None,
-        "result"        : None,
-        "error-message" : None,
+        "message-type"      : "retrieve-key-reply",
+        "client-tag"        : message["client-tag"],
+        "message-id"        : message["message-id"],
+        "collection-id"     : message["collection-id"],
+        "key"               : message["key"],
+        "timestamp-repr"    : message["timestamp-repr"],
+        "segment-num"       : message["segment-num"],
+        "segment-size"      : None,
+        "segment-adler32"   : None,
+        "segment-md5-digest": None,
+        "sequence-num"      : None,
+        "completed"         : None,
+        "result"            : None,
+        "error-message"     : None,
     }
 
     try:
@@ -176,7 +186,7 @@ def _handle_retrieve_key_next(state, message, _data):
 
 
     try:
-        data_content = state_entry.generator.next()
+        sequence_row, data_content = state_entry.generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -198,6 +208,9 @@ def _handle_retrieve_key_next(state, message, _data):
         )
 
     reply["sequence-num"] = sequence_read_count
+    reply["segment-size"] = sequence_row.size,
+    reply["segment-adler32"] = sequence_row.adler32,
+    reply["segment-md5-digest"] = b64encode(sequence_row.hash),
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=data_content)
 

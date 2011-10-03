@@ -5,7 +5,9 @@ data_writer.py
 A class that represents a data writer in the system.
 """
 from base64 import b64encode
+import hashlib
 import logging
+import zlib
 
 import gevent
 
@@ -71,12 +73,18 @@ class DataWriter(object):
         sequence_num,
         segment
     ):
+        segment_md5 = hashlib.md5()
+        segment_md5.update(segment)
+
         message = {
             "message-type"      : "archive-key-start",
             "collection-id"         : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : len(segment),
+            "segment-md5-digest": b64encode(segment_md5.digest()),
+            "segment-adler32"   : zlib.adler32(segment),
             "sequence-num"      : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
@@ -101,12 +109,18 @@ class DataWriter(object):
         sequence_num,
         segment
     ):
+        segment_md5 = hashlib.md5()
+        segment_md5.update(segment)
+
         message = {
             "message-type"      : "archive-key-next",
             "collection-id"         : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : len(segment),
+            "segment-md5-digest": b64encode(segment_md5.digest()),
+            "segment-adler32"   : zlib.adler32(segment),
             "sequence-num"      : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
@@ -134,12 +148,18 @@ class DataWriter(object):
         file_md5,
         segment,
     ):
+        segment_md5 = hashlib.md5()
+        segment_md5.update(segment)
+
         message = {
             "message-type"      : "archive-key-final",
             "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : len(segment),
+            "segment-md5-digest": b64encode(segment_md5.digest()),
+            "segment-adler32"   : zlib.adler32(segment),
             "sequence-num"      : sequence_num,
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,

@@ -117,6 +117,9 @@ class TestDataReader(unittest.TestCase):
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : file_size,
+            "segment-adler32"   : file_adler32,
+            "segment-md5-digest": b64encode(file_md5.digest()),
             "file-size"         : file_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5.digest()),
@@ -184,6 +187,9 @@ class TestDataReader(unittest.TestCase):
         slice_start = 0
         slice_end = slice_size
 
+        segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
+        segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
+
         message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "archive-key-start",
@@ -192,6 +198,9 @@ class TestDataReader(unittest.TestCase):
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : len(test_data[slice_start:slice_end]),
+            "segment-adler32"   : segment_adler32,
+            "segment-md5-digest": b64encode(segment_md5.digest()),
             "sequence-num"      : sequence_num,
         }
         reply = send_request_and_get_reply(
@@ -210,6 +219,10 @@ class TestDataReader(unittest.TestCase):
             sequence_num += 1
             slice_start += slice_size
             slice_end += slice_size
+            
+            segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
+            segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
+
             message_id = uuid.uuid1().hex
             message = {
                 "message-type"      : "archive-key-next",
@@ -217,6 +230,9 @@ class TestDataReader(unittest.TestCase):
                 "key"               : key, 
                 "timestamp-repr"    : repr(timestamp),
                 "segment-num"       : segment_num,
+                "segment-size"      : len(test_data[slice_start:slice_end]),
+                "segment-adler32"   : segment_adler32,
+                "segment-md5-digest": b64encode(segment_md5.digest()),
                 "message-id"        : message_id,
                 "sequence-num"      : sequence_num,
             }
@@ -236,6 +252,10 @@ class TestDataReader(unittest.TestCase):
         slice_start += slice_size
         slice_end += slice_size
         self.assertEqual(slice_end, total_size)
+
+        segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
+        segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
+
         message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "archive-key-final",
@@ -244,6 +264,9 @@ class TestDataReader(unittest.TestCase):
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
+            "segment-size"      : len(test_data[slice_start:slice_end]),
+            "segment-adler32"   : segment_adler32,
+            "segment-md5-digest": b64encode(segment_md5.digest()),
             "sequence-num"      : sequence_num,
             "file-size"         : total_size,
             "file-adler32"      : file_adler32,

@@ -89,6 +89,9 @@ def _handle_archive_key_entire(state, message, data):
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
+        message["segment-size"],
+        b64decode(message["segment-md5-digest"]),
+        message["segment-adler32"],
         sequence_num,
         data
     )
@@ -149,6 +152,9 @@ def _handle_archive_key_start(state, message, data):
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
+        message["segment-size"],
+        b64decode(message["segment-md5-digest"]),
+        message["segment-adler32"],
         message["sequence-num"],
         data
     )
@@ -173,6 +179,9 @@ def _handle_archive_key_next(state, message, data):
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
+        message["segment-size"],
+        b64decode(message["segment-md5-digest"]),
+        message["segment-adler32"],
         message["sequence-num"],
         data
     )
@@ -203,6 +212,9 @@ def _handle_archive_key_final(state, message, data):
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"],
+        message["segment-size"],
+        b64decode(message["segment-md5-digest"]),
+        message["segment-adler32"],
         message["sequence-num"],
         data
     )

@@ -4,10 +4,8 @@ writer.py
 
 Manage writing segment values to disk
 """
-import hashlib
 import logging
 import os
-import zlib
 
 import psycopg2
 
@@ -201,6 +199,9 @@ class Writer(object):
         key, 
         timestamp_repr, 
         segment_num, 
+        segment_size,
+        segment_md5_digest,
+        segment_adler32,
         sequence_num, 
         data
     ):
@@ -214,20 +215,17 @@ class Writer(object):
             timestamp_repr, 
             segment_num, 
             sequence_num,
-            len(data)
+            segment_size
         ))
         segment_entry = self._active_segments[segment_key]
 
         # if this write would put us over the max size,
         # start a new output value file
-        if self._value_file.size + len(data) > _max_value_file_size:
+        if self._value_file.size + segment_size > _max_value_file_size:
             self._value_file.close()
             self._value_file = OutputValueFile(
                 self._connection, self._repository_path
             )
-
-        sequence_md5 = hashlib.md5()
-        sequence_md5.update(data)
 
         segment_sequence_row = segment_sequence_template(
             collection_id=collection_id,
@@ -235,9 +233,9 @@ class Writer(object):
             value_file_id=self._value_file.value_file_id,
             sequence_num=sequence_num,
             value_file_offset=self._value_file.size,
-            size=len(data),
-            hash=psycopg2.Binary(sequence_md5.digest()),
-            adler32=zlib.adler32(data),
+            size=segment_size,
+            hash=psycopg2.Binary(segment_md5_digest),
+            adler32=segment_adler32,
         )
 
         self._value_file.write_data_for_one_sequence(

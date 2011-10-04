@@ -54,6 +54,9 @@ def forwarder_coroutine(
             "key"               : segment_row.key, 
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
+            "segment-size"      : reply["segment-size"],
+            "segment-adler32"   : reply["segment-adler32"],
+            "segment-md5-digest": reply["segment-md5-digest"],
             "file-size"         : segment_row.file_size,
             "file-adler32"      : segment_row.file_adler32,
             "file-hash"         : b64encode(segment_row.file_hash),
@@ -67,6 +70,9 @@ def forwarder_coroutine(
             "key"               : segment_row.key, 
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
+            "segment-size"      : reply["segment-size"],
+            "segment-adler32"   : reply["segment-adler32"],
+            "segment-md5-digest": reply["segment-md5-digest"],
             "sequence-num"      : sequence,
         }
             
@@ -110,6 +116,9 @@ def forwarder_coroutine(
                 "key"               : segment_row.key,
                 "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
+                "segment-size"      : reply["segment-size"],
+                "segment-adler32"   : reply["segment-adler32"],
+                "segment-md5-digest": reply["segment-md5-digest"],
                 "sequence-num"      : sequence,
                 "file-size"         : segment_row.file_size,
                 "file-adler32"      : segment_row.file_adler32,
@@ -124,6 +133,9 @@ def forwarder_coroutine(
                 "key"               : segment_row.key,
                 "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
+                "segment-size"      : reply["segment-size"],
+                "segment-adler32"   : reply["segment-adler32"],
+                "segment-md5-digest": reply["segment-md5-digest"],
                 "sequence-num"      : sequence,
             }
         

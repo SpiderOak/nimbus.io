@@ -52,8 +52,6 @@ class Retriever(object):
             return
         if task.successful():
             self._done.append(task)
-            if len(self._done) >= self.segments_needed:
-                self._pending.kill()
 
     def _spawn(self, segment_number, data_reader, run, *args):
         task = self._pending.spawn(run, *args)

@@ -67,7 +67,8 @@ def _parse_command_line():
 def _handle_create_customer(connection, username):
     print >> sys.stderr, "creating customer", username
     create_customer(connection, username)
-    print >> sys.stderr, "created"
+    add_key_to_customer(connection, username)
+    _handle_list_keys(connection, username)
 
 def _handle_add_key(connection, username):
     print >> sys.stderr, "adding key to customer", username

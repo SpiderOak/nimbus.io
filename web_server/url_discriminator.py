@@ -42,26 +42,26 @@ _space_usage_re = re.compile(
 )
 
 _archive_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)(\?.*)?$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)(\?.*)?$"
 )
 
 _list_keys_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>[a-zA-Z0-9-]+))$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>\S+?))$"
 )
 
 _retrieve_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)$"
 )
 
 _delete_key1_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)$"
 )
 _delete_key2_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)\?action=delete$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)\?action=delete$"
 )
 
 _head_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>[a-zA-Z0-9-]+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+)$"
 )
 
 # note that order is significant here, 

@@ -77,6 +77,7 @@ _handoff_count = 2
 _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
 _archive_retry_interval = 120
+_retrieve_retry_interval = 120
 
 def _build_meta_dict(req_get):
     """
@@ -570,7 +571,7 @@ class Application(object):
             )
             return exc.HTTPNotFound(str(instance))
 
-        def app_iter():
+        def app_iterator(response):
             sent = 0
             try:
                 for segments in chain([first_segments], retrieved):
@@ -585,7 +586,9 @@ class Application(object):
                 self._log.error('retrieve failed: %s %s' % (
                     description, instance
                 ))
-                raise exc.HTTPInternalServerError(str(instance))
+                response.status_int = 503
+                response.retry_after = _retrieve_retry_interval
+                return
 
             end_time = time.time()
 
@@ -603,7 +606,13 @@ class Application(object):
                 bytes_retrieved=sent
             )
 
-        return Response(app_iter=app_iter())
+        # 2011-10-05 dougfort -- going thrpough this convoluted process 
+        # to return 503 if the app_iter fails. Instead of rasing an 
+        # exception that chokes the customer's retrieve
+        # IMO this really sucks 
+        response = Response()
+        response.app_iter = app_iterator(response)
+        return  response
 
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")

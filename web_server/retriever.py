@@ -26,8 +26,8 @@ class Retriever(object):
         key, 
         segments_needed
     ):
-        self.log = logging.getLogger("Retriever")
-        self.log.info('collection_id=%d, key=%r' % (collection_id, key, ))
+        self._log = logging.getLogger("Retriever")
+        self._log.info('collection_id=%d, key=%r' % (collection_id, key, ))
         self._node_local_connection = node_local_connection
         self.data_readers = data_readers
         self.collection_id = collection_id
@@ -35,17 +35,6 @@ class Retriever(object):
         self.segments_needed = segments_needed
         self._pending = gevent.pool.Group()
         self._done = []
-
-    def _join(self, timeout):
-        self._pending.join(timeout, raise_error=True)
-        # make sure _done_link gets run first by cooperating
-        gevent.sleep(0)
-        if self._pending:
-            raise RetrieveFailedError()
-        if len(self._done) < self.segments_needed:
-            raise RetrieveFailedError("too few segments done %s" % (
-                len(self._done),
-            ))
 
     def _done_link(self, task):
         if isinstance(task.value, gevent.GreenletExit):
@@ -61,7 +50,7 @@ class Retriever(object):
         return task
 
     def retrieve(self, timeout=None):
-        if self._pending:
+        if len(self._pending) > 0:
             raise AlreadyInProgress()
 
         # TODO: find a non-blocking way to do this
@@ -90,7 +79,16 @@ class Retriever(object):
                 file_info.timestamp,
                 segment_number
             )
-        self._join(timeout)  
+
+        self._pending.join(timeout, raise_error=True)
+        # make sure _done_link gets run first by cooperating
+        gevent.sleep(0)
+        if len(self._pending) > 0:
+            self._log.warn("retrieve-key-start killing %s pending" % (
+                len(self._pending),
+            ))
+            self._pending.kill()
+            gevent.sleep(0)
 
         # we expect retrieve_key_start to return the tuple
         # (<data-segment>, <completion-status>, )
@@ -140,7 +138,16 @@ class Retriever(object):
                     file_info.timestamp,
                     segment_number
                 )
-            self._join(timeout)
+
+            self._pending.join(timeout, raise_error=True)
+            # make sure _done_link gets run first by cooperating
+            gevent.sleep(0)
+            if len(self._pending) > 0:
+                self._log.warn("retrieve-key-next %s killing %s pending" % (
+                    segment_number, len(self._pending),
+                ))
+                self._pending.kill()
+                gevent.sleep(0)
 
             # we expect retrieve_key_next to return the tuple
             # (<data-segment>, <completion-status>, )

@@ -4,17 +4,18 @@ retriever.py
 
 A class that retrieves data from data readers.
 """
+import itertools
 import logging
+import time
 
 import gevent
 import gevent.pool
+import gevent.queue
 
-from web_server.exceptions import (
-    AlreadyInProgress,
-    RetrieveFailedError,
-)
+from web_server.exceptions import RetrieveFailedError
 from web_server.local_database_util import most_recent_timestamp_for_key
 
+_task_timeout = 60.0
 
 class Retriever(object):
     """Retrieves data from data readers."""
@@ -29,79 +30,171 @@ class Retriever(object):
         self._log = logging.getLogger("Retriever")
         self._log.info('collection_id=%d, key=%r' % (collection_id, key, ))
         self._node_local_connection = node_local_connection
-        self.data_readers = data_readers
-        self.collection_id = collection_id
-        self.key = key
-        self.segments_needed = segments_needed
+        self._data_readers = data_readers
+        self._collection_id = collection_id
+        self._key = key
+        self._segments_needed = segments_needed
         self._pending = gevent.pool.Group()
-        self._done = []
+        self._finished_tasks = gevent.queue.Queue()
 
     def _done_link(self, task):
-        if isinstance(task.value, gevent.GreenletExit):
-            self._log.debug("_done_link %s task ends with GreenletExit" % (
-                task.data_reader.node_name,
-            ))
-            return
-        if task.successful():
-            self._log.debug("_done_link %s task successful" % (
-                task.data_reader.node_name,
-            ))
-            self._done.append(task)
-        else:
-            self._log.warn("_done_link %s task not successful" % (
-                task.data_reader.node_name,
-            ))
+        self._finished_tasks.put(task, block=True)
 
-    def _spawn(self, segment_number, data_reader, run, *args):
-        task = self._pending.spawn(run, *args)
-        task.link(self._done_link)
-        task.segment_number = segment_number
-        task.data_reader = data_reader
-        return task
-
-    def retrieve(self, timeout=None):
-        if len(self._pending) > 0:
-            raise AlreadyInProgress()
-
+    def retrieve(self, timeout):
         # TODO: find a non-blocking way to do this
+        # TODO: don't just use the local node, it might be wrong
         file_info = most_recent_timestamp_for_key(
-            self._node_local_connection , self.collection_id, self.key
+            self._node_local_connection , self._collection_id, self._key
         )
 
         if file_info is None:
             raise RetrieveFailedError("key not found %s %s" % (
-                self.collection_id, self.key,
+                self._collection_id, self._key,
             ))
 
         if file_info.file_tombstone:
             raise RetrieveFailedError("key is deleted %s %s" % (
-                self.collection_id, self.key,
+                self._collection_id, self._key,
             ))
 
-        for i, data_reader in enumerate(self.data_readers):
-            segment_number = i + 1
-            self._spawn(
-                segment_number,
-                data_reader,
-                data_reader.retrieve_key_start,
-                self.collection_id,
-                self.key,
-                file_info.timestamp,
-                segment_number
-            )
+        # spawn retrieve_key start, then spawn retrieve key next
+        # until we are done
+        start_list = itertools.chain( [True, ], itertools.repeat(False))
+        for start in start_list:
+            # send a request to all node
+            for i, data_reader in enumerate(self._data_readers):
+                segment_number = i + 1
+                if start:
+                    function = data_reader.retrieve_key_start
+                else:
+                    function = data_reader.retrieve_key_next
+                task = self._pending.spawn(
+                    function, 
+                    self._collection_id,
+                    self._key,
+                    file_info.timestamp,
+                    segment_number
+                )
+                task.link(self._done_link)
+                task.segment_number = segment_number
+                task.data_reader = data_reader
 
+            # wait for, and process, replies from the nodes
+            result_dict, completed = self._process_node_replies(timeout)
+
+            yield result_dict
+            if completed:
+                break
+
+    def _process_node_replies(self, timeout):
+        finished_task_count = 0
+        result_dict = dict()
+        completed_list = list()
+        start_time = time.time()
+
+        # block on the finished_tasks queue until done
+        while finished_task_count < len(self._data_readers):
+            try:
+                task = self._finished_tasks.get(
+                    block=True, timeout=_task_timeout
+                )
+            except gevent.queue.Empty:
+                elapsed_time = time.time() - start_time
+                if elapsed_time > timeout:
+                    error_message = \
+                        "timed out _finished_tasks %s %s" % (
+                            self._collection_id,
+                            self._key,
+                        )
+                    self._log.error(error_message)
+                    raise RetrieveFailedError(error_message)
+
+                self._log.warn("timeout waiting for completed task")
+                continue
+
+            finished_task_count += 1
+            result = self._process_finished_task(task)
+
+            if result is None:
+                continue
+
+            data_segment, completion_status = result
+
+            result_dict[task.segment_number] = data_segment
+            completed_list.append(completion_status)
+
+            if len(result_dict) >= self._segments_needed:
+                self._log.debug(
+                    "%s %s len(result_dict) = %s: enough" % (
+                    self._collection_id,
+                    self._key,
+                    len(result_dict),
+                ))
+                self._pending.kill()
+                break
+
+        # if anything is still running, get rid of it
         self._log.debug("retrieve: before join retrieve_key_start")
         self._pending.join(timeout, raise_error=True)
         self._log.debug("retrieve: before join retrieve_key_start")
 
-        # make sure _done_link gets run first by cooperating
-        gevent.sleep(0)
-        if len(self._pending) > 0:
-            self._log.warn("retrieve-key-start killing %s pending" % (
-                len(self._pending),
+        if len(result_dict) < self._segments_needed:
+            error_message = "(%s) %s too few valid results %s" % (
+                self._collection_id,
+                self._key,
+                len(result_dict),
+            )
+            self._log.error(error_message)
+            raise RetrieveFailedError(error_message)
+
+        if all(completed_list):
+            self._log.debug("(%s) %s all nodes say completed" % (
+                self._collection_id,
+                self._key,
             ))
-            self._pending.kill()
-            gevent.sleep(0)
+            return result_dict, True
+
+        if any(completed_list):
+            error_message = "(%s) %s inconsistent completed %s" % (
+                self._collection_id,
+                self._key,
+                completed_list,
+            )
+            self._log.error(error_message)
+            raise RetrieveFailedError(error_message)
+            
+        self._log.debug("(%s) %s all nodes say NOT completed" % (
+            self._collection_id,
+            self._key,
+        ))
+        return result_dict, False
+        
+    def _process_finished_task(self, task):
+        if isinstance(task.value, gevent.GreenletExit):
+            self._log.debug(
+                "(%s) %s %s task ends with GreenletExit" % (
+                    self._collection_id,
+                    self._key,
+                    task.data_reader.node_name,
+                )
+            )
+            return None
+
+        if not task.successful():
+            # 2011-10-07 dougfort -- I don't know how a task
+            # could be unsuccessful
+            self._log.warn("(%s) %s %s task unsuccessful" % (
+                self._collection_id,
+                self._key,
+                task.data_reader.node_name,
+            ))
+            return None
+
+        self._log.debug("(%s) %s %s task successful" % (
+            self._collection_id,
+            self._key,
+            task.data_reader.node_name,
+        ))
 
         # we expect retrieve_key_start to return the tuple
         # (<data-segment>, <completion-status>, )
@@ -109,132 +202,24 @@ class Retriever(object):
         # if the retrieve failed in some way, retrieve_key_start
         # returns None
 
-        result_dict = dict()
-        completed_list = list()
-
-        for task in self._done:
-            if task.value is None:
-                self._log.debug("retrieve: start %s task value is None" % (
+        if task.value is None:
+            self._log.debug(
+                "(%s) %s %s task value is None" % (
+                    self._collection_id,
+                    self._key,
                     task.data_reader.node_name,
-                ))
-                continue
-
-            data_segment, completion_status = task.value
-
-            self._log.debug("retrieve %s task successful complete = %r" % (
-                task.data_reader.node_name, completion_status,
-            ))
-
-            result_dict[task.segment_number] = data_segment
-            completed_list.append(completion_status)
-
-            if len(result_dict) >= self.segments_needed:
-                self._log.debug("retrieve: len(result_dict) = %s: enough" % (
-                    len(result_dict),
-                ))
-                break
-
-        if len(result_dict) < self.segments_needed:
-            raise RetrieveFailedError("too few valid results %s" % (
-                len(result_dict),
-            ))
-
-        yield result_dict
-
-        if all(completed_list):
-            self._log.debug("retrieve: start all completed")
-            return
-
-        if any(completed_list):
-            error_message = "inconsistent completed %s" % (completed_list,)
-            self._log.error("retrieve: %s" % (error_message, ))
-            raise RetrieveFailedError(error_message)
-            
-        sequence = 1
-        while True:
-            sequence += 1
-            self._log.debug("retrieve start retrieve_key_next for %s" % (
-                sequence,
-            ))
-            self._done = []
-            for i, data_reader in enumerate(self.data_readers):
-                segment_number = i + 1
-                self._spawn(
-                    segment_number,
-                    data_reader,
-                    data_reader.retrieve_key_next,
-                    self.collection_id,
-                    self.key,
-                    file_info.timestamp,
-                    segment_number
                 )
+            )
+            return None
 
-            self._log.debug("retrieve: before join retrieve_key_next %s" % (
-                sequence,
-            ))
-            self._pending.join(timeout, raise_error=True)
-            self._log.debug("retrieve: after join retrieve_key_next %s" % (
-                sequence,
-            ))
+        data_segment, completion_status = task.value
 
-            # make sure _done_link gets run first by cooperating
-            gevent.sleep(0)
-            if len(self._pending) > 0:
-                self._log.warn("retrieve-key-next %s killing %s pending" % (
-                    segment_number, len(self._pending),
-                ))
-                self._pending.kill()
-                gevent.sleep(0)
+        self._log.debug("(%s) %s %s task successful complete = %r" % (
+            self._collection_id,
+            self._key,
+            task.data_reader.node_name, 
+            completion_status,
+        ))
 
-            # we expect retrieve_key_next to return the tuple
-            # (<data-segment>, <completion-status>, )
-            # where completion-status is a boolean
-            # if the retrieve failed in some way, retrieve_key_start
-            # returns None
+        return data_segment, completion_status
 
-            result_dict = dict()
-            completed_list = list()
-
-            for task in self._done:
-                if task.value is None:
-                    self._log.debug("retrieve: start %s task value is None" % (
-                        task.data_reader.node_name,
-                    ))
-                    continue
-
-                data_segment, completion_status = task.value
-
-                self._log.debug("retrieve %s task successful complete = %r" % (
-                    task.data_reader.node_name, completion_status,
-                ))
-
-                result_dict[task.segment_number] = data_segment
-                completed_list.append(completion_status)
-
-                if len(result_dict) >= self.segments_needed:
-                    self._log.debug(
-                        "retrieve: len(result_dict) = %s: enough" % (
-                            len(result_dict),
-                        )
-                    )
-                    break
-
-            if len(result_dict) < self.segments_needed:
-                raise RetrieveFailedError("too few valid results %s" % (
-                    len(result_dict),
-                ))
-
-            yield result_dict
-
-            if all(completed_list):
-                self._log.debug("retrieve: start all completed")
-                return
-
-            if any(completed_list):
-                raise RetrieveFailedError("inconsistent completed %s" % (
-                    completed_list,
-                ))
-            
-            self._log.debug("retrieve finish retrieve_key_next for %s" % (
-                sequence,
-            ))

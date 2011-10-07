@@ -36,36 +36,48 @@ class StateCleaner(object):
         # see if we have any timeouts
         for request_id, request_state in self._state["active-requests"].items():
             if current_time > request_state.timeout:
-                self._log.warn( "%s timed out waiting message" % (request_id))   
+                self._log.warn(
+                    "%s timed out waiting message" % (request_id, )
+                )   
                 expired_requests.append(request_id)
-                self._timeout(request_state)
+                self._timeout(request_id, request_state)
 
         for request_id in expired_requests:
             del self._state["active-requests"][request_id]
 
         return [(self.run, self.next_run(), )]
 
-    def _timeout(self, request_state):
+    def _timeout(self, request_id, request_state):
         """
         If we don't hear from all the nodes in a reasonable time,
         put the request in the retry queue
         """
+        collection_id, _timestamp = request_id
         database = AuditResultDatabase(
             self._state["central-database-connection"]
         )
 
         if request_state.retry_count >= max_retry_count:
-            self._log.error("timeout: %s with too many retries %s " % (
-                request_state.collection_id, request_state.retry_count
-            ))
+            error_message = "timeout: %s with too many retries %s " % (
+                request_id, request_state.retry_count
+            )
+            self._log.error(error_message)
             database.too_many_retries(request_state.row_id)
             database.close()
-            # TODO: need to do something with this
+            self._state["event-push-client"].error(
+                "audit-timeout", 
+                error_message, 
+                collection_id=collection_id,
+                retry=False
+            )
             return
 
-        self._log.error("timeout %s. will retry in %s seconds" % (
-            request_state.collection_id, retry_interval,
-        ))
+        self._state["event-push-client"].error(
+            "audit-timeout", 
+            error_message, 
+            collection_id=collection_id,
+            retry=True
+        )
         self._state["retry-list"].append(
             retry_entry_tuple(
                 retry_time=retry_time(), 
@@ -76,4 +88,9 @@ class StateCleaner(object):
         )
         database.wait_for_retry(request_state.row_id)
         database.close()
+
+        error_message = "timeout %s. will retry in %s seconds" % (
+            request_id, retry_interval,
+        )
+        self._log.error(error_message)
 

@@ -12,11 +12,16 @@ class DataReader(object):
 
     def __init__(self, node_name, resilient_client):
         self._log = logging.getLogger("DataReader-%s" % (node_name, ))
+        self._node_name = node_name
         self._resilient_client = resilient_client
 
     @property
     def connected(self):
         return self._resilient_client
+
+    @property
+    def node_name(self):
+        return self._node_name
 
     def retrieve_key_start(
         self,

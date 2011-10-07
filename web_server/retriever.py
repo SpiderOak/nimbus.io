@@ -38,9 +38,19 @@ class Retriever(object):
 
     def _done_link(self, task):
         if isinstance(task.value, gevent.GreenletExit):
+            self._log.debug("_done_link %s task ends with GreenletExit" % (
+                task.data_reader.node_name,
+            ))
             return
         if task.successful():
+            self._log.debug("_done_link %s task successful" % (
+                task.data_reader.node_name,
+            ))
             self._done.append(task)
+        else:
+            self._log.warn("_done_link %s task not successful" % (
+                task.data_reader.node_name,
+            ))
 
     def _spawn(self, segment_number, data_reader, run, *args):
         task = self._pending.spawn(run, *args)
@@ -80,7 +90,10 @@ class Retriever(object):
                 segment_number
             )
 
+        self._log.debug("retrieve: before join retrieve_key_start")
         self._pending.join(timeout, raise_error=True)
+        self._log.debug("retrieve: before join retrieve_key_start")
+
         # make sure _done_link gets run first by cooperating
         gevent.sleep(0)
         if len(self._pending) > 0:
@@ -101,13 +114,24 @@ class Retriever(object):
 
         for task in self._done:
             if task.value is None:
+                self._log.debug("retrieve: start %s task value is None" % (
+                    task.data_reader.node_name,
+                ))
                 continue
 
             data_segment, completion_status = task.value
+
+            self._log.debug("retrieve %s task successful complete = %r" % (
+                task.data_reader.node_name, completion_status,
+            ))
+
             result_dict[task.segment_number] = data_segment
             completed_list.append(completion_status)
 
             if len(result_dict) >= self.segments_needed:
+                self._log.debug("retrieve: len(result_dict) = %s: enough" % (
+                    len(result_dict),
+                ))
                 break
 
         if len(result_dict) < self.segments_needed:
@@ -118,14 +142,20 @@ class Retriever(object):
         yield result_dict
 
         if all(completed_list):
+            self._log.debug("retrieve: start all completed")
             return
 
         if any(completed_list):
-            raise RetrieveFailedError("inconsistent completed %s" % (
-                completed_list,
-            ))
+            error_message = "inconsistent completed %s" % (completed_list,)
+            self._log.error("retrieve: %s" % (error_message, ))
+            raise RetrieveFailedError(error_message)
             
+        sequence = 1
         while True:
+            sequence += 1
+            self._log.debug("retrieve start retrieve_key_next for %s" % (
+                sequence,
+            ))
             self._done = []
             for i, data_reader in enumerate(self.data_readers):
                 segment_number = i + 1
@@ -139,7 +169,14 @@ class Retriever(object):
                     segment_number
                 )
 
+            self._log.debug("retrieve: before join retrieve_key_next %s" % (
+                sequence,
+            ))
             self._pending.join(timeout, raise_error=True)
+            self._log.debug("retrieve: after join retrieve_key_next %s" % (
+                sequence,
+            ))
+
             # make sure _done_link gets run first by cooperating
             gevent.sleep(0)
             if len(self._pending) > 0:
@@ -160,13 +197,26 @@ class Retriever(object):
 
             for task in self._done:
                 if task.value is None:
+                    self._log.debug("retrieve: start %s task value is None" % (
+                        task.data_reader.node_name,
+                    ))
                     continue
 
                 data_segment, completion_status = task.value
+
+                self._log.debug("retrieve %s task successful complete = %r" % (
+                    task.data_reader.node_name, completion_status,
+                ))
+
                 result_dict[task.segment_number] = data_segment
                 completed_list.append(completion_status)
 
                 if len(result_dict) >= self.segments_needed:
+                    self._log.debug(
+                        "retrieve: len(result_dict) = %s: enough" % (
+                            len(result_dict),
+                        )
+                    )
                     break
 
             if len(result_dict) < self.segments_needed:
@@ -177,6 +227,7 @@ class Retriever(object):
             yield result_dict
 
             if all(completed_list):
+                self._log.debug("retrieve: start all completed")
                 return
 
             if any(completed_list):
@@ -184,5 +235,6 @@ class Retriever(object):
                     completed_list,
                 ))
             
-
-
+            self._log.debug("retrieve finish retrieve_key_next for %s" % (
+                sequence,
+            ))

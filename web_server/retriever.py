@@ -36,9 +36,17 @@ class Retriever(object):
         self._segments_needed = segments_needed
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
+        self._sequence = 0
 
     def _done_link(self, task):
-        self._finished_tasks.put(task, block=True)
+        if task.sequence != self._sequence:
+            self._log.debug("_done_link ignore task %s seq %s expect %s" % (
+                task.data_reader.node_name,
+                task.sequence,
+                self._sequence
+            ))
+        else:
+            self._finished_tasks.put(task, block=True)
 
     def retrieve(self, timeout):
         # TODO: find a non-blocking way to do this
@@ -61,6 +69,10 @@ class Retriever(object):
         # until we are done
         start = True
         while True:
+            self._sequence += 1
+            self._log.debug("retrieve: starting sequence %s" % (
+                self._sequence,
+            ))
             # send a request to all node
             for i, data_reader in enumerate(self._data_readers):
                 segment_number = i + 1
@@ -78,9 +90,13 @@ class Retriever(object):
                 task.link(self._done_link)
                 task.segment_number = segment_number
                 task.data_reader = data_reader
+                task.sequence = self._sequence
 
             # wait for, and process, replies from the nodes
             result_dict, completed = self._process_node_replies(timeout)
+            self._log.debug("retrieve: completed sequence %s" % (
+                self._sequence,
+            ))
 
             yield result_dict
             if completed:
@@ -113,6 +129,16 @@ class Retriever(object):
                     raise RetrieveFailedError(error_message)
 
                 self._log.warn("timeout waiting for completed task")
+                continue
+
+            if task.sequence != self._sequence:
+                self._log.debug(
+                    "_process_node_replies ignore task %s seq %s expect %s" % (
+                        task.data_reader.node_name,
+                        task.sequence,
+                        self._sequence
+                    )
+                )
                 continue
 
             finished_task_count += 1

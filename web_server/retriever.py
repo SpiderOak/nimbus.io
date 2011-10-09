@@ -59,8 +59,8 @@ class Retriever(object):
 
         # spawn retrieve_key start, then spawn retrieve key next
         # until we are done
-        start_list = itertools.chain( [True, ], itertools.repeat(False))
-        for start in start_list:
+        start = True
+        while True:
             # send a request to all node
             for i, data_reader in enumerate(self._data_readers):
                 segment_number = i + 1
@@ -85,6 +85,9 @@ class Retriever(object):
             yield result_dict
             if completed:
                 break
+
+            if start:
+                start = False
 
     def _process_node_replies(self, timeout):
         finished_task_count = 0
@@ -134,9 +137,9 @@ class Retriever(object):
                 break
 
         # if anything is still running, get rid of it
-        self._log.debug("retrieve: before join retrieve_key_start")
+        self._log.debug("retrieve: before join")
         self._pending.join(timeout, raise_error=True)
-        self._log.debug("retrieve: before join retrieve_key_start")
+        self._log.debug("retrieve: after join ")
 
         if len(result_dict) < self._segments_needed:
             error_message = "(%s) %s too few valid results %s" % (

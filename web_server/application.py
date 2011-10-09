@@ -426,7 +426,7 @@ class Application(object):
             )
         except ArchiveFailedError, instance:
             self._event_push_client.error(
-                "archived-failed-error",
+                "archive-failed-error",
                 "%s: %s" % (description, instance, )
             )
             self._log.error("archive failed: %s %s" % (
@@ -640,13 +640,14 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        description = \
             "_delete_key: collection = (%s) %r customer = %r key = %r" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
                 collection_entry.username,
                 key,
-        ))
+            )
+        self._log.debug(description)
         data_writers = _create_data_writers(
             self._event_push_client,
             self._data_writer_clients
@@ -664,8 +665,19 @@ class Application(object):
 
         try:
             size_deleted = destroyer.destroy(_reply_timeout)
-        except DestroyFailedError, e:            
-            raise exc.HTTPInternalServerError(str(e))
+        except DestroyFailedError, instance:            
+            self._event_push_client.error(
+                "delete-failed-error",
+                "%s: %s" % (description, instance, )
+            )
+            self._log.error("delete failed: %s %s" % (
+                description, instance, 
+            ))
+            # 2009-10-08 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
 
         self.accounting_client.removed(
             collection_entry.collection_id,

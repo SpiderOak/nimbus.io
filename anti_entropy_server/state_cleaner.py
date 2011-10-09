@@ -72,12 +72,6 @@ class StateCleaner(object):
             )
             return
 
-        self._state["event-push-client"].error(
-            "audit-timeout", 
-            error_message, 
-            collection_id=collection_id,
-            retry=True
-        )
         self._state["retry-list"].append(
             retry_entry_tuple(
                 retry_time=retry_time(), 
@@ -93,4 +87,11 @@ class StateCleaner(object):
             request_id, retry_interval,
         )
         self._log.error(error_message)
+
+        self._state["event-push-client"].error(
+            "audit-timeout", 
+            error_message, 
+            collection_id=collection_id,
+            retry=True
+        )
 

@@ -80,9 +80,7 @@ class GreenletResilientClient(object):
         client_address,
         deliverator
     ):
-        self._log = logging.getLogger("ResilientClient-%s" % (
-            server_address, 
-        ))
+        self._log = logging.getLogger(str(self))
 
         self._context = context
         self._pollster = pollster
@@ -200,7 +198,7 @@ class GreenletResilientClient(object):
         reply = {
             "message-type"  : "ack-timeout-reply",
             "message-id"    : self._pending_message.control["message-id"],
-            "result"        : "ack timeout",
+            "result"        : "ack-timeout",
             "error-message" : "timeout waiting ack: treating as disconnect",
         }
 

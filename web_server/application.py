@@ -36,9 +36,6 @@ from web_server.exceptions import SpaceAccountingServerDownError, \
         ArchiveFailedError, \
         DestroyFailedError, \
         CollectionError
-from web_server.data_writer_handoff_client import \
-        DataWriterHandoffClient
-from web_server.data_writer import DataWriter
 from web_server.data_slicer import DataSlicer
 from web_server.zfec_segmenter import ZfecSegmenter
 from web_server.archiver import Archiver
@@ -64,7 +61,6 @@ from web_server.url_discriminator import parse_url, \
         action_head_key
 
 
-_node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUSIO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
@@ -72,7 +68,6 @@ _slice_size = 1024 * 1024    # 1MB
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
-_handoff_count = 2
 
 _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
@@ -98,52 +93,12 @@ def _build_meta_dict(req_get):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
-def _create_data_writers(event_push_client, clients):
-    data_writers_dict = dict()
-
-    connected_clients_by_node = list()
-    disconnected_clients_by_node = list()
-
-    for node_name, client in zip(_node_names, clients):
-        if client.connected:
-            connected_clients_by_node.append((node_name, client))
-        else:
-            disconnected_clients_by_node.append((node_name, client))
-
-    if len(connected_clients_by_node) < _min_connected_clients:
-        raise exc.HTTPServiceUnavailable("Too few connected writers %s" % (
-            len(connected_clients_by_node),
-        ))
-
-    connected_clients = list()
-    for node_name, client in connected_clients_by_node:
-        connected_clients.append(client)
-        assert node_name not in data_writers_dict, connected_clients_by_node
-        data_writers_dict[node_name] = DataWriter(node_name, client)
-    
-    for node_name, client in disconnected_clients_by_node:
-        backup_clients = random.sample(connected_clients, _handoff_count)
-        assert backup_clients[0] != backup_clients[1]
-        data_writer_handoff_client = DataWriterHandoffClient(
-            client.server_node_name,
-            backup_clients
-        )
-        assert node_name not in data_writers_dict, data_writers_dict
-        data_writers_dict[node_name] = DataWriter(
-            node_name, data_writer_handoff_client
-        )
-
-    # 2011-05-27 dougfort -- the data-writers list must be in 
-    # the same order as _node_names, because that's the order that
-    # segment numbers get defined in
-    return [data_writers_dict[node_name] for node_name in _node_names]
-
 class Application(object):
     def __init__(
         self, 
         central_connection,
         node_local_connection,
-        data_writer_clients, 
+        data_writers, 
         data_readers,
         authenticator, 
         accounting_client,
@@ -152,8 +107,8 @@ class Application(object):
         self._log = logging.getLogger("Application")
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
-        self._data_writer_clients = data_writer_clients
-        self.data_readers = data_readers
+        self._data_writers = data_writers
+        self._data_readers = data_readers
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
@@ -381,22 +336,15 @@ class Application(object):
 
         meta_dict = _build_meta_dict(req.GET)
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            self._data_writer_clients
-        ) 
         timestamp = create_timestamp()
         archiver = Archiver(
-            data_writers,
+            self._data_writers,
             collection_entry.collection_id,
             key,
             timestamp,
             meta_dict
         )
-        segmenter = ZfecSegmenter(
-            8,
-            len(data_writers)
-        )
+        segmenter = ZfecSegmenter(_min_segments, _max_segments)
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
@@ -539,7 +487,7 @@ class Application(object):
         self._log.debug(description)
 
         start_time = time.time()
-        connected_data_readers = _connected_clients(self.data_readers)
+        connected_data_readers = _connected_clients(self._data_readers)
 
         if len(connected_data_readers) < _min_connected_clients:
             raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
@@ -551,7 +499,7 @@ class Application(object):
             _max_segments)
         retriever = Retriever(
             self._node_local_connection,
-            self.data_readers,
+            self._data_readers,
             collection_entry.collection_id,
             key,
             _min_segments
@@ -648,16 +596,11 @@ class Application(object):
                 key,
             )
         self._log.debug(description)
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            self._data_writer_clients
-        )
 
         timestamp = create_timestamp()
-
         destroyer = Destroyer(
             self._node_local_connection,
-            data_writers,
+            self._data_writers,
             collection_entry.collection_id,
             key,
             timestamp

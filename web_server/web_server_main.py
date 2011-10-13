@@ -13,6 +13,7 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
+from gevent.queue import Queue
 import zmq
 
 from tools.standard_logging import initialize_logging
@@ -28,8 +29,11 @@ from tools.event_push_client import EventPushClient
 
 from web_server.application import Application
 from web_server.data_reader import DataReader
+from web_server.data_writer import DataWriter
+from web_server.greenlet_handoff_client import GreenletHandoffClient
 from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
+
 
 _log_path = "%s/nimbusio_web_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
@@ -48,6 +52,8 @@ _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 _web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
 _web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
+
+_handoff_count = 2
 
 class WebServer(object):
     def __init__(self):
@@ -69,18 +75,25 @@ class WebServer(object):
         )
         self._pull_server.register(self._pollster)
 
-        self._data_writer_clients = list()
-        for node_name, address in zip(_node_names, _data_writer_addresses):
-            resilient_client = GreenletResilientClient(
+        self._handoff_queues = [Queue() for _ in range(_handoff_count)]
+
+        self._data_writers = list()
+        for index, (node_name, address) in enumerate(
+            zip(_node_names, _data_writer_addresses)
+        ):
+            handoff_client = GreenletHandoffClient(
                 self._zeromq_context, 
                 self._pollster,
                 node_name,
                 address,
                 _client_tag,
                 _web_server_pipeline_address,
-                self._deliverator
+                self._deliverator,
+                self._handoff_queues,
+                index % _handoff_count
             )
-            self._data_writer_clients.append(resilient_client)
+            data_writer = DataWriter(node_name, handoff_client)
+            self._data_writers.append(data_writer)
 
         self._data_readers = list()
         for node_name, address in zip(_node_names, _data_reader_addresses):
@@ -93,9 +106,7 @@ class WebServer(object):
                 _web_server_pipeline_address,
                 self._deliverator
             )
-            data_reader = DataReader(
-                node_name, resilient_client
-            )
+            data_reader = DataReader(node_name, resilient_client)
             self._data_readers.append(data_reader)
 
         dealer_client = GreenletDealerClient(
@@ -125,7 +136,7 @@ class WebServer(object):
         self.application = Application(
             self._central_connection,
             self._node_local_connection,
-            self._data_writer_clients,
+            self._data_writers,
             self._data_readers,
             authenticator,
             self._accounting_client,
@@ -146,7 +157,7 @@ class WebServer(object):
         self.wsgi_server.stop()
         self._stopped_event.set()
         self._accounting_client.close()
-        for client in self._data_writer_clients:
+        for data_writer in self._data_writers:
             client.close()
         for data_reader in self._data_readers:
             data_reader.close()

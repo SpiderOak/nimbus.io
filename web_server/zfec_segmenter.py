@@ -48,6 +48,9 @@ class ZfecSegmenter(object):
         ]
 
     def decode(self, segments):
+        # XXX: need to be able to verify correct decoding and also do
+        # read-repair for any bad segments. this may require going back to the
+        # nodes to get more segments if we only have 8/10 for example.
         parsed = map(self._parse_segment, segments[:self.min_segments])
         decoder = Decoder(self.min_segments, self.num_segments)
         return decoder.decode(

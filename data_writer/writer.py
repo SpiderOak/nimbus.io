@@ -23,7 +23,6 @@ def _get_next_segment_id(connection):
     (next_segment_id, ) = connection.fetch_one_row(
         "select nextval('nimbusio_node.segment_id_seq');"
     )
-    connection.commit()
     return next_segment_id
 
 def _insert_segment_row_with_meta(connection, segment_row, meta_rows):

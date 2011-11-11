@@ -3,6 +3,22 @@
 application.py
 
 The nimbus.io wsgi application
+
+for a write:
+at startup time, web server creates resilient_client to each node
+application:
+archive:
+  at request time, creates DataWriter for each node, regardless of connection
+  each DataWriter will have either a ResilientClient for a connected node
+   OR will have a HandoffClient which wraps two ResilientClients on behalf of
+      a disconnected node
+      ResilientClient = tools/greenlet_resilient_client.py
+      HandoffClient = web_server/data_writer_handoff_client.py
+retrieve:
+  ResilientClient, deliver
+
+
+
 """
 from base64 import b64encode
 import logging
@@ -350,6 +366,9 @@ class Application(object):
         file_size = 0
         segments = None
         try:
+            # XXX refactor this loop. it's awkward because it needs to know
+            # when any given slice is the last slice, so it works an iteration
+            # behind, but sometimes sends an empty final slice.
             for slice_item in DataSlicer(req.body_file,
                                     _slice_size,
                                     req.content_length):

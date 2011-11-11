@@ -11,8 +11,7 @@ import os.path
 import re
 
 def random_string(size):
-    with open('/dev/urandom', 'rb') as f:
-        return f.read(size)
+    return os.urandom(size)
 
 # datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)
 _timestamp_repr_re = re.compile(r"""

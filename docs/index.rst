@@ -14,7 +14,7 @@ Contents:
    intro
    developers_guide
    administrators_guide
-   hackers_guide
+   internals
 
 Indices and tables
 ==================

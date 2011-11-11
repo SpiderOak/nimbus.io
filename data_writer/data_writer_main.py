@@ -321,7 +321,6 @@ def _create_state():
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
         "event-push-client"     : None,
-        "state-cleaner"         : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
         "writer"                : None,

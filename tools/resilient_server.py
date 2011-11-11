@@ -88,8 +88,10 @@ class ResilientServer(object):
         if message is None:
             return
 
-        # we handle our own message traffic, only feed the receive queue
-        # if we don't handle it
+        # we handle our own message traffic (i.e. resilient client handshakes
+        # and signoffs).
+        # otherwise, feed message into the receive queue to be handled
+        # elsewhere
         if message.control["message-type"] in self._dispatch_table:
             self._dispatch_table[message.control["message-type"]](
                 message.control, message.body

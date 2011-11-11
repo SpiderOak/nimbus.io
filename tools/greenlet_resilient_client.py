@@ -253,6 +253,10 @@ class GreenletResilientClient(object):
         message = _message_format(control=message_control, body=data)
 
         # if we don't queue the message, that means we can send it right now
+
+        # XXX consider non-blocking lock acquire, and if it fails, just queue
+        # the message.
+
         self._lock.acquire()
         try:
             if self._status is _status_connected \

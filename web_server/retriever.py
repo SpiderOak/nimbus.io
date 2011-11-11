@@ -131,6 +131,8 @@ class Retriever(object):
                 self._log.warn("timeout waiting for completed task")
                 continue
 
+            # if we previously only waited for 8/10 replies, we may still get
+            # those other 2 replies coming in even though we have moved on.
             if task.sequence != self._sequence:
                 self._log.debug(
                     "_process_node_replies ignore task %s seq %s expect %s" % (

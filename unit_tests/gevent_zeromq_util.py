@@ -43,7 +43,7 @@ def send_request_and_get_reply_and_data(
     data=None
 ):
     log = logging.getLogger("send_request_and_get_reply_and_data")
-    context = zmq.context.Context()
+    context = zmq.Context()
     pollster = GreenletZeroMQPollster()
     deliverator = Deliverator()
 

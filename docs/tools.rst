@@ -8,10 +8,12 @@ Contents:
 
 These are common tools used by most nimbus.io processes
 
-Communication
--------------
+Time Queue Driven Process
+--------------------------
+.. automodule:: tools.time_queue_driven_process
+    :members: main
 
 Resilient Client
-^^^^^^^^^^^^^^^^
+----------------
 .. autoclass:: tools.resilient_client.ResilientClient
 

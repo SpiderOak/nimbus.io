@@ -1,8 +1,22 @@
 # -*- coding: utf-8 -*-
 """
-time_queue_driven_process.py
+nimbus.io servers run as time queue driven processes built around the
+time queue
 
-A framework for process that are driven by TimeQueue
+The work is done by callback functions passed in at main main::
+
+    if __name__ == "__main__":
+        state = _create_state()
+        sys.exit(
+            time_queue_driven_process.main(
+                _log_path,
+                state,
+                pre_loop_actions=[_setup, ],
+                post_loop_actions=[_tear_down, ],
+                exception_action=exception_event
+            )
+        )
+
 """
 import logging
 import signal
@@ -56,7 +70,7 @@ def _run_until_halt(
 
         next_task_delay = time_queue.peek_time() - time.time()
         if next_task_delay > 0.0:
-            halt_event.wait(next_task_delay)
+         halt_event.wait(next_task_delay)
 
         next_task = time_queue.pop()
         result_list = next_task(halt_event)
@@ -69,7 +83,6 @@ def _run_until_halt(
     log.debug("post_loop_action(s)")
     for post_loop_action in post_loop_actions:
         post_loop_action(state)
-
     log.info("program terminates")
 
 def main(
@@ -80,7 +93,61 @@ def main(
     exception_action = None,
     halt_event = Event(),
 ):
-    """main processing entry point"""
+    """
+    This function is run as the main entry point of every time queue driven
+    process. It wraps the event loop driven by te time_queue.
+    
+    log_path
+        The full path to the log file for this process
+
+    state
+        State object (usually a dict) passed to callback functions
+
+    pre_loop_actions
+        A list of functions to be run before the event loop starts. 
+
+        Function arguments are ``(halt_event, state)``
+
+        Functions may return a list of tuples to be added to the time queue
+        ``(callback_function, start_time, )``
+
+        nimbus.io processes this function is conventionlly run a single
+        function called ``_startup``, but it can have any name.
+
+    post_loop_actions
+        A list of functions to be run after the event loop terminates 
+        (``halt_event`` set)
+
+        Function argument is  ``(state)``
+
+        Function returns is ignored
+
+        In nimbus.io processes this function is conventioanlly named
+        ``_tear_down``, but it can have any name.
+
+    exception_action
+        A frunction to be executed when the event loop catches and
+        exception fromma calback function.
+        
+        It takes ``(state)`` as an argument
+
+        Its return is ignored
+
+        In nimbus.io processes this function is used to push a zeromq
+        message to an event publisher
+
+    halt_event (optional)
+        a ``threading.Event`` that will be set when SIGTERM is detected
+        used to terminate the event loop.
+
+        halt_event is passed to as an argument to callback functions.
+        
+        If the caller wants greater access, the can can create their
+        own halt event and pass it here as an argument.
+
+    returns 0 for normal termination, nonzero for failure
+        
+    """
     initialize_logging(log_path)
     log = logging.getLogger("main")
     log.info("start")

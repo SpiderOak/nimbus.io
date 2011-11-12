@@ -6,7 +6,11 @@ Receives HTTP requests and distributes data to backend processes over amqp.
 """
 import gevent
 from gevent import monkey
-monkey.patch_all(dns=False)
+# you must use the latest gevent and have c-ares installed for this to work
+# with /etc/hosts 
+# hg clone https://bitbucket.org/denis/gevent
+monkey.patch_all()
+#monkey.patch_all(dns=False)
 
 import os
 import sys

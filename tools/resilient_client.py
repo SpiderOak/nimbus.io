@@ -31,6 +31,27 @@ _status_name = {
 
 class ResilientClient(object):
     """
+    context
+        zeromq context
+
+    pollster
+        zeromq pollster. Used to register and unregister our socket,
+        depending on connection status
+
+    server_node_name
+        The node name of the server we connect to
+        
+    server_address
+        The zeromq address of the ROUTER_ socket of the server we connect to
+
+    client_tag
+        A unique identifier for our client, to be inclused in every message
+        so the remote server knows where to send replies
+
+    client_address
+        the address our socket binds to. Sent to the remote server in the 
+        initial handshake
+
     ResilientClient uses two zeromq patterns to maintain a connection
     to a resilient server.
 
@@ -57,7 +78,8 @@ class ResilientClient(object):
     5. The actual reply from the server comes to the PULL_ socket and is
        handled outside the client
 
-    .. _request-reply: http://api.zeromq.org/2-1:zmq-socket#toc3
+    .. _ROUTER: http://api.zeromq.org/2-1:zmq-socket#toc7
+    .. _request-reply: http://www.zeromq.org/sandbox:dealer
     .. _pipeline: http://api.zeromq.org/2-1:zmq-socket#toc11
     .. _PULL: http://api.zeromq.org/2-1:zmq-socket#toc13
     .. _DEALER: http://api.zeromq.org/2-1:zmq-socket#toc6
@@ -201,8 +223,16 @@ class ResilientClient(object):
 
     def queue_message_for_send(self, message_control, data=None):
         """
+        message_control
+            a dictionary, to be sent as JSON
+
+        data (optional)
+            binary data (possibly a sequence of strings) to be sent in
+            the message
+
         queue a message for send (unless we can send it immediately)
-        if the message does not contain a message-id, we will supply one.
+
+        if message_control does not contain a message-id, we will supply one.
         """
         if not "message-id" in message_control:
             message_control["message-id"] = uuid.uuid1().hex
@@ -296,6 +326,8 @@ class ResilientClient(object):
     def run(self, halt_event):
         """
         time_queue task to check for timeouts and retries
+
+
         """
         if halt_event.is_set():
             self._log.info("halt event is set")

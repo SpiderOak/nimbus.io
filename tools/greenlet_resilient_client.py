@@ -68,7 +68,61 @@ class _GreenletResilientClientWatcher(Greenlet):
 
 class GreenletResilientClient(object):
     """
-    a class that manages a zeromq DEALER (aka XREQ) socket as a client
+    context
+        zeromq context
+
+    pollster
+        zeromq pollster. Used to register and unregister our socket,
+        depending on connection status
+
+    server_node_name
+        The node name of the server we connect to
+        
+    server_address
+        The zeromq address of the ROUTER_ socket of the server we connect to
+
+    client_tag
+        A unique identifier for our client, to be inclused in every message
+        so the remote server knows where to send replies
+
+    client_address
+        the address our socket binds to. Sent to the remote server in the 
+        initial handshake
+
+    deliverator
+        handle to the deliverator object
+
+    GreenletResilientClient uses two zeromq patterns to maintain a connection
+    to a resilient server.
+
+    - request-reply_ for sending messages and for receiving acknowledgements
+    - pipeline_ for receiving the actual replies to messages
+
+    Each process maintains a single PULL_ socket for all of its resilient 
+    clients. The address of this socket is the member **_client_address**.
+    The client includes this in every message along with **_client_tag** which
+    uniquely identifies the client to the server
+
+    Each resilient client maintains its own DEALER_ socket **_dealer_socket**.
+
+    At startup the client sends a *handshake* message to the server. The client
+    is not considered connected until it gets an ack fro the handshake.
+
+    Normal workflow:
+    
+    1. The client pops a message from **_send_queue**
+    2. The client sends the message over the DEALER_ socket
+    3. The client waits for and ack from the server. It does not send any
+       other messages until it gets the ack.
+    4. When the ack is received the client repeats from step 1.
+    5. The actual reply from the server comes to the PULL_ socket and is
+       handled outside the client
+
+    .. _ROUTER: http://api.zeromq.org/2-1:zmq-socket#toc7
+    .. _request-reply: http://www.zeromq.org/sandbox:dealer
+    .. _pipeline: http://api.zeromq.org/2-1:zmq-socket#toc11
+    .. _PULL: http://api.zeromq.org/2-1:zmq-socket#toc13
+    .. _DEALER: http://api.zeromq.org/2-1:zmq-socket#toc6
     """
     def __init__(
         self, 

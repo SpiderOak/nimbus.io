@@ -21,11 +21,19 @@ class Deliverator(object):
     def add_request(self, message_id):
         """
         Add a message_id
-        return a channel that will deliver the reply message 
+
+        return a channel (gevent.queue.Queue)
+
+        When the web_server's pull server gets a reply for this message id
+        it will push the message into the queue. The caller can block on the
+        queue, waiting for the reply.
+
+        we can't use the zero size 'channel' queue because the web server moves 
+        on after 8 of 10 retrieves and nobody is waiting on the last two.
+
+        So we use a size of one, and it is the caller's responsibility to clean
+        up unused channels.
         """
-        # 2011-05-21 dougfort -- we can't use the zero size 'channel' queue
-        # becasue the web server moves on after 8 of 10 retrieves and nobody 
-        # is waiting on the last two
         channel = Queue(maxsize=1)
 
         self._lock.acquire()
@@ -41,7 +49,9 @@ class Deliverator(object):
     def deliver_reply(self, message):
         """
         Deliver the reply nessage over the channel for its message-id
+
         And discard the channel
+
         raise KeyError if there is no channel for the request
         """
         self._lock.acquire()

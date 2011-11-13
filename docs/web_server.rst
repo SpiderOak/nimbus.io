@@ -7,12 +7,19 @@ Contents:
    :maxdepth: 2
 
 
-The web server is the interface wiht the external world
-
-REST API
---------
+The web server is the interface with the external world
 
 Web Server
 ^^^^^^^^^^
-.. autoclass:: web_server.web_server_main.WebServer
+.. automodule:: web_server.web_server_main
+
+Greenlet Resilient Client
+^^^^^^^^^^^^^^^^^^^^^^^^^
+.. autoclass:: tools.greenlet_resilient_client.GreenletResilientClient
+    :members:
+
+Deliverator
+^^^^^^^^^^^
+.. autoclass:: tools.deliverator.Deliverator
+    :members:
 

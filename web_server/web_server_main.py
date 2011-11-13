@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-web_server_main.py
+Receives HTTP requests and distributes data to backend processes using zeromq
 
-Receives HTTP requests and distributes data to backend processes over amqp.
+The web server uses gevent instead of the time queue event loop, so it has
+some special modules to use gevent.
+
+The web server has a GreenletResilientClient for each data writer and for each
+data reader.
+
+The reslient clients use Deliverator to deliver their messages.
 """
 import gevent
 from gevent import monkey

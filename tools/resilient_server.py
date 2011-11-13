@@ -18,8 +18,12 @@ _message_format = namedtuple("Message", "ident control body")
 
 class ResilientServer(object):
     """
-    a class that manages an ROUTER (aka XREP) socket and some PUSH clients 
-    as a resilient server
+    a class that manages a ROUTER (aka XREP) socket and some PUSH clients 
+    as a resilient serve.
+
+    The resilient server receives messages from resilient clients over a
+    ROUTER socket and sends replies using PUSH clients.
+
     """
     def __init__(self, context, address, receive_queue):
         self._log = logging.getLogger("ResilientServer-%s" % (address, ))
@@ -54,19 +58,29 @@ class ResilientServer(object):
         self._active_clients = dict()
 
     def register(self, pollster):
-        pollster.register_read(self._router_socket, self._pollster_callback)
+        """
+        resiter ourselves with the pollster for reads
+        """
+        pollster.register_read(self._router_socket, self.pollster_callback)
 
     def unregister(self, pollster):
+        """
+        unregister from the polster
+        """
         pollster.unregister(self._router_socket)
 
     def close(self):
+        """
+        close out ROUTER socket and and all the PUSH clients we are holding
+        """
         self._router_socket.close()
         for client in self._active_clients.values():
             client.close()
 
     def send_reply(self, message, data=None):
         """
-        send a reply to the pull server of the requestor
+        use the appropriate PUSH client (identified by 'client-tag') to send 
+        a reply to the PULL server of the requestor
         """
         try:
             client = self._active_clients[message["client-tag"]]
@@ -77,7 +91,19 @@ class ResilientServer(object):
         else:
             client.send(message, data)
 
-    def _pollster_callback(self, _active_socket, readable, writable):
+    def pollster_callback(self, _active_socket, readable, writable):
+        """
+        when our ROUTER socket becomes readable, read a message fromm it
+
+        we handle handshake and signoff messages from resilient clients
+
+        for all other messages, 
+         * we send an immediate ack reply over the DEALER socket 
+         * we place the message in the receive queue
+         * the message handler will eventually PUSH a detail reply to the
+           resilient client's PULL server.
+
+        """
         
         # assume we are readable, because we are only registered for read
         assert readable

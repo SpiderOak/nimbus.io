@@ -13,7 +13,25 @@ class ZeroMQPollsterError(Exception):
     pass
 
 class ZeroMQPollster(object):
-    """encapsulate zmq.poller"""
+    """
+    This is a class that encapsulates the zeromq `poller`_.
+    The ``run`` member function is a callback for the time queue event loop.
+
+    polling_interval (optional)
+        How often the poller is called from the event loop
+
+    poll_timout (optional)
+        How long the poller waits for a zeromq socket to be available
+
+    This class maintains a dictionary of active sockets with associatd callback
+    functions. When the pollster finds that a socket is ready for non-blocking 
+    I/O, it calls the callback.
+
+    Note that zeromq sockets are almost always writable so tghe pollster
+    is used mostly for reads.
+        
+    .. _poller: http://zeromq.github.com/pyzmq/api/generated/zmq.core.poll.html
+    """
     
     def __init__(self, polling_interval=0.1, poll_timeout=0.1):
         self._log = logging.getLogger("pollster")
@@ -23,25 +41,33 @@ class ZeroMQPollster(object):
         self._active_sockets = dict()
         
     def register_read(self, active_socket, callback):
-        """register a socket for reading, with a callback function"""
+        """
+        register a socket for reading, with a callback function
+        """
         self.unregister(active_socket)
         self._poller.register(active_socket, zmq.POLLIN)
         self._active_sockets[active_socket] = callback
 
     def register_write(self, active_socket, callback):
-        """register a socket for writing, with a callback function"""
+        """
+        register a socket for writing, with a callback function
+        """
         self.unregister(active_socket)
         self._poller.register(active_socket, zmq.POLLOUT)
         self._active_sockets[active_socket] = callback
 
     def register_read_or_write(self, active_socket, callback):
-        """register a socket for reading or writing with a callback function"""
+        """
+        register a socket for reading or writing with a callback function
+        """
         self.unregister(active_socket)
         self._poller.register(active_socket, zmq.POLLIN | zmq.POLLOUT)
         self._active_sockets[active_socket] = callback 
 
     def unregister(self, active_socket):
-        """remove from poll. Don't fail if already gone"""
+        """
+        remove from poll. Don't fail if already gone
+        """
         try:
             self._poller.unregister(active_socket)
             del self._active_sockets[active_socket]

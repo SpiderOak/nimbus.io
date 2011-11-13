@@ -9,7 +9,24 @@ import time
 
 class DequeDispatcher(object):
     """
-    a time_queue object to dispatch to functions based on message-type
+    a time_queue task to which pops messages from a deque and uses
+    a dispatch table to call functions based on message-type
+
+    state
+        the internal state object, passed to dispatch functions
+
+    input_queue
+        a deque of incoming messages from various zeromq sockets
+
+    dispatch_table
+        a dictionary mapping message_type to a callback function
+
+    polling_interval (optional)
+        how often this dspatcher is called by the event loop
+
+    default_handler
+        A function to be called if message_type is not explicitly mapped
+        in the dispatch table.
     """    
     def __init__(
         self, 
@@ -28,8 +45,13 @@ class DequeDispatcher(object):
 
     def run(self, halt_event):
         """
-        dispatch one message from the input queue
         This is a task for the time queue
+
+        dispatch one message from the input queue to a callback function
+
+        the function is called with ``(state, message, data)``
+
+        the function can return a list of tasks to be added to the time queue
         """        
         if halt_event.is_set():
             self._log.info("halt_event set: exiting")

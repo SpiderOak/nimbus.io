@@ -7,4 +7,3 @@ do
 done
 psql -d "nimbusio_central" -f "${NIMBUSIO}/sql/clear_nimbusio_central.sql"
 psql -d "nimbusio_central" -f "${NIMBUSIO}/sql/populate_nimbusio_central_test_cluster.sql"
-

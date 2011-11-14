@@ -9,6 +9,7 @@ import os
 import sys
 
 from test.nimbusio_sim.command_interpreter import CommandInterpreter
+from test.nimbusio_sim.options import parse_cmdline
 
 _log_path = u"%s/nimbusio_sim.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
@@ -25,6 +26,8 @@ def _initialize_logging():
 
 def main():
     """Main entry point for cluster simulator"""
+    args = parse_cmdline()
+    return
     _initialize_logging()
     log = logging.getLogger("main")
     log.info("progam starts")

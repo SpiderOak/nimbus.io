@@ -1,6 +1,12 @@
 /*
 load cluster and node tables from nimbusio_central schema
 */
+
+/* XXX: why is this not a transaciton? 
+should we drop the multi-node notation? nimbus-node? everything is a multi-node
+here.
+*/
+
 delete from nimbusio_central.cluster;
 insert into nimbusio_central.cluster (name) values ('multi-node-cluster');
 

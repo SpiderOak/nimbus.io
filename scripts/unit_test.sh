@@ -1,5 +1,5 @@
 #!/bin/bash
-export NIMBUSIO="${HOME}/nimbusio"
+export NIMBUSIO="${HOME}/nimbus.io"
 export PYTHONPATH="${NIMBUSIO}"
 
 python "$1"

@@ -21,19 +21,36 @@ _data_writer_timeout = 30.0
 
 class DataWriterHandoffClient(object):
     """
-    This class mimics a single ResilientClient while wrapping two clients
-    to perform hinted handoff for a node which is down.
+    dest_node_name
+        the name of the (ultimate) destination node
+
+    backup_clients
+        a list of two GreenletResilientClient objects that will receive
+        archive messages to back them up for later handoff
+
+    This class mimics a single GreenletResilientClient. 
+    
+    When doing an archive, if the clients for a node is  disconnectd, 
+    the web_server replaces it with a DataWriterHandoffClient which
+    backs up the archvie messages to two other nodes.
+
+    These backed up messages will ater be handed off to the destination node
+    by te handoff server,
     """
-    def __init__( self, dest_node_name, resilient_clients):
+    def __init__( self, dest_node_name, backup_clients):
         self._log = logging.getLogger("HandoffClient-%s" % (dest_node_name,))
         self._log.info("handing off to %s" % (
-            ", ".join([str(c) for c in resilient_clients]), 
+            ", ".join([str(c) for c in backup_clients]), 
         ))
         self._dest_node_name = dest_node_name
-        self._resilient_clients = resilient_clients
+        self._backup_clients = backup_clients
         self._handoff_message = dict()
    
     def queue_message_for_send(self, message, data=None):
+        """
+        accept a message as if we were a single client, but pass it on to our
+        two internal backup clients.
+        """
         completion_channel = Queue(maxsize=1)
 
         gevent.spawn(self._complete_handoff, message, data, completion_channel)
@@ -51,7 +68,7 @@ class DataWriterHandoffClient(object):
             gevent.spawn(
                 self._hand_off_to_one_data_writer, client, message.copy(), data
             ) \
-            for client in self._resilient_clients
+            for client in self._backup_clients
         ]
     
         # get all replies from the actual clients  

@@ -18,6 +18,11 @@ Greenlet Resilient Client
 .. autoclass:: tools.greenlet_resilient_client.GreenletResilientClient
     :members:
 
+Handoff Client
+^^^^^^^^^^^^^^
+.. autoclass:: web_server.data_writer_handoff_client.DataWriterHandoffClient
+    :members:
+
 Deliverator
 ^^^^^^^^^^^
 .. autoclass:: tools.deliverator.Deliverator

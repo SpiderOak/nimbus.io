@@ -46,6 +46,7 @@ _data_reader_addresses = [
     for i in range(_node_count)
 ]
 _anti_entropy_server_addresses = [
+
     "tcp://127.0.0.1:%s" % (_anti_entropy_server_base_port+i, ) \
     for i in range(_node_count)
 ]
@@ -97,6 +98,15 @@ class NodeSim(object):
 
     def __str__(self):
         return self._node_name
+
+    def node_config(self, name):
+        "return the named config value for this node in the cluster"
+        return self._config.name[self._node_index]
+
+    # this one is used so much make it easy
+    @property
+    def node_name(self):
+        return self.node_config('node_names')
 
     def start(self):
         self._log.debug("start")

@@ -14,6 +14,10 @@ def parse_cmdline():
         default=8000, type=int, 
         help="base network port to use")
 
+    parser.add_argument("--clustername", dest="clustername", 
+        action="store", default="multi-node-cluster", 
+        help="name of the simulated cluster")
+
     parser.add_argument("--nodenamepattern", dest="nodenamepattern", 
         action="store", default="multi-node-%02d", 
         help="string format for generating node names")

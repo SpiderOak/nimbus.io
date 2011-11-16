@@ -27,16 +27,33 @@ def _initialize_logging(config):
     logging.root.setLevel(log_level)
 
 def sanity_check(config):
-    # TODO
     # if args.create, make sure basedir is empty or does not exist
-    # if not args.create, make sure basedir has a config file in it
-    # make sure all ports in range are bindable
+    if config.createnew:
+        if os.path.isdir(config.basedir) and os.listdir(config.basedir):
+            print >>sys.stderr, "cannot create new cluster %s: not empty" % (
+                config.basedir, )
+            return False
+    # otherwise make sure we have a config file to load
+    else:
+        if not os.path.exists(config.config_path):
+            print >>sys.stderr, "no config found at %s " \
+                "(create a new cluster with --create)" % (
+                    config.config_path, )
+            return False
     return True
 
 def ensure_paths(config):
     "ensure that all the directories needed exist"
-    # TODO
-    pass
+
+    for dirpath in [ config.basedir, config.log_path ]:
+        if not os.path.exists(dirpath):
+            os.makedirs(dirpath)
+
+def remove_files(topdir):
+    "remove files (but not directories) recursively"
+    for path, dirs, files in os.walk(topdir):
+        for fname in files:
+            os.unlink(os.path.join(path, fname))
 
 def main():
     """Main entry point for cluster simulator"""
@@ -45,10 +62,15 @@ def main():
     config = ClusterConfig(args)
     print repr(args)
 
+    os.environ.update(config.env_for_config())
+
     if not sanity_check(config):
         return 1
 
     ensure_paths(config)
+
+    if config.logprune:
+        remove_files(config.log_path):
 
     #import pdb
     #pdb.set_trace()

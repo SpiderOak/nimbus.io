@@ -3,6 +3,8 @@
 
 import os
 
+_config_filename = "config.json"
+
 class ClusterConfig(object):
     """
     Hold configuration state for cluster
@@ -22,10 +24,33 @@ class ClusterConfig(object):
             space_accounting_pipeline = 2 + 7 * args.nodecount + args.baseport, 
         )
 
+    def env_for_config(self, node_index=None):
+        "dict of ENV for the cluster as a whole or a node of the cluster"
+
+        # maybe this isn't needed....
+
+        base_env = dict(
+        PYTHONPATH = os.environ['PYTHONPATH'],
+        NIMBUSIO_LOG_DIR = self.log_path,
+        "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
+        "NIMBUSIO_NODE_NAME_SEQ"     : \
+        "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
+        "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
+        "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+
+        node_env = dict(
+        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
+        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+
+
     def __getattr__(self, name):
         if not hasattr(self.config, name):
             raise AttributeError(name)
         return getattr(self.config, name)
+
+    @property
+    def config_path(self):
+        return os.path.join(self.basedir, _config_filename)
 
     @property
     def log_path(self):

@@ -184,14 +184,15 @@ create sequence meta_id_seq;
 create table meta (
     id int8 not null default nextval('nimbusio_node.meta_id_seq'),
     collection_id int4 not null,
-    key varchar(1024) not null,
+    segment_id int8 not null,
     meta_key varchar(1024) not null,
     meta_value varchar(1024) not null,
     timestamp timestamp not null
 );
 
-/* get all meta data for a key */
-create index meta_collection_id_key_idx on nimbusio_node.meta("collection_id", "key");
+/* get all meta data for a segment */
+create index meta_collection_id_segment_idx on nimbusio_node.meta(
+    "collection_id", "segment_id");
 
 /* rollback; */
 commit;

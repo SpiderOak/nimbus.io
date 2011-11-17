@@ -754,54 +754,6 @@ class Application(object):
 
         return response
 
-#    @routes.add(r'/data/(.+)$', action="get_meta")
-#    def get_meta(self, collection_entry, req, key):
-#        try:
-#            key = urllib.unquote_plus(key)
-#            key = key.decode("utf-8")
-#        except Exception, instance:
-#            self._log.error('unable to prepare key %r %s' % (
-#                key, instance
-#            ))
-#            raise exc.HTTPServiceUnavailable(str(instance))
-#
-#        meta_value = get_meta(
-#            self._node_local_connection,
-#            collection_entry.collection_id,
-#            key,
-#            req.GET["meta_key"]
-#        )
-#
-#        if meta_value is None:
-#            raise exc.HTTPNotFound(req.GET["meta_key"])
-#
-#        response = Response(content_type='text/plain', charset='utf8')
-#        response.body_file.write(meta_value)
-#
-#        return response
-#
-#    @routes.add(r'/data/(.+)$', action="list_meta")
-#    def list_meta(self, collection_entry, _req, key):
-#        try:
-#            key = urllib.unquote_plus(key)
-#            key = key.decode("utf-8")
-#        except Exception, instance:
-#            self._log.error('unable to prepare key %r %s' % (
-#                key, instance
-#            ))
-#            raise exc.HTTPServiceUnavailable(str(instance))
-#
-#        meta_value = list_meta(
-#            self._node_local_connection,
-#            collection_entry.collection_id,
-#            key
-#        )
-#
-#        response = Response(content_type='text/plain', charset='utf8')
-#        response.body_file.write(json.dumps(meta_value))
-#
-#        return response
-#
 #    @routes.add(r"/list_conjoined_archives")
 #    def list_conjoined_archives(self, collection_entry, _req):
 #        conjoined_value = list_conjoined_archives(

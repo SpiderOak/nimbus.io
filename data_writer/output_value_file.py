@@ -97,7 +97,7 @@ class OutputValueFile(object):
 
     def write_data_for_one_sequence(self, collection_id, segment_id, data):
         """
-        write the data for one sequence, acumulating meta information
+        write the data for one sequence
         """
         os.write(self._value_file_fd, data)
         self._size += len(data)

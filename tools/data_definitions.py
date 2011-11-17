@@ -127,7 +127,7 @@ segment_sequence_template = namedtuple(
 meta_row_template = namedtuple(
     "MetaRow", [
         "collection_id",
-        "key",
+        "segment_id",
         "meta_key",
         "meta_value",
         "timestamp",

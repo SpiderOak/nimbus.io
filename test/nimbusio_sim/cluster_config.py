@@ -15,33 +15,39 @@ class ClusterConfig(object):
             writer =                    args.baseport,
             reader =                    1 * args.nodecount + args.baseport,
             anti_entropy =              2 * args.nodecount + args.baseport, 
-            handoff =                   3 * args.nodecount + args.baseport, 
-            handoff_pipeline =          4 * args.nodecount + args.baseport,
-            event_publisher_pub  =      5 * args.nodecount + args.baseport,
-            event_aggregator_pull =     6 * args.nodecount + args.baseport,
+            anti_entropy_pipeline =     3 * args.nodecount + args.baseport, 
+            handoff =                   4 * args.nodecount + args.baseport, 
+            handoff_pipeline =          5 * args.nodecount + args.baseport,
+            event_publisher_pub  =      6 * args.nodecount + args.baseport,
+            event_aggregator_pull =     7 * args.nodecount + args.baseport,
             # these two only need single ports
-            space_accounting =          1 + 7 * args.nodecount + args.baseport,
-            space_accounting_pipeline = 2 + 7 * args.nodecount + args.baseport, 
+            space_accounting =          1 + 8 * args.nodecount + args.baseport,
+            space_accounting_pipeline = 2 + 8 * args.nodecount + args.baseport, 
         )
 
-    def env_for_config(self, node_index=None):
-        "dict of ENV for the cluster as a whole or a node of the cluster"
+    def env_for_cluster(self):
+        "dict of ENV for the cluster as a whole"
 
-        # maybe this isn't needed....
+        cluster_env = dict(
+            PYTHONPATH = os.environ['PYTHONPATH'],
+            NIMBUSIO_LOG_DIR = self.log_path,
+            NIMBUSIO_CLUSTER_NAME = self.clustername,
+            NIMBUSIO_NODE_NAME_SEQ = " ".join(self.node_names),
+            NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES = \
+                " ".join(self.anti_entropy_addresses),
+            # TODO FIXME magic values
+            NIMBUSIO_CENTRAL_USER_PASSWORD = "pork",
+            NIMBUSIO_NODE_USER_PASSWORD    = "pork",
+        )
 
-        base_env = dict(
-        PYTHONPATH = os.environ['PYTHONPATH'],
-        NIMBUSIO_LOG_DIR = self.log_path,
-        "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
-        "NIMBUSIO_NODE_NAME_SEQ"     : \
-        "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
-        "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
-        "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+        return cluster_env
 
-        node_env = dict(
-        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
-        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
-
+    def env_for_node(self, node_index):
+        "dict of ENV for a specific node in the cluster"
+            #NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS =
+            #    " ".join(self.anti_entropy_pipeline_addresses),
+            #"NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+        pass
 
     def __getattr__(self, name):
         if not hasattr(self.config, name):
@@ -56,10 +62,19 @@ class ClusterConfig(object):
     def log_path(self):
         return os.path.join(self.basedir, "logs")
 
+    @property
+    def socket_path(self):
+        return os.path.join(self.basedir, "sockets")
+
     def _node_service_addresses(self, name):
         return [ "tcp://127.0.0.1:%s" % i
             for i in range(self.base_ports[name],
                            self.base_ports[name] + self.nodecount)]
+
+    @property
+    def required_paths(self):
+        "paths to all all folders that should exist to run this cluster"
+        return [ self.basedir, self.log_path, self.socket_path ]
 
     @property
     def port_range(self):
@@ -82,8 +97,10 @@ class ClusterConfig(object):
 
     @property
     def event_publisher_pull_addresses(self):
-        return [ "ipc:///tmp/nimbusio-event-publisher-%s/socket" % n
-                 for n in self.node_names ]
+        return [ 
+            "ipc:///%s/%s.nimbusio-event-publisher.socket" % ( 
+                self.socket_path, n, )
+             for n in self.node_names ]
 
     @property
     def event_publisher_pub_addresses(self):
@@ -103,6 +120,10 @@ class ClusterConfig(object):
 
     @property
     def anti_entropy_addresses(self):
+        return self._node_service_addresses('anti_entropy')
+
+    @property
+    def anti_entropy_pipeline_addresses(self):
         return self._node_service_addresses('anti_entropy')
 
     @property

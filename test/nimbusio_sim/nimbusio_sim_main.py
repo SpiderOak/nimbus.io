@@ -45,7 +45,7 @@ def sanity_check(config):
 def ensure_paths(config):
     "ensure that all the directories needed exist"
 
-    for dirpath in [ config.basedir, config.log_path ]:
+    for dirpath in config.required_paths:
         if not os.path.exists(dirpath):
             os.makedirs(dirpath)
 
@@ -62,7 +62,7 @@ def main():
     config = ClusterConfig(args)
     print repr(args)
 
-    os.environ.update(config.env_for_config())
+    os.environ.update(config.env_for_cluster())
 
     if not sanity_check(config):
         return 1
@@ -70,17 +70,16 @@ def main():
     ensure_paths(config)
 
     if config.logprune:
-        remove_files(config.log_path):
+        remove_files(config.log_path)
 
     #import pdb
     #pdb.set_trace()
     _initialize_logging(config)
-    return
     log = logging.getLogger("main")
     log.info("progam starts")
 
     log.info("entering main loop")
-    command_interpreter = CommandInterpreter()
+    command_interpreter = CommandInterpreter(config)
     command_interpreter.cmdloop("nimbus.io")
     log.info("leaving main loop")
 

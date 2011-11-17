@@ -33,7 +33,8 @@ def _parse_command_line():
     )
     parser.add_option(
         '-c', "--create-customer", dest="command", action="store_const", 
-        const=_create_customer, help="create a new customer with no keys"
+        const=_create_customer, 
+        help="create a new customer, add one key, write values to stdout"
     )
     parser.add_option(
         '-a', "--add-key", dest="command", action="store_const",
@@ -65,10 +66,13 @@ def _parse_command_line():
     return options
 
 def _handle_create_customer(connection, username):
-    print >> sys.stderr, "creating customer", username
     create_customer(connection, username)
     add_key_to_customer(connection, username)
-    _handle_list_keys(connection, username)
+    key_id, key = list_customer_keys(connection, username)[0]
+    print "Username",  username
+    print "AuthKeyId",  str(key_id)
+    print "AuthKey", key
+    print
 
 def _handle_add_key(connection, username):
     print >> sys.stderr, "adding key to customer", username

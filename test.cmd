@@ -1,0 +1,1 @@
+rm -rf /tmp/bob ; NIMBUSIO_LOG_DIR=/tmp/test TEST_BASE_PATH=/tmp/test PYTHONPATH=/home/alan/git/o/nimbus.io python test/nimbusio_sim/nimbusio_sim_main.py --basedir /tmp/bob --baseport 9000 --create --logprune --start --systemdb

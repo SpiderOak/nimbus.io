@@ -63,7 +63,7 @@ from web_server.listmatcher import Listmatcher
 from web_server.space_usage_getter import SpaceUsageGetter
 from web_server.stat_getter import StatGetter
 from web_server.retriever import Retriever
-from web_server.meta_manager import get_meta, list_meta
+from web_server.meta_manager import retrieve_meta
 from web_server.conjoined_manager import list_conjoined_archives, \
         start_conjoined_archive, \
         abort_conjoined_archive, \
@@ -75,6 +75,7 @@ from web_server.url_discriminator import parse_url, \
         action_space_usage, \
         action_archive_key, \
         action_list_keys, \
+        action_retrieve_meta, \
         action_retrieve_key, \
         action_delete_key, \
         action_head_key
@@ -183,6 +184,7 @@ class Application(object):
             action_space_usage          : self._collection_space_usage,
             action_archive_key          : self._archive_key,
             action_list_keys            : self._list_keys,
+            action_retrieve_meta        : self._retrieve_meta,
             action_retrieve_key         : self._retrieve_key,
             action_delete_key           : self._delete_key,
             action_head_key             : self._head_key,
@@ -634,6 +636,47 @@ class Application(object):
         response = Response()
         response.app_iter = app_iterator(response)
         return  response
+
+    def _retrieve_meta(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        meta_dict = retrieve_meta(
+            self._node_local_connection, 
+            collection_entry.collection_id, 
+            key
+        )
+
+        if meta_dict is None:
+            raise exc.HTTPNotFound(req.url)
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(meta_dict))
+
+        return response
+
 
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")

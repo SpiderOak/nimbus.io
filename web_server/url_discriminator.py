@@ -19,6 +19,7 @@ action_space_usage = "space-usage"
 action_archive_key = "archive-key"
 action_list_keys = "list-keys"
 action_retrieve_key = "retrieve-key"
+action_retrieve_meta = "retrieve-meta"
 action_delete_key = "delete-key"
 action_head_key = "head-key"
 
@@ -49,6 +50,9 @@ _list_keys_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>\S+?))$"
 )
 
+_retrieve_meta_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)\?action=meta$"
+)
 _retrieve_key_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)$"
 )
@@ -66,12 +70,13 @@ _head_key_re = re.compile(
 
 # note that order is significant here, 
 # specifically _archive_key_re has a grab bag ?.* that will pick up
-# ?action=delete, so we need to check for that first
+# ?action=delete, or ?action=metaso we need to check for those first
 _regex_by_method = {
     "GET"   : [
         (_list_collections_re, action_list_collections, ),
         (_space_usage_re, action_space_usage, ),
         (_list_keys_re, action_list_keys, ),
+        (_retrieve_meta_re, action_retrieve_meta, ),
         (_retrieve_key_re, action_retrieve_key, ),
     ],
     "POST"  : [

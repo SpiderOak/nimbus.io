@@ -4,30 +4,26 @@ meta_manager.py
 
 functions for accessing meta data
 """
-_get_meta_query = """
-    select meta_value from nimbusio_node.meta where
-    collection_id = %s and key = %s and meta_key = %s
-""".strip()
+from web_server.local_database_util import most_recent_timestamp_for_key
 
-_list_meta_query = """
+_retrieve_meta_query = """
     select meta_key, meta_value from nimbusio_node.meta where
-    collection_id = %s and key = %s
+    collection_id = %s and segment_id = %s
 """.strip()
 
-def get_meta(connection, collection_id, key, meta_key):
-    """get the value for one meta key"""
-    meta_row = connection.fetch_one_row(
-        _get_meta_query, [collection_id, key, meta_key]
+def retrieve_meta(connection, collection_id, key):
+    """
+    get a dict of meta data associated with the segment
+    """
+    # TODO: find a non-blocking way to do this
+    # TODO: don't just use the local node, it might be wrong
+    segment_row = most_recent_timestamp_for_key(
+        connection, collection_id, key
     )
-    if meta_row is None:
+    if segment_row is None or segment_row.file_tombstone:
         return None
-    return meta_row[0]
 
-def list_meta(connection, collection_id, key):
-    """
-    get a list of tuples for all meta data associated wiht the key
-    """
-    return connection.fetch_all_rows(
-        _list_meta_query, [collection_id, key, ]
-    )
+    return dict(connection.fetch_all_rows(
+        _retrieve_meta_query, [collection_id, segment_row.id, ]
+    ))
 

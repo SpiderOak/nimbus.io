@@ -20,9 +20,11 @@ class ClusterConfig(object):
             handoff_pipeline =          5 * args.nodecount + args.baseport,
             event_publisher_pub  =      6 * args.nodecount + args.baseport,
             event_aggregator_pull =     7 * args.nodecount + args.baseport,
-            # these two only need single ports
-            space_accounting =          1 + 8 * args.nodecount + args.baseport,
-            space_accounting_pipeline = 2 + 8 * args.nodecount + args.baseport, 
+            # these only need single ports
+            event_aggregator =          1 + 8 * args.nodecount + args.baseport, 
+            space_accounting =          2 + 8 * args.nodecount + args.baseport,
+            space_accounting_pipeline = 3 + 8 * args.nodecount + args.baseport, 
+            web_server =                4 + 8 * args.nodecount + args.baseport, 
         )
 
     def env_for_cluster(self):
@@ -67,7 +69,7 @@ class ClusterConfig(object):
         return os.path.join(self.basedir, "sockets")
 
     def _node_service_addresses(self, name):
-        return [ "tcp://127.0.0.1:%s" % i
+        return [ "tcp://%s:%s" % (self.ip, i, )
             for i in range(self.base_ports[name],
                            self.base_ports[name] + self.nodecount)]
 
@@ -87,13 +89,17 @@ class ClusterConfig(object):
 
     @property
     def space_accounting_server_address(self):
-        return "tcp://127.0.0.1:%d" % ( max(self.base_ports.values()) 
-                                        + self.nodecount, )
+        return "tcp://%s:%d" % ( 
+            self.ip, self.base_ports['space_accounting'], )
 
     @property
     def space_accounting_pipeline_address(self):
-        return "tcp://127.0.0.1:%d" % ( max(self.base_ports.values()) 
-                                        + self.nodecount + 1 )
+        return "tcp://%s:%d" % ( 
+            self.ip, self.base_ports['space_accounting_pipeline'], )
+
+    @property
+    def web_server_url(self):
+        return "http://%s:%d" % ( self.ip, self.base_ports['web_server'], )
 
     @property
     def event_publisher_pull_addresses(self):
@@ -107,7 +113,15 @@ class ClusterConfig(object):
         return self._node_service_addresses('event_publisher_pub')
 
     @property
-    def event_aggregator_pub_addresses(self):
+    def event_aggregator_pull_addresses(self):
+        return self._node_service_addresses('event_aggregator')
+
+    @property
+    def event_aggregator_addresses(self):
+        return self._node_service_addresses('event_aggregator')
+
+    @property
+    def event_aggregator_pull_addresses(self):
         return self._node_service_addresses('event_aggregator_pull')
 
     @property

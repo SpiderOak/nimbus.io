@@ -125,43 +125,47 @@ class NodeSim(object):
             self._home_dir
         )
         self._processes["data_writer"] = start_data_writer(
-            _cluster_name,
-            self._node_name,
-            _data_writer_addresses[self._node_index],
-            _event_publisher_pull_addresses[self._node_index],
+            self._cluster_config.clustername,
+            self.node_name,
+            self.node_config('data_writer_addresses'),
+            self.node_config('event_publisher_pull_addresses'),
             self._home_dir
         )
         self._processes["handoff_server"] = start_handoff_server(
-            _cluster_name,
-            self._node_name,
-            _handoff_server_addresses,
-            _handoff_server_pipeline_addresses[self._node_index],
-            _data_reader_addresses,
-            _data_writer_addresses,
-            _event_publisher_pull_addresses[self._node_index],
+            self._cluster_config.clustername,
+            self.node_name,
+            self._cluster_config.handoff_server_addresses,
+            self.node_config('handoff_server_pipeline_addresses'),
+            self._cluster_config.data_reader_addresses,
+            self._cluster_config.data_writer_addresses,
+            self.node_config('event_publisher_pull_addresses'),
             self._home_dir
         )
         self._processes["anti_entropy_server"] = start_anti_entropy_server(
-            _cluster_name,
-            _node_names,
-            self._node_name,
-            _anti_entropy_server_addresses,
-            _anti_entropy_server_pipeline_addresses[self._node_index],
-            _event_publisher_pull_addresses[self._node_index]
+            self._cluster_config.clustername,
+            self._cluster_config.node_names,
+            self.node_name,
+            self._cluster_config.anti_entropy_addresses,
+            self.node_config('anti_entropy_pipeline_addresses'),
+            self.node_config('event_publisher_pull_addresses'),
         )
 
         if self._space_accounting:
             self._processes["space_accounting"] = \
                 start_space_accounting_server(
-                    self._node_name,
-                    _space_accounting_server_address,
-                    _space_accounting_pipeline_address,
-                    _event_publisher_pull_addresses[self._node_index]
+                    self.node_name,
+                    self._cluster_config.space_accounting_server_address,
+                    self._cluster_config.space_accounting_pipeline_address,
+                    self.node_config('event_publisher_pull_addresses'),
                 )
 
         if self._event_aggregator:
             self._processes["event_aggregator"] = \
                 start_event_aggregator(
+                    self._cluster_config.event_aggregator
+                    self.node_config('event_aggregator_pub_addresses'),
+                    self.node_config('event_aggregator_pull_addresses'),
+
                     _event_aggregator_pub_address,
                     _event_publisher_pull_addresses[self._node_index],
                     _event_publisher_pub_addresses

@@ -30,6 +30,10 @@ def parse_cmdline():
         help="use the system's DB instance (default: create new "
             "instances inside basedir)")
 
+    parser.add_argument("--ip", dest="ip", 
+        action="store", default="127.0.0.1", 
+        help="IP address to bind to (default: localhost)")
+
     parser.add_argument("--createnew", dest='createnew', action='store_true',
         default=False, 
         help="create a new cluster in basedir (default: use existing)")

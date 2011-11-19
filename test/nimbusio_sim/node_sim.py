@@ -103,11 +103,11 @@ class NodeSim(object):
 
     def node_config(self, name):
         "return the named config value for this node in the cluster"
-        return getattr(self._cluster_config, 'name')[self._node_index]
+        return getattr(self._cluster_config, name)[self._node_index]
 
     @property
     def node_name(self):
-        return self.node_config('node_name')
+        return self.node_config('node_names')
 
     def start(self):
         self._log.debug("start")
@@ -120,7 +120,7 @@ class NodeSim(object):
 
         self._processes["data_reader"] = start_data_reader(
             self.node_name, 
-            self.node_name('data_reader_addresses'),
+            self.node_config('data_reader_addresses'),
             self.node_config('event_publisher_pull_addresses'),
             self._home_dir
         )
@@ -162,20 +162,16 @@ class NodeSim(object):
         if self._event_aggregator:
             self._processes["event_aggregator"] = \
                 start_event_aggregator(
-                    self._cluster_config.event_aggregator
-                    self.node_config('event_aggregator_pub_addresses'),
-                    self.node_config('event_aggregator_pull_addresses'),
-
-                    _event_aggregator_pub_address,
-                    _event_publisher_pull_addresses[self._node_index],
-                    _event_publisher_pub_addresses
+                    self._cluster_config.event_aggregator_pub_address,
+                    self.node_config('event_publisher_pull_addresses'),
+                    self._cluster_config.event_publisher_pub_addresses
                 )
 
         if self._performance_packager:
             self._processes["performance-packager"] = \
                 start_performance_packager(
-                    self._node_name,
-                    _event_aggregator_pub_address
+                    self.node_name,
+                    self._cluster_config.event_aggregator_pub_address,
                 )
 
     def stop(self):

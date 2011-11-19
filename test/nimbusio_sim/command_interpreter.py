@@ -28,7 +28,7 @@ class CommandInterpreter(cmd.Cmd):
             )
         )
         for i in xrange(_node_count-1):
-            self._node_sims.append(NodeSim(i+1))
+            self._node_sims.append(NodeSim(i+1, config))
 
     def _get_node_from_line(self, line):
         try:

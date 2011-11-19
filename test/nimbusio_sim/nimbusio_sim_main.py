@@ -11,6 +11,7 @@ import sys
 from test.nimbusio_sim.command_interpreter import CommandInterpreter
 from test.nimbusio_sim.options import parse_cmdline
 from test.nimbusio_sim.cluster_config import ClusterConfig
+from test.nimbusio_sim.db import create_database
 
 _log_name = u"nimbusio_sim.log"
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
@@ -71,6 +72,9 @@ def main():
 
     if config.logprune:
         remove_files(config.log_path)
+
+    if config.createnew and not config.systemdb:
+        config.database_users = create_database(config)
 
     #import pdb
     #pdb.set_trace()

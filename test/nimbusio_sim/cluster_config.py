@@ -11,6 +11,7 @@ class ClusterConfig(object):
     """
     def __init__(self, args):
         self.config = args
+        self.database_users = dict()
         self.base_ports = dict(
             writer =                    args.baseport,
             reader =                    1 * args.nodecount + args.baseport,
@@ -20,11 +21,12 @@ class ClusterConfig(object):
             handoff_pipeline =          5 * args.nodecount + args.baseport,
             event_publisher_pub  =      6 * args.nodecount + args.baseport,
             event_aggregator_pull =     7 * args.nodecount + args.baseport,
+            postgres =                  8 * args.nodecount + args.baseport,
             # these only need single ports
-            event_aggregator =          1 + 8 * args.nodecount + args.baseport, 
-            space_accounting =          2 + 8 * args.nodecount + args.baseport,
-            space_accounting_pipeline = 3 + 8 * args.nodecount + args.baseport, 
-            web_server =                4 + 8 * args.nodecount + args.baseport, 
+            event_aggregator_pub =      1 + 9 * args.nodecount + args.baseport, 
+            space_accounting =          2 + 9 * args.nodecount + args.baseport,
+            space_accounting_pipeline = 3 + 9 * args.nodecount + args.baseport, 
+            web_server =                4 + 9 * args.nodecount + args.baseport, 
         )
 
     def env_for_cluster(self):
@@ -63,6 +65,17 @@ class ClusterConfig(object):
     @property
     def log_path(self):
         return os.path.join(self.basedir, "logs")
+
+    @property
+    def db_data_paths(self):
+        return [
+            os.path.join(self.basedir, "db", n) for n in self.node_names]
+
+    @property
+    def db_ports(self):
+        return range(
+            self.base_ports['postgres'], 
+            self.base_ports['postgres'] + self.nodecount)
 
     @property
     def socket_path(self):
@@ -113,16 +126,18 @@ class ClusterConfig(object):
         return self._node_service_addresses('event_publisher_pub')
 
     @property
+    def event_aggregator_pub_address(self):
+        return "tcp://%s:%d" % (
+            self.ip, self.base_ports['event_aggregator_pub'], )
+
+    @property
     def event_aggregator_pull_addresses(self):
-        return self._node_service_addresses('event_aggregator')
+        return self._node_service_addresses('event_aggregator_pull')
 
     @property
     def event_aggregator_addresses(self):
         return self._node_service_addresses('event_aggregator')
 
-    @property
-    def event_aggregator_pull_addresses(self):
-        return self._node_service_addresses('event_aggregator_pull')
 
     @property
     def data_writer_addresses(self):

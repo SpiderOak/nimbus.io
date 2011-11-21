@@ -6,10 +6,10 @@ provide connections to the nimbus.io databases
 """
 import os
 
-_central_database_name = "nimbusio_central"
-_central_database_user = "nimbusio_central_user"
-_node_database_name_prefix = "nimbusio_node"
-_node_database_user_prefix = "nimbusio_node_user"
+central_database_name = "nimbusio_central"
+central_database_user = "nimbusio_central_user"
+node_database_name_prefix = "nimbusio_node"
+node_database_user_prefix = "nimbusio_node_user"
 
 class DatabaseConnection(object):
     """A connection to the nimbus.io databases"""
@@ -94,8 +94,8 @@ def get_central_connection():
         "NIMBUSIO_CENTRAL_DATABASE_PORT", "5432"
     ))
     connection = DatabaseConnection(
-        database_name=_central_database_name,
-        database_user=_central_database_user,
+        database_name=central_database_name,
+        database_user=central_database_user,
         database_password=central_database_password,
         database_host=database_host,
         database_port=database_port
@@ -104,8 +104,8 @@ def get_central_connection():
 
 def get_node_local_connection():
     node_name = os.environ["NIMBUSIO_NODE_NAME"]
-    database_name = ".".join([_node_database_name_prefix, node_name, ])
-    database_user = ".".join([_node_database_user_prefix, node_name, ])
+    database_name = ".".join([node_database_name_prefix, node_name, ])
+    database_user = ".".join([node_database_user_prefix, node_name, ])
     database_password = os.environ['NIMBUSIO_NODE_USER_PASSWORD']
     database_host = os.environ.get("NIMBUSIO_NODE_DATABASE_HOST", "localhost")
     database_port = int(os.environ.get("NIMBUSIO_NODE_DATABASE_PORT", "5432"))

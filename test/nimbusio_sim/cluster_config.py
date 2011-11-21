@@ -3,6 +3,10 @@
 
 import os
 
+from tools.database_connection import \
+    central_database_name, central_database_user, \
+    node_database_name_prefix, node_database_user_prefix
+
 _config_filename = "config.json"
 
 class ClusterConfig(object):
@@ -23,10 +27,11 @@ class ClusterConfig(object):
             event_aggregator_pull =     7 * args.nodecount + args.baseport,
             postgres =                  8 * args.nodecount + args.baseport,
             # these only need single ports
-            event_aggregator_pub =      1 + 9 * args.nodecount + args.baseport, 
-            space_accounting =          2 + 9 * args.nodecount + args.baseport,
-            space_accounting_pipeline = 3 + 9 * args.nodecount + args.baseport, 
-            web_server =                4 + 9 * args.nodecount + args.baseport, 
+            postgres_central =          1 + 9 * args.nodecount + args.baseport, 
+            event_aggregator_pub =      2 + 9 * args.nodecount + args.baseport, 
+            space_accounting =          3 + 9 * args.nodecount + args.baseport,
+            space_accounting_pipeline = 4 + 9 * args.nodecount + args.baseport, 
+            web_server =                5 + 9 * args.nodecount + args.baseport, 
         )
 
     def env_for_cluster(self):
@@ -67,15 +72,41 @@ class ClusterConfig(object):
         return os.path.join(self.basedir, "logs")
 
     @property
-    def db_data_paths(self):
+    def node_db_paths(self):
         return [
             os.path.join(self.basedir, "db", n) for n in self.node_names]
 
     @property
-    def db_ports(self):
+    def central_db_path(self):
+        return os.path.join(self.basedir, "db", "central")
+
+    @property
+    def central_db_port(self):
+        return self.base_ports['postgres_central']
+
+    @property
+    def node_db_ports(self):
         return range(
             self.base_ports['postgres'], 
             self.base_ports['postgres'] + self.nodecount)
+
+    @property
+    def central_db_user(self):
+        return central_database_user
+
+    @property
+    def central_db_name(self):
+        return central_database_name
+
+    @property
+    def node_db_names(self):
+        return [".".join([node_database_name_prefix, name]) 
+                for name in self.node_names]
+
+    @property
+    def node_db_users(self):
+        return [".".join([node_database_user_prefix, name]) 
+                for name in self.node_names]
 
     @property
     def socket_path(self):
@@ -137,7 +168,6 @@ class ClusterConfig(object):
     @property
     def event_aggregator_addresses(self):
         return self._node_service_addresses('event_aggregator')
-
 
     @property
     def data_writer_addresses(self):

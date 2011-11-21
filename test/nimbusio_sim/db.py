@@ -1,3 +1,4 @@
+import sys
 import time
 import subprocess
 import random
@@ -12,28 +13,32 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT, \
 _RUNNING_DATABASES = set()
 _AT_EXIT_REGISTERED = False
 _DB_HOST = "localhost"
+_SIM_HOSTNAME = "localhost"
 
 # exit handler system to shutdown databases left running if the simulator
 # crashes.
 # it's annoying to have to manualy shut down a bunch of db instances
 
-def _stop_running_database(data_dir):
-    "stop the database running in data_dir"
-    cmd = ["pg_ctl", "stop", "-D", data_dir, ]
-    print cmd
-    code, out, err = run_cmd(cmd)
-
 def _stop_running_databases(running):
-    "exit handler to stop any database instances that are running"
+    "exit handler to stop any database instances that are left running"
     for data_dir in sorted(running):
         print "Stopping database in %s" % ( data_dir, )
-        _stop_running_database(data_dir)
+        try:
+            stop_db(data_dir)
+        except RuntimeError, err:
+            if not "could not stop" in str(err):
+                raise
+            print >> sys.stderr, "Could not stop db in %s" % (data_dir, )
 
 if not _AT_EXIT_REGISTERED:
     _AT_EXIT_REGISTERED = True
     atexit.register(_stop_running_databases, _RUNNING_DATABASES)
 
 def find_schema_path(schema_filename):
+    """
+    find the full path to the named schema file in the sql dir in the same 
+    source checkout as this file
+    """
     base_path = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
     sql_path = os.path.join(base_path, "sql")
     schema_path = os.path.join(sql_path, schema_filename)
@@ -50,7 +55,9 @@ def create_database(cluster_config):
     for name in cluster_config.node_db_users:
         database_users[name] = generate_db_user_pw()
 
-    # this definitely won't be portable to Windows...
+    # when you init a new database, the database superuser's name becomes the
+    # current effective user
+    # note: this definitely won't be portable to Windows...
     superuser_name = pwd.getpwuid(os.getuid())[0]
     
     # create and start central db
@@ -70,6 +77,8 @@ def create_database(cluster_config):
         _DB_HOST, cluster_config.central_db_port,
         cluster_config.central_db_name, cluster_config.central_db_user)
     
+    populate_central_database(cluster_config, database_users)
+
     # create and start all the node DBs
     for idx, name in enumerate(cluster_config.node_names):
         init_db(cluster_config.node_db_paths[idx])
@@ -91,10 +100,34 @@ def create_database(cluster_config):
             cluster_config.node_db_names[idx],
             cluster_config.node_db_users[idx])
 
+    return database_users
+
 def generate_db_user_pw():
     length = random.choice(range(8, 12))
     binary = os.urandom(length)
     return b64encode(binary)
+
+def populate_central_database(cluster_config, database_users):
+    params = dict(database=cluster_config.central_db_name, 
+                  host=_DB_HOST, 
+                  port=cluster_config.central_db_port,
+                  user=cluster_config.central_db_user, 
+                  password=database_users[cluster_config.central_db_user], )
+    conn = retry_db_connect(params)
+    cursor = conn.cursor()
+    cursor.execute("insert into nimbusio_central.cluster (name) values(%s)",
+        [cluster_config.clustername])
+    for idx, name in enumerate(cluster_config.node_names):
+        cursor.execute("insert into nimbusio_central.node "
+                       "(cluster_id, node_number_in_cluster, name, hostname) "
+                       "values((select id from nimbusio_central.cluster "
+                       "        where name=%s), "
+                       "        %s, %s, %s)", 
+                       [cluster_config.clustername, idx + 1, name, 
+                        _SIM_HOSTNAME ])
+    conn.commit()
+    conn.close()
+
 
 def run_cmd(cmd, BUF_SIZE=-1):
     "run cmd and return ( exit code, stdout, stderr, )"
@@ -103,12 +136,6 @@ def run_cmd(cmd, BUF_SIZE=-1):
     out, err = program.communicate()
     code = program.returncode
     return code, out, err
-
-def init_database_for_one_node(cluster_config, node_index):
-    init_db(cluster_config.node_db_paths[node_index])
-
-def init_central_database(cluster_config):
-    init_db(cluster_config.central_db_path)
 
 def init_db(data_dir):
     if not os.path.exists(data_dir):
@@ -134,6 +161,16 @@ def start_db(data_dir, port, log_path):
 
     _RUNNING_DATABASES.add(data_dir)
 
+def stop_db(data_dir):
+    "stop the database running in data_dir"
+    cmd = ["pg_ctl", "stop", "-D", data_dir, ]
+    print cmd
+    code, out, err = run_cmd(cmd)
+    if code != 0:
+        raise RuntimeError("could not stop db cmd %r exit code %d: %s: %s" % (
+            cmd, code, out, err, ))
+    _RUNNING_DATABASES.discard(data_dir)
+
 def start_database_for_one_node(cluster_config, node_index):
     data_dir = cluster_config.node_db_paths[node_index]
     log_name = "postgresql-%s.log" % ( cluster_config.node_names[node_index], )
@@ -153,20 +190,6 @@ def start_database_for_one_node(cluster_config, node_index):
             cmd, code, out, err, ))
 
     _RUNNING_DATABASES.add(data_dir)
-
-
-def stop_database_for_one_node(cluster_config, node_index):
-    data_dir = cluster_config.node_db_paths[node_index]
-    cmd = ["pg_ctl", "stop", "-D", data_dir, ]
-    print cmd
-    code, out, err = run_cmd(cmd)
-    print err, out
-    if code != 0:
-        raise RuntimeError("could not stop db cmd %r exit code %d: %s: %s" % (
-            cmd, code, out, err, ))
-
-    _RUNNING_DATABASES.discard(data_dir)
-
 
 def retry_db_connect(params, max_retry=20):
     print repr(params)
@@ -214,11 +237,3 @@ def apply_database_schema(schemapath, host, port, dbname, db_username):
         raise RuntimeError("cmd failed: %r exit code %d: %s: %s" % (
             cmd, code, out, err, ))
     return True
-
-#def populate_central_database(host, port, superuser_name, new_db_name, username, password):
-#    # create the user & pw, database, and schema
-
-def populate_node_database(host, port, superuser_name, username, password):
-    # create the user & pw, database, and schema
-    pass 
-

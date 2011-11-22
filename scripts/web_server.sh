@@ -16,4 +16,6 @@ export NIMBUSIO_CENTRAL_USER_PASSWORD="1.332009188365191"
 export NIMBUSIO_NODE_USER_PASSWORD="1.332009188365191"
 
 rm "${NIMBUSIO_LOG_DIR}/nimbusio_web_server.log"
-python "${NIMBUSIO}/web_server/web_server_main.py" "$@"
+rm "${NIMBUSIO_LOG_DIR}/nimbusio_web_server_wsgi.log"
+bash -c 'ulimit -H -n 32768 ; chpst -u dougfort:dougfort -o 32768 python "${NIMBUSIO}/web_server/web_server_main.py"' "$@" &> /var/log/nimbusio/nimbusio_web_server_wsgi.log
+

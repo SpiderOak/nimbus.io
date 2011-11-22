@@ -85,7 +85,7 @@ _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUSIO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
-_slice_size = 1024 * 1024    # 1MB
+_slice_size = int(os.environ.get("NIMBUSIO_SLICE_SIZE", str(1024 * 1024)))
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10

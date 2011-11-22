@@ -18,6 +18,7 @@ from gevent import monkey
 monkey.patch_all()
 #monkey.patch_all(dns=False)
 
+import logging
 import os
 import sys
 
@@ -58,9 +59,11 @@ _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 _web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
 _web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
+_wsgi_backlog = int(os.environ.get("NIMBUSIO_WSGI_BACKLOG", "1024"))
 
 class WebServer(object):
     def __init__(self):
+        self._log = logging.getLogger("WebServer")
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
@@ -143,7 +146,8 @@ class WebServer(object):
         )
         self.wsgi_server = WSGIServer(
             (_web_server_host, _web_server_port), 
-            self.application
+            application=self.application,
+            backlog=_wsgi_backlog
         )
         self._stopped_event = Event()
 
@@ -175,7 +179,13 @@ class WebServer(object):
 
 def main():
     initialize_logging(_log_path)
-    WebServer().serve_forever()
+    log = logging.getLogger("main")
+    try:
+        WebServer().serve_forever()
+    except Exception, instance:
+        log.exception(str(instance))
+        return -1
+
     return 0
 
 

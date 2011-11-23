@@ -74,7 +74,7 @@ def main():
         remove_files(config.log_path)
 
     if config.createnew and not config.systemdb:
-        config.database_users = create_database(config)
+        config.database_users.update(create_database(config))
 
     #import pdb
     #pdb.set_trace()

@@ -30,6 +30,10 @@ def parse_cmdline():
         help="use the system's DB instance (default: create new "
             "instances inside basedir)")
 
+    parser.add_argument("--dbhost", dest="dbhost", action="store", 
+        default="localhost", 
+        help="database hostname (default=localhost), use w/ --systemdb")
+
     parser.add_argument("--ip", dest="ip", 
         action="store", default="127.0.0.1", 
         help="IP address to bind to (default: localhost)")

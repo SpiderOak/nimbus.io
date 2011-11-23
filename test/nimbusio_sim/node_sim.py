@@ -107,71 +107,73 @@ class NodeSim(object):
 
     @property
     def node_name(self):
+        "shorthand for node_config('node_names')"
         return self.node_config('node_names')
+
+    @property
+    def env(self):
+        "dict of ENV for the cluster and this node"
+        return dict(self.cluster_config.env_for_cluster +
+                    self.cluster_config.env_for_node(self.node_index))
 
     def start(self):
         self._log.debug("start")
 
         self._processes["event_publisher"] = start_event_publisher(
             self.node_name, 
-            self.node_config('event_publisher_pull_addresses'),
-            self.node_config('event_publisher_pub_addresses'),
+            None, None,
+            environment = self.env
         )
 
         self._processes["data_reader"] = start_data_reader(
             self.node_name, 
-            self.node_config('data_reader_addresses'),
-            self.node_config('event_publisher_pull_addresses'),
-            self._home_dir
+            None, None, None,
+            environment = self.env
+
         )
+
         self._processes["data_writer"] = start_data_writer(
             self._cluster_config.clustername,
             self.node_name,
-            self.node_config('data_writer_addresses'),
-            self.node_config('event_publisher_pull_addresses'),
-            self._home_dir
+            None, None, None,
+            environment = self.env
         )
+
         self._processes["handoff_server"] = start_handoff_server(
             self._cluster_config.clustername,
             self.node_name,
-            self._cluster_config.handoff_server_addresses,
-            self.node_config('handoff_server_pipeline_addresses'),
-            self._cluster_config.data_reader_addresses,
-            self._cluster_config.data_writer_addresses,
-            self.node_config('event_publisher_pull_addresses'),
-            self._home_dir
+            None, None, None, None, None, None,
+            environment = self.env
         )
+
         self._processes["anti_entropy_server"] = start_anti_entropy_server(
-            self._cluster_config.clustername,
-            self._cluster_config.node_names,
+            None, None,
             self.node_name,
-            self._cluster_config.anti_entropy_addresses,
-            self.node_config('anti_entropy_pipeline_addresses'),
-            self.node_config('event_publisher_pull_addresses'),
+            None, None, None,
+            environment = self.env
         )
 
         if self._space_accounting:
             self._processes["space_accounting"] = \
                 start_space_accounting_server(
                     self.node_name,
-                    self._cluster_config.space_accounting_server_address,
-                    self._cluster_config.space_accounting_pipeline_address,
-                    self.node_config('event_publisher_pull_addresses'),
+                    None, None, None,
+                    environment = self.env
                 )
 
         if self._event_aggregator:
             self._processes["event_aggregator"] = \
                 start_event_aggregator(
-                    self._cluster_config.event_aggregator_pub_address,
-                    self.node_config('event_publisher_pull_addresses'),
-                    self._cluster_config.event_publisher_pub_addresses
+                    None, None, None, 
+                    environment = self.env
                 )
 
         if self._performance_packager:
             self._processes["performance-packager"] = \
                 start_performance_packager(
                     self.node_name,
-                    self._cluster_config.event_aggregator_pub_address,
+                    None,
+                    environment = self.env
                 )
 
     def stop(self):

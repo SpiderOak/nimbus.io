@@ -35,28 +35,77 @@ class ClusterConfig(object):
         )
 
     def env_for_cluster(self):
-        "dict of ENV for the cluster as a whole"
+        "list of names and values for overall cluster"
 
-        cluster_env = dict(
-            PYTHONPATH = os.environ['PYTHONPATH'],
-            NIMBUSIO_LOG_DIR = self.log_path,
-            NIMBUSIO_CLUSTER_NAME = self.clustername,
-            NIMBUSIO_NODE_NAME_SEQ = " ".join(self.node_names),
-            NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES = \
+        cluster_env = [
+            "PYTHONPATH",
+                os.environ['PYTHONPATH'],
+            "NIMBUSIO_LOG_DIR",
+                self.log_path,
+            "NIMBUSIO_CLUSTER_NAME",
+                self.clustername,
+            "NIMBUSIO_NODE_NAME_SEQ",
+                " ".join(self.node_names),
+            "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES",
                 " ".join(self.anti_entropy_addresses),
-            # TODO FIXME magic values
-            NIMBUSIO_CENTRAL_USER_PASSWORD = "pork",
-            NIMBUSIO_NODE_USER_PASSWORD    = "pork",
-        )
+            "NIMBUSIO_CENTRAL_USER_PASSWORD",       
+                self.central_db_user,
+            "NIMBUSIO_CENTRAL_DATABASE_HOST",
+                self.dbhost,
+            "NIMBUSIO_CENTRAL_DATABASE_PORT",       
+                self.central_db_port,
+            "NIMBUSIO_HANDOFF_SERVER_ADDRESSES", 
+                " ".join(self.handoff_server_addresses),
+            "NIMBUSIO_DATA_READER_ADDRESSES", 
+                " ".join(self.data_reader_addresses),
+            "NIMBUSIO_DATA_WRITER_ADDRESSES", 
+                " ".join(self.data_writer_addresses)
+        ]
 
         return cluster_env
 
     def env_for_node(self, node_index):
-        "dict of ENV for a specific node in the cluster"
-            #NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS =
-            #    " ".join(self.anti_entropy_pipeline_addresses),
-            #"NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
-        pass
+        "list of names and values for ENV for a specific node in the cluster"
+
+        node_env = [
+           "NIMBUSIO_NODE_NAME", 
+                self.node_names[node_index],
+           "NIMBUSIO_NODE_DATABASE_HOST", 
+                self.dbhost,
+           "NIMBUSIO_NODE_DATABASE_PORT", 
+                self.node_db_ports[node_index],
+           "NIMBUSIO_NODE_DATABASE_USER", 
+                self.node_db_users[node_index],
+           "NIMBUSIO_NODE_DATABASE_NAME", 
+                self.node_db_names[node_index],
+           "NIMBUSIO_NODE_USER_PASSWORD", 
+                self.node_db_pws[node_index],
+           "NIMBUSIO_DATA_READER_ADDRESS", 
+                self.data_reader_addresses[node_index],
+           "NIMBUSIO_DATA_WRITER_ADDRESS",    
+                self.data_writer_addresses[node_index],
+           "NIMBUSIO_REPOSITORY_PATH",      
+                self.node_repository_paths[node_index],
+           "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS", 
+                self.handoff_server_pipeline_addresses[node_index],
+           "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
+                self.event_publisher_pull_addresses[node_index],
+           "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS",
+                self.anti_entropy_pipeline_addresses[node_index],
+           "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
+                self.event_publisher_pull_addresses[node_index],
+           "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS",
+                self.space_accounting_server_address,
+           "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
+                self.space_accounting_pipeline_address,
+           "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
+                self.event_publisher_pull_addresses[node_index],
+           "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS",
+                self.event_publisher_pub_addresses[node_index],
+           "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS",
+                self.event_aggregator_pub_address,
+        ]
+        return node_env
 
     def __getattr__(self, name):
         if not hasattr(self.config, name):
@@ -72,11 +121,6 @@ class ClusterConfig(object):
         return os.path.join(self.basedir, "logs")
 
     @property
-    def node_db_paths(self):
-        return [
-            os.path.join(self.basedir, "db", n) for n in self.node_names]
-
-    @property
     def central_db_path(self):
         return os.path.join(self.basedir, "db", "central")
 
@@ -85,18 +129,27 @@ class ClusterConfig(object):
         return self.base_ports['postgres_central']
 
     @property
-    def node_db_ports(self):
-        return range(
-            self.base_ports['postgres'], 
-            self.base_ports['postgres'] + self.nodecount)
+    def central_db_name(self):
+        return central_database_name
 
     @property
     def central_db_user(self):
         return central_database_user
 
     @property
-    def central_db_name(self):
-        return central_database_name
+    def central_db_pw(self):
+        return self.database_users[self.central_db_user]
+
+    @property
+    def node_db_paths(self):
+        return [
+            os.path.join(self.basedir, "db", n) for n in self.node_names]
+
+    @property
+    def node_db_ports(self):
+        return range(
+            self.base_ports['postgres'], 
+            self.base_ports['postgres'] + self.nodecount)
 
     @property
     def node_db_names(self):
@@ -107,6 +160,10 @@ class ClusterConfig(object):
     def node_db_users(self):
         return [".".join([node_database_user_prefix, name]) 
                 for name in self.node_names]
+
+    @property
+    def node_db_pws(self):
+        return [self.database_users[u] for u in self.node_db_users]
 
     @property
     def socket_path(self):
@@ -121,6 +178,10 @@ class ClusterConfig(object):
     def required_paths(self):
         "paths to all all folders that should exist to run this cluster"
         return [ self.basedir, self.log_path, self.socket_path ]
+
+    @property
+    def node_repository_paths(self):
+        return [os.path.join(self.basedir, n) for n in self.node_names]
 
     @property
     def port_range(self):

@@ -12,7 +12,6 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT, \
 
 _RUNNING_DATABASES = set()
 _AT_EXIT_REGISTERED = False
-_DB_HOST = "localhost"
 _SIM_HOSTNAME = "localhost"
 
 # exit handler system to shutdown databases left running if the simulator
@@ -66,7 +65,7 @@ def create_database(cluster_config):
              cluster_config.central_db_port, 
              os.path.join(cluster_config.log_path, "postgresql-central.log"))
 
-    create_owner_and_database(_DB_HOST,
+    create_owner_and_database(cluster_config.dbhost,
                               cluster_config.central_db_port,
                               superuser_name, 
                               cluster_config.central_db_name,
@@ -74,7 +73,7 @@ def create_database(cluster_config):
                               database_users[cluster_config.central_db_user])
 
     apply_database_schema(find_schema_path("nimbusio_central.sql"),
-        _DB_HOST, cluster_config.central_db_port,
+        cluster_config.dbhost, cluster_config.central_db_port,
         cluster_config.central_db_name, cluster_config.central_db_user)
     
     populate_central_database(cluster_config, database_users)
@@ -87,7 +86,7 @@ def create_database(cluster_config):
                  os.path.join(cluster_config.log_path,
                     "postgresql-node-%s.log" % ( name, )))
         create_owner_and_database(
-            _DB_HOST, 
+            cluster_config.dbhost, 
             cluster_config.node_db_ports[idx],
             superuser_name,
             cluster_config.node_db_names[idx],
@@ -95,7 +94,7 @@ def create_database(cluster_config):
             database_users[cluster_config.node_db_users[idx]])
         apply_database_schema(
             find_schema_path("nimbusio_node.sql"),
-            _DB_HOST, 
+            cluster_config.dbhost, 
             cluster_config.node_db_ports[idx],
             cluster_config.node_db_names[idx],
             cluster_config.node_db_users[idx])
@@ -109,7 +108,7 @@ def generate_db_user_pw():
 
 def populate_central_database(cluster_config, database_users):
     params = dict(database=cluster_config.central_db_name, 
-                  host=_DB_HOST, 
+                  host=cluster_config.dbhost, 
                   port=cluster_config.central_db_port,
                   user=cluster_config.central_db_user, 
                   password=database_users[cluster_config.central_db_user], )

@@ -88,6 +88,10 @@ def start_data_writer(
     
     args = [
         sys.executable,
+        "-m" 
+        "cProfile",
+        "-o", 
+        "/home/dougfort/profile/data_writer-%s.dat" % (node_name, ),
         server_path,
     ]
 
@@ -119,6 +123,10 @@ def start_data_reader(
     
     args = [
         sys.executable,
+        "-m" 
+        "cProfile",
+        "-o", 
+        "/home/dougfort/profile/data_reader-%s.dat" % (node_name, ),
         server_path,
     ]
 

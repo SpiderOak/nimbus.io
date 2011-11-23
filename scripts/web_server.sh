@@ -18,5 +18,5 @@ export NIMBUSIO_REPLY_TIMEOUT="900"
 
 rm "${NIMBUSIO_LOG_DIR}/nimbusio_web_server.log"
 rm "${NIMBUSIO_LOG_DIR}/nimbusio_web_server_wsgi.log"
-bash -c 'ulimit -H -n 32768 ; chpst -u dougfort:dougfort -o 32768 python "${NIMBUSIO}/web_server/web_server_main.py"' "$@" &> /var/log/nimbusio/nimbusio_web_server_wsgi.log
+bash -c 'ulimit -H -n 32768 ; chpst -u dougfort:dougfort -o 32768 python -m cProfile -o /home/dougfort/profile/web_server.dat "${NIMBUSIO}/web_server/web_server_main.py"' "$@" &> /var/log/nimbusio/nimbusio_web_server_wsgi.log
 

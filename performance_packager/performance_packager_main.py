@@ -24,7 +24,7 @@ _log_path = u"%s/nimbusio_performance_packager_%s.log" % (
 _event_aggregator_pub_address = \
         os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _sub_topics = ["archive-stats", "retrieve-stats", ]
-_report_template = "%s %-8s %6d bytes/sec"
+_report_template = "%s %-8s %8.02f min %6d bytes/sec"
 
 def _handle_archive_stats(_state, message, _data):
     log = logging.getLogger("stats")
@@ -35,7 +35,10 @@ def _handle_archive_stats(_state, message, _data):
         bytes_per_second = message["bytes_archived"] // elapsed_time
 
     log.info(_report_template % (
-        message["node-name"], "archive", bytes_per_second
+        message["node-name"], 
+        "archive", 
+        float(elapsed_time) / 60.0,
+        bytes_per_second
     ))
 
 def _handle_retrieve_stats(_state, message, _data):
@@ -47,7 +50,10 @@ def _handle_retrieve_stats(_state, message, _data):
         bytes_per_second = message["bytes_retrieved"] // elapsed_time
 
     log.info(_report_template % (
-        message["node-name"], "retrieve", bytes_per_second
+        message["node-name"], 
+        "retrieve", 
+        float(elapsed_time) / 60.0,
+        bytes_per_second
     ))
 
 _dispatch_table = {

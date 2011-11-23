@@ -15,7 +15,7 @@ import psycopg2
 from tools.data_definitions import compute_value_file_path, \
         value_file_template
 
-_sync_strategy = os.environ.get("NIMBUSIO_SYNC_STRATEGY", "O_SYNC")
+_sync_strategy = os.environ.get("NIMBUSIO_SYNC_STRATEGY", "NONE")
 
 def _get_next_value_file_id(connection):
     (next_value_file_id, ) = connection.fetch_one_row(

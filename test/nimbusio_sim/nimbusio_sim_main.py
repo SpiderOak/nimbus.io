@@ -63,7 +63,7 @@ def main():
     config = ClusterConfig(args)
     print repr(args)
 
-    os.environ.update(config.env_for_cluster())
+    os.environ.update(dict(config.env_for_cluster()))
 
     if not sanity_check(config):
         return 1

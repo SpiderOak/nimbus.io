@@ -51,8 +51,8 @@ def terminate_process(process):
 def start_event_aggregator(
     address, 
     event_publisher_pull_address, 
-    event_publisher_pub_addresses 
-    environment = None,
+    event_publisher_pub_addresses,
+    environment = None
 ):
     log = logging.getLogger("start_event_aggregator")
     server_dir = identify_program_dir(u"event_aggregator")
@@ -119,7 +119,7 @@ def start_data_reader(
     node_name, 
     address, 
     event_publisher_pull_address, 
-    repository_path
+    repository_path,
     environment=None
 ):
     log = logging.getLogger("start_data_reader_%s" % (node_name, ))

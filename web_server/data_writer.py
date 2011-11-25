@@ -9,7 +9,7 @@ import hashlib
 import logging
 import zlib
 
-import gevent
+from tools.data_definitions import create_priority
 
 from web_server.exceptions import (
     ArchiveFailedError,
@@ -21,6 +21,7 @@ class DataWriter(object):
     def __init__(self, node_name, resilient_client):
         self._log = logging.getLogger("DataWriter-%s" % (node_name, ))
         self._resilient_client = resilient_client
+        self._archive_priority = None
 
     @property
     def connected(self):
@@ -43,7 +44,8 @@ class DataWriter(object):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "collection-id"         : collection_id,
+            "priority"          : create_priority(),
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -82,9 +84,12 @@ class DataWriter(object):
         segment_md5 = hashlib.md5()
         segment_md5.update(segment)
 
+        self._archive_priority = create_priority()
+
         message = {
             "message-type"      : "archive-key-start",
-            "collection-id"         : collection_id,
+            "priority"          : self._archive_priority,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -120,7 +125,8 @@ class DataWriter(object):
 
         message = {
             "message-type"      : "archive-key-next",
-            "collection-id"         : collection_id,
+            "priority"          : self._archive_priority,
+            "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -159,6 +165,7 @@ class DataWriter(object):
 
         message = {
             "message-type"      : "archive-key-final",
+            "priority"          : self._archive_priority,
             "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
@@ -172,6 +179,9 @@ class DataWriter(object):
             "file-hash"         : b64encode(file_md5),
             "handoff-node-name" : None,
         }
+
+        self._archive_priority = None
+
         message.update(meta_dict)
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -191,6 +201,7 @@ class DataWriter(object):
     ):
         message = {
             "message-type"      : "destroy-key",
+            "priority"          : create_priority(),
             "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),

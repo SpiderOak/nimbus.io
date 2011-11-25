@@ -10,13 +10,13 @@ to perform hinted handoff for a node which is down.
 This is intended to fool the DataWriter into believing it is writing
 to a normal client.
 """
-from collections import namedtuple
 import logging
 
 import gevent
 from gevent.queue import Queue
 
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
+
 _data_writer_timeout = 30.0
 
 class DataWriterHandoffClient(object):
@@ -87,7 +87,7 @@ class DataWriterHandoffClient(object):
                    "result"         : "handoff-failure",
                    "error-message"  : data_writer_reply["error-message"],
                 }
-                message = _message_format(control=reply, body=None)
+                message = message_format(ident=None, control=reply, body=None)
                 completion_channel.put(message)
                 return
 
@@ -95,7 +95,7 @@ class DataWriterHandoffClient(object):
         # notify the sender that we are ok so far
         # by sending one of the data_writer_replies 
         reply = data_writer_replies[0]
-        message = _message_format(control=reply, body=None)
+        message = message_format(ident=None, control=reply, body=None)
         completion_channel.put(message)
 
     def _hand_off_to_one_data_writer(self, client, message, data):

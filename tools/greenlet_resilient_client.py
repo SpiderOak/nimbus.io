@@ -5,22 +5,20 @@ resilient_client.py
 a class that manages a zeromq DEALER (aka XREQ) socket as a client,
 to a resilient server
 """
-from collections import deque, namedtuple
+from collections import deque
 import logging
 import os
 import random
 import time
 import uuid
 
-import zmq
-
 import gevent
 from gevent.coros import RLock
 from gevent.greenlet import Greenlet
 from gevent_zeromq import zmq
 
-# our internal message format
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
+
 _polling_interval = 3.0
 _ack_timeout = float(os.environ.get("NIMBUSIO_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
@@ -224,7 +222,7 @@ class GreenletResilientClient(object):
             "client-tag"        : self._client_tag,
             "client-address"    : self._client_address,
         }
-        message = _message_format(control=message, body=None)
+        message = message_format(ident=None, control=message, body=None)
         self._pending_message = message
         self._pending_message_start_time = time.time()
         self._status = _status_handshaking
@@ -258,7 +256,7 @@ class GreenletResilientClient(object):
             "error-message" : "timeout waiting ack: treating as disconnect",
         }
 
-        message = _message_format(control=reply, body=None)
+        message = message_format(ident=None, control=reply, body=None)
         self._deliverator.deliver_reply(message)
 
         # heave the message; we're heaving the whole request
@@ -304,7 +302,9 @@ class GreenletResilientClient(object):
         message_id = message_control["message-id"]
         delivery_channel = self._deliverator.add_request(message_id)
 
-        message = _message_format(control=message_control, body=data)
+        message = message_format(
+            ident=None, control=message_control, body=data
+        )
 
         # if we don't queue the message, that means we can send it right now
 

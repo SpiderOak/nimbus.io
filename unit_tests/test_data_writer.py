@@ -16,6 +16,7 @@ import zlib
 
 from tools.standard_logging import initialize_logging
 from tools.data_definitions import create_timestamp, \
+        create_priority, \
         nimbus_meta_prefix, \
         random_string
 
@@ -84,6 +85,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         segment_num = 2
 
@@ -93,6 +95,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
@@ -126,6 +129,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         segment_num = 2
 
@@ -138,6 +142,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
@@ -176,6 +181,7 @@ class TestDataWriter(unittest.TestCase):
         test_data = random_string(total_size)
 
         collection_id = 1001
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         key  = self._key_generator.next()
         segment_num = 4
@@ -194,6 +200,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-start",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
@@ -227,6 +234,7 @@ class TestDataWriter(unittest.TestCase):
             message = {
                 "message-type"      : "archive-key-next",
                 "message-id"        : message_id,
+                "priority"          : archive_priority,
                 "collection-id"     : collection_id,
                 "key"               : key, 
                 "timestamp-repr"    : repr(timestamp),
@@ -259,6 +267,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-final",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
@@ -286,9 +295,11 @@ class TestDataWriter(unittest.TestCase):
 
     def _destroy(self, collection_id, key, timestamp, segment_num):
         message_id = uuid.uuid1().hex
+        archive_priority = create_priority()
         message = {
             "message-type"      : "destroy-key",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
@@ -308,9 +319,11 @@ class TestDataWriter(unittest.TestCase):
 
     def _purge(self, collection_id, key, timestamp, segment_num):
         message_id = uuid.uuid1().hex
+        archive_priority = create_priority()
         message = {
             "message-type"      : "purge-key",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key,
             "timestamp-repr"    : repr(timestamp),
@@ -344,6 +357,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         archive_timestamp = create_timestamp()
         destroy_timestamp = archive_timestamp + timedelta(seconds=1)
         segment_num = 2
@@ -354,6 +368,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
@@ -390,6 +405,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         archive_timestamp = create_timestamp()
         destroy_1_timestamp = archive_timestamp + timedelta(seconds=1)
         destroy_2_timestamp = destroy_1_timestamp + timedelta(seconds=1)
@@ -401,6 +417,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
@@ -445,6 +462,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         archive_timestamp = create_timestamp()
         destroy_timestamp = archive_timestamp - timedelta(seconds=1)
         segment_num = 2
@@ -455,6 +473,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),
@@ -500,6 +519,7 @@ class TestDataWriter(unittest.TestCase):
         message_id = uuid.uuid1().hex
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         archive_timestamp = create_timestamp()
         segment_num = 2
 
@@ -509,6 +529,7 @@ class TestDataWriter(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(archive_timestamp),

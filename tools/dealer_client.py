@@ -5,13 +5,12 @@ dealer_client.py
 a class that manages a zeromq DEALER (aka XREQ) socket as a client,
 to a ROUTER (aka XREP) server
 """
-from collections import deque, namedtuple
+from collections import deque
 import logging
 
 import zmq
 
-# our internal message format
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
 
 class DealerClient(object):
     """
@@ -41,7 +40,7 @@ class DealerClient(object):
 
     def queue_message_for_send(self, message_control, data=None):
         self._send_queue.append(
-            _message_format(control=message_control, body=data)
+            message_format(ident=None, control=message_control, body=data)
         )
 
     def _pollster_callback(self, _active_socket, readable, writable):
@@ -101,5 +100,5 @@ class DealerClient(object):
         elif len(body) == 1:
             body = body[0]
 
-        return _message_format(control=control, body=body)
+        return message_format(ident=None, control=control, body=body)
 

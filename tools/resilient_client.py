@@ -5,15 +5,15 @@ resilient_client.py
 a class that manages a zeromq DEALER (aka XREQ) socket as a client,
 to a resilient server
 """
-from collections import deque, namedtuple
+from collections import deque
 import logging
 import time
 import uuid
 
 import zmq
 
-# our internal message format
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
+
 _ack_timeout = 10.0
 _handshake_retry_interval = 60.0
 _max_idle_time = 10 * 60.0
@@ -157,7 +157,7 @@ class ResilientClient(object):
             "client-tag"        : self._client_tag,
             "client-address"    : self._client_address,
         }
-        message = _message_format(control=message, body=None)
+        message = message_format(ident=None, control=message, body=None)
         self._pending_message = message
         self._pending_message_start_time = time.time()
         self._status = _status_handshaking
@@ -237,7 +237,9 @@ class ResilientClient(object):
         if not "message-id" in message_control:
             message_control["message-id"] = uuid.uuid1().hex
 
-        message = _message_format(control=message_control, body=data)
+        message = message_format(
+            ident=None, control=message_control, body=data
+        )
 
         if self._status is _status_connected and self._pending_message is None:
             self._pending_message = message

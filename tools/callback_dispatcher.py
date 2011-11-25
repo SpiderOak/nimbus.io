@@ -30,7 +30,7 @@ class CallbackDispatcher(object):
         message_count = 0
         while True:
             try:
-                message, _ = self._input_queue.popleft()
+                __, message, _ = self._input_queue.popleft()
             except IndexError:
                 break
 

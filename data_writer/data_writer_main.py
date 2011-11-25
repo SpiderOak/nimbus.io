@@ -13,7 +13,6 @@ ACK back to to requestor includes size (from the database server)
 of any previous key this key supersedes (for space accounting.)
 """
 from base64 import b64decode
-from collections import deque
 import logging
 import os
 import sys
@@ -26,6 +25,7 @@ import Statgrabber
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
 from tools.event_push_client import EventPushClient, exception_event
+from tools.priority_queue import PriorityQueue
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
@@ -36,6 +36,7 @@ from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
 from data_writer.writer import Writer
+from data_writer.stats_reporter import StatsReporter
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_data_writer_%s.log" % (
@@ -321,7 +322,8 @@ def _create_state():
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
         "event-push-client"     : None,
-        "receive-queue"         : deque(),
+        "stats-reporter"        : None,
+        "receive-queue"         : PriorityQueue(),
         "queue-dispatcher"      : None,
         "writer"                : None,
         "database-connection"   : None,
@@ -371,11 +373,14 @@ def _setup(_halt_event, state):
         _repository_path
     )
 
+    state["stats-reporter"] = StatsReporter(state)
+
     state["event-push-client"].info("program-start", "data_writer starts")  
 
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
+        (state["stats-reporter"].run, state["stats-reporter"].next_run(), ), 
     ] 
 
 def _tear_down(_state):

@@ -32,10 +32,10 @@ class TestPriorityQeue(unittest.TestCase):
             ident=None, control={"priority" : 0}, body=None
         )
         self.assertEqual(len(queue), 0)
-        queue.append(message)
+        queue.append((message.control, message.body, ))
         self.assertEqual(len(queue), 1)
-        retrieved_message = queue.popleft()
-        self.assertEqual(retrieved_message, message)
+        retrieved_message, _retrieved_body = queue.popleft()
+        self.assertEqual(retrieved_message, message.control)
         self.assertEqual(len(queue), 0)
         self.assertRaises(IndexError, queue.popleft)
 
@@ -60,13 +60,14 @@ class TestPriorityQeue(unittest.TestCase):
             ),
         ]
         self.assertEqual(len(queue), 0)
-        map(queue.append, messages)
+        for message in messages:
+            queue.append((message.control, message.body, ))
         self.assertEqual(len(queue), len(messages))
 
         for order in range(len(messages)):
-            retrieved_message = queue.popleft()
+            retrieved_message, _retrieved_data = queue.popleft()
             self.assertEqual(
-                order, retrieved_message.control["expected-order"]
+                order, retrieved_message["expected-order"]
             )
 
         self.assertEqual(len(queue), 0)

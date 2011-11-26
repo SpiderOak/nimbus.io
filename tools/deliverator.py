@@ -67,5 +67,5 @@ class Deliverator(object):
         if channel is None:
             self._log.error("undeliverable message %s" % (message.control, ))
         else:
-            channel.put(message)
+            channel.put((message.control, message.data, ))
 

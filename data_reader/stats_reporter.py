@@ -28,7 +28,7 @@ class StatsReporter(object):
             return
 
         self._state["event-push-client"].info(
-            "data-writer-receive-queue-size", 
+            "data-reader-receive-queue-size", 
             "queue size",
             queue_size=len(self._state["receive-queue"]),
         )  

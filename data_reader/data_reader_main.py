@@ -28,6 +28,7 @@ from tools.data_definitions import parse_timestamp_repr
 
 from data_reader.reader import Reader
 from data_reader.state_cleaner import StateCleaner
+from data_reader.stats_reporter import StatsReporter
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_data_reader_%s.log" % (
@@ -225,6 +226,7 @@ def _create_state():
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
         "event-push-client"     : None,
+        "stats-reporter"        : None,
         "state-cleaner"         : None,
         "receive-queue"         : deque(),
         "queue-dispatcher"      : None,
@@ -266,12 +268,15 @@ def _setup(_halt_event, state):
         _repository_path
     )
 
+    state["stats-reporter"] = StatsReporter(state)
+
     state["event-push-client"].info("program-start", "data_reader starts")  
 
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["state-cleaner"].run, state["state-cleaner"].next_run(), ), 
+        (state["stats-reporter"].run, state["stats-reporter"].next_run(), ), 
     ] 
 
 def _tear_down(_state):

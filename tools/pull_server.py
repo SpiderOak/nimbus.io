@@ -45,7 +45,7 @@ class PULLServer(object):
         # go back and wait for more
         if message is None:
             return None
-        self._receive_queue.append(message)
+        self._receive_queue.append((message.control, message.body, ))
             
     def _receive_message(self):
         try:

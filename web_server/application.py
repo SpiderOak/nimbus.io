@@ -164,7 +164,8 @@ class Application(object):
         data_readers,
         authenticator, 
         accounting_client,
-        event_push_client
+        event_push_client,
+        stats
     ):
         self._log = logging.getLogger("Application")
         self._central_connection = central_connection
@@ -174,6 +175,7 @@ class Application(object):
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
+        self._stats = stats
 
         self._cluster_row = get_cluster_row(self._central_connection)
 
@@ -381,7 +383,13 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        if req.content_length <= 0:
+            raise exc.HTTPForbidden(
+                "cannot archive: content_length = %s" % (req.content_length, )
+            ) 
+
         start_time = time.time()
+        self._stats["archives"] += 1
         description = \
                 "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
             collection_entry.collection_id,
@@ -391,11 +399,6 @@ class Application(object):
             req.content_length
         )
         self._log.debug(description)
-
-        if req.content_length <= 0:
-            raise exc.HTTPForbidden(
-                "cannot archive: content_length = %s" % (req.content_length, )
-            ) 
 
         meta_dict = _build_meta_dict(req.GET)
 
@@ -459,9 +462,11 @@ class Application(object):
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
             response.retry_after = _archive_retry_interval
+            self._stats["archives"] -= 1
             return response
         
         end_time = time.time()
+        self._stats["archives"] -= 1
 
         self.accounting_client.added(
             collection_entry.collection_id,
@@ -553,6 +558,13 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        connected_data_readers = _connected_clients(self.data_readers)
+
+        if len(connected_data_readers) < _min_connected_clients:
+            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
+                len(connected_data_readers),
+            ))
+
         description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
             collection_entry.collection_id,
             collection_entry.collection_name,
@@ -562,12 +574,7 @@ class Application(object):
         self._log.debug(description)
 
         start_time = time.time()
-        connected_data_readers = _connected_clients(self.data_readers)
-
-        if len(connected_data_readers) < _min_connected_clients:
-            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
-                len(connected_data_readers),
-            ))
+        self._stats["retrieves"] += 1
 
         segmenter = ZfecSegmenter(
             _min_segments,
@@ -592,6 +599,7 @@ class Application(object):
                 "retrieve-failed",
                 "%s: %s" % (description, instance, )
             )
+            self._stats["retrieves"] -= 1
             return exc.HTTPNotFound(str(instance))
 
         def app_iterator(response):
@@ -609,11 +617,13 @@ class Application(object):
                 self._log.error('retrieve failed: %s %s' % (
                     description, instance
                 ))
+                self._stats["retrieves"] -= 1
                 response.status_int = 503
                 response.retry_after = _retrieve_retry_interval
                 return
 
             end_time = time.time()
+            self._stats["retrieves"] -= 1
 
             self.accounting_client.retrieved(
                 collection_entry.collection_id,

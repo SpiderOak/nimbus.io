@@ -61,13 +61,13 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
         connection.execute("""
             insert into nimbusio_node.meta (
                 collection_id,
-                key,
+                segment_id,
                 meta_key,
                 meta_value,
                 timestamp
             ) values (
                 %(collection_id)s,
-                %(key)s,
+                %(segment_id)s,
                 %(meta_key)s,
                 %(meta_value)s,
                 %(timestamp)s::timestamp
@@ -289,7 +289,7 @@ class Writer(object):
         for meta_key, meta_value in meta_dict.items():
             meta_row = meta_row_template(
                 collection_id=collection_id,
-                key=key,
+                segment_id=segment_entry["segment-id"],
                 meta_key=meta_key,
                 meta_value=meta_value,
                 timestamp=timestamp

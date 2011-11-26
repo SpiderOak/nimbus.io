@@ -17,6 +17,7 @@ from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
 from web_server.local_database_util import most_recent_timestamp_for_key
 from tools.data_definitions import create_timestamp, \
+    create_priority, \
     random_string
 
 from unit_tests.util import generate_key, \
@@ -103,6 +104,7 @@ class TestDataReader(unittest.TestCase):
         file_content = random_string(file_size) 
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         segment_num = 2
 
@@ -113,7 +115,8 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
-            "collection-id"         : collection_id,
+            "priority"          : archive_priority,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -176,6 +179,7 @@ class TestDataReader(unittest.TestCase):
         test_data = random_string(total_size)
 
         collection_id = 1001
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         key  = self._key_generator.next()
         segment_num = 4
@@ -194,6 +198,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-start",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
@@ -226,6 +231,8 @@ class TestDataReader(unittest.TestCase):
             message_id = uuid.uuid1().hex
             message = {
                 "message-type"      : "archive-key-next",
+                "message-id"        : message_id,
+                "priority"          : archive_priority,
                 "collection-id"     : collection_id,
                 "key"               : key, 
                 "timestamp-repr"    : repr(timestamp),
@@ -233,7 +240,6 @@ class TestDataReader(unittest.TestCase):
                 "segment-size"      : len(test_data[slice_start:slice_end]),
                 "segment-adler32"   : segment_adler32,
                 "segment-md5-digest": b64encode(segment_md5.digest()),
-                "message-id"        : message_id,
                 "sequence-num"      : sequence_num,
             }
             reply = send_request_and_get_reply(
@@ -260,6 +266,7 @@ class TestDataReader(unittest.TestCase):
         message = {
             "message-type"      : "archive-key-final",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),

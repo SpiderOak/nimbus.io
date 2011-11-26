@@ -16,6 +16,7 @@ from web_server.url_discriminator import parse_url, \
         action_archive_key, \
         action_list_keys, \
         action_retrieve_key, \
+        action_retrieve_meta, \
         action_delete_key, \
         action_head_key
 
@@ -78,6 +79,11 @@ _valid_urls_with_actions = [
         "GET", 
         "https://test-collection-name.nimbus.io/data/test-key",
         action_retrieve_key
+    ),
+    (
+        "GET", 
+        "https://test-collection-name.nimbus.io/data/test-key?retrieve_meta",
+        action_retrieve_meta
     ),
     (
         "DELETE", 

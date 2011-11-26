@@ -5,16 +5,13 @@ resilient_server.py
 a class that manages a ROUTER (aka XREP) socket and some PUSH clients 
 as a resilient server
 """
-from collections import namedtuple
 import logging
 
 import zmq
 
 from tools.zeromq_util import prepare_ipc_path
 from tools.push_client import PUSHClient
-
-# our internal message format
-_message_format = namedtuple("Message", "ident control body")
+from tools.data_definitions import message_format
 
 class ResilientServer(object):
     """
@@ -180,7 +177,7 @@ class ResilientServer(object):
         elif len(body) == 1:
             body = body[0]
 
-        return _message_format(ident=ident, control=control, body=body)
+        return message_format(ident=ident, control=control, body=body)
 
     def _handle_resilient_server_handshake(self, message, _data):
         log = logging.getLogger("_handle_resilient_server_handshake")

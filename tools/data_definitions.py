@@ -9,6 +9,10 @@ from collections import namedtuple
 from datetime import datetime
 import os.path
 import re
+import time
+
+# our internal message format
+message_format = namedtuple("Message", "ident control body")
 
 def random_string(size):
     return os.urandom(size)
@@ -40,6 +44,9 @@ def compute_value_file_path(repository_path, value_file_id):
         "%03d" % (value_file_id % 1000), 
         "%08d" % value_file_id
     )
+
+def create_priority():
+    return int(time.time())
 
 def create_timestamp():
     return datetime.utcnow()
@@ -127,7 +134,7 @@ segment_sequence_template = namedtuple(
 meta_row_template = namedtuple(
     "MetaRow", [
         "collection_id",
-        "key",
+        "segment_id",
         "meta_key",
         "meta_value",
         "timestamp",

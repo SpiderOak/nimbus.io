@@ -5,14 +5,12 @@ greenlet_pull_server.py
 a class that manages a zeromq PULL socket as a server,
 to multiple PUSH clients
 """
-from collections import namedtuple
 import logging
 
 from gevent_zeromq import zmq
 
 from tools.zeromq_util import prepare_ipc_path
-
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
 
 class GreenletPULLServer(object):
     """
@@ -73,5 +71,5 @@ class GreenletPULLServer(object):
         elif len(body) == 1:
             body = body[0]
 
-        return _message_format(control=control, body=body)
+        return message_format(ident=None, control=control, body=body)
 

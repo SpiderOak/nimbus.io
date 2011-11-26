@@ -67,7 +67,7 @@ def send_request_and_get_reply_and_data(
     pollster.start()
 
     delivery_channel = resilient_client.queue_message_for_send(request, data)
-    reply, data = delivery_channel.get()
+    _, reply, data = delivery_channel.get()
 
     pollster.kill()
     pollster.join(timeout=3.0)

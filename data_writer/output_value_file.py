@@ -15,6 +15,8 @@ import psycopg2
 from tools.data_definitions import compute_value_file_path, \
         value_file_template
 
+_sync_strategy = os.environ.get("NIMBUSIO_SYNC_STRATEGY", "NONE")
+
 def _get_next_value_file_id(connection):
     (next_value_file_id, ) = connection.fetch_one_row(
         "select nextval('nimbusio_node.value_file_id_seq');"
@@ -26,7 +28,10 @@ def _open_value_file(value_file_path):
     value_file_dir = os.path.dirname(value_file_path)
     if not os.path.exists(value_file_dir):
         os.makedirs(value_file_dir)
-    return os.open(value_file_path, os.O_WRONLY | os.O_CREAT | os.O_SYNC)
+    flags = os.O_WRONLY | os.O_CREAT
+    if _sync_strategy == "O_SYNC":
+        flags |= os.O_SYNC
+    return os.open(value_file_path, flags)
 
 def _insert_value_file_row(connection, value_file_row):
     """
@@ -97,7 +102,7 @@ class OutputValueFile(object):
 
     def write_data_for_one_sequence(self, collection_id, segment_id, data):
         """
-        write the data for one sequence, acumulating meta information
+        write the data for one sequence
         """
         os.write(self._value_file_fd, data)
         self._size += len(data)

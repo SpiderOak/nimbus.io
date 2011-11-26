@@ -5,6 +5,7 @@ deliverator.py
 The deliverator holds the channels that will be used to deliver 
 the replies that come over a resilient connection
 """
+import logging
 
 from gevent.queue import Queue
 from gevent.coros import RLock
@@ -15,6 +16,7 @@ class Deliverator(object):
     the replies that come over a resilient connection
     """
     def __init__(self):
+        self._log = logging.getLogger("Deliverator")
         self._active_requests = dict()
         self._lock = RLock()
 
@@ -57,8 +59,13 @@ class Deliverator(object):
         self._lock.acquire()
         try:
             channel = self._active_requests.pop(message.control["message-id"])
+        except KeyError:
+            channel = None
         finally:
             self._lock.release()
-
-        channel.put(message)
+        
+        if channel is None:
+            self._log.error("undeliverable message %s" % (message.control, ))
+        else:
+            channel.put((message.control, message.body, ))
 

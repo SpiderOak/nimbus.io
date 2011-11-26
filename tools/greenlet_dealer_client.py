@@ -5,16 +5,13 @@ greenlet_dealer_client.py
 a class that manages a zeromq DEALER (aka XREQ) socket as a client,
 to a ROUTER (aka XREP) server
 """
-from collections import namedtuple
 import logging
 import uuid
 
-import gevent
 from gevent.queue import Queue
 from gevent_zeromq import zmq
 
-# our internal message format
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
 
 class GreenletDealerClient(object):
     """
@@ -55,7 +52,7 @@ class GreenletDealerClient(object):
         self._delivery_queues[message_control["message-id"]] = \
             Queue(maxsize=None)
         self._send_queue.put(
-            _message_format(control=message_control, body=data)
+            message_format(ident=None, control=message_control, body=data)
         )
         return self._delivery_queues[message_control["message-id"]]
 
@@ -127,5 +124,5 @@ class GreenletDealerClient(object):
         elif len(body) == 1:
             body = body[0]
 
-        return _message_format(control=control, body=body)
+        return message_format(ident=None, control=control, body=body)
 

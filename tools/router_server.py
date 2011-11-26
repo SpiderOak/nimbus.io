@@ -4,15 +4,13 @@ router_server.py
 
 a class that manages a zeromq ROUTER (aka XREP) socket as a server,
 """
-from collections import deque, namedtuple
+from collections import deque
 import logging
 
 import zmq
 
 from tools.zeromq_util import prepare_ipc_path
-
-# our internal message format
-_message_format = namedtuple("Message", "ident control body")
+from tools.data_definitions import message_format
 
 class RouterServer(object):
     """
@@ -47,7 +45,7 @@ class RouterServer(object):
     def queue_message_for_send(self, message_control, data=None):
         message_ident = message_control.pop("router-ident")
         self._send_queue.append(
-            _message_format(
+            message_format(
                 ident=message_ident, control=message_control, body=data
             )
         )
@@ -121,5 +119,5 @@ class RouterServer(object):
         elif len(body) == 1:
             body = body[0]
 
-        return _message_format(ident=ident, control=control, body=body)
+        return message_format(ident=ident, control=control, body=body)
 

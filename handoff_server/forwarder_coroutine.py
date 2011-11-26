@@ -9,6 +9,8 @@ from base64 import b64encode
 import logging
 import uuid
 
+from tools.data_definitions import create_priority
+
 def forwarder_coroutine(
     segment_row, source_node_names, writer_client, reader_client
 ):
@@ -17,6 +19,7 @@ def forwarder_coroutine(
     a segment that was handed off to us
     """
     log = logging.getLogger("forwarder_coroutine")
+    archive_priority = create_priority()
 
     # start retrieving from our reader
     message_id = uuid.uuid1().hex
@@ -50,6 +53,7 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "archive-key-entire",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
             "timestamp-repr"    : repr(segment_row.timestamp),
@@ -66,6 +70,7 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "archive-key-start",
             "message-id"        : message_id,
+            "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
             "timestamp-repr"    : repr(segment_row.timestamp),
@@ -112,6 +117,7 @@ def forwarder_coroutine(
             message = {
                 "message-type"      : "archive-key-final",
                 "message-id"        : message_id,
+                "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
                 "timestamp-repr"    : repr(segment_row.timestamp),
@@ -129,6 +135,7 @@ def forwarder_coroutine(
             message = {
                 "message-type"      : "archive-key-next",
                 "message-id"        : message_id,
+                "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
                 "timestamp-repr"    : repr(segment_row.timestamp),

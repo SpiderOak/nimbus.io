@@ -5,14 +5,12 @@ pull_server.py
 a class that manages a zeromq PULL socket as a server,
 to multiple PUSH clients
 """
-from collections import namedtuple
 import logging
 
 import zmq
 
 from tools.zeromq_util import prepare_ipc_path
-
-_message_format = namedtuple("Message", "control body")
+from tools.data_definitions import message_format
 
 class PULLServer(object):
     """
@@ -47,7 +45,7 @@ class PULLServer(object):
         # go back and wait for more
         if message is None:
             return None
-        self._receive_queue.append(message)
+        self._receive_queue.append((message.control, message.body, ))
             
     def _receive_message(self):
         try:
@@ -63,5 +61,5 @@ class PULLServer(object):
         else:
             body = None
 
-        return _message_format(control=control, body=body)
+        return message_format(ident=None, control=control, body=body)
 

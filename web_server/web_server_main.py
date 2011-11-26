@@ -18,6 +18,7 @@ from gevent import monkey
 monkey.patch_all()
 #monkey.patch_all(dns=False)
 
+import logging
 import os
 import sys
 
@@ -40,6 +41,7 @@ from web_server.application import Application
 from web_server.data_reader import DataReader
 from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
+from web_server.stats_reporter import StatsReporter
 
 _log_path = "%s/nimbusio_web_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
@@ -58,9 +60,16 @@ _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 _web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
 _web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
+_wsgi_backlog = int(os.environ.get("NIMBUSIO_WSGI_BACKLOG", "1024"))
+_stats = {
+    "archives"    : 0,
+    "retrieves"   : 0,
+}
+
 
 class WebServer(object):
     def __init__(self):
+        self._log = logging.getLogger("WebServer")
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
@@ -132,6 +141,8 @@ class WebServer(object):
             "web-server"
         )
 
+        self._stats_reporter = StatsReporter(_stats, self._event_push_client)
+
         self.application = Application(
             self._central_connection,
             self._node_local_connection,
@@ -139,11 +150,13 @@ class WebServer(object):
             self._data_readers,
             authenticator,
             self._accounting_client,
-            self._event_push_client
+            self._event_push_client,
+            _stats
         )
         self.wsgi_server = WSGIServer(
             (_web_server_host, _web_server_port), 
-            self.application
+            application=self.application,
+            backlog=_wsgi_backlog
         )
         self._stopped_event = Event()
 
@@ -151,6 +164,7 @@ class WebServer(object):
         self._stopped_event.clear()
         self._pollster.start()
         self.wsgi_server.start()
+        self._stats_reporter.start()
 
     def stop(self):
         self.wsgi_server.stop()
@@ -163,6 +177,7 @@ class WebServer(object):
         self._pull_server.close()
         self._pollster.kill()
         self._pollster.join(timeout=3.0)
+        self._stats_reporter.join(timeout=3.0)
         self._event_push_client.close()
         self._zeromq_context.term()
         self._central_connection.close()
@@ -175,7 +190,13 @@ class WebServer(object):
 
 def main():
     initialize_logging(_log_path)
-    WebServer().serve_forever()
+    log = logging.getLogger("main")
+    try:
+        WebServer().serve_forever()
+    except Exception, instance:
+        log.exception(str(instance))
+        return -1
+
     return 0
 
 

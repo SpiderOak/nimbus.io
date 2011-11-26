@@ -25,7 +25,8 @@ from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer
 from tools.deliverator import Deliverator
 from tools.data_definitions import create_timestamp, \
-        random_strin
+        create_priority, \
+        random_string
 from tools.database_connection import get_central_connection
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -136,6 +137,7 @@ class TestHandoffServer(unittest.TestCase):
             process = start_data_reader(
                 node_name, 
                 _data_reader_addresses[i],
+                _event_publisher_pull_addresses[i], 
                 repository_path
             )
             poll_result = poll_process(process)
@@ -150,6 +152,7 @@ class TestHandoffServer(unittest.TestCase):
                 _handoff_server_pipeline_addresses[i],
                 _data_reader_addresses,
                 _data_writer_addresses,
+                _event_publisher_pull_addresses[i], 
                 _repository_path(node_name)
             )
             poll_result = poll_process(process)
@@ -259,6 +262,7 @@ class TestHandoffServer(unittest.TestCase):
         file_content = random_string(file_size) 
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         segment_num = 5
 
@@ -267,7 +271,8 @@ class TestHandoffServer(unittest.TestCase):
 
         message = {
             "message-type"      : "archive-key-entire",
-            "collection-id"         : collection_id,
+            "priority"          : archive_priority,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num,
@@ -298,7 +303,8 @@ class TestHandoffServer(unittest.TestCase):
 #        version_number = 0
 #        segment_num = 5
 #        sequence = 0
-#        timestamp = time.time()
+#        archive_priority = create_priority()
+#        timestamp = create_timestamp()
 #
 #        file_adler32 = -42
 #        file_md5 = "ffffffffffffffff"
@@ -307,7 +313,8 @@ class TestHandoffServer(unittest.TestCase):
 #
 #        message = {
 #            "message-type"      : "archive-key-start",
-#            "collection-id"         : collection_id,
+#            "priority"          : archive_priority,
+#            "collection-id"     : collection_id,
 #            "timestamp"         : timestamp,
 #            "sequence"          : sequence,
 #            "key"               : key, 
@@ -328,10 +335,11 @@ class TestHandoffServer(unittest.TestCase):
 #            sequence += 1
 #            message = {
 #                "message-type"      : "archive-key-next",
-#                "collection-id"         : collection_id,
+#                "priority"          : archive_priority,
+#                "collection-id"     : collection_id,
 #                "key"               : key,
 #                "version-number"    : version_number,
-#                "segment-num"    : segment_num,
+#                "segment-num"       : segment_num,
 #                "sequence"          : sequence,
 #            }
 #            g = gevent.spawn(
@@ -346,10 +354,11 @@ class TestHandoffServer(unittest.TestCase):
 #        sequence += 1
 #        message = {
 #            "message-type"      : "archive-key-final",
-#            "collection-id"         : collection_id,
+#            "priority"          : archive_priority,
+#            "collection-id"     : collection_id,
 #            "key"               : key,
 #            "version-number"    : version_number,
-#            "segment-num"    : segment_num,
+#            "segment-num"       : segment_num,
 #            "sequence"          : sequence,
 #            "total-size"        : total_size,
 #            "file-adler32"      : file_adler32,

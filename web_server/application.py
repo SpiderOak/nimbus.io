@@ -63,7 +63,7 @@ from web_server.listmatcher import Listmatcher
 from web_server.space_usage_getter import SpaceUsageGetter
 from web_server.stat_getter import StatGetter
 from web_server.retriever import Retriever
-from web_server.meta_manager import get_meta, list_meta
+from web_server.meta_manager import retrieve_meta
 from web_server.conjoined_manager import list_conjoined_archives, \
         start_conjoined_archive, \
         abort_conjoined_archive, \
@@ -75,6 +75,7 @@ from web_server.url_discriminator import parse_url, \
         action_space_usage, \
         action_archive_key, \
         action_list_keys, \
+        action_retrieve_meta, \
         action_retrieve_key, \
         action_delete_key, \
         action_head_key
@@ -84,7 +85,7 @@ _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUSIO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
-_slice_size = 1024 * 1024    # 1MB
+_slice_size = int(os.environ.get("NIMBUSIO_SLICE_SIZE", str(1024 * 1024)))
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
@@ -163,7 +164,8 @@ class Application(object):
         data_readers,
         authenticator, 
         accounting_client,
-        event_push_client
+        event_push_client,
+        stats
     ):
         self._log = logging.getLogger("Application")
         self._central_connection = central_connection
@@ -173,6 +175,7 @@ class Application(object):
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
+        self._stats = stats
 
         self._cluster_row = get_cluster_row(self._central_connection)
 
@@ -183,6 +186,7 @@ class Application(object):
             action_space_usage          : self._collection_space_usage,
             action_archive_key          : self._archive_key,
             action_list_keys            : self._list_keys,
+            action_retrieve_meta        : self._retrieve_meta,
             action_retrieve_key         : self._retrieve_key,
             action_delete_key           : self._delete_key,
             action_head_key             : self._head_key,
@@ -379,7 +383,13 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        if req.content_length <= 0:
+            raise exc.HTTPForbidden(
+                "cannot archive: content_length = %s" % (req.content_length, )
+            ) 
+
         start_time = time.time()
+        self._stats["archives"] += 1
         description = \
                 "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
             collection_entry.collection_id,
@@ -389,11 +399,6 @@ class Application(object):
             req.content_length
         )
         self._log.debug(description)
-
-        if req.content_length <= 0:
-            raise exc.HTTPForbidden(
-                "cannot archive: content_length = %s" % (req.content_length, )
-            ) 
 
         meta_dict = _build_meta_dict(req.GET)
 
@@ -457,9 +462,11 @@ class Application(object):
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
             response.retry_after = _archive_retry_interval
+            self._stats["archives"] -= 1
             return response
         
         end_time = time.time()
+        self._stats["archives"] -= 1
 
         self.accounting_client.added(
             collection_entry.collection_id,
@@ -551,6 +558,13 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        connected_data_readers = _connected_clients(self.data_readers)
+
+        if len(connected_data_readers) < _min_connected_clients:
+            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
+                len(connected_data_readers),
+            ))
+
         description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
             collection_entry.collection_id,
             collection_entry.collection_name,
@@ -560,12 +574,7 @@ class Application(object):
         self._log.debug(description)
 
         start_time = time.time()
-        connected_data_readers = _connected_clients(self.data_readers)
-
-        if len(connected_data_readers) < _min_connected_clients:
-            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
-                len(connected_data_readers),
-            ))
+        self._stats["retrieves"] += 1
 
         segmenter = ZfecSegmenter(
             _min_segments,
@@ -590,6 +599,7 @@ class Application(object):
                 "retrieve-failed",
                 "%s: %s" % (description, instance, )
             )
+            self._stats["retrieves"] -= 1
             return exc.HTTPNotFound(str(instance))
 
         def app_iterator(response):
@@ -607,11 +617,13 @@ class Application(object):
                 self._log.error('retrieve failed: %s %s' % (
                     description, instance
                 ))
+                self._stats["retrieves"] -= 1
                 response.status_int = 503
                 response.retry_after = _retrieve_retry_interval
                 return
 
             end_time = time.time()
+            self._stats["retrieves"] -= 1
 
             self.accounting_client.retrieved(
                 collection_entry.collection_id,
@@ -634,6 +646,47 @@ class Application(object):
         response = Response()
         response.app_iter = app_iterator(response)
         return  response
+
+    def _retrieve_meta(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        meta_dict = retrieve_meta(
+            self._node_local_connection, 
+            collection_entry.collection_id, 
+            key
+        )
+
+        if meta_dict is None:
+            raise exc.HTTPNotFound(req.url)
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(meta_dict))
+
+        return response
+
 
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -754,54 +807,6 @@ class Application(object):
 
         return response
 
-#    @routes.add(r'/data/(.+)$', action="get_meta")
-#    def get_meta(self, collection_entry, req, key):
-#        try:
-#            key = urllib.unquote_plus(key)
-#            key = key.decode("utf-8")
-#        except Exception, instance:
-#            self._log.error('unable to prepare key %r %s' % (
-#                key, instance
-#            ))
-#            raise exc.HTTPServiceUnavailable(str(instance))
-#
-#        meta_value = get_meta(
-#            self._node_local_connection,
-#            collection_entry.collection_id,
-#            key,
-#            req.GET["meta_key"]
-#        )
-#
-#        if meta_value is None:
-#            raise exc.HTTPNotFound(req.GET["meta_key"])
-#
-#        response = Response(content_type='text/plain', charset='utf8')
-#        response.body_file.write(meta_value)
-#
-#        return response
-#
-#    @routes.add(r'/data/(.+)$', action="list_meta")
-#    def list_meta(self, collection_entry, _req, key):
-#        try:
-#            key = urllib.unquote_plus(key)
-#            key = key.decode("utf-8")
-#        except Exception, instance:
-#            self._log.error('unable to prepare key %r %s' % (
-#                key, instance
-#            ))
-#            raise exc.HTTPServiceUnavailable(str(instance))
-#
-#        meta_value = list_meta(
-#            self._node_local_connection,
-#            collection_entry.collection_id,
-#            key
-#        )
-#
-#        response = Response(content_type='text/plain', charset='utf8')
-#        response.body_file.write(json.dumps(meta_value))
-#
-#        return response
-#
 #    @routes.add(r"/list_conjoined_archives")
 #    def list_conjoined_archives(self, collection_entry, _req):
 #        conjoined_value = list_conjoined_archives(

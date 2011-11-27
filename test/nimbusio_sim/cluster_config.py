@@ -2,12 +2,14 @@
 """
 
 import os
+import json
+from argparse import Namespace
 
 from tools.database_connection import \
     central_database_name, central_database_user, \
     node_database_name_prefix, node_database_user_prefix
 
-_config_filename = "config.json"
+_CONFIG_FILENAME = "config.json"
 
 class ClusterConfig(object):
     """
@@ -16,6 +18,10 @@ class ClusterConfig(object):
     def __init__(self, args):
         self.config = args
         self.database_users = dict()
+        self._calculate_base_ports()
+
+    def _calculate_base_ports(self):
+        args = self.config
         self.base_ports = dict(
             writer =                    args.baseport,
             reader =                    1 * args.nodecount + args.baseport,
@@ -33,6 +39,21 @@ class ClusterConfig(object):
             space_accounting_pipeline = 4 + 9 * args.nodecount + args.baseport, 
             web_server =                5 + 9 * args.nodecount + args.baseport, 
         )
+
+    def __getstate__(self):
+        "make this storable by JSON"
+        saved_state =  dict(config=self.config.__dict__,
+                            database_users=self.database_users)
+        # createnew is always false when saving state
+        saved_state['config']['createnew'] = False
+        return saved_state
+
+    def __setstate__(self, saved_state):
+        self.config = Namespace(**saved_state['config'])
+        self.database_users = saved_state['database_users']
+        self._calculate_base_ports()
+
+    #def __setstate__(self):
 
     def env_for_cluster(self):
         "list of names and values for overall cluster"
@@ -113,8 +134,43 @@ class ClusterConfig(object):
         return getattr(self.config, name)
 
     @property
+    def config_dir(self):
+        return os.path.join(self.basedir, "config")
+
+    @property
     def config_path(self):
-        return os.path.join(self.basedir, _config_filename)
+        return os.path.join(self.config_dir, _CONFIG_FILENAME)
+
+    def save(self):
+        with open(self.config_path, "wb") as fobj:
+            json.dump(self.__getstate__(), fobj, indent=4, sort_keys=True)
+        self.write_config_scripts()
+         
+    @classmethod
+    def load(cls, config):
+        new_config = ClusterConfig(config)
+        saved_config = json.load(open(new_config.config_path))
+        new_config.__setstate__(saved_config)
+        return new_config
+
+    def write_config_scripts(self):
+
+        central_config_filename = os.path.join(self.config_dir, 
+            "central_config.sh")
+
+        with open(central_config_filename, "wb") as fobj:
+            fobj.write("#!/bin/bash\n")
+            for k, v in self.env_for_cluster():
+                fobj.write('export %s="%s"\n' % ( k, v, ))
+
+        for n in range(self.nodecount):
+            filename = os.path.join(self.config_dir, 
+                "node_%02d_config.sh" % (n + 1, ))
+            with open(filename, "wb") as fobj:
+                fobj.write("#!/bin/bash\n")
+                fobj.write("source central_config.sh\n")
+                for k, v in self.env_for_node(n):
+                    fobj.write('export %s="%s"\n' % ( k, v, ))
 
     @property
     def log_path(self):
@@ -177,7 +233,8 @@ class ClusterConfig(object):
     @property
     def required_paths(self):
         "paths to all all folders that should exist to run this cluster"
-        return [ self.basedir, self.log_path, self.socket_path ]
+        return [ self.basedir, self.log_path, self.socket_path, 
+                 self.config_dir, ]
 
     @property
     def node_repository_paths(self):

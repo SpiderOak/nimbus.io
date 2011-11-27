@@ -11,7 +11,7 @@ import sys
 from test.nimbusio_sim.command_interpreter import CommandInterpreter
 from test.nimbusio_sim.options import parse_cmdline
 from test.nimbusio_sim.cluster_config import ClusterConfig
-from test.nimbusio_sim.db import create_database
+from test.nimbusio_sim.db import create_database, start_database
 
 _log_name = u"nimbusio_sim.log"
 _log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
@@ -63,18 +63,27 @@ def main():
     config = ClusterConfig(args)
     print repr(args)
 
-    os.environ.update(dict(config.env_for_cluster()))
-
     if not sanity_check(config):
         return 1
 
-    ensure_paths(config)
+    if config.createnew:
+        ensure_paths(config)
+        old_config = config
+    else:
+        old_config = config
+        config = ClusterConfig.load(config)
 
-    if config.logprune:
+    if old_config.logprune:
         remove_files(config.log_path)
 
-    if config.createnew and not config.systemdb:
+    if old_config.createnew and not config.systemdb:
         config.database_users.update(create_database(config))
+        print "Saving config to %s" % (config.config_path, )
+        config.save()
+    elif not config.systemdb:
+        start_database(config)
+
+    os.environ.update(dict(config.env_for_cluster()))
 
     #import pdb
     #pdb.set_trace()

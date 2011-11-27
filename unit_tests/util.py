@@ -166,21 +166,22 @@ def start_anti_entropy_server(
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
-        "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
-        "NIMBUSIO_NODE_NAME_SEQ"     : \
-            " ".join(node_names),
-        "NIMBUSIO_NODE_NAME"         : node_name,
-        "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
-            " ".join(anti_entropy_server_addresses),
-        "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
-        "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
-        "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
-        "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
-            event_publisher_pull_address,
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
+            "NIMBUSIO_NODE_NAME_SEQ"     : \
+                " ".join(node_names),
+            "NIMBUSIO_NODE_NAME"         : node_name,
+            "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
+                " ".join(anti_entropy_server_addresses),
+            "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
+            "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+            "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)

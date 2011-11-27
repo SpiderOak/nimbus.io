@@ -44,8 +44,23 @@ def find_schema_path(schema_filename):
     assert os.path.exists(schema_path), schema_path
     return schema_path
 
+def start_database(cluster_config):
+    """
+    start all db instances
+    """
+    start_db(cluster_config.central_db_path, 
+             cluster_config.central_db_port, 
+             os.path.join(cluster_config.log_path, "postgresql-central.log"))
+    for idx, name in enumerate(cluster_config.node_names):
+        start_db(cluster_config.node_db_paths[idx],
+                 cluster_config.node_db_ports[idx],
+                 os.path.join(cluster_config.log_path,
+                    "postgresql-node-%s.log" % ( name, )))
+
 def create_database(cluster_config):
     """
+    init all db instances, start them, create users, apply schemas, 
+    populate central db w/ data
     """
 
     # generate passwords for all the db users
@@ -61,9 +76,12 @@ def create_database(cluster_config):
     
     # create and start central db
     init_db(cluster_config.central_db_path)
-    start_db(cluster_config.central_db_path, 
-             cluster_config.central_db_port, 
-             os.path.join(cluster_config.log_path, "postgresql-central.log"))
+
+    # create and start all the node DBs
+    for idx, name in enumerate(cluster_config.node_names):
+        init_db(cluster_config.node_db_paths[idx])
+
+    start_databases(cluster_config)
 
     create_owner_and_database(cluster_config.dbhost,
                               cluster_config.central_db_port,
@@ -78,13 +96,7 @@ def create_database(cluster_config):
     
     populate_central_database(cluster_config, database_users)
 
-    # create and start all the node DBs
     for idx, name in enumerate(cluster_config.node_names):
-        init_db(cluster_config.node_db_paths[idx])
-        start_db(cluster_config.node_db_paths[idx],
-                 cluster_config.node_db_ports[idx],
-                 os.path.join(cluster_config.log_path,
-                    "postgresql-node-%s.log" % ( name, )))
         create_owner_and_database(
             cluster_config.dbhost, 
             cluster_config.node_db_ports[idx],
@@ -169,26 +181,6 @@ def stop_db(data_dir):
         raise RuntimeError("could not stop db cmd %r exit code %d: %s: %s" % (
             cmd, code, out, err, ))
     _RUNNING_DATABASES.discard(data_dir)
-
-def start_database_for_one_node(cluster_config, node_index):
-    data_dir = cluster_config.node_db_paths[node_index]
-    log_name = "postgresql-%s.log" % ( cluster_config.node_names[node_index], )
-    log_path = os.path.join(cluster_config.log_path, log_name)
-    # 2mb buffers, 50 connections, no fsync, port and socket dirs
-    # (not much point in fsync with a simulator running manny databases on
-    # one disk. as an added bonus, it may also help create corruption so we
-    # can stress anti entropy and subtle failure modes)
-    options = "-B 2MB -N 50 -F -p %d -k %s" % (
-        cluster_config.db_ports[node_index], data_dir, )
-    cmd = ["pg_ctl", "start", "-D", data_dir, "-l", log_path, "-o", options]
-    print cmd
-    code, out, err = run_cmd(cmd)
-    print err, out
-    if code != 0:
-        raise RuntimeError("could not start db cmd %r exit code %d: %s: %s" % (
-            cmd, code, out, err, ))
-
-    _RUNNING_DATABASES.add(data_dir)
 
 def retry_db_connect(params, max_retry=20):
     print repr(params)

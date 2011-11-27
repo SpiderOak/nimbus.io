@@ -113,8 +113,8 @@ class NodeSim(object):
     @property
     def env(self):
         "dict of ENV for the cluster and this node"
-        return dict(self.cluster_config.env_for_cluster +
-                    self.cluster_config.env_for_node(self.node_index))
+        return dict(self._cluster_config.env_for_cluster() +
+                    self._cluster_config.env_for_node(self._node_index))
 
     def start(self):
         self._log.debug("start")

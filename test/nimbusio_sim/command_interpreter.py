@@ -24,11 +24,12 @@ class CommandInterpreter(cmd.Cmd):
                 config,
                 space_accounting=True, 
                 performance_packager=True,
-                event_aggregator=True
+                event_aggregator=True,
+                web_server=True,
             )
         )
         for i in xrange(_node_count-1):
-            self._node_sims.append(NodeSim(i+1, config))
+            self._node_sims.append(NodeSim(i+1, config, web_server=True))
 
     def _get_node_from_line(self, line):
         try:

@@ -38,6 +38,7 @@ sudo easy_install -UZ pip
 sudo pip install --upgrade cython
 sudo pip install --upgrade greenlet
 sudo pip install --upgrade Mercurial
+sudo pip install --upgrade webob
 
 # pull in these guys at specific version numbers b/c we need to be mindful of
 # changes here.  pulls in argparse too.

@@ -13,6 +13,7 @@ _CONFIG_FILENAME = "config.json"
 
 _ENV_CONSTANTS = [
     ( "NIMBUSIO_REPLY_TIMEOUT", "900", ),
+    ( "NIMBUSIO_WSGI_BACKLOG", "1024", ),
 ]
 
 class ClusterConfig(object):
@@ -86,6 +87,8 @@ class ClusterConfig(object):
                 " ".join(self.data_reader_addresses), ),
             ( "NIMBUSIO_DATA_WRITER_ADDRESSES", 
                 " ".join(self.data_writer_addresses), ),
+            ( "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES",
+                " ".join(self.event_publisher_pub_addresses), ),
         ]
 
         return _ENV_CONSTANTS + cluster_env
@@ -95,6 +98,8 @@ class ClusterConfig(object):
         node_env = [
            ( "NIMBUSIO_NODE_NAME", 
                 self.node_names[node_index], ),
+           ( "NIMBUSIO_REPOSITORY_PATH",      
+                self.node_repository_paths[node_index], ),
            ( "NIMBUSIO_NODE_DATABASE_HOST", 
                 self.dbhost, ),
            ( "NIMBUSIO_NODE_DATABASE_PORT", 
@@ -105,30 +110,28 @@ class ClusterConfig(object):
                 self.node_db_names[node_index], ),
            ( "NIMBUSIO_NODE_USER_PASSWORD", 
                 self.node_db_pws[node_index], ),
+           ( "NIMBUSIO_WEB_SERVER_HOST",
+                self.ip, ),
+           ( "NIMBUSIO_WEB_SERVER_PORT",
+                str(self.web_server_ports[node_index]), ),
            ( "NIMBUSIO_WEB_SERVER_PIPELINE_ADDRESS",
                 self.web_server_pipeline_addresses[node_index], ),
            ( "NIMBUSIO_DATA_READER_ADDRESS", 
                 self.data_reader_addresses[node_index], ),
            ( "NIMBUSIO_DATA_WRITER_ADDRESS",    
                 self.data_writer_addresses[node_index], ),
-           ( "NIMBUSIO_REPOSITORY_PATH",      
-                self.node_repository_paths[node_index], ),
            ( "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS", 
                 self.handoff_server_pipeline_addresses[node_index], ),
-           ( "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
-                self.event_publisher_pull_addresses[node_index], ),
            ( "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS",
                 self.anti_entropy_pipeline_addresses[node_index], ),
            ( "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
                 self.event_publisher_pull_addresses[node_index], ),
+           ( "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS",
+                self.event_publisher_pub_addresses[node_index], ),
            ( "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS",
                 self.space_accounting_server_address, ),
            ( "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS",
                 self.space_accounting_pipeline_address, ),
-           ( "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
-                self.event_publisher_pull_addresses[node_index], ),
-           ( "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS",
-                self.event_publisher_pub_addresses[node_index], ),
            ( "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS",
                 self.event_aggregator_pub_address, ),
         ]

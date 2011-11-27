@@ -4,7 +4,7 @@
 export PATH="/usr/lib/postgresql/9.0/bin:/usr/loca/bin:$PATH"
 export SIM_DIR="/tmp/clustersim"
 export PYTHONPATH=$PWD
-export BASE_PORT=43000
+export BASE_PORT=9000
 
 # NIMBUSIO_LOG_DIR=/tmp/test TEST_BASE_PATH=/tmp/test 
 

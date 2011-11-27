@@ -11,7 +11,8 @@ import os.path
 class SimError(Exception):
     pass
 
-from unit_tests.util import start_event_aggregator, \
+from unit_tests.util import start_web_server, \
+        start_event_aggregator, \
         start_data_writer, \
         start_data_reader, \
         start_data_writer, \
@@ -98,6 +99,7 @@ class NodeSim(object):
         self._space_accounting = space_accounting
         self._performance_packager = performance_packager
         self._event_aggregator = event_aggregator
+        self._web_server = web_server
 
     def __str__(self):
         return self.node_name
@@ -176,6 +178,10 @@ class NodeSim(object):
                     None,
                     environment = self.env
                 )
+
+        if self._web_server:
+            self._processes["web_server"] = \
+                start_web_server(self.node_name, self.env)
 
     def stop(self):
         self._log.debug("stop")

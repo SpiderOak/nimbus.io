@@ -311,3 +311,15 @@ def start_performance_packager(node_name, event_aggregator_pub_address,
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
+def start_web_server(node_name, environment):
+    log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
+    server_dir = identify_program_dir(u"web_server")
+    server_path = os.path.join(
+        server_dir, "web_server_main.py"
+    )
+    args = [
+        sys.executable,
+        server_path,
+    ]
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)

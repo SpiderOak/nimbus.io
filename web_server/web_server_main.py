@@ -43,7 +43,8 @@ from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
 from web_server.stats_reporter import StatsReporter
 
-_log_path = "%s/nimbusio_web_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
+_log_path = "%s/nimbusio_web_server_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]

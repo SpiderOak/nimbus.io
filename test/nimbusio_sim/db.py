@@ -162,7 +162,7 @@ def init_db(data_dir):
             cmd, code, out, err, ))
 
 def start_db(data_dir, port, log_path):
-    options = "-B 2MB -N 50 -F -p %d -k %s" % (
+    options = "-B 2MB -N 100 -F -p %d -k %s" % (
         port, data_dir, )
     cmd = ["pg_ctl", "start", "-D", data_dir, "-l", log_path, "-o", options]
     print cmd

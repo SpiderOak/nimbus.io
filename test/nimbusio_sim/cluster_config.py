@@ -323,7 +323,7 @@ class ClusterConfig(object):
 
     @property
     def anti_entropy_pipeline_addresses(self):
-        return self._node_service_addresses('anti_entropy')
+        return self._node_service_addresses('anti_entropy_pipeline')
 
     @property
     def handoff_server_addresses(self):

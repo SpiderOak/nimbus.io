@@ -104,12 +104,12 @@ class RouterServer(object):
                 return None
             raise
 
-        assert self._router_socket.rcvmore(), \
+        assert self._router_socket.rcvmore, \
             "Unexpected missing message control part."
         control = self._router_socket.recv_json()
 
         body = []
-        while self._router_socket.rcvmore():
+        while self._router_socket.rcvmore:
             body.append(self._router_socket.recv())
 
         # 2011-04-06 dougfort -- if someone is expecting a list and we only get

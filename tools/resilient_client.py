@@ -323,7 +323,7 @@ class ResilientClient(object):
                 return None
             raise
 
-        assert not self._dealer_socket.rcvmore()
+        assert not self._dealer_socket.rcvmore
 
     def run(self, halt_event):
         """

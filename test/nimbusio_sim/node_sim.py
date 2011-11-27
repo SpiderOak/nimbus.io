@@ -84,7 +84,8 @@ class NodeSim(object):
         cluster_config,
         space_accounting=False,
         performance_packager=False,
-        event_aggregator=False
+        event_aggregator=False,
+        web_server=False,
     ):
         self._node_index = node_index
         self._cluster_config = cluster_config

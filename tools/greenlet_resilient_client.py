@@ -405,7 +405,7 @@ class GreenletResilientClient(object):
                 return None
             raise
 
-        assert not self._dealer_socket.rcvmore()
+        assert not self._dealer_socket.rcvmore
 
     def __str__(self):
         return "ResilientClient-%s" % (self._server_node_name, )

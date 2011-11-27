@@ -34,6 +34,10 @@ def parse_cmdline():
         default="localhost", 
         help="database hostname (default=localhost), use w/ --systemdb")
 
+    parser.add_argument("--singledb", dest="singledb", action="store_true", 
+        default=False, 
+        help="use a single instance of postgresql for central and node DBs")
+
     parser.add_argument("--ip", dest="ip", 
         action="store", default="127.0.0.1", 
         help="IP address to bind to (default: localhost)")

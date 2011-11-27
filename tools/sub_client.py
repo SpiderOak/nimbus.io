@@ -52,7 +52,7 @@ class SUBClient(object):
                 return None
             raise
 
-        assert self._sub_socket.rcvmore(), "expecting actual message"
+        assert self._sub_socket.rcvmore, "expecting actual message"
         message = self._sub_socket.recv_json()
         assert message["message-type"] == topic, message
 

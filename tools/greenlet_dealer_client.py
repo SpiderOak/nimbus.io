@@ -114,7 +114,7 @@ class GreenletDealerClient(object):
             raise
 
         body = []
-        while self._dealer_socket.rcvmore():
+        while self._dealer_socket.rcvmore:
             body.append(self._dealer_socket.recv())
 
         # 2011-04-06 dougfort -- if someone is expecting a list and we only get

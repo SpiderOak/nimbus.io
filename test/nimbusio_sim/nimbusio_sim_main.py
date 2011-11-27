@@ -93,6 +93,8 @@ def main():
 
     log.info("entering main loop")
     command_interpreter = CommandInterpreter(config)
+    if old_config.start:
+        command_interpreter.do_start("all")
     command_interpreter.cmdloop("nimbus.io")
     log.info("leaving main loop")
 

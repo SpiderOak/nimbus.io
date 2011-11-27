@@ -51,11 +51,12 @@ def start_database(cluster_config):
     start_db(cluster_config.central_db_path, 
              cluster_config.central_db_port, 
              os.path.join(cluster_config.log_path, "postgresql-central.log"))
-    for idx, name in enumerate(cluster_config.node_names):
-        start_db(cluster_config.node_db_paths[idx],
-                 cluster_config.node_db_ports[idx],
-                 os.path.join(cluster_config.log_path,
-                    "postgresql-node-%s.log" % ( name, )))
+    if not cluster_config.singledb:
+        for idx, name in enumerate(cluster_config.node_names):
+            start_db(cluster_config.node_db_paths[idx],
+                     cluster_config.node_db_ports[idx],
+                     os.path.join(cluster_config.log_path,
+                        "postgresql-node-%s.log" % ( name, )))
 
 def create_database(cluster_config):
     """
@@ -78,10 +79,11 @@ def create_database(cluster_config):
     init_db(cluster_config.central_db_path)
 
     # create and start all the node DBs
-    for idx, name in enumerate(cluster_config.node_names):
-        init_db(cluster_config.node_db_paths[idx])
+    if not cluster_config.singledb:
+        for idx, name in enumerate(cluster_config.node_names):
+            init_db(cluster_config.node_db_paths[idx])
 
-    start_databases(cluster_config)
+    start_database(cluster_config)
 
     create_owner_and_database(cluster_config.dbhost,
                               cluster_config.central_db_port,

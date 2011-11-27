@@ -11,6 +11,10 @@ from tools.database_connection import \
 
 _CONFIG_FILENAME = "config.json"
 
+_ENV_CONSTANTS = [
+    ( "NIMBUSIO_REPLY_TIMEOUT", "900", ),
+]
+
 class ClusterConfig(object):
     """
     Hold configuration state for cluster
@@ -23,21 +27,22 @@ class ClusterConfig(object):
     def _calculate_base_ports(self):
         args = self.config
         self.base_ports = dict(
-            writer =                    args.baseport,
-            reader =                    1 * args.nodecount + args.baseport,
-            anti_entropy =              2 * args.nodecount + args.baseport, 
-            anti_entropy_pipeline =     3 * args.nodecount + args.baseport, 
-            handoff =                   4 * args.nodecount + args.baseport, 
-            handoff_pipeline =          5 * args.nodecount + args.baseport,
-            event_publisher_pub  =      6 * args.nodecount + args.baseport,
-            event_aggregator_pull =     7 * args.nodecount + args.baseport,
-            postgres =                  8 * args.nodecount + args.baseport,
+            web_server =                args.baseport, 
+            writer =                    1 * args.nodecount + args.baseport,
+            reader =                    2 * args.nodecount + args.baseport,
+            anti_entropy =              3 * args.nodecount + args.baseport, 
+            anti_entropy_pipeline =     4 * args.nodecount + args.baseport, 
+            handoff =                   5 * args.nodecount + args.baseport, 
+            handoff_pipeline =          6 * args.nodecount + args.baseport,
+            event_publisher_pub  =      7 * args.nodecount + args.baseport,
+            event_aggregator_pull =     8 * args.nodecount + args.baseport,
+            postgres =                  9 * args.nodecount + args.baseport,
+            web_server_pipeline =      10 * args.nodecount + args.baseport,
             # these only need single ports
-            postgres_central =          1 + 9 * args.nodecount + args.baseport, 
-            event_aggregator_pub =      2 + 9 * args.nodecount + args.baseport, 
-            space_accounting =          3 + 9 * args.nodecount + args.baseport,
-            space_accounting_pipeline = 4 + 9 * args.nodecount + args.baseport, 
-            web_server =                5 + 9 * args.nodecount + args.baseport, 
+            postgres_central =          1 + (11 * args.nodecount) + args.baseport, 
+            event_aggregator_pub =      2 + (11 * args.nodecount) + args.baseport, 
+            space_accounting =          3 + (11 * args.nodecount) + args.baseport,
+            space_accounting_pipeline = 4 + (11 * args.nodecount) + args.baseport, 
         )
 
     def __getstate__(self):
@@ -83,7 +88,7 @@ class ClusterConfig(object):
                 " ".join(self.data_writer_addresses), ),
         ]
 
-        return cluster_env
+        return _ENV_CONSTANTS + cluster_env
 
     def env_for_node(self, node_index):
         "list of names and values for ENV for a specific node in the cluster"
@@ -100,6 +105,8 @@ class ClusterConfig(object):
                 self.node_db_names[node_index], ),
            ( "NIMBUSIO_NODE_USER_PASSWORD", 
                 self.node_db_pws[node_index], ),
+           ( "NIMBUSIO_WEB_SERVER_PIPELINE_ADDRESS",
+                self.web_server_pipeline_addresses[node_index], ),
            ( "NIMBUSIO_DATA_READER_ADDRESS", 
                 self.data_reader_addresses[node_index], ),
            ( "NIMBUSIO_DATA_WRITER_ADDRESS",    
@@ -198,11 +205,16 @@ class ClusterConfig(object):
 
     @property
     def node_db_paths(self):
+        if self.singledb:
+            return [self.central_db_path for n in self.node_names]
         return [
             os.path.join(self.basedir, "db", n) for n in self.node_names]
 
     @property
     def node_db_ports(self):
+        if self.singledb:
+            return [self.central_db_port for n in self.node_names]
+
         return range(
             self.base_ports['postgres'], 
             self.base_ports['postgres'] + self.nodecount)
@@ -260,8 +272,18 @@ class ClusterConfig(object):
             self.ip, self.base_ports['space_accounting_pipeline'], )
 
     @property
-    def web_server_url(self):
-        return "http://%s:%d" % ( self.ip, self.base_ports['web_server'], )
+    def web_server_pipeline_addresses(self):
+        return self._node_service_addresses('web_server_pipeline')
+
+    @property
+    def web_server_ports(self):
+        return [n + self.base_ports['web_server']
+                for n in range(self.nodecount)]
+
+    @property
+    def web_server_urls(self):
+        return [ 'http://%s:%d/' % ( self.ip, p, ) 
+                 for p in self.web_server_ports]
 
     @property
     def event_publisher_pull_addresses(self):

@@ -8,13 +8,10 @@ to a resilient server
 from collections import deque
 import logging
 import os
-import random
 import time
 import uuid
 
-import gevent
 from gevent.coros import RLock
-from gevent.greenlet import Greenlet
 from gevent_zeromq import zmq
 
 from tools.data_definitions import message_format
@@ -34,35 +31,6 @@ _status_name = {
     _status_connected       : "connected",
     _status_disconnected    : "disconnected",
 }
-
-class _GreenletResilientClientWatcher(Greenlet):
-    """
-    A class to watch a resilient client and handle various timeouts
-    """
-    def __init__(self, client):
-        Greenlet.__init__(self)
-        self._client = client
-        self._log = logging.getLogger(str(self))
-        self._prev_report_time = time.time()
-
-    def _run(self):
-
-        # start after a random interval so all watcher's aren't waking up at the
-        # same time.
-        gevent.sleep(_polling_interval * random.random())
-
-        while True:
-            self._client.test_current_status()
-
-            elapsed_time = time.time() - self._prev_report_time
-            if elapsed_time >= _reporting_interval:
-                self._client.report_current_status()
-                self._prev_report_time = time.time()
-
-            gevent.sleep(_polling_interval)
-
-    def __str__(self):
-        return "watcher-%s" % (self._client._server_address, )
 
 class GreenletResilientClient(object):
     """
@@ -165,10 +133,6 @@ class GreenletResilientClient(object):
             _status_handshaking     : self._handle_status_handshaking,  
         }
 
-        self._watcher = _GreenletResilientClientWatcher(self)
-
-        self._watcher.start()
-
     @property
     def connected(self):
         return self._status == _status_connected
@@ -180,27 +144,15 @@ class GreenletResilientClient(object):
     def test_current_status(self):
         """
         check for timeouts based on current state
-        may return a handshake message to send
         """
         self._lock.acquire()
         try:
-            return self._dispatch_table[self._status]()
+            self._dispatch_table[self._status]()
         finally:
             self._lock.release()
 
-    def report_current_status(self):
-        self._lock.acquire()
-        try:
-            if self._status == _status_connected:
-                return
-            elapsed_time = time.time() - self._status_time
-            self._log.info("%s %d seconds; send queue size = %s" % (
-                _status_name[self._status], 
-                elapsed_time, 
-                len(self._send_queue)
-            ))
-        finally:
-            self._lock.release()
+        elapsed_time = time.time() - self._status_time
+        return _status_name[self._status], elapsed_time, len(self._send_queue) 
 
     def _handle_status_disconnected(self):
         elapsed_time = time.time() - self._status_time 
@@ -288,9 +240,6 @@ class GreenletResilientClient(object):
         self._status_time = time.time()
 
     def close(self):
-        self._watcher.kill()
-        self._watcher.join()
-
         if self._dealer_socket is not None:
             self._disconnect()
 

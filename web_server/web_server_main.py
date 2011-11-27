@@ -10,7 +10,6 @@ data reader.
 
 The reslient clients use Deliverator to deliver their messages.
 """
-import gevent
 from gevent import monkey
 # you must use the latest gevent and have c-ares installed for this to work
 # with /etc/hosts 
@@ -41,7 +40,7 @@ from web_server.application import Application
 from web_server.data_reader import DataReader
 from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
-from web_server.stats_reporter import StatsReporter
+from web_server.watcher import Watcher
 
 _log_path = "%s/nimbusio_web_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
@@ -101,6 +100,7 @@ class WebServer(object):
             )
             self._data_writer_clients.append(resilient_client)
 
+        data_reader_clients = list()
         self._data_readers = list()
         for node_name, address in zip(_node_names, _data_reader_addresses):
             resilient_client = GreenletResilientClient(
@@ -112,6 +112,7 @@ class WebServer(object):
                 _web_server_pipeline_address,
                 self._deliverator
             )
+            data_reader_clients.append(resilient_client)
             data_reader = DataReader(
                 node_name, resilient_client
             )
@@ -141,7 +142,12 @@ class WebServer(object):
             "web-server"
         )
 
-        self._stats_reporter = StatsReporter(_stats, self._event_push_client)
+        self._watcher = Watcher(
+            _stats, 
+            data_reader_clients,
+            self._data_writer_clients,
+            self._event_push_client
+        )
 
         self.application = Application(
             self._central_connection,
@@ -164,7 +170,7 @@ class WebServer(object):
         self._stopped_event.clear()
         self._pollster.start()
         self.wsgi_server.start()
-        self._stats_reporter.start()
+        self._watcher.start()
 
     def stop(self):
         self.wsgi_server.stop()
@@ -177,7 +183,7 @@ class WebServer(object):
         self._pull_server.close()
         self._pollster.kill()
         self._pollster.join(timeout=3.0)
-        self._stats_reporter.join(timeout=3.0)
+        self._watcher.join(timeout=3.0)
         self._event_push_client.close()
         self._zeromq_context.term()
         self._central_connection.close()

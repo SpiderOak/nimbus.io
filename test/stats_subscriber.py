@@ -21,14 +21,13 @@ _log_path = u"%s/stats_subscriber.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _event_aggregator_pub_address = \
         os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _web_server_line_template = """
-%(node-name)-20s %(source)-20s %(message-type)s %(count)3d
+%-20s %-10s %4d %4d %4d %4d %4d %4d %4d %4d %4d %4d %4d
 """.strip()
 _queue_size_line_template = """
 %(node-name)-20s %(source)-20s %(message-type)s %(queue_size)5d
 """.strip()
 _sub_topics = [
-    "web-server-active-archives", 
-    "web-server-active-retrieves", 
+    "web-server-stats", 
     "data-writer-receive-queue-size",
     "data-reader-receive-queue-size",
 ]
@@ -36,20 +35,54 @@ _sub_topics = [
 def _handle_web_server_stats(state, message, _data):
     log = logging.getLogger("_handle_web_server_stats")
 
-    report_line = _web_server_line_template % message
+    report_line = _web_server_line_template % (
+        message["node-name"],
+        "retrieve",
+        message["stats"]["retrieves"],
+        message["reader"][0][2],
+        message["reader"][1][2],
+        message["reader"][2][2],
+        message["reader"][3][2],
+        message["reader"][4][2],
+        message["reader"][5][2],
+        message["reader"][6][2],
+        message["reader"][7][2],
+        message["reader"][8][2],
+        message["reader"][9][2],
+    )
+    log.info(report_line)
+    print report_line
+
+    report_line = _web_server_line_template % (
+        message["node-name"],
+        "archive",
+        message["stats"]["archives"],
+        message["writer"][0][2],
+        message["writer"][1][2],
+        message["writer"][2][2],
+        message["writer"][3][2],
+        message["writer"][4][2],
+        message["writer"][5][2],
+        message["writer"][6][2],
+        message["writer"][7][2],
+        message["writer"][8][2],
+        message["writer"][9][2],
+    )
     log.info(report_line)
     print report_line
 
 def _handle_queue_size(state, message, _data):
     log = logging.getLogger("_handle_queue_size")
 
+    if message["queue_size"] == 0:
+        return
+
     report_line = _queue_size_line_template % message
     log.info(report_line)
     print report_line
 
 _dispatch_table = {
-    "web-server-active-archives"        : _handle_web_server_stats, 
-    "web-server-active-retrieves"       : _handle_web_server_stats, 
+    "web-server-stats"                  : _handle_web_server_stats, 
     "data-writer-receive-queue-size"    : _handle_queue_size,
     "data-reader-receive-queue-size"    : _handle_queue_size,
 }

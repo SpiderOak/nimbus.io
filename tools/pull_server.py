@@ -56,7 +56,7 @@ class PULLServer(object):
                 return None
             raise
 
-        if self._pull_socket.rcvmore():
+        if self._pull_socket.rcvmore:
             body = self._pull_socket.recv()
         else:
             body = None

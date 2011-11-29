@@ -42,7 +42,8 @@ from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
 from web_server.watcher import Watcher
 
-_log_path = "%s/nimbusio_web_server.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
+_log_path = "%s/nimbusio_web_server_%s.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
@@ -59,7 +60,7 @@ _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 _web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
 _web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
-_wsgi_backlog = int(os.environ.get("NIMBUSIO_WSGI_BACKLOG", "1024"))
+_wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _stats = {
     "archives"    : 0,
     "retrieves"   : 0,

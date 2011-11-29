@@ -83,9 +83,9 @@ from web_server.url_discriminator import parse_url, \
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
-    os.environ.get("NIMBUSIO_REPLY_TIMEOUT",  str(5 * 60.0))
+    os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
-_slice_size = int(os.environ.get("NIMBUSIO_SLICE_SIZE", str(1024 * 1024)))
+_slice_size = int(os.environ.get("NIMBUS_IO_SLICE_SIZE", str(1024 * 1024)))
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10

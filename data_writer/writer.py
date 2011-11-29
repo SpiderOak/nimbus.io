@@ -15,8 +15,8 @@ from tools.data_definitions import segment_row_template, \
         meta_row_template
 from data_writer.output_value_file import OutputValueFile
 
-_max_value_file_size = os.environ.get(
-    "NIMBUSIO_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024)
+_max_value_file_size = int(os.environ.get(
+    "NIMBUS_IO_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024))
 )
 
 def _get_next_segment_id(connection):

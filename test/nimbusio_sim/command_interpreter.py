@@ -15,19 +15,21 @@ class CommandInterpreter(cmd.Cmd):
     """
     accept commands while running simulated nodes
     """
-    def __init__(self):
+    def __init__(self, config):
         cmd.Cmd.__init__(self)
         self._node_sims = list()
         self._node_sims.append(
             NodeSim(
                 0, 
+                config,
                 space_accounting=True, 
                 performance_packager=True,
-                event_aggregator=True
+                event_aggregator=True,
+                web_server=True,
             )
         )
         for i in xrange(_node_count-1):
-            self._node_sims.append(NodeSim(i+1))
+            self._node_sims.append(NodeSim(i+1, config, web_server=True))
 
     def _get_node_from_line(self, line):
         try:

@@ -96,7 +96,7 @@ def main():
     if old_config.start:
         command_interpreter.do_start("all")
         print "Web servers at: %s" % ( ", ".join(config.web_server_urls), )
-    command_interpreter.cmdloop("nimbus.io")
+    command_interpreter.cmdloop("sim.nimbus.io")
     log.info("leaving main loop")
 
     log.info("program ends normally")

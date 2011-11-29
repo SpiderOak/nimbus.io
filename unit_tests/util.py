@@ -322,4 +322,7 @@ def start_web_server(node_name, environment):
         server_path,
     ]
     log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+    #return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+    #the webserver writes enough stderr/out to fill up the pipe and make the
+    #subprocess block.
+    return subprocess.Popen(args, stderr=None, env=environment)

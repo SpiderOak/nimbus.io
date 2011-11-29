@@ -11,6 +11,7 @@ https://<collection name>.numbus.io/data/
 https://<collection name>.nimbus.io/data/<key>
 """
 import re
+import os
 
 action_list_collections = "list-collections"
 action_create_collection = "create-collection"
@@ -23,49 +24,52 @@ action_retrieve_meta = "retrieve-meta"
 action_delete_key = "delete-key"
 action_head_key = "head-key"
 
+_service_domain = os.environ.get("NIMBUS_IO_SERVICE_DOMAIN", "nimbus.io")
+_re_service_domain = _service_domain.replace(".", "\.")
+
 _list_collections_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections$"
+    r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections$"
 )
 
 _create_collection_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections\?action=create\&name=(?P<collection_name>[a-zA-Z0-9-]+)$"
+    r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections\?action=create\&name=(?P<collection_name>[a-zA-Z0-9-]+)$"
 )
 
 _delete_collection1_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)$"
+    r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)$"
 )
 _delete_collection2_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=delete$"
+    r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=delete$"
 )
 
 _space_usage_re = re.compile(
-    r"^http(s?)://nimbus\.io(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=space_usage$"
+    r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=space_usage$"
 )
 
 _archive_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)(\?.*)?$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)(\?.*)?$"
 )
 
 _list_keys_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data(/|\?prefix=(?P<prefix>\S+?))$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data(/|\?prefix=(?P<prefix>\S+?))$"
 )
 
 _retrieve_meta_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)\?action=meta$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)\?action=meta$"
 )
 _retrieve_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)$"
 )
 
 _delete_key1_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)$"
 )
 _delete_key2_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+?)\?action=delete$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)\?action=delete$"
 )
 
 _head_key_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\.nimbus\.io(:\d+)?/data/(?P<key>\S+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+)$"
 )
 
 # note that order is significant here, 

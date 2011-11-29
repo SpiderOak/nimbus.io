@@ -14,9 +14,9 @@ class UnparseableCollection(CollectionError):
 
 _default_collection_prefix = "dd"
 
-_host_collection_name_re = re.compile(
-    r'(?P<collection_name>[^.]+)\.nimbus.io(?::\d+)?$'
-)
+#_host_collection_name_re = re.compile(
+#    r'(?P<collection_name>[^.]+)\.nimbus.io(?::\d+)?$'
+#)
 _collection_name_re = re.compile(r'[a-z0-9][a-z0-9-]*[a-z0-9]$')
 _max_collection_name_size = 63
 _collection_entry_template = namedtuple(

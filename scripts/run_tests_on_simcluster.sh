@@ -19,7 +19,7 @@ if [ ! -d $BASEDIR ]; then
     exit 1
 fi
 
-CLIENT_DIR=$BASEDIR/clients
+CLIENT_DIR=$BASEDIR/client
 
 export MOTOBOTO_IDENTITY="$CLIENT_DIR/motoboto_test_user_id"
 

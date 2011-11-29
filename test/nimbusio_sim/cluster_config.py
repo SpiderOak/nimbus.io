@@ -12,8 +12,13 @@ from tools.database_connection import \
 _CONFIG_FILENAME = "config.json"
 
 _ENV_CONSTANTS = [
-    ( "NIMBUSIO_REPLY_TIMEOUT", "900", ),
-    ( "NIMBUSIO_WSGI_BACKLOG", "1024", ),
+    # web server
+    ( "NIMBUS_IO_REPLY_TIMEOUT", "900", ),
+    ( "NIMBUS_IO_WSGI_BACKLOG", "1024", ),
+    ( "NIMBUS_IO_SLICE_SIZE", str(10 * 1024 * 1024), ),
+    # data writer
+    ( "NIMBUS_IO_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024), ),
+    ( "NIMBUS_IO_SYNC_STRATEGY", "NONE"), # NONE, O_SYNC
 ]
 
 class ClusterConfig(object):
@@ -70,6 +75,8 @@ class ClusterConfig(object):
                 str(self.web_server_ports[0]), ),
             ( "NIMBUS_IO_SERVICE_HOST",
                 self.ip, ),
+            ( "NIMBUS_IO_SERVICE_DOMAIN",
+                "sim.nimbus.io", ), 
             # until we integrate nginx in the simulator, test clusters don't
             # support SSL
             ( "NIMBUS_IO_SERVICE_SSL",
@@ -77,7 +84,7 @@ class ClusterConfig(object):
             ( "USE_MOTOBOTO", 
                 "1", ), 
             ( "NIMBUS_IO_CLIENT_PATH", 
-                self.clients_path, ),
+                self.client_path, ),
         ]
         return client_env
 
@@ -87,6 +94,10 @@ class ClusterConfig(object):
         cluster_env = [
             ( "PYTHONPATH",
                 os.environ['PYTHONPATH'], ),
+            # run on simulation domain: sim.nimbus.io and 
+            # *.sim.nimbus.io resolve to 127.0.0.1
+            ( "NIMBUS_IO_SERVICE_DOMAIN",
+                "sim.nimbus.io", ), 
             ( "NIMBUSIO_LOG_DIR",
                 self.log_path, ),
             ( "NIMBUSIO_CLUSTER_NAME",
@@ -283,15 +294,15 @@ class ClusterConfig(object):
                            self.base_ports[name] + self.nodecount)]
 
     @property
-    def clients_path(self):
+    def client_path(self):
         "path to client/user config files and client data (for tests, etc.)"
-        return os.path.join(self.basedir, "clients")
+        return os.path.join(self.basedir, "client")
 
     @property
     def required_paths(self):
         "paths to all all folders that should exist to run this cluster"
         return [ self.basedir, self.log_path, self.socket_path, 
-                 self.config_dir, self.clients_path, ]
+                 self.config_dir, self.client_path, ]
 
     @property
     def node_repository_paths(self):

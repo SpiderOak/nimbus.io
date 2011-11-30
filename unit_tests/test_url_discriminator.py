@@ -82,7 +82,7 @@ _valid_urls_with_actions = [
     ),
     (
         "GET", 
-        "https://test-collection-name.nimbus.io/data/test-key?retrieve_meta",
+        "https://test-collection-name.nimbus.io/data/test-key?action=meta",
         action_retrieve_meta
     ),
     (
@@ -143,6 +143,10 @@ def _valid_head_key(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
     and match_object.group("key") == "test-key"
 
+def _valid_retrieve_meta(match_object):
+    return match_object.group("collection_name") == "test-collection-name" \
+    and match_object.group("key") == "test-key"
+
 _match_object_dispatch_table = {
     action_list_collections     : _valid_list_collections,
     action_create_collection    : _valid_create_collection,
@@ -153,6 +157,7 @@ _match_object_dispatch_table = {
     action_retrieve_key         : _valid_retrieve_key,
     action_delete_key           : _valid_delete_key,
     action_head_key             : _valid_head_key,
+    action_retrieve_meta        : _valid_retrieve_meta,
 }
 
 class TestUrlDiscriminator(unittest.TestCase):

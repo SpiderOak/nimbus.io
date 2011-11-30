@@ -19,10 +19,12 @@ monkey.patch_all()
 
 import logging
 import os
+import signal
 import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
+import gevent.core
 import zmq
 
 from tools.standard_logging import initialize_logging
@@ -66,6 +68,10 @@ _stats = {
     "retrieves"   : 0,
 }
 
+def _signal_handler_closure(halt_event):
+    def _signal_handler(*args):
+        halt_event.set()
+    return _signal_handler
 
 class WebServer(object):
     def __init__(self):
@@ -101,7 +107,7 @@ class WebServer(object):
             )
             self._data_writer_clients.append(resilient_client)
 
-        data_reader_clients = list()
+        self._data_reader_clients = list()
         self._data_readers = list()
         for node_name, address in zip(_node_names, _data_reader_addresses):
             resilient_client = GreenletResilientClient(
@@ -113,7 +119,7 @@ class WebServer(object):
                 _web_server_pipeline_address,
                 self._deliverator
             )
-            data_reader_clients.append(resilient_client)
+            self._data_reader_clients.append(resilient_client)
             data_reader = DataReader(
                 node_name, resilient_client
             )
@@ -145,7 +151,7 @@ class WebServer(object):
 
         self._watcher = Watcher(
             _stats, 
-            data_reader_clients,
+            self._data_reader_clients,
             self._data_writer_clients,
             self._event_push_client
         )
@@ -165,22 +171,19 @@ class WebServer(object):
             application=self.application,
             backlog=_wsgi_backlog
         )
-        self._stopped_event = Event()
 
     def start(self):
-        self._stopped_event.clear()
         self._pollster.start()
         self.wsgi_server.start()
         self._watcher.start()
 
     def stop(self):
         self.wsgi_server.stop()
-        self._stopped_event.set()
         self._accounting_client.close()
         for client in self._data_writer_clients:
             client.close()
-        for data_reader in self._data_readers:
-            data_reader.close()
+        for client in self._data_reader_clients:
+            client.close()
         self._pull_server.close()
         self._pollster.kill()
         self._pollster.join(timeout=3.0)
@@ -190,22 +193,29 @@ class WebServer(object):
         self._central_connection.close()
         self._node_local_connection.close()
 
-    def serve_forever(self):
-        self.start()
-        self._stopped_event.wait()
-
-
 def main():
     initialize_logging(_log_path)
     log = logging.getLogger("main")
+    halt_event = Event()
+    gevent.core.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
+
+    web_server = WebServer()
     try:
-        WebServer().serve_forever()
+        web_server.start()
+    except Exception, instance:
+        log.exception(str(instance))
+        return -1
+
+    halt_event.wait()
+    log.info("halt_event set")
+
+    try:
+        web_server.stop()
     except Exception, instance:
         log.exception(str(instance))
         return -1
 
     return 0
-
 
 if __name__ == '__main__':
     sys.exit(main(*sys.argv[1:]))

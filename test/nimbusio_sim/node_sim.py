@@ -188,6 +188,7 @@ class NodeSim(object):
         for process_name in self._processes.keys():
             process = self._processes[process_name]
             if process is not None:
+                self._log.debug("terminate process %s" % (process_name, ))
                 terminate_process(process)
                 self._processes[process_name] = None
 

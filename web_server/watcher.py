@@ -68,7 +68,7 @@ class Watcher(Greenlet):
         self._log.debug("ending")
 
     def join(self, timeout=None):
-        self._log("join")
+        self._log.debug("join")
         self._halt_event.set()
         Greenlet.join(self, timeout)
 

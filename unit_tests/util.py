@@ -42,11 +42,10 @@ def terminate_process(process):
         print >> sys.stderr, " "
         print >> sys.stderr, "-" * 15
         print >> sys.stderr, process.returncode
-        print >> sys.stderr, process.stderr.read()
+        if process.stderr is not None:
+            print >> sys.stderr, process.stderr.read()
         print >> sys.stderr, "-" * 15
         print >> sys.stderr, process.returncode
-    assert process.returncode == 0, \
-        process.returncode
 
 def start_event_aggregator(
     address, 

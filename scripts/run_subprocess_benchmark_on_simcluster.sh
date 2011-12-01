@@ -35,9 +35,12 @@ for i in {0..999} ; do
     fi 
 done
 
+export PYTHONPATH="${PYTHONPATH}:${HOME}/motoboto_benchmark"
+
 # run the benchmark
-python ../motoboto_benchmark/motoboto_benchmark_main.py \
+python ../motoboto_benchmark/motoboto_benchmark_subprocess_main.py \
     --test-script="$HOME/motoboto_big_test_script.json" \
     --user-identity-dir="$CLIENT_PATH" \
     --max-users=100 \
     --test-duration=1800
+

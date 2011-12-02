@@ -25,6 +25,7 @@ class CommandInterpreter(cmd.Cmd):
                 space_accounting=True, 
                 performance_packager=True,
                 event_aggregator=True,
+                event_subscriber=True,
                 web_server=True,
             )
         )

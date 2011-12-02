@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+"""
+commandline options for simulation
+"""
 import argparse
 
 def parse_cmdline():
@@ -51,6 +55,9 @@ def parse_cmdline():
     
     parser.add_argument("--start", dest="start", action="store_true",
         default=False, help="automatically start all nodes and web server")
+
+    parser.add_argument("--profile", dest="profile", action="store_true",
+        default=False, help="profile")
 
     args = parser.parse_args()
     return args

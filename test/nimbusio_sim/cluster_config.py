@@ -100,6 +100,8 @@ class ClusterConfig(object):
                 "sim.nimbus.io", ), 
             ( "NIMBUSIO_LOG_DIR",
                 self.log_path, ),
+            ( "NIMBUSIO_PROFILE_DIR",
+                self.profile_path, ),
             ( "NIMBUSIO_CLUSTER_NAME",
                 self.clustername, ),
             ( "NIMBUSIO_NODE_NAME_SEQ",
@@ -235,6 +237,10 @@ class ClusterConfig(object):
         return os.path.join(self.basedir, "logs")
 
     @property
+    def profile_path(self):
+        return os.path.join(self.basedir, "profile")
+
+    @property
     def central_db_path(self):
         return os.path.join(self.basedir, "db", "central")
 
@@ -301,8 +307,8 @@ class ClusterConfig(object):
     @property
     def required_paths(self):
         "paths to all all folders that should exist to run this cluster"
-        return [ self.basedir, self.log_path, self.socket_path, 
-                 self.config_dir, self.client_path, ]
+        return [ self.basedir, self.log_path, self.profile_path, 
+                 self.socket_path, self.config_dir, self.client_path, ]
 
     @property
     def node_repository_paths(self):

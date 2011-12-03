@@ -8,6 +8,7 @@ import cmd
 import time
 
 from test.nimbusio_sim.node_sim import NodeSim
+from test.nimbusio_sim.profile_graphs import prepare_profile_graphs
 
 _node_count = 10
 
@@ -17,6 +18,7 @@ class CommandInterpreter(cmd.Cmd):
     """
     def __init__(self, config):
         cmd.Cmd.__init__(self)
+        self._cluster_config = config
         self._node_sims = list()
         self._node_sims.append(
             NodeSim(
@@ -86,6 +88,10 @@ class CommandInterpreter(cmd.Cmd):
                 node_sim.stop()
             except Exception, instance:
                 print "*** Exception", str(instance), "***"
+
+        if self._cluster_config.profile:
+            print "preparing profile graphs"
+            prepare_profile_graphs(self._cluster_config.profile_path)
 
         return True
 

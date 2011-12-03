@@ -82,7 +82,7 @@ def start_data_writer(node_name, environment, profile):
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "data_writer_%s.dat" % (node_name, )
+            "data_writer_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",
@@ -109,7 +109,7 @@ def start_data_reader(node_name, environment, profile):
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "data_reader_%s.dat" % (node_name, )
+            "data_reader_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",
@@ -136,7 +136,7 @@ def start_anti_entropy_server(node_name, environment, profile):
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "anti_entropy_server_%s.dat" % (node_name, )
+            "anti_entropy_server_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",
@@ -176,7 +176,7 @@ def start_handoff_server(node_name, environment, profile):
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "handoff_server_%s.dat" % (node_name, )
+            "handoff_server_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",
@@ -230,7 +230,7 @@ def start_web_server(node_name, environment, profile):
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "web_server_%s.dat" % (node_name, )
+            "web_server_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",

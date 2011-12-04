@@ -44,7 +44,7 @@ def prepare_profile_graphs(profile_dir):
         ]
 
         dot_args = [
-            "usr/bin/dot",
+            "/usr/bin/dot",
             "-T",
             "png",
             "-o",

@@ -159,10 +159,10 @@ List Collections
 ++++++++++++++++
 .. http:get:: /customer/<username>/collections
 
-List all collection names for this customer. The reply body will contain a JSON 
-list of pairs. Each pair will be collection name and date created.
+    List all collection names for this customer. The reply body will contain a JSON 
+    list of pairs. Each pair will be collection name and date created.
 
-:statuscode 200: no error
+    :statuscode 200: no error
 
 Collections
 ###########
@@ -171,27 +171,27 @@ Creating a Collection
 +++++++++++++++++++++
 .. http:post:: /customer/<username>/collections
 
-Create a new collection. 
+    Create a new collection. 
 
-If you try to create a collection with the same name as an existng collection,
-This query will NOT fail. It will reuse the existing collection. If the 
-existing collection has been deleted, it will be un-deleted.
+    If you try to create a collection with the same name as an existng collection,
+    This query will NOT fail. It will reuse the existing collection. If the 
+    existing collection has been deleted, it will be un-deleted.
 
-:query action: create 
-:query name: the name of the new collection 
-:statuscode 200: no error
+    :query action: create 
+    :query name: the name of the new collection 
+    :statuscode 200: no error
  
 Deleting a Collection
 +++++++++++++++++++++
 .. http:delete:: /customer/<username>/collections/<collection-name>
 .. http:post:: /customer/<username>/collections/<collection-name>
 
-Delete an existing collection. [1]_ 
+    Delete an existing collection. [1]_ 
 
-:query action: delete (POST only) 
-:statuscode 200: no error
-:statuscode 403: forbidden to delete the default collection, or a collection contaning data.
-:statuscode 404: unknown collection
+    :query action: delete (POST only) 
+    :statuscode 200: no error
+    :statuscode 403: forbidden to delete the default collection, or a collection contaning data.
+    :statuscode 404: unknown collection
 
 Getting Space Usage Information
 +++++++++++++++++++++++++++++++
@@ -199,10 +199,10 @@ To get information on space usage by a collection
 
 .. http:get:: /customer/username/collections/<collection-name>
 
-Get usage information on the collection specified in the hostname 
+    Get usage information on the collection specified in the hostname 
 
-:query action: space_usage
-:statuscode 200: no error
+    :query action: space_usage
+    :statuscode 200: no error
 
 Listing Conjoined Archives
 ++++++++++++++++++++++++++
@@ -210,8 +210,8 @@ List the conjoined archives active for this collection
 
 .. http:get:: /customer/username/collections/<collection-name>
 
-:query action: list_conjoined
-:statuscode 200: no error
+    :query action: list_conjoined
+    :statuscode 200: no error
 
 Keys
 ####
@@ -284,12 +284,12 @@ The data will be uploaded to the collection specified in the HTTP hostname.
 
 .. http:post:: /data/<key>
 
-Data to be uploaded comprises the body of the request.
+    Data to be uploaded comprises the body of the request.
 
-:query __nimbus_io__<meta-key>=<meta-value>: metadata associated with the key 
-:statuscode 200: no error
-:statuscode 403: invalid data (probably zero size)
-:statuscode 404: unknown collection
+    :query __nimbus_io__<meta-key>=<meta-value>: metadata associated with the key 
+    :statuscode 200: no error
+    :statuscode 403: invalid data (probably zero size)
+    :statuscode 404: unknown collection
 
 .. _listing_keys:
 
@@ -299,14 +299,14 @@ To list the keys in a collection, issue a listmatch request.
 
 .. http:get:: /data/
 
-<prefix> The API does not take any delimiters into account. This means that if you have 
-data stored at "/maui/beach.jpg" and "/maui-documents/rental-car-invoice.pdf", 
-then both will be returned if you do a listmatch on "maui". You can avoid this 
-by making sure the trailing delimiter ("/") is included in the URL
+    :query max_keys: The maximum number of keys to retrieve
+    :query prefix: The prefix of the keys you want to retrieve
+    :query marker: where you are in the result set
+    :query delimiter: Keys that contain the same string between the prefix and the 
+                first occurrence of the delimiter will be rolled up into a single 
+                result element. 
 
-:query prefix: (optional) limit the query to keys starting with <prefix>
-
-:statuscode 200: no error
+    :statuscode 200: no error
 
 Downloading From a Key
 ++++++++++++++++++++++
@@ -315,7 +315,7 @@ The server will return exactly what you uploaded to that URL:
 
 .. http:get:: /data/<key>
 
-:statuscode 200: no error
+    :statuscode 200: no error
 
 Deleting a key
 ++++++++++++++
@@ -326,8 +326,8 @@ To delete a resource,
 .. http:delete:: /data/<key>
 .. http:post:: /data/<key>
 
-:query action=delete: delete action for post request
-:statuscode 200: no error
+    :query action=delete: delete action for post request
+    :statuscode 200: no error
 
 Getting File Information About a Key
 ++++++++++++++++++++++++++++++++++++
@@ -338,8 +338,8 @@ To retrieve file information about a key issue a HEAD request.
 
 .. http:head:: /data/<key>
 
-:statuscode 200: no error
-:statuscode 404: not found
+    :statuscode 200: no error
+    :statuscode 404: not found
 
 Start a Conjoined Archive
 +++++++++++++++++++++++++
@@ -348,8 +348,8 @@ The body of the return contains a JSON conjoined_identified
 
 .. http:post:: /data/<key>
 
-:query action=conjoined: start a conjoined archive
-:statuscode 200: no error
+    :query action=conjoined: start a conjoined archive
+    :statuscode 200: no error
 
 Upload to a Conjoined Archive
 +++++++++++++++++++++++++++++
@@ -357,9 +357,9 @@ Upload one part of the full key. These can be done in parallel.
 
 .. http:put:: /data/<key>
 
-:query conjoined_identifier=<conjoined-identifier>: returned by start
-:query conjoined_part=<sequence-number>: number of this upload
-:statuscode 200: no error
+    :query conjoined_identifier=<conjoined-identifier>: returned by start
+    :query conjoined_part=<sequence-number>: number of this upload
+    :statuscode 200: no error
 
 Finish Conjoined Archive
 ++++++++++++++++++++++++
@@ -368,8 +368,8 @@ sequence. This could run for a long time.
 
 .. http:post:: /data/<key>
 
-:query conjoined_identifier=<conjoined-identifier>: finish
-:statuscode 200: no error
+    :query conjoined_identifier=<conjoined-identifier>: finish
+    :statuscode 200: no error
 
 Abort Conjoined Archive
 ++++++++++++++++++++++++
@@ -377,8 +377,8 @@ Remove the conjoined archive and release all resources.
 
 .. http:delete:: /data/<key>
 
-:query conjoined_identifier=<conjoined-identifier>: remove
-:statuscode 200: no error
+    :query conjoined_identifier=<conjoined-identifier>: remove
+    :statuscode 200: no error
 
 List Uploads of Conjoined Archive
 +++++++++++++++++++++++++++++++++
@@ -386,8 +386,8 @@ List the known uploads in sequence
 
 .. http:get:: /data/<key>
 
-:query conjoined_identifier=<conjoined-identifier>: remove
-:statuscode 200: no error
+    :query conjoined_identifier=<conjoined-identifier>: remove
+    :statuscode 200: no error
 
 Getting Meta Information About a Key
 ++++++++++++++++++++++++++++++++++++
@@ -397,9 +397,9 @@ body will be a JSON list of key/value pairs
 
 .. http:get:: /data/<key>/
 
-:query action=meta: request meta
-:statuscode 200: no error
-:statuscode 404: not found
+    :query action=meta: request meta
+    :statuscode 200: no error
+    :statuscode 404: not found
 
 .. [1] In an ideal world, we would just need DELETE for the this. But due to limited browser support for the DELETE verb, we also provide an alternative via POST with action=delete. 
 

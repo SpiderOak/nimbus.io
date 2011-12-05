@@ -51,7 +51,7 @@ _archive_key_re = re.compile(
 )
 
 _list_keys_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data(/|\?prefix=(?P<prefix>\S+?))$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(\?.*)?$"
 )
 
 _retrieve_meta_re = re.compile(

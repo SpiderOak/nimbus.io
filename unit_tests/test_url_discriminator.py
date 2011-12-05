@@ -72,7 +72,7 @@ _valid_urls_with_actions = [
     ),
     (
         "GET", 
-        "https://test-collection-name.nimbus.io/data?prefix=test-prefix",
+        "https://test-collection-name.nimbus.io/data/?xxx",
         action_list_keys
     ),
     (

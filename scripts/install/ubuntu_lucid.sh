@@ -19,7 +19,10 @@ sudo apt-get install postgresql-9.0
 
 # these are new enough in the normal distribution
 sudo apt-get install libev3 libevent-dev m4 unifdef 
-mkdir ~/src
+
+if [ ! -d ~/src ]; then
+    mkdir ~/src
+fi
 cd ~/src
 
 # build zeromq from source

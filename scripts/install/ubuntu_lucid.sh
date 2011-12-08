@@ -18,7 +18,7 @@ set -x
 sudo apt-get install postgresql-9.0
 
 # these are new enough in the normal distribution
-sudo apt-get install libev3 libevent-dev m4 unifdef 
+sudo apt-get install libev3 libevent-dev m4 unifdef uuid-dev
 
 if [ ! -d ~/src ]; then
     mkdir ~/src

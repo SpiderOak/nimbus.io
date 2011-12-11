@@ -59,7 +59,7 @@ from web_server.data_slicer import DataSlicer
 from web_server.zfec_segmenter import ZfecSegmenter
 from web_server.archiver import Archiver
 from web_server.destroyer import Destroyer
-from web_server.listmatcher import Listmatcher
+from web_server.listmatcher import listmatch
 from web_server.space_usage_getter import SpaceUsageGetter
 from web_server.stat_getter import StatGetter
 from web_server.retriever import Retriever
@@ -503,30 +503,35 @@ class Application(object):
         if not authenticated:
             raise exc.HTTPUnauthorized()
 
-        try:
-            prefix = match_object.group("prefix")
-            if prefix is None:
-                prefix = u""
-            else:
-                prefix = urllib.unquote_plus(prefix)
-                prefix = prefix.decode("utf-8")
-        except IndexError:
-            prefix = u""
-        except Exception, instance:
-            self._log.exception(req.url)
-            raise exc.HTTPServiceUnavailable(str(instance))
+        variable_names = [
+            "prefix",
+            "max_keys",
+            "delimiter",
+            "marker"
+        ]
+
+        # pass on any variable names we recognize as keyword args to listmatch
+        kwargs = dict()
+        for variable_name in variable_names:
+            if variable_name in req.GET:
+                variable_value = req.GET[variable_name]
+                if type(variable_value) == str:
+                    variable_value = urllib.unquote_plus(variable_value)
+                    variable_value = variable_value.decode("utf-8")
+                kwargs[variable_name] = variable_value
 
         self._log.debug(
-            "_list_keys: collection = (%s) username = %r %r prefix = '%s'" % (
+            "_list_keys: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
                 collection_entry.username,
-                prefix
+                kwargs
             )
         )
-        matcher = Listmatcher(self._node_local_connection)
-        keys = matcher.listmatch(
-            collection_entry.collection_id, prefix, _reply_timeout
+        keys = listmatch(
+            self._node_local_connection,
+            collection_entry.collection_id, 
+            **kwargs
         )
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(keys))

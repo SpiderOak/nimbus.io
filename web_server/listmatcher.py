@@ -13,20 +13,33 @@ def listmatch(
     delimiter="",
     marker=""
 ):
+    """
+    get the most recent row (highest timestamp) for each matching key
+    exclude tombstones
+    """
     result = connection.fetch_all_rows(
         """
-        select key from nimbusio_node.segment
+        select distinct key, timestamp, file_tombstone 
+        from nimbusio_node.segment
         where collection_id = %s
-        and file_tombstone = false
         and handoff_node_id is null
         and key like %s
         and key > %s
+        order by timestamp desc
         limit %s
         """.strip(),
         [collection_id, "%s%%" % prefix, marker, max_keys, ]
     )
 
-    key_list = [key for (key, ) in result]
+    key_list = list()
+    prev_key = None
+    for (key, _, tombstone) in result:
+        if key == prev_key:
+            continue
+        prev_key = key
+        if tombstone:
+            continue
+        key_list.append(key)
 
     if delimiter == "":
         return key_list

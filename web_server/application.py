@@ -515,9 +515,8 @@ class Application(object):
         for variable_name in variable_names:
             if variable_name in req.GET:
                 variable_value = req.GET[variable_name]
-                if type(variable_value) == str:
-                    variable_value = urllib.unquote_plus(variable_value)
-                    variable_value = variable_value.decode("utf-8")
+                variable_value = urllib.unquote_plus(variable_value)
+                variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
         self._log.debug(

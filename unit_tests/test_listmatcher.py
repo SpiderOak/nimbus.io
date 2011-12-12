@@ -6,6 +6,7 @@ test the web server's listmatch module
 """
 import os
 import sys
+from datetime import datetime, timedelta
 try:
     import unittest2 as unittest
 except ImportError:
@@ -31,6 +32,13 @@ _insert_test_row = """
     (collection_id, key, timestamp, segment_num, file_size, file_adler32, 
     file_hash)
     values (%s, %s, current_timestamp, 0, 42, 0, 'aaaaaaaaaaaaaaaa');
+"""
+
+_insert_test_row_with_timestamp_and_tombstone= """
+    insert into nimbusio_node.segment 
+    (collection_id, key, timestamp, segment_num, file_size, file_adler32, 
+    file_hash, file_tombstone)
+    values (%s, %s, %s::timestamp, 0, %s, 0, 'aaaaaaaaaaaaaaaa', %s);
 """
 
 def _load_test_data(connection, keys):
@@ -154,6 +162,22 @@ class TestListMatcher(unittest.TestCase):
         )
 
         self.assertEqual(len(result1) + len(result2), len(keys))
+
+    def test_tombstone(self):
+        """
+        test finding the most recent of multiple rows when it is a tombstone
+        """
+        test_key = u"test_key"
+        data_time = datetime.now()
+        tombstone_time = data_time + timedelta(hours=1)
+        self._connection.execute("begin")
+        self._connection.execute(_insert_test_row_with_timestamp_and_tombstone, 
+                           [_collection_id, test_key, data_time, 42, False])
+        self._connection.execute(_insert_test_row_with_timestamp_and_tombstone, 
+                           [_collection_id, test_key, tombstone_time, 0, True])
+        self._connection.commit()
+        result = listmatch(self._connection, _collection_id)
+        self.assertEqual(len(result), 0)
 
 if __name__ == "__main__":
     unittest.main()

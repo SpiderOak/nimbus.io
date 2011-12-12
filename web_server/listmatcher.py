@@ -10,7 +10,7 @@ def listmatch(
     collection_id, 
     prefix="", 
     max_keys=1000, 
-    delimiter=None,
+    delimiter="",
     marker=""
 ):
     result = connection.fetch_all_rows(
@@ -28,7 +28,7 @@ def listmatch(
 
     key_list = [key for (key, ) in result]
 
-    if delimiter is None:
+    if delimiter == "":
         return key_list
 
     # XXX: there may be some SQL way to do this efficiently

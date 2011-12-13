@@ -97,8 +97,13 @@ class TestListMatcher(unittest.TestCase):
         ]
         _load_test_data(self._connection, keys)
 
-        result = listmatch(self._connection, _collection_id, prefix=u"aaa")
+        test_prefix = u"aaa/"
+        result = listmatch(
+            self._connection, _collection_id, prefix=test_prefix
+        )
         self.assertEqual(len(result), 7)
+        for key in result:
+            self.assertTrue(key.startswith(test_prefix))
 
         result = listmatch(self._connection, _collection_id, prefix=u"aaa/b")
         self.assertEqual(len(result), 6)
@@ -119,6 +124,7 @@ class TestListMatcher(unittest.TestCase):
     def test_delimiter(self):
         """test using a delimiter with a directory tree"""
         keys = [
+            u"aaa",
             u"aaa/b/cccc/1", 
             u"aaa/b/ccccccccc/1", 
             u"aaa/b/ccccccccc/2", 
@@ -130,12 +136,12 @@ class TestListMatcher(unittest.TestCase):
         ]
         _load_test_data(self._connection, keys)
 
-        result = listmatch(self._connection, _collection_id, delimiter="/")
+        result = listmatch(self._connection, _collection_id, delimiter=u"/")
         result_set = set(result)
         self.assertEqual(result_set, set([u"aaa/", u"fff/"]))
 
         result = listmatch(
-            self._connection, _collection_id, prefix=u"aaa/", delimiter="/"
+            self._connection, _collection_id, prefix=u"aaa/", delimiter=u"/"
         )
         result_set = set(result)
         self.assertEqual(result_set, set([u"b/", u"e/"]), result_set)

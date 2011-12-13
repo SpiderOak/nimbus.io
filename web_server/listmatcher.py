@@ -19,13 +19,13 @@ def listmatch(
     """
     result = connection.fetch_all_rows(
         """
-        select distinct key, timestamp, file_tombstone 
+        select key, timestamp, file_tombstone 
         from nimbusio_node.segment
         where collection_id = %s
         and handoff_node_id is null
         and key like %s
         and key > %s
-        order by timestamp desc
+        order by key asc, timestamp desc
         limit %s
         """.strip(),
         [collection_id, "%s%%" % prefix, marker, max_keys, ]

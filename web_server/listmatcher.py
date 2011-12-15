@@ -17,6 +17,9 @@ def listmatch(
     get the most recent row (highest timestamp) for each matching key
     exclude tombstones
     """
+    # ask for one more than max_keys, so we can tell if we are truncated
+    max_keys = int(max_keys)
+    request_count = max_keys + 1
     result = connection.fetch_all_rows(
         """
         select key, timestamp, file_tombstone 
@@ -28,12 +31,13 @@ def listmatch(
         order by key asc, timestamp desc
         limit %s
         """.strip(),
-        [collection_id, "%s%%" % prefix, marker, max_keys, ]
+        [collection_id, "%s%%" % prefix, marker, request_count, ]
     )
 
+    truncated = len(result) == request_count
     key_list = list()
     prev_key = None
-    for (key, _, tombstone) in result:
+    for (key, _, tombstone) in result[:max_keys]:
         if key == prev_key:
             continue
         prev_key = key
@@ -42,7 +46,7 @@ def listmatch(
         key_list.append(key)
 
     if delimiter == "":
-        return key_list
+        return {"keys" : key_list, "truncated" : truncated} 
 
     # XXX: there may be some SQL way to do this efficiently
     prefix_set = set()
@@ -51,5 +55,6 @@ def listmatch(
         delimiter_pos = stub.find(delimiter)
         if delimiter_pos > 0:
             prefix_set.add(stub[:delimiter_pos+1])
-    return list(prefix_set)
+
+    return {"prefixes" : list(prefix_set), "truncated" : truncated}
 

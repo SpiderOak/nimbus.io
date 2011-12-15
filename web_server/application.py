@@ -527,13 +527,13 @@ class Application(object):
                 kwargs
             )
         )
-        keys = listmatch(
+        result_dict = listmatch(
             self._node_local_connection,
             collection_entry.collection_id, 
             **kwargs
         )
         response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(keys))
+        response.body_file.write(json.dumps(result_dict))
         return response
 
     def _retrieve_key(self, req, match_object):

@@ -4,7 +4,7 @@ Developer's Guide
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
 Overview
 ^^^^^^^^
@@ -204,15 +204,6 @@ To get information on space usage by a collection
     :query action: space_usage
     :statuscode 200: no error
 
-Listing Conjoined Archives
-++++++++++++++++++++++++++
-List the conjoined archives active for this collection 
-
-.. http:get:: /customer/username/collections/<collection-name>
-
-    :query action: list_conjoined
-    :statuscode 200: no error
-
 Keys
 ####
 
@@ -341,54 +332,6 @@ To retrieve file information about a key issue a HEAD request.
     :statuscode 200: no error
     :statuscode 404: not found
 
-Start a Conjoined Archive
-+++++++++++++++++++++++++
-Start a conjoined archive, where multiple uploads can combine to fomr the key
-The body of the return contains a JSON conjoined_identified
-
-.. http:post:: /data/<key>
-
-    :query action=conjoined: start a conjoined archive
-    :statuscode 200: no error
-
-Upload to a Conjoined Archive
-+++++++++++++++++++++++++++++
-Upload one part of the full key. These can be done in parallel.
-
-.. http:put:: /data/<key>
-
-    :query conjoined_identifier=<conjoined-identifier>: returned by start
-    :query conjoined_part=<sequence-number>: number of this upload
-    :statuscode 200: no error
-
-Finish Conjoined Archive
-++++++++++++++++++++++++
-Mark the archive as completed. Assemble the conjoined uploads in order by 
-sequence. This could run for a long time.
-
-.. http:post:: /data/<key>
-
-    :query conjoined_identifier=<conjoined-identifier>: finish
-    :statuscode 200: no error
-
-Abort Conjoined Archive
-++++++++++++++++++++++++
-Remove the conjoined archive and release all resources.
-
-.. http:delete:: /data/<key>
-
-    :query conjoined_identifier=<conjoined-identifier>: remove
-    :statuscode 200: no error
-
-List Uploads of Conjoined Archive
-+++++++++++++++++++++++++++++++++
-List the known uploads in sequence
-
-.. http:get:: /data/<key>
-
-    :query conjoined_identifier=<conjoined-identifier>: remove
-    :statuscode 200: no error
-
 Getting Meta Information About a Key
 ++++++++++++++++++++++++++++++++++++
 To retrieve the meta data stored with a key issue a 'meta' request.
@@ -400,6 +343,90 @@ body will be a JSON list of key/value pairs
     :query action=meta: request meta
     :statuscode 200: no error
     :statuscode 404: not found
+
+Conjoined Archives:
+###################
+A conjoined archive enables multiple parts of a file to be uploaded in 
+parallel. And/or for individual uploads to be restarted without restarting
+the entire archive.
+
+Listing Conjoined Archives
+++++++++++++++++++++++++++
+List the conjoined archives active for this collection 
+
+.. http:get:: /conjoined/key/
+
+    :query max_conjoined: 
+        The maximum number of conjoined archives to retrieve. 
+        Default value is 1000.
+
+    :query key_marker:
+        list keys greater than this key
+
+    :query conjoined_identifier_marker:
+        If key_marker is specified, only list keys with conjoined_identifier
+        greater than this identifier.
+    :statuscode 200: no error
+
+Start a Conjoined Archive
++++++++++++++++++++++++++
+Start a conjoined archive, where multiple uploads can combine to form the key
+The body of the return contains a JSON conjoined_identified (UUID)
+
+.. http:post:: /conjoined/<key>
+
+    :query action=start: start a conjoined archive
+    :statuscode 200: no error
+
+Upload to a Conjoined Archive
++++++++++++++++++++++++++++++
+Upload one part of the full key. Multiple uploads can be done in parallel.
+This is a normal key upload with additional varaibles.
+
+.. http:put:: /data/<key>
+
+    :query conjoined_identifier=<conjoined-identifier>: returned by start
+    :query conjoined_part=<sequence-number>: number of this upload
+    :statuscode 200: no error
+
+Finish Conjoined Archive
+++++++++++++++++++++++++
+Mark the archive as completed. 
+
+.. http:post:: /conjoined/<key>
+
+    :query action=finish: finish a conjoined archive
+    :query conjoined_identifier=<conjoined-identifier>: returned by start
+    :statuscode 200: no error
+
+Abort Conjoined Archive
+++++++++++++++++++++++++
+Halt the conjoined archive and release all resources.
+
+.. http:delete:: /conjoined/<key>
+
+    :query action=abort: abort a conjoined archive
+    :query conjoined_identifier=<conjoined-identifier>: returned by start
+    :statuscode 200: no error
+
+Delete Conjoined Archive
+++++++++++++++++++++++++
+Remove the conjoined archive and release all resources.
+
+.. http:delete:: /conjoined/<key>
+
+    :query action=delete: delete a conjoined archive
+    :query conjoined_identifier=<conjoined-identifier>: returned by start
+    :statuscode 200: no error
+
+List Uploads of Conjoined Archive
++++++++++++++++++++++++++++++++++
+List the known uploads in sequence
+
+.. http:get:: /conjoined/<key>
+
+    :query conjoined_identifier=<conjoined-identifier>:
+    :statuscode 200: no error
 
 .. [1] In an ideal world, we would just need DELETE for the this. But due to limited browser support for the DELETE verb, we also provide an alternative via POST with action=delete. 
 

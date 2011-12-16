@@ -16,6 +16,7 @@ create table conjoined (
     create_timestamp timestamp not null default current_timestamp,
     abort_timestamp timestamp,
     complete_timestamp timestamp,
+    delete_timestamp timestamp,
     combined_size int8,
     combined_hash bytea
 );
@@ -41,9 +42,8 @@ create table segment (
     key varchar(1024),
     timestamp timestamp not null,
     segment_num int2,
-    conjoined_id int4,
-    conjoined_num int8,
-    conjoined_complete bool,
+    conjoined_identifier bytea, 
+    conjoined_part int4,
     file_size int8 not null default 0,
     file_adler32 int4,
     file_hash bytea,

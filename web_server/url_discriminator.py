@@ -23,6 +23,12 @@ action_retrieve_key = "retrieve-key"
 action_retrieve_meta = "retrieve-meta"
 action_delete_key = "delete-key"
 action_head_key = "head-key"
+action_list_conjoined = "list-conjoined"
+action_start_conjoined = "start-conjoined"
+action_finish_conjoined = "finish-conjoined"
+action_abort_conjoined = "abort-conjoined"
+action_delete_conjoined = "delete-conjoined"
+action_list_upload_in_conjoined = "list-uploads-in-conjoined"
 
 _service_domain = os.environ.get("NIMBUS_IO_SERVICE_DOMAIN", "nimbus.io")
 _re_service_domain = _service_domain.replace(".", "\.")
@@ -72,6 +78,34 @@ _head_key_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+)$"
 )
 
+_list_conjoined_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(\?.*)?$"
+)
+
+_start_conjoined_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)\?action=start$"
+)
+
+_finish_conjoined_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)?action=finish\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
+)
+
+_abort_conjoined_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)?action=abort\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
+)
+
+_delete_conjoined1_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)/(?P<conjoined_identifier>\S+)$"
+)
+
+_delete_conjoined2_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)?action=delete\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
+)
+
+_list_upload_in_conjoined_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)/(?P<conjoined_identifier>\S+)/$"
+)
+
 # note that order is significant here, 
 # specifically _archive_key_re has a grab bag ?.* that will pick up
 # ?action=delete, or ?action=metaso we need to check for those first
@@ -82,16 +116,23 @@ _regex_by_method = {
         (_list_keys_re, action_list_keys, ),
         (_retrieve_meta_re, action_retrieve_meta, ),
         (_retrieve_key_re, action_retrieve_key, ),
+        (_list_conjoined_re, action_list_conjoined, ),
+        (_list_upload_in_conjoined_re, action_list_upload_in_conjoined, ),
     ],
     "POST"  : [
         (_create_collection_re, action_create_collection, ),
         (_delete_collection2_re, action_delete_collection, ),
         (_delete_key2_re, action_delete_key, ),
         (_archive_key_re, action_archive_key, ),
+        (_start_conjoined_re, action_start_conjoined, ),
+        (_finish_conjoined_re, action_finish_conjoined, ),
+        (_abort_conjoined_re, action_abort_conjoined, ),
+        (_delete_conjoined2_re, action_delete_conjoined, ),
     ],
     "DELETE"  : [
         (_delete_collection1_re, action_delete_collection, ),
         (_delete_key1_re, action_delete_key, ),
+        (_delete_conjoined1_re, action_delete_conjoined, ),
     ],
     "HEAD"  : [
         (_head_key_re, action_head_key, ),

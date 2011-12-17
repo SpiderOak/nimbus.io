@@ -18,7 +18,13 @@ from web_server.url_discriminator import parse_url, \
         action_retrieve_key, \
         action_retrieve_meta, \
         action_delete_key, \
-        action_head_key
+        action_head_key, \
+        action_list_conjoined, \
+        action_start_conjoined, \
+        action_finish_conjoined, \
+        action_abort_conjoined, \
+        action_delete_conjoined, \
+        action_list_upload_in_conjoined
 
 _log_path = "%s/test_url_discriminator.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], 
@@ -100,6 +106,46 @@ _valid_urls_with_actions = [
         "https://test-collection-name.nimbus.io/data/test-key",
         action_head_key
     ),
+    (
+        "GET", 
+        "https://test-collection-name.nimbus.io/conjoined/",
+        action_list_conjoined,
+    ),
+    (
+        "GET", 
+        "https://test-collection-name.nimbus.io/conjoined/?max_conjoined=1000",
+        action_list_conjoined,
+    ),
+    (
+        "POST", 
+        "https://test-collection-name.nimbus.io/conjoined/test-key?action=start",
+        action_start_conjoined,
+    ),
+    (
+        "POST", 
+        "https://test-collection-name.nimbus.io/conjoined/test-key?action=finish&conjoined_identifier=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        action_finish_conjoined,
+    ),
+    (
+        "POST", 
+        "https://test-collection-name.nimbus.io/conjoined/test-key?action=abort&conjoined_identifier=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        action_abort_conjoined,
+    ),
+    (
+        "DELETE", 
+        "https://test-collection-name.nimbus.io/conjoined/test-key/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        action_delete_conjoined,
+    ),
+    (
+        "POST", 
+        "https://test-collection-name.nimbus.io/conjoined/test-key?action=delete&conjoined_identifier=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        action_delete_conjoined,
+    ),
+    (
+        "GET", 
+        "https://test-collection-name.nimbus.io/conjoined/test-key/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/",
+        action_list_upload_in_conjoined,
+    ),
 ]
 
 def _valid_list_collections(match_object):
@@ -147,6 +193,28 @@ def _valid_retrieve_meta(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
     and match_object.group("key") == "test-key"
 
+def _valid_list_conjoined(match_object):
+    return match_object.group("collection_name") == "test-collection-name"
+
+def _valid_start_conjoined(match_object):
+    return match_object.group("collection_name") == "test-collection-name"
+
+def _valid_finish_conjoined(match_object):
+    return match_object.group("collection_name") == "test-collection-name" \
+            and match_object.group("conjoined_identifier") != ""
+
+def _valid_abort_conjoined(match_object):
+    return match_object.group("collection_name") == "test-collection-name" \
+            and match_object.group("conjoined_identifier") != ""
+
+def _valid_delete_conjoined(match_object):
+    return match_object.group("collection_name") == "test-collection-name" \
+            and match_object.group("conjoined_identifier") != ""
+
+def _valid_list_upload_in_conjoined(match_object):
+    return match_object.group("collection_name") == "test-collection-name" \
+            and match_object.group("conjoined_identifier") != ""
+
 _match_object_dispatch_table = {
     action_list_collections     : _valid_list_collections,
     action_create_collection    : _valid_create_collection,
@@ -158,6 +226,12 @@ _match_object_dispatch_table = {
     action_delete_key           : _valid_delete_key,
     action_head_key             : _valid_head_key,
     action_retrieve_meta        : _valid_retrieve_meta,
+    action_list_conjoined       : _valid_list_conjoined,
+    action_start_conjoined      : _valid_start_conjoined,
+    action_finish_conjoined     : _valid_finish_conjoined,
+    action_abort_conjoined      : _valid_abort_conjoined,
+    action_delete_conjoined     : _valid_delete_conjoined,
+    action_list_upload_in_conjoined     : _valid_list_upload_in_conjoined,
 }
 
 class TestUrlDiscriminator(unittest.TestCase):

@@ -315,6 +315,8 @@ To delete a resource,
 * issue a POST request for delete [1]_
 
 .. http:delete:: /data/<key>
+
+
 .. http:post:: /data/<key>
 
     :query action=delete: delete action for post request
@@ -411,9 +413,12 @@ Halt the conjoined archive and release all resources.
 
 Delete Conjoined Archive
 ++++++++++++++++++++++++
-Remove the conjoined archive and release all resources.
+Remove the conjoined archive and release all resources. [1]_
 
-.. http:delete:: /conjoined/<key>
+.. http:delete:: /conjoined/<key>/<conjoined-identifier>
+
+
+.. http:post:: /conjoined/<key>
 
     :query action=delete: delete a conjoined archive
     :query conjoined_identifier=<conjoined-identifier>: returned by start
@@ -423,9 +428,8 @@ List Uploads of Conjoined Archive
 +++++++++++++++++++++++++++++++++
 List the known uploads in sequence
 
-.. http:get:: /conjoined/<key>
+.. http:get:: /conjoined/<key>/<conjoined-identifier>/
 
-    :query conjoined_identifier=<conjoined-identifier>:
     :statuscode 200: no error
 
 .. [1] In an ideal world, we would just need DELETE for the this. But due to limited browser support for the DELETE verb, we also provide an alternative via POST with action=delete. 

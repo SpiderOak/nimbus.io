@@ -354,7 +354,7 @@ Listing Conjoined Archives
 ++++++++++++++++++++++++++
 List the conjoined archives active for this collection 
 
-.. http:get:: /conjoined/key/
+.. http:get:: /conjoined/
 
     :query max_conjoined: 
         The maximum number of conjoined archives to retrieve. 

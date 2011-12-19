@@ -28,7 +28,6 @@ import zlib
 import hashlib
 import json
 from itertools import chain
-from binascii import hexlify
 import urllib
 import time
 
@@ -50,8 +49,7 @@ from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
         RetrieveFailedError, \
         ArchiveFailedError, \
-        DestroyFailedError, \
-        CollectionError
+        DestroyFailedError
 from web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
 from web_server.data_writer import DataWriter
@@ -67,7 +65,9 @@ from web_server.meta_manager import retrieve_meta
 from web_server.conjoined_manager import list_conjoined_archives, \
         start_conjoined_archive, \
         abort_conjoined_archive, \
-        finish_conjoined_archive
+        finish_conjoined_archive, \
+        delete_conjoined_archive, \
+        list_upload_in_conjoined
 from web_server.url_discriminator import parse_url, \
         action_list_collections, \
         action_create_collection, \
@@ -78,8 +78,13 @@ from web_server.url_discriminator import parse_url, \
         action_retrieve_meta, \
         action_retrieve_key, \
         action_delete_key, \
-        action_head_key
-
+        action_head_key, \
+        action_list_conjoined, \
+        action_start_conjoined, \
+        action_finish_conjoined, \
+        action_abort_conjoined, \
+        action_delete_conjoined, \
+        action_list_upload_in_conjoined
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
@@ -190,6 +195,12 @@ class Application(object):
             action_retrieve_key         : self._retrieve_key,
             action_delete_key           : self._delete_key,
             action_head_key             : self._head_key,
+            action_list_conjoined       : self._list_conjoined,
+            action_start_conjoined      : self._start_conjoined,
+            action_finish_conjoined     : self._finish_conjoined,
+            action_abort_conjoined      : self._abort_conjoined,
+            action_delete_conjoined     : self._delete_conjoined,
+            action_list_upload_in_conjoined : self._list_upload_in_conjoined,
         }
 
     @wsgify
@@ -811,37 +822,307 @@ class Application(object):
 
         return response
 
-#    @routes.add(r"/list_conjoined_archives")
-#    def list_conjoined_archives(self, collection_entry, _req):
-#        conjoined_value = list_conjoined_archives(
-#            self._central_connection,
-#            collection_entry.collection_id,
-#        )
-#
-#        response = Response(content_type='text/plain', charset='utf8')
-#        response.body_file.write(json.dumps(conjoined_value))
-#
-#        return response
-#
-#    @routes.add(r'/data/(.+)$', action="start_conjoined_archive")
-#    def start_conjoined_archive(self, collection_entry, _req, key):
-#        try:
-#            key = urllib.unquote_plus(key)
-#            key = key.decode("utf-8")
-#        except Exception, instance:
-#            self._log.error('unable to prepare key %r %s' % (
-#                key, instance
-#            ))
-#            raise exc.HTTPServiceUnavailable(str(instance))
-#
-#        conjoined_identifier = start_conjoined_archive(
-#            self._central_connection,
-#            collection_entry.collection_id,
-#            key
-#        )
-#
-#        response = Response(content_type='text/plain', charset='utf8')
-#        response.body_file.write(conjoined_identifier)
-#
-#        return response
-#
+    def _list_conjoined(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        variable_names = [
+            "max_conjoined",
+            "key_marker",
+            "conjoined_identifier_marker"
+        ]
+
+        # pass on any variable names we recognize as keyword args to listmatch
+        kwargs = dict()
+        for variable_name in variable_names:
+            if variable_name in req.GET:
+                variable_value = req.GET[variable_name]
+                variable_value = urllib.unquote_plus(variable_value)
+                variable_value = variable_value.decode("utf-8")
+                kwargs[variable_name] = variable_value
+
+        self._log.debug(
+            "list_conjoined: collection = (%s) %r username = %r %s" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            kwargs,
+        ))
+
+        result = list_conjoined_archives(
+            self._node_local_connection,
+            collection_entry.collection_id,
+            **kwargs
+        )
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(result))
+
+        return response
+
+    def _start_conjoined(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "start_conjoined: collection = (%s) %r username = %r key = %r" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            key
+        ))
+
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            # _data_writer_clients are the 0mq clients for each of the nodes in
+            # the cluster. They may or may not be connected.
+            self._data_writer_clients
+        ) 
+        timestamp = create_timestamp()
+
+        result = start_conjoined_archive(
+            data_writers,
+            collection_entry.collection_id,
+            key,
+            timestamp
+        )
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(result))
+
+        return response
+
+    def _finish_conjoined(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "finish_conjoined: collection = (%s) %r %r key = %r %s" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            key,
+            conjoined_identifier_hex
+        ))
+
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            # _data_writer_clients are the 0mq clients for each of the nodes in
+            # the cluster. They may or may not be connected.
+            self._data_writer_clients
+        ) 
+        timestamp = create_timestamp()
+
+        finish_conjoined_archive(
+            data_writers,
+            collection_entry.collection_id,
+            key,
+            conjoined_identifier_hex,
+            timestamp
+        )
+
+        return  Response()
+
+    def _abort_conjoined(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "abort_conjoined: collection = (%s) %r %r key = %r %s" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            key,
+            conjoined_identifier_hex
+        ))
+
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            # _data_writer_clients are the 0mq clients for each of the nodes in
+            # the cluster. They may or may not be connected.
+            self._data_writer_clients
+        ) 
+        timestamp = create_timestamp()
+
+        abort_conjoined_archive(
+            data_writers,
+            collection_entry.collection_id,
+            key,
+            conjoined_identifier_hex,
+            timestamp
+        )
+
+        return  Response()
+
+    def _delete_conjoined(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "delete_conjoined: collection = (%s) %r %r key = %r %s" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            key,
+            conjoined_identifier_hex
+        ))
+
+        data_writers = _create_data_writers(
+            self._event_push_client,
+            # _data_writer_clients are the 0mq clients for each of the nodes in
+            # the cluster. They may or may not be connected.
+            self._data_writer_clients
+        ) 
+        timestamp = create_timestamp()
+
+        delete_conjoined_archive(
+            data_writers,
+            collection_entry.collection_id,
+            key,
+            conjoined_identifier_hex,
+            timestamp
+        )
+
+        return  Response()
+
+    def _list_upload_in_conjoined(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        key = match_object.group("key")
+        conjoined_identifier = match_object.group("conjoined_identifier")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        try:
+            key = urllib.unquote_plus(key)
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
+
+        self._log.debug(
+            "list_upload: collection = (%s) %r username = %r key = %r" % (
+            collection_entry.collection_id, 
+            collection_entry.collection_name,
+            collection_entry.username,
+            key
+        ))
+

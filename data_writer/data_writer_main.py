@@ -307,13 +307,97 @@ def _handle_purge_key(state, message, _data):
     }
     state["resilient-server"].send_reply(reply)
 
+def _handle_start_conjoined_archive(state, message, _data):
+    log = logging.getLogger("_handle_start_conjoined_archive")
+    log.info("%r %r %s %s" % (
+        message["collection-id"], 
+        message["key"], 
+        message["conjoineds-identifier-hex"],
+        message["timestamp-repr"],
+    ))
+
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    reply = {
+        "message-type"  : "start-conjoined-archive-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
+def _handle_abort_conjoined_archive(state, message, _data):
+    log = logging.getLogger("_handle_abort_conjoined_archive")
+    log.info("%r %r %s %s" % (
+        message["collection-id"], 
+        message["key"], 
+        message["conjoineds-identifier-hex"],
+        message["timestamp-repr"],
+    ))
+
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    reply = {
+        "message-type"  : "abort-conjoined-archive-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
+def _handle_finish_conjoined_archive(state, message, _data):
+    log = logging.getLogger("_handle_finish_conjoined_archive")
+    log.info("%r %r %s %s" % (
+        message["collection-id"], 
+        message["key"], 
+        message["conjoineds-identifier-hex"],
+        message["timestamp-repr"],
+    ))
+
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    reply = {
+        "message-type"  : "finish-conjoined-archive-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
+def _handle_delete_conjoined_archive(state, message, _data):
+    log = logging.getLogger("_handle_delete_conjoined_archive")
+    log.info("%r %r %s %s" % (
+        message["collection-id"], 
+        message["key"], 
+        message["conjoineds-identifier-hex"],
+        message["timestamp-repr"],
+    ))
+
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    reply = {
+        "message-type"  : "delete-conjoined-archive-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
 _dispatch_table = {
-    "archive-key-entire"    : _handle_archive_key_entire,
-    "archive-key-start"     : _handle_archive_key_start,
-    "archive-key-next"      : _handle_archive_key_next,
-    "archive-key-final"     : _handle_archive_key_final,
-    "destroy-key"           : _handle_destroy_key,
-    "purge-key"             : _handle_purge_key,
+    "archive-key-entire"        : _handle_archive_key_entire,
+    "archive-key-start"         : _handle_archive_key_start,
+    "archive-key-next"          : _handle_archive_key_next,
+    "archive-key-final"         : _handle_archive_key_final,
+    "destroy-key"               : _handle_destroy_key,
+    "purge-key"                 : _handle_purge_key,
+    "start-conjoined-archive"   : _handle_start_conjoined_archive,
+    "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
+    "finish-conjoined-archive"  : _handle_finish_conjoined_archive,
+    "delete-conjoined-archive"  : _handle_delete_conjoined_archive,
 }
 
 def _create_state():

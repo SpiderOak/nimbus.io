@@ -15,7 +15,9 @@ from gevent import monkey
 # with /etc/hosts 
 # hg clone https://bitbucket.org/denis/gevent
 monkey.patch_all()
-#monkey.patch_all(dns=False)
+
+import gevent_zeromq
+gevent_zeromq.monkey_patch()
 
 import logging
 import os
@@ -25,7 +27,7 @@ import sys
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 import gevent.core
-import zmq
+from gevent_zeromq import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster

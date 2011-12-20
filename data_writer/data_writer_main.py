@@ -312,7 +312,7 @@ def _handle_start_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoineds-identifier-hex"],
+        message["conjoined-identifier-hex"],
         message["timestamp-repr"],
     ))
 
@@ -332,7 +332,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoineds-identifier-hex"],
+        message["conjoined-identifier-hex"],
         message["timestamp-repr"],
     ))
 
@@ -352,7 +352,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoineds-identifier-hex"],
+        message["conjoined-identifier-hex"],
         message["timestamp-repr"],
     ))
 
@@ -372,7 +372,7 @@ def _handle_delete_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoineds-identifier-hex"],
+        message["conjoined-identifier-hex"],
         message["timestamp-repr"],
     ))
 

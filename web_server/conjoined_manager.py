@@ -10,6 +10,8 @@ import uuid
 from  gevent.greenlet import Greenlet
 import  gevent.pool
 
+from tools.data_definitions import create_priority
+
 class ConjoinedError(Exception):
     pass
 
@@ -111,7 +113,7 @@ def start_conjoined_archive(data_writers, collection_id, key, timestamp):
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join([collection_id, key, conjoined_identifier.hex, ])
+    error_tag = ",".join([str(collection_id), key, conjoined_identifier.hex, ])
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
@@ -133,7 +135,7 @@ def abort_conjoined_archive(
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join([collection_id, key, conjoined_identifier.hex, ])
+    error_tag = ",".join([str(collection_id), key, conjoined_identifier.hex, ])
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
@@ -153,7 +155,7 @@ def finish_conjoined_archive(
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join([collection_id, key, conjoined_identifier_hex, ])
+    error_tag = ",".join([str(collection_id), key, conjoined_identifier_hex, ])
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
@@ -173,7 +175,7 @@ def delete_conjoined_archive(
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join([collection_id, key, conjoined_identifier_hex, ])
+    error_tag = ",".join([str(collection_id), key, conjoined_identifier_hex, ])
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
@@ -186,9 +188,11 @@ def list_upload_in_conjoined(connection, conjoined_identifier_hex):
 def _send_message_receive_reply(data_writers, message, error_tag):
     log = logging.getLogger(error_tag)
     sender_list = list()
+    message["priority"] = create_priority()
     pending_group = gevent.pool.Group()
     for data_writer in data_writers:
-        sender = MessageGreenlet(data_writer, message) 
+        # send a copy of the message, so each one gets a separagte message-id
+        sender = MessageGreenlet(data_writer, message.copy()) 
         sender_list.append(sender)
         pending_group.start(sender)
 

@@ -5,12 +5,13 @@ resilient_client.py
 a class that manages a zeromq DEALER (aka XREQ) socket as a client,
 to a resilient server
 """
-from collections import deque
 import logging
 import os
 import time
 import uuid
 
+from  gevent.greenlet import Greenlet
+import gevent.queue
 from gevent.coros import RLock
 from gevent_zeromq import zmq
 
@@ -32,14 +33,10 @@ _status_name = {
     _status_disconnected    : "disconnected",
 }
 
-class GreenletResilientClient(object):
+class GreenletResilientClient(Greenlet):
     """
     context
         zeromq context
-
-    pollster
-        zeromq pollster. Used to register and unregister our socket,
-        depending on connection status
 
     server_node_name
         The node name of the server we connect to
@@ -93,19 +90,19 @@ class GreenletResilientClient(object):
     def __init__(
         self, 
         context, 
-        pollster,
         server_node_name,
         server_address, 
         client_tag, 
         client_address,
         deliverator
     ):
+        Greenlet.__init__(self)
+
         self._log = logging.getLogger("ResilientClient-%s" % (
             server_address, 
         ))
 
         self._context = context
-        self._pollster = pollster
         self._server_node_name = server_node_name
         self._server_address = server_address
 
@@ -115,7 +112,7 @@ class GreenletResilientClient(object):
         self._client_address = client_address
         self._deliverator = deliverator
 
-        self._send_queue = deque()
+        self._send_queue = gevent.queue.Queue()
         self._pending_message = None
         self._pending_message_start_time = None
         self._lock = RLock()
@@ -152,7 +149,9 @@ class GreenletResilientClient(object):
             self._lock.release()
 
         elapsed_time = time.time() - self._status_time
-        return _status_name[self._status], elapsed_time, len(self._send_queue) 
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
 
     def _handle_status_disconnected(self):
         elapsed_time = time.time() - self._status_time 
@@ -164,9 +163,9 @@ class GreenletResilientClient(object):
         self._dealer_socket.setsockopt(zmq.LINGER, 1000)
         self._log.debug("connecting to server")
         self._dealer_socket.connect(self._server_address)
-        self._pollster.register_read(
-            self._dealer_socket, self._pollster_callback
-        )
+
+        self._status = _status_handshaking
+        self._log.info("status = %s" % (_status_name[self._status], ))
 
         message = {
             "message-type"      : "resilient-server-handshake",
@@ -174,14 +173,7 @@ class GreenletResilientClient(object):
             "client-tag"        : self._client_tag,
             "client-address"    : self._client_address,
         }
-        message = message_format(ident=None, control=message, body=None)
-        self._pending_message = message
-        self._pending_message_start_time = time.time()
-        self._status = _status_handshaking
-        self._log.info("status = %s" % (_status_name[self._status], ))
-        self._status_time = time.time()
-
-        self._send_message(message)
+        self.queue_message_for_send(message)
 
     def _handle_status_connected(self):
 
@@ -231,7 +223,6 @@ class GreenletResilientClient(object):
     def _disconnect(self):
         self._log.debug("disconnecting")
         assert self._dealer_socket is not None
-        self._pollster.unregister(self._dealer_socket)
         self._dealer_socket.close()
         self._dealer_socket = None
 
@@ -239,9 +230,10 @@ class GreenletResilientClient(object):
         self._log.info("status = %s" % (_status_name[self._status], ))
         self._status_time = time.time()
 
-    def close(self):
+    def join(self, timeout=3.0):
         if self._dealer_socket is not None:
-            self._disconnect()
+            self._dealer_socket.close()
+        Greenlet.join(self, timeout)
 
     def queue_message_for_send(self, message_control, data=None):
 
@@ -255,46 +247,29 @@ class GreenletResilientClient(object):
             ident=None, control=message_control, body=data
         )
 
-        # if we don't queue the message, that means we can send it right now
-
-        # XXX consider non-blocking lock acquire, and if it fails, just queue
-        # the message.
-
-        self._lock.acquire()
-        try:
-            if self._status is _status_connected \
-            and self._pending_message is None:
-                self._pending_message = message
-                self._pending_message_start_time = time.time()
-                self._send_message(message)
-            else:
-                self._send_queue.append(message)
-
-        finally:
-            self._lock.release()
+        self._send_queue.put(message)
 
         return delivery_channel
 
-    def _pollster_callback(self, _active_socket, readable, writable):
-        self._lock.acquire()
-        try:
-            message = self._receive_message()     
+    def _run(self):
+        while True:
 
-            # if we get None, that means the socket would have blocked
-            # go back and wait for more
-            if message is None:
-                return None
+            # block until we get a message to send
+            message_to_send = self._send_queue.get()
 
-            if self._pending_message is None:
-                self._log.error("Unexpected message: %s" % (message.control, ))
-                return
+            self._lock.acquire()
 
-            expected_message_id = self._pending_message.control["message-id"]
-            if message["message-id"] != expected_message_id:
-                self._log.error("unknown ack %s expecting %s" %(
-                    message, self._pending_message 
-                ))
-                return
+            self._pending_message = message_to_send
+            self._pending_message_start_time = time.time()
+
+            self._send_message(message_to_send)
+
+            self._lock.release()
+
+            # block until we get an ack
+            message = self._dealer_socket.recv_json()
+
+            self._lock.acquire()
 
             message_type = self._pending_message.control["message-type"]
             self._log.debug("received ack: %s %s" % (
@@ -312,16 +287,6 @@ class GreenletResilientClient(object):
             self._pending_message = None
             self._pending_message_start_time = None
 
-            try:
-                message_to_send = self._send_queue.popleft()
-            except IndexError:
-                return
-
-            self._pending_message = message_to_send
-            self._pending_message_start_time = time.time()
-
-            self._send_message(message_to_send)
-        finally:
             self._lock.release()
 
     def _send_message(self, message):
@@ -342,19 +307,6 @@ class GreenletResilientClient(object):
             for segment in message.body[:-1]:
                 self._dealer_socket.send(segment, zmq.SNDMORE)
             self._dealer_socket.send(message.body[-1])
-
-    def _receive_message(self):
-        # we should only be receiving ack, so we don't
-        # check for multipart messages
-        try:
-            return self._dealer_socket.recv_json(zmq.NOBLOCK)
-        except zmq.ZMQError, instance:
-            if instance.errno == zmq.EAGAIN:
-                self._log.warn("socket would have blocked")
-                return None
-            raise
-
-        assert not self._dealer_socket.rcvmore
 
     def __str__(self):
         return "ResilientClient-%s" % (self._server_node_name, )

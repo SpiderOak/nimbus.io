@@ -8,16 +8,19 @@ to a ROUTER (aka XREP) server
 import logging
 import uuid
 
+from  gevent.greenlet import Greenlet
 from gevent.queue import Queue
 from gevent_zeromq import zmq
 
 from tools.data_definitions import message_format
 
-class GreenletDealerClient(object):
+class GreenletDealerClient(Greenlet):
     """
     a class that manages a zeromq DEALER (aka XREQ) socket as a client
     """
     def __init__(self, context, node_name, address):
+        Greenlet.__init__(self)
+
         self._log = logging.getLogger("DealerClient-%s" % (node_name, ))
 
         self._dealer_socket = context.socket(zmq.XREQ)
@@ -28,15 +31,8 @@ class GreenletDealerClient(object):
         self._send_queue = Queue(maxsize=None)
         self._delivery_queues = dict()
 
-    def register(self, pollster):
-        pollster.register_read_or_write(
-            self._dealer_socket, self._pollster_callback
-        )
-
-    def unregister(self, pollster):
-        pollster.unregister(self._dealer_socket)
-
-    def close(self):
+    def join(self, timeout=3.0):
+        Greenlet.join(self, timeout)
         self._dealer_socket.close()
 
     def queue_message_for_send(self, message_control, data=None):
@@ -56,35 +52,32 @@ class GreenletDealerClient(object):
         )
         return self._delivery_queues[message_control["message-id"]]
 
-    def _pollster_callback(self, _active_socket, readable, writable):
-        # push our output first
-        if writable:
-            while not self._send_queue.empty():
-                message = self._send_queue.get_nowait()
-                self._send_message(message)
+    def _run(self):
+        while True:
 
-        # if we have input, read it and queue it
-        if readable:
+            # block until we get a message to send
+            message = self._send_queue.get()
+            self._send_message(message)
+
+            # block until we get a reply
             message = self._receive_message()      
-            # if we get None, that means the socket would have blocked
-            # go back and wait for more
-            if message is None:
-                return None
+
             if not "message-id" in message.control:
                 self._log.error("message has no 'message-id' %s" % (
                     message.control
                 ))
+                continue
+            
+            try:
+                delivery_queue = self._delivery_queues.pop(
+                    message.control["message-id"]
+                )
+            except KeyError:
+                self._log.error("No delivery queue for %s" % (
+                    message.control, 
+                ))
             else:
-                try:
-                    delivery_queue = self._delivery_queues.pop(
-                        message.control["message-id"]
-                    )
-                except KeyError:
-                    self._log.error("No delivery queue for %s" % (
-                        message.control, 
-                    ))
-                else:
-                    delivery_queue.put((message.control, message.body, ))
+                delivery_queue.put((message.control, message.body, ))
 
     def _send_message(self, message):
         self._log.info("sending message: %s" % (message.control, ))
@@ -105,13 +98,7 @@ class GreenletDealerClient(object):
             self._dealer_socket.send(message.body[-1])
 
     def _receive_message(self):
-        try:
-            control = self._dealer_socket.recv_json(zmq.NOBLOCK)
-        except zmq.ZMQError, instance:
-            if instance.errno == zmq.EAGAIN:
-                self._log.warn("socket would have blocked")
-                return None
-            raise
+        control = self._dealer_socket.recv_json()
 
         body = []
         while self._dealer_socket.rcvmore:

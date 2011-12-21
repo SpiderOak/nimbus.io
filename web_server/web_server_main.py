@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#d -*- coding: utf-8 -*-
 """
 Receives HTTP requests and distributes data to backend processes using zeromq
 
@@ -15,7 +15,9 @@ from gevent import monkey
 # with /etc/hosts 
 # hg clone https://bitbucket.org/denis/gevent
 monkey.patch_all()
-#monkey.patch_all(dns=False)
+
+import gevent_zeromq
+gevent_zeromq.monkey_patch()
 
 import logging
 import os
@@ -25,10 +27,10 @@ import sys
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 import gevent.core
-import zmq
+import gevent.pool
+from gevent_zeromq import zmq
 
 from tools.standard_logging import initialize_logging
-from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
 from tools.greenlet_dealer_client import GreenletDealerClient
 from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer
@@ -81,30 +83,30 @@ class WebServer(object):
         self._central_connection = get_central_connection()
         self._node_local_connection = get_node_local_connection()
 
+        self._greenlet_group = gevent.pool.Group()
+
         self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()
-
-        self._pollster = GreenletZeroMQPollster()
 
         self._pull_server = GreenletPULLServer(
             self._zeromq_context, 
             _web_server_pipeline_address,
             self._deliverator
         )
-        self._pull_server.register(self._pollster)
+        self._pull_server.link_exception(self._unhandled_greenlet_exception)
 
         self._data_writer_clients = list()
         for node_name, address in zip(_node_names, _data_writer_addresses):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
-                self._pollster,
                 node_name,
                 address,
                 _client_tag,
                 _web_server_pipeline_address,
                 self._deliverator
             )
+            resilient_client.link_exception(self._unhandled_greenlet_exception)
             self._data_writer_clients.append(resilient_client)
 
         self._data_reader_clients = list()
@@ -112,25 +114,27 @@ class WebServer(object):
         for node_name, address in zip(_node_names, _data_reader_addresses):
             resilient_client = GreenletResilientClient(
                 self._zeromq_context, 
-                self._pollster,
                 node_name,
                 address,
                 _client_tag,
                 _web_server_pipeline_address,
                 self._deliverator
             )
+            resilient_client.link_exception(self._unhandled_greenlet_exception)
             self._data_reader_clients.append(resilient_client)
             data_reader = DataReader(
                 node_name, resilient_client
             )
             self._data_readers.append(data_reader)
 
-        dealer_client = GreenletDealerClient(
+        self._space_accounting_dealer_client = GreenletDealerClient(
             self._zeromq_context, 
             _local_node_name, 
             _space_accounting_server_address
         )
-        dealer_client.register(self._pollster)
+        self._space_accounting_dealer_client.link_exception(
+            self._unhandled_greenlet_exception
+        )
 
         push_client = GreenletPUSHClient(
             self._zeromq_context, 
@@ -140,7 +144,7 @@ class WebServer(object):
 
         self._accounting_client = SpaceAccountingClient(
             _local_node_name,
-            dealer_client,
+            self._space_accounting_dealer_client,
             push_client
         )
 
@@ -173,25 +177,36 @@ class WebServer(object):
         )
 
     def start(self):
-        self._pollster.start()
+        self._greenlet_group.start(self._space_accounting_dealer_client)
+        self._greenlet_group.start(self._pull_server)
+        self._greenlet_group.start(self._watcher)
+        for client in self._data_writer_clients:
+            self._greenlet_group.start(client)
+        for client in self._data_reader_clients:
+            self._greenlet_group.start(client)
         self.wsgi_server.start()
-        self._watcher.start()
 
     def stop(self):
         self.wsgi_server.stop()
         self._accounting_client.close()
-        for client in self._data_writer_clients:
-            client.close()
-        for client in self._data_reader_clients:
-            client.close()
-        self._pull_server.close()
-        self._pollster.kill()
-        self._pollster.join(timeout=3.0)
-        self._watcher.join(timeout=3.0)
+        self._greenlet_group.kill()
+        self._greenlet_group.join()
         self._event_push_client.close()
         self._zeromq_context.term()
         self._central_connection.close()
         self._node_local_connection.close()
+
+    def _unhandled_greenlet_exception(self, greenlet_object):
+        try:
+            greenlet_object.get()
+        except Exception:
+            self._log.exception(str(greenlet_object))
+            exctype, value = sys.exc_info()[:2]
+            self._event_push_client.exception(
+                "unhandled_greenlet_exception",
+                str(value),
+                exctype=exctype.__name__
+            )
 
 def main():
     initialize_logging(_log_path)

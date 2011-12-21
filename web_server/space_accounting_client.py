@@ -11,15 +11,14 @@ from web_server.exceptions import SpaceUsageFailedError
 class SpaceAccountingClient(object):
     """Sends space accounting messages."""
 
-    def __init__(self, node_name, dealer_socket, push_socket):
+    def __init__(self, node_name, dealer_client, push_socket):
         self._log = logging.getLogger("SpaceAccountingClient-%s" % (
             node_name, 
         ))
-        self._dealer_socket = dealer_socket
+        self._dealer_client = dealer_client
         self._push_socket = push_socket
 
     def close(self):
-        self._dealer_socket.close()
         self._push_socket.close()
 
     def added(self, collection_id, timestamp, bytes_added):
@@ -57,7 +56,7 @@ class SpaceAccountingClient(object):
             "message-type"  : "space-usage-request",
             "collection-id" : collection_id,
         }
-        delivery_channel = self._dealer_socket.queue_message_for_send(request)
+        delivery_channel = self._dealer_client.queue_message_for_send(request)
 
         self._log.debug(
             '%(message-type)s: ' % request            

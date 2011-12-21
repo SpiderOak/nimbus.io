@@ -356,6 +356,20 @@ Listing Conjoined Archives
 ++++++++++++++++++++++++++
 List the conjoined archives active for this collection 
 
+Server will return a JSON dictionary containing:
+
+ * conjoined_list (list of dictionaries)
+ * truncated (boolean)
+
+where the conjoined_list entries contain:
+
+ * conjoined_identifier 
+ * key
+ * create_timestamp 
+ * abort_timestamp
+ * complete_timestamp 
+ * delete_timestamp
+
 .. http:get:: /conjoined/
 
     :query max_conjoined: 

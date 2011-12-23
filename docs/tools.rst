@@ -37,3 +37,9 @@ Resilient Server
 ----------------
 .. autoclass:: tools.resilient_server.ResilientServer
     :members:
+
+LRU Cache
+---------
+.. autoclass:: tools.LRUCache.LRUCache
+    :members:
+

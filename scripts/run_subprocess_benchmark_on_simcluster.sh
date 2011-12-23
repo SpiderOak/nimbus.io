@@ -42,5 +42,5 @@ python ../motoboto_benchmark/motoboto_benchmark_subprocess_main.py \
     --test-script="$HOME/motoboto_big_test_script.json" \
     --user-identity-dir="$CLIENT_PATH" \
     --max-users=1000 \
-    --test-duration=3600
+    --test-duration=1800
 

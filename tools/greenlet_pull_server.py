@@ -15,8 +15,21 @@ from tools.data_definitions import message_format
 
 class GreenletPULLServer(Greenlet):
     """
-    a class that manages a zeromq PULL socket as a server,
-    to multiple PUSH clients
+    context
+        zeromq context
+
+    address
+        the address our socket binds to. Sent to the remote server in the 
+        initial handshake, by the resilient client.
+
+    deliverator
+        we pass incoming messages to the Deliverator, which delivers them
+        to greenlets that are waiting for them.
+
+    Each process maintains a single PULL_ socket for all of its resilient 
+    clients. This class wraps that socket.
+
+    .. _PULL: http://api.zeromq.org/2-1:zmq-socket#toc13
     """
     def __init__(self, context, address, deliverator):
         Greenlet.__init__(self)
@@ -34,6 +47,9 @@ class GreenletPULLServer(Greenlet):
         self._deliverator = deliverator
 
     def join(self, timeout=3.0):
+        """
+        Clean up and wait for the greenlet to shut down
+        """
         self._pull_socket.close()
         Greenlet.join(self, timeout)
 

@@ -14,8 +14,21 @@ from tools.data_definitions import message_format
 
 class PULLServer(object):
     """
-    a class that manages a zeromq PULL socket as a server,
-    to multiple PUSH clients
+    context
+        zeromq context
+
+    address
+        the address our socket binds to. Sent to the remote server in the 
+        initial handshake, by the resilient client.
+
+    receve_queue
+        The queue (deque) where we put incoming messages. This is shared with
+        the DequeDispatcher
+
+    Each process maintains a single PULL_ socket for all of its resilient 
+    clients. This class wraps that socket.
+
+    .. _PULL: http://api.zeromq.org/2-1:zmq-socket#toc13
     """
     def __init__(self, context, address, receive_queue):
         self._log = logging.getLogger("PULLServer-%s" % (address, ))
@@ -31,12 +44,21 @@ class PULLServer(object):
         self._receive_queue = receive_queue
 
     def register(self, pollster):
+        """
+        register this socket with the zeromq pollster
+        """
         pollster.register_read(self._pull_socket, self._pollster_callback)
 
     def unregister(self, pollster):
+        """
+        unregister this socket from the zeromq pollster
+        """
         pollster.unregister(self._pull_socket)
 
     def close(self):
+        """
+        close the socket
+        """
         self._pull_socket.close()
 
     def _pollster_callback(self, _active_socket, readable, writable):

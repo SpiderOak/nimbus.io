@@ -34,7 +34,7 @@ cd ~/src
 
 # build zeromq from source
 if [ ! -e zeromq-2.1.11.tar.gz ]; then
-    wget 'http://download.zeromq.org/zeromq-2.1.10.tar.gz'
+    wget 'http://download.zeromq.org/zeromq-2.1.11.tar.gz'
 fi
 tar xzf zeromq-2.1.11.tar.gz
 cd zeromq-2.1.11

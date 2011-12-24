@@ -159,26 +159,6 @@ def finish_conjoined_archive(
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
-def delete_conjoined_archive(
-    data_writers, collection_id, key, conjoined_identifier_hex, timestamp
-):
-    """
-    delete a conjoined archive
-    """
-    log = logging.getLogger("delete_conjoined_archive")
-
-    message = {
-        "message-type"              : "delete-conjoined-archive",
-        "collection-id"             : collection_id,
-        "key"                       : key,
-        "conjoined-identifier-hex"  : conjoined_identifier_hex,
-        "timestamp-repr"            : repr(timestamp)
-    }
-
-    error_tag = ",".join([str(collection_id), key, conjoined_identifier_hex, ])
-    log.info(error_tag)
-    _send_message_receive_reply(data_writers, message, error_tag)
-
 def list_upload_in_conjoined(connection, conjoined_identifier_hex):
     """
     finish a conjoined archive

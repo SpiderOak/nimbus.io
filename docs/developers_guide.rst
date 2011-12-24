@@ -425,19 +425,6 @@ Halt the conjoined archive and release all resources.
     :query conjoined_identifier=<conjoined-identifier>: returned by start
     :statuscode 200: no error
 
-Delete Conjoined Archive
-++++++++++++++++++++++++
-Remove the conjoined archive and release all resources. [1]_
-
-.. http:delete:: /conjoined/<key>/<conjoined-identifier>
-
-
-.. http:post:: /conjoined/<key>
-
-    :query action=delete: delete a conjoined archive
-    :query conjoined_identifier=<conjoined-identifier>: returned by start
-    :statuscode 200: no error
-
 List Uploads of Conjoined Archive
 +++++++++++++++++++++++++++++++++
 List the known uploads in sequence

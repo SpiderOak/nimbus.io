@@ -23,7 +23,6 @@ from web_server.url_discriminator import parse_url, \
         action_start_conjoined, \
         action_finish_conjoined, \
         action_abort_conjoined, \
-        action_delete_conjoined, \
         action_list_upload_in_conjoined
 
 _log_path = "%s/test_url_discriminator.log" % (
@@ -132,16 +131,6 @@ _valid_urls_with_actions = [
         action_abort_conjoined,
     ),
     (
-        "DELETE", 
-        "https://test-collection-name.nimbus.io/conjoined/test-key/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        action_delete_conjoined,
-    ),
-    (
-        "POST", 
-        "https://test-collection-name.nimbus.io/conjoined/test-key?action=delete&conjoined_identifier=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        action_delete_conjoined,
-    ),
-    (
         "GET", 
         "https://test-collection-name.nimbus.io/conjoined/test-key/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx/",
         action_list_upload_in_conjoined,
@@ -207,10 +196,6 @@ def _valid_abort_conjoined(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
             and match_object.group("conjoined_identifier") != ""
 
-def _valid_delete_conjoined(match_object):
-    return match_object.group("collection_name") == "test-collection-name" \
-            and match_object.group("conjoined_identifier") != ""
-
 def _valid_list_upload_in_conjoined(match_object):
     return match_object.group("collection_name") == "test-collection-name" \
             and match_object.group("conjoined_identifier") != ""
@@ -230,7 +215,6 @@ _match_object_dispatch_table = {
     action_start_conjoined      : _valid_start_conjoined,
     action_finish_conjoined     : _valid_finish_conjoined,
     action_abort_conjoined      : _valid_abort_conjoined,
-    action_delete_conjoined     : _valid_delete_conjoined,
     action_list_upload_in_conjoined     : _valid_list_upload_in_conjoined,
 }
 

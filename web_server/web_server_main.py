@@ -26,7 +26,6 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
-import gevent.core
 import gevent.pool
 from gevent_zeromq import zmq
 
@@ -212,7 +211,7 @@ def main():
     initialize_logging(_log_path)
     log = logging.getLogger("main")
     halt_event = Event()
-    gevent.core.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
+    gevent.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
 
     web_server = WebServer()
     try:

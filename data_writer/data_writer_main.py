@@ -17,6 +17,7 @@ import logging
 import os
 import sys
 import time
+import uuid
 
 import zmq
 
@@ -314,7 +315,15 @@ def _handle_start_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
+    conjoined_identifier = uuid.UUID(hex=message["conjoined-identifier-hex"])
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    state["writer"].start_conjoined_archive(
+        message["collection-id"], 
+        message["key"], 
+        conjoined_identifier,
+        timestamp
+    )
 
     reply = {
         "message-type"  : "start-conjoined-archive-reply",
@@ -334,7 +343,15 @@ def _handle_abort_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
+    conjoined_identifier = uuid.UUID(hex=message["conjoined-identifier-hex"])
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    state["writer"].abort_conjoined_archive(
+        message["collection-id"], 
+        message["key"], 
+        conjoined_identifier,
+        timestamp
+    )
 
     reply = {
         "message-type"  : "abort-conjoined-archive-reply",
@@ -354,30 +371,18 @@ def _handle_finish_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
+    conjoined_identifier = uuid.UUID(hex=message["conjoined-identifier-hex"])
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
+
+    state["writer"].finish_conjoined_archive(
+        message["collection-id"], 
+        message["key"], 
+        conjoined_identifier,
+        timestamp
+    )
 
     reply = {
         "message-type"  : "finish-conjoined-archive-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
-    state["resilient-server"].send_reply(reply)
-
-def _handle_delete_conjoined_archive(state, message, _data):
-    log = logging.getLogger("_handle_delete_conjoined_archive")
-    log.info("%r %r %s %s" % (
-        message["collection-id"], 
-        message["key"], 
-        message["conjoined-identifier-hex"],
-        message["timestamp-repr"],
-    ))
-
-    timestamp = parse_timestamp_repr(message["timestamp-repr"])
-
-    reply = {
-        "message-type"  : "delete-conjoined-archive-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
         "result"        : "success",
@@ -395,7 +400,6 @@ _dispatch_table = {
     "start-conjoined-archive"   : _handle_start_conjoined_archive,
     "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
     "finish-conjoined-archive"  : _handle_finish_conjoined_archive,
-    "delete-conjoined-archive"  : _handle_delete_conjoined_archive,
 }
 
 def _create_state():

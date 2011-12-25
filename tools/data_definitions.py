@@ -140,3 +140,18 @@ meta_row_template = namedtuple(
     ]
 )
 
+conjoined_row_template = namedtuple(
+    "ConjoinedRow", [
+        "id",
+        "collection_id",
+        "key",
+        "identifier",
+        "create_timestamp",
+        "abort_timestamp",
+        "complete_timestamp",
+        "delete_timestamp",
+        "combined_size",
+        "combined_hash",
+    ]
+)
+

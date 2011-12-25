@@ -90,7 +90,7 @@ def list_conjoined_archives(
         row_dict = dict()
         for key, value in zip(keys, row):
             if key in timestamp_keys and value is not None:
-                row_dict[key] = value.isoformat()
+                row_dict[key] = repr(value)
             elif key == "conjoined_identifier":
                 conjoined_identifier_uuid = uuid.UUID(bytes=value)
                 row_dict["conjoined_identifier_hex"] = \
@@ -121,7 +121,11 @@ def start_conjoined_archive(data_writers, collection_id, key, timestamp):
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
-    return {"conjoined_identifier_hex" : conjoined_identifier.hex}
+    return {
+        "conjoined_identifier_hex"  : conjoined_identifier.hex,
+        "key"                       : key,
+        "timestamp_repr"            : repr(timestamp)   
+    }
 
 def abort_conjoined_archive(
     data_writers, collection_id, key, conjoined_identifier, timestamp

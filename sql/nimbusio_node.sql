@@ -43,7 +43,7 @@ create table segment (
     timestamp timestamp not null,
     segment_num int2,
     conjoined_identifier bytea, 
-    conjoined_part int4,
+    conjoined_part int4 not null default 0,
     file_size int8 not null default 0,
     file_adler32 int4,
     file_hash bytea,

@@ -29,6 +29,7 @@ import hashlib
 import json
 from itertools import chain
 import urllib
+import uuid
 import time
 
 from webob.dec import wsgify
@@ -410,6 +411,25 @@ class Application(object):
 
         meta_dict = _build_meta_dict(req.GET)
 
+        conjoined_dict = {
+            "conjoined_identifier"      : None,
+            "conjoined_part"            : 0,
+        }
+
+        if "conjoined_identifier" in req.GET:
+            value = req.GET["conjoined_identifier"]
+            value = urllib.unquote_plus(value)
+            value = value.decode("utf-8")
+            if len(value) > 0:
+                conjoined_dict["conjoined_identifer"] = uuid.UUID(hex=value)
+
+        if "conjoined_part" in req.GET:
+            value = req.GET["conjoined_part"]
+            value = urllib.unquote_plus(value)
+            value = value.decode("utf-8")
+            if len(value) > 0:
+                conjoined_dict["conjoined_part"] = int(value)
+
         data_writers = _create_data_writers(
             self._event_push_client,
             # _data_writer_clients are the 0mq clients for each of the nodes in
@@ -422,7 +442,8 @@ class Application(object):
             collection_entry.collection_id,
             key,
             timestamp,
-            meta_dict
+            meta_dict,
+            conjoined_dict
         )
         segmenter = ZfecSegmenter(
             8,

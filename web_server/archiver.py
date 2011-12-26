@@ -19,7 +19,15 @@ from web_server.exceptions import (
 
 class Archiver(object):
     """Sends data segments to data writers."""
-    def __init__(self, data_writers, collection_id, key, timestamp, meta_dict):
+    def __init__(
+        self, 
+        data_writers, 
+        collection_id, 
+        key, 
+        timestamp, 
+        meta_dict, 
+        conjoined_dict
+    ):
         self.log = logging.getLogger(
             'Archiver(collection_id=%d, key=%r)' % (collection_id, key))
         self.data_writers = data_writers
@@ -27,6 +35,12 @@ class Archiver(object):
         self.key = key
         self.timestamp = timestamp
         self._meta_dict = meta_dict
+        if conjoined_dict["conjoined_identifier"] is None:
+            self._conjoined_identifier_hex = None
+        else:
+            self._conjoined_identifier_hex = \
+                    conjoined_dict["conjoined_identifier"].hex
+        self._conjoined_part = conjoined_dict["conjoined_part"]
         self.sequence_num = 0
         self._adler32s = {}
         self._md5s = defaultdict(hashlib.md5)
@@ -113,40 +127,42 @@ class Archiver(object):
                 self._adler32s.get(segment_num, 1)
             )
             self._md5s[segment_num].update(segment)
-            data_writers = [self.data_writers[i]]
+            data_writer = self.data_writers[i]
             if self.sequence_num == 0:
-                for data_writer in data_writers:
-                    self._spawn(
-                        segment_num,
-                        data_writer,
-                        data_writer.archive_key_entire,
-                        self.collection_id,
-                        self.key,
-                        self.timestamp,
-                        self._meta_dict,
-                        segment_num,
-                        file_size,
-                        file_adler32,
-                        file_md5,
-                        segment
-                    )
+                self._spawn(
+                    segment_num,
+                    data_writer,
+                    data_writer.archive_key_entire,
+                    self.collection_id,
+                    self.key,
+                    self.timestamp,
+                    self._meta_dict,
+                    self._conjoined_identifier_hex,
+                    self._conjoined_part,
+                    segment_num,
+                    file_size,
+                    file_adler32,
+                    file_md5,
+                    segment
+                )
             else:
-                for data_writer in data_writers:
-                    self._spawn(
-                        segment_num,
-                        data_writer,
-                        data_writer.archive_key_final,
-                        self.collection_id,
-                        self.key,
-                        self.timestamp,
-                        self._meta_dict,
-                        segment_num,
-                        self.sequence_num,
-                        file_size,
-                        file_adler32,
-                        file_md5,
-                        segment
-                    )
+                self._spawn(
+                    segment_num,
+                    data_writer,
+                    data_writer.archive_key_final,
+                    self.collection_id,
+                    self.key,
+                    self.timestamp,
+                    self._meta_dict,
+                    self._conjoined_identifier_hex,
+                    self._conjoined_part,
+                    segment_num,
+                    self.sequence_num,
+                    file_size,
+                    file_adler32,
+                    file_md5,
+                    segment
+                )
         self._join(timeout)
         self._done = []
 

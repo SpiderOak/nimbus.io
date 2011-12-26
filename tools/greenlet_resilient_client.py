@@ -167,13 +167,21 @@ class GreenletResilientClient(Greenlet):
         self._status = _status_handshaking
         self._log.info("status = %s" % (_status_name[self._status], ))
 
-        message = {
+        message_control = {
             "message-type"      : "resilient-server-handshake",
             "message-id"        : uuid.uuid1().hex,
             "client-tag"        : self._client_tag,
             "client-address"    : self._client_address,
         }
-        self.queue_message_for_send(message)
+
+        # we don't call queue_message_for_send, because the only
+        # reply we expect is an ack, so we don't want a delivery
+        # channel
+        message = message_format(
+            ident=None, control=message_control, body=None
+        )
+
+        self._send_queue.put(message)
 
     def _handle_status_connected(self):
 

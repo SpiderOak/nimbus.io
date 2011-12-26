@@ -33,6 +33,8 @@ class DataWriter(object):
         key,
         timestamp,
         meta_dict,
+        conjoined_identifier_hex,
+        conjoined_part,
         segment_num,
         file_size,
         file_adler32,
@@ -43,19 +45,21 @@ class DataWriter(object):
         segment_md5.update(segment)
 
         message = {
-            "message-type"      : "archive-key-entire",
-            "priority"          : create_priority(),
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(segment),
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "segment-adler32"   : zlib.adler32(segment),
-            "file-size"         : file_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5),
-            "handoff-node-name" : None,
+            "message-type"              : "archive-key-entire",
+            "priority"                  : create_priority(),
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "timestamp-repr"            : repr(timestamp),
+            "conjoined-identifier-hex"  : conjoined_identifier_hex,
+            "conjoined-part"            : conjoined_part,
+            "segment-num"               : segment_num,
+            "segment-size"              : len(segment),
+            "segment-md5-digest"        : b64encode(segment_md5.digest()),
+            "segment-adler32"           : zlib.adler32(segment),
+            "file-size"                 : file_size,
+            "file-adler32"              : file_adler32,
+            "file-hash"                 : b64encode(file_md5),
+            "handoff-node-name"         : None,
         }
         message.update(meta_dict)
         delivery_channel = self._resilient_client.queue_message_for_send(
@@ -153,6 +157,8 @@ class DataWriter(object):
         key,
         timestamp,
         meta_dict,
+        conjoined_identifier_hex,
+        conjoined_part,
         segment_num,
         sequence_num,
         file_size,
@@ -160,37 +166,43 @@ class DataWriter(object):
         file_md5,
         segment,
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        try:
+            segment_md5 = hashlib.md5()
+            segment_md5.update(segment)
 
-        message = {
-            "message-type"      : "archive-key-final",
-            "priority"          : self._archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(segment),
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "segment-adler32"   : zlib.adler32(segment),
-            "sequence-num"      : sequence_num,
-            "file-size"         : file_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5),
-            "handoff-node-name" : None,
-        }
+            message = {
+                "message-type"              : "archive-key-final",
+                "priority"                  : self._archive_priority,
+                "collection-id"             : collection_id,
+                "key"                       : key,
+                "timestamp-repr"            : repr(timestamp),
+                "conjoined-identifier-hex"  : conjoined_identifier_hex,
+                "conjoined-part"            : conjoined_part,
+                "segment-num"               : segment_num,
+                "segment-size"              : len(segment),
+                "segment-md5-digest"        : b64encode(segment_md5.digest()),
+                "segment-adler32"           : zlib.adler32(segment),
+                "sequence-num"              : sequence_num,
+                "file-size"                 : file_size,
+                "file-adler32"              : file_adler32,
+                "file-hash"                 : b64encode(file_md5),
+                "handoff-node-name"         : None,
+            }
 
-        self._archive_priority = None
+            self._archive_priority = None
 
-        message.update(meta_dict)
-        delivery_channel = self._resilient_client.queue_message_for_send(
-            message, data=segment
-        )
-        self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
-        reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+            message.update(meta_dict)
+            delivery_channel = self._resilient_client.queue_message_for_send(
+                message, data=segment
+            )
+            self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
+            reply, _data = delivery_channel.get()
+            if reply["result"] != "success":
+                self._log.error("failed: %s" % (reply, ))
+                raise ArchiveFailedError(reply["error-message"])
+        except Exception:
+            self._log.exception("archive_key_final")
+            raise
 
     def destroy_key(
         self,
@@ -199,24 +211,28 @@ class DataWriter(object):
         timestamp,
         segment_num
     ):
-        message = {
-            "message-type"      : "destroy-key",
-            "priority"          : create_priority(),
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-        }
-        delivery_channel = \
-                self._resilient_client.queue_message_for_send(message)
+        try:
+            message = {
+                "message-type"      : "destroy-key",
+                "priority"          : create_priority(),
+                "collection-id"     : collection_id,
+                "key"               : key,
+                "timestamp-repr"    : repr(timestamp),
+                "segment-num"       : segment_num,
+            }
+            delivery_channel = \
+                    self._resilient_client.queue_message_for_send(message)
 
-        self._log.debug(
-            '%(message-type)s: '
-            'key = %(key)r '
-            'segment_num = %(segment-num)d' % message
-            )
-        reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise DestroyFailedError(reply["error-message"])
+            self._log.debug(
+                '%(message-type)s: '
+                'key = %(key)r '
+                'segment_num = %(segment-num)d' % message
+                )
+            reply, _data = delivery_channel.get()
+            if reply["result"] != "success":
+                self._log.error("failed: %s" % (reply, ))
+                raise DestroyFailedError(reply["error-message"])
+        except Exception:
+            self._log.exception("destroy_key")
+            raise
 

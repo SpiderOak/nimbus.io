@@ -6,6 +6,9 @@ priority (lowest first)
 
 import heapq
 import itertools
+import logging
+
+from tools.data_definitions import create_priority
 
 class PriorityQueue(object):
     """
@@ -15,6 +18,7 @@ class PriorityQueue(object):
     message["priority"], lowest first
     """
     def __init__(self):
+        self._log = logging.getLogger("PriorityQeueu")
         self._internal_queue = list()
         heapq.heapify(self._internal_queue)
         self._counter = itertools.count()
@@ -27,11 +31,15 @@ class PriorityQueue(object):
 
         It must have a message["priority"] entry
         """
+        try:
+            priority = message_tuple[0]["priority"]
+        except KeyError:
+            self._log.error("message lacks priority %s" % (message, ))
+            priority = create_priority()
+
         heapq.heappush(
             self._internal_queue, 
-            (message_tuple[0]["priority"], 
-             self._counter.next(), 
-             message_tuple, )
+            (priority, self._counter.next(), message_tuple, )
         )
 
     def popleft(self):

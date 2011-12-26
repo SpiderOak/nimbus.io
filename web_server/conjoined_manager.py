@@ -124,7 +124,7 @@ def start_conjoined_archive(data_writers, collection_id, key, timestamp):
     return {
         "conjoined_identifier_hex"  : conjoined_identifier.hex,
         "key"                       : key,
-        "timestamp_repr"            : repr(timestamp)   
+        "create_timestamp"          : repr(timestamp)   
     }
 
 def abort_conjoined_archive(

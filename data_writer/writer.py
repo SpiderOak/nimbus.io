@@ -305,13 +305,20 @@ class Writer(object):
 
         timestamp = parse_timestamp_repr(timestamp_repr)
 
+        if conjoined_identifier is None:
+            conjoined_identifier_bytes = None
+        else:
+            conjoined_identifier_bytes = psycopg2.Binary(
+                conjoined_identifier.bytes
+            )
+
         segment_row = segment_row_template(
             id=segment_entry["segment-id"],
             collection_id=collection_id,
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,
-            conjoined_identifier=conjoined_identifier,
+            conjoined_identifier=conjoined_identifier_bytes,
             conjoined_part=conjoined_part,
             file_size=file_size,
             file_adler32=file_adler32,

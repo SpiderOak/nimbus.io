@@ -106,14 +106,25 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
+    conjoined_identifier_hex = message.get("conjoined-identifier-hex")
+    if conjoined_identifier_hex is not None and \
+       len(conjoined_identifier_hex) > 0:
+        conjoined_identifier = uuid.UUID(hex=conjoined_identifier_hex)
+    else:
+        conjoined_identifier = None
+
+    conjoined_part = message.get("conjoined-part")
+    if conjoined_part is None:
+        conjoined_part = 0
+
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
-        message.get("conjoined_identifier"),
-        message.get("conjoined_part"),
+        conjoined_identifier,
+        conjoined_part,
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
@@ -225,14 +236,25 @@ def _handle_archive_key_final(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
+    conjoined_identifier_hex = message.get("conjoined-identifier-hex")
+    if conjoined_identifier_hex is not None and \
+       len(conjoined_identifier_hex) > 0:
+        conjoined_identifier = uuid.UUID(hex=conjoined_identifier_hex)
+    else:
+        conjoined_identifier = None
+
+    conjoined_part = message.get("conjoined-part")
+    if conjoined_part is None:
+        conjoined_part = 0
+
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
-        message.get("conjoined_identifier"),
-        message.get("conjoined_part"),
+        conjoined_identifier,
+        conjoined_part,
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),

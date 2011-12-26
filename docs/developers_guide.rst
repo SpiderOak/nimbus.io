@@ -277,6 +277,12 @@ The data will be uploaded to the collection specified in the HTTP hostname.
 
     Data to be uploaded comprises the body of the request.
 
+    :query conjoined_identifier=<conjoined-identifier>: 
+        * the value returned by conjoined start, 
+        * for a non-conjoined key, set to "" or don't send at all
+    :query conjoined_part=<sequence-number>: 
+        * for conjoined archives, sequence number of this upload, starting at 1
+        * for a non-conjoined key, set to zero or don't send at all
     :query __nimbus_io__<meta-key>=<meta-value>: metadata associated with the key 
     :statuscode 200: no error
     :statuscode 403: invalid data (probably zero size)
@@ -399,7 +405,7 @@ Upload to a Conjoined Archive
 Upload one part of the full key. Multiple uploads can be done in parallel.
 This is a normal key upload with additional varaibles.
 
-.. http:put:: /data/<key>
+.. http:post:: /data/<key>
 
     :query conjoined_identifier=<conjoined-identifier>: returned by start
     :query conjoined_part=<sequence-number>: number of this upload

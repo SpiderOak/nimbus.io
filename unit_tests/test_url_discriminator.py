@@ -71,6 +71,11 @@ _valid_urls_with_actions = [
         action_archive_key
     ),    
     (
+        "POST", 
+        'http://test-collection-name.nimbus.io:8088/data/test-key?conjoined_identifier=aaaaaaaaaaaaaaaaaaaaaa&conjoined_part=1',
+        action_archive_key
+    ),    
+    (
         "GET", 
         "https://test-collection-name.nimbus.io/data/",
         action_list_keys

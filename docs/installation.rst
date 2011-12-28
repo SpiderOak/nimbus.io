@@ -4,7 +4,7 @@ Installing nimbus.io and Supporting Software
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
 This is how to install nimbus.io
 

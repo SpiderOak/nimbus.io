@@ -9,7 +9,7 @@ Welcome to nimbus.io's documentation!
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
    intro
    developers_guide

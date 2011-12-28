@@ -4,7 +4,7 @@ Special Purpose Servers
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
 Thes are special purpose servers
 

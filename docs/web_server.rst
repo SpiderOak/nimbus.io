@@ -4,7 +4,7 @@ Web Server
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
 
 The web server is the interface with the external world

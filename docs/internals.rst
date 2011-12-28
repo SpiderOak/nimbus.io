@@ -4,7 +4,7 @@ Internals
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
    tools
    web_server

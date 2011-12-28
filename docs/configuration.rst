@@ -4,7 +4,7 @@ Configuring nimbus.io
 Contents:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 10
 
 This is how to configure nimbus.io
 

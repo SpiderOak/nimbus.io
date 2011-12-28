@@ -28,6 +28,7 @@ class CommandInterpreter(cmd.Cmd):
                 performance_packager=True,
                 event_aggregator=True,
                 event_subscriber=True,
+                stats_subscriber=True,
                 web_server=True,
             )
         )

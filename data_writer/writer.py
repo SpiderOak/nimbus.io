@@ -19,6 +19,38 @@ _max_value_file_size = int(os.environ.get(
     "NIMBUS_IO_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024))
 )
 
+def _insert_conjoined_row(connection, conjoined_dict):
+    connection.execute("""
+        insert into nimbusio_node.conjoined (
+            collection_id, key, identifier, create_timestamp
+        ) values (
+            %(collection_id)s, 
+            %(key)s, 
+            %(identifier)s, 
+            %(create_timestamp)s::timestamp
+        )""", conjoined_dict)                   
+    connection.commit()
+
+def _set_conjoined_abort_timestamp(connection, conjoined_dict):
+    connection.execute("""
+        update nimbusio_node.conjoined 
+        set abort_timestamp = %(abort_timestamp)s::timestamp
+        where collection_id = %(collection_id)s
+        and key = %(key)s
+        and identifier = %(identifier)s
+        """, conjoined_dict)                   
+    connection.commit()
+
+def _set_conjoined_complete_timestamp(connection, conjoined_dict):
+    connection.execute("""
+        update nimbusio_node.conjoined 
+        set complete_timestamp = %(complete_timestamp)s::timestamp
+        where collection_id = %(collection_id)s
+        and key = %(key)s
+        and identifier = %(identifier)s
+        """, conjoined_dict)                   
+    connection.commit()
+
 def _get_next_segment_id(connection):
     (next_segment_id, ) = connection.fetch_one_row(
         "select nextval('nimbusio_node.segment_id_seq');"
@@ -38,6 +70,8 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
             key,
             timestamp,
             segment_num,
+            conjoined_identifier, 
+            conjoined_part,
             file_size,
             file_adler32,
             file_hash,
@@ -49,6 +83,8 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
             %(key)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
+            %(conjoined_identifier)s, 
+            %(conjoined_part)s,
             %(file_size)s,
             %(file_adler32)s,
             %(file_hash)s,
@@ -269,13 +305,20 @@ class Writer(object):
 
         timestamp = parse_timestamp_repr(timestamp_repr)
 
+        if conjoined_identifier is None:
+            conjoined_identifier_bytes = None
+        else:
+            conjoined_identifier_bytes = psycopg2.Binary(
+                conjoined_identifier.bytes
+            )
+
         segment_row = segment_row_template(
             id=segment_entry["segment-id"],
             collection_id=collection_id,
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,
-            conjoined_identifier=conjoined_identifier,
+            conjoined_identifier=conjoined_identifier_bytes,
             conjoined_part=conjoined_part,
             file_size=file_size,
             file_adler32=file_adler32,
@@ -325,4 +368,46 @@ class Writer(object):
             handoff_node_id=None
         )
         _insert_segment_tombstone_row(self._connection, segment_row)
+
+    def start_conjoined_archive(
+        self, collection_id, key, conjoined_identifier, timestamp
+    ):
+        """
+        start a conjoined archive
+        """
+        conjoined_dict = {
+            "collection_id"     : collection_id,
+            "key"               : key,
+            "identifier"        : psycopg2.Binary(conjoined_identifier.bytes),
+            "create_timestamp"  : timestamp
+        }
+        _insert_conjoined_row(self._connection, conjoined_dict)
+
+    def abort_conjoined_archive(
+        self, collection_id, key, conjoined_identifier, timestamp
+    ):
+        """
+        mark a conjoined archive as aborted
+        """
+        conjoined_dict = {
+            "collection_id"     : collection_id,
+            "key"               : key,
+            "identifier"        : psycopg2.Binary(conjoined_identifier.bytes),
+            "abort_timestamp"   : timestamp
+        }
+        _set_conjoined_abort_timestamp(self._connection, conjoined_dict)
+
+    def finish_conjoined_archive(
+        self, collection_id, key, conjoined_identifier, timestamp
+    ):
+        """
+        mark a conjoined archive as finished
+        """
+        conjoined_dict = {
+            "collection_id"      : collection_id,
+            "key"                : key,
+            "identifier"         : psycopg2.Binary(conjoined_identifier.bytes),
+            "completed_timestamp": timestamp
+        }
+        _set_conjoined_complete_timestamp(self._connection, conjoined_dict)
 

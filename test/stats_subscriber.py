@@ -51,7 +51,6 @@ def _handle_web_server_stats(state, message, _data):
         message["reader"][9][2],
     )
     log.info(report_line)
-    print report_line
 
     report_line = _web_server_line_template % (
         message["node-name"],
@@ -69,7 +68,6 @@ def _handle_web_server_stats(state, message, _data):
         message["writer"][9][2],
     )
     log.info(report_line)
-    print report_line
 
 def _handle_queue_size(state, message, _data):
     log = logging.getLogger("_handle_queue_size")
@@ -79,7 +77,6 @@ def _handle_queue_size(state, message, _data):
 
     report_line = _queue_size_line_template % message
     log.info(report_line)
-    print report_line
 
 _dispatch_table = {
     "web-server-stats"                  : _handle_web_server_stats, 

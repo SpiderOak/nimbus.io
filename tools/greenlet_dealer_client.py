@@ -55,9 +55,15 @@ class GreenletDealerClient(Greenlet):
     def _run(self):
         while True:
 
+            # send everything in the send queue
+            while not self._send_queue.empty():
+                self._send_message(self._send_queue.get())
+                
+            # if we're not expecting any replies,
             # block until we get a message to send
-            message = self._send_queue.get()
-            self._send_message(message)
+            if len(self._delivery_queues) == 0:
+                message = self._send_queue.get()
+                self._send_message(message)
 
             # block until we get a reply
             message = self._receive_message()      
@@ -111,5 +117,6 @@ class GreenletDealerClient(Greenlet):
         elif len(body) == 1:
             body = body[0]
 
+        self._log.debug("received message %s" % (control, ))
         return message_format(ident=None, control=control, body=body)
 

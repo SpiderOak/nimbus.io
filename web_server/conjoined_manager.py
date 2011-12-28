@@ -90,7 +90,11 @@ def list_conjoined_archives(
         row_dict = dict()
         for key, value in zip(keys, row):
             if key in timestamp_keys and value is not None:
-                row_dict[key] = value.isoformat()
+                row_dict[key] = repr(value)
+            elif key == "conjoined_identifier":
+                conjoined_identifier_uuid = uuid.UUID(bytes=value)
+                row_dict["conjoined_identifier_hex"] = \
+                        conjoined_identifier_uuid.hex
             else:
                 row_dict[key] = value
         conjoined_list.append(row_dict)
@@ -117,7 +121,11 @@ def start_conjoined_archive(data_writers, collection_id, key, timestamp):
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
-    return {"conjoined_identifier_hex" : conjoined_identifier.hex}
+    return {
+        "conjoined_identifier_hex"  : conjoined_identifier.hex,
+        "key"                       : key,
+        "create_timestamp"          : repr(timestamp)   
+    }
 
 def abort_conjoined_archive(
     data_writers, collection_id, key, conjoined_identifier, timestamp
@@ -149,26 +157,6 @@ def finish_conjoined_archive(
 
     message = {
         "message-type"              : "finish-conjoined-archive",
-        "collection-id"             : collection_id,
-        "key"                       : key,
-        "conjoined-identifier-hex"  : conjoined_identifier_hex,
-        "timestamp-repr"            : repr(timestamp)
-    }
-
-    error_tag = ",".join([str(collection_id), key, conjoined_identifier_hex, ])
-    log.info(error_tag)
-    _send_message_receive_reply(data_writers, message, error_tag)
-
-def delete_conjoined_archive(
-    data_writers, collection_id, key, conjoined_identifier_hex, timestamp
-):
-    """
-    delete a conjoined archive
-    """
-    log = logging.getLogger("delete_conjoined_archive")
-
-    message = {
-        "message-type"              : "delete-conjoined-archive",
         "collection-id"             : collection_id,
         "key"                       : key,
         "conjoined-identifier-hex"  : conjoined_identifier_hex,

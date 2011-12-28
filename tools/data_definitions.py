@@ -52,6 +52,10 @@ def create_timestamp():
     return datetime.utcnow()
 
 def parse_timestamp_repr(timestamp_repr):
+    """
+    We can't send a timestamp pbject over JSON, so we send the repr
+    and parse that to re-create the object
+    """
     match_object = _timestamp_repr_re.match(timestamp_repr)
     if match_object is None:
         raise ValueError("unparsable timestamp '%s'" % (timestamp_repr, ))
@@ -137,6 +141,21 @@ meta_row_template = namedtuple(
         "meta_key",
         "meta_value",
         "timestamp",
+    ]
+)
+
+conjoined_row_template = namedtuple(
+    "ConjoinedRow", [
+        "id",
+        "collection_id",
+        "key",
+        "identifier",
+        "create_timestamp",
+        "abort_timestamp",
+        "complete_timestamp",
+        "delete_timestamp",
+        "combined_size",
+        "combined_hash",
     ]
 )
 

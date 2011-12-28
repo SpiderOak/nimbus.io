@@ -8,10 +8,18 @@ http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/252524
 
 class LRUCache:
     """
-    Implementation of a length-limited O(1) LRU queue.
+    Implementation of a length-limited O(1) LRU queue. This is a drop in 
+    replacement for a Python dict().
+
     Built for and used by PyPE:
+
     http://pype.sourceforge.net
+
     Copyright 2003 Josiah Carlson.
+
+    Taken from the ActiveState Python Cookbook
+
+    http://aspn.activestate.com/ASPN/Cookbook/Python/Recipe/252524
     """
     class _Node(object):
         __slots__ = ['prev', 'next', 'me']

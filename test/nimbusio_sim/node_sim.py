@@ -21,6 +21,7 @@ from test.nimbusio_sim.process_util import start_web_server, \
         start_anti_entropy_server, \
         start_event_publisher, \
         start_performance_packager, \
+        start_stats_subscriber, \
         poll_process, \
         terminate_process
 
@@ -35,7 +36,8 @@ class NodeSim(object):
         performance_packager=False,
         event_aggregator=False,
         web_server=False,
-        event_subscriber=False
+        event_subscriber=False,
+        stats_subscriber=False
     ):
         self._node_index = node_index
         self._cluster_config = cluster_config
@@ -52,6 +54,7 @@ class NodeSim(object):
         self._event_aggregator = event_aggregator
         self._web_server = web_server
         self._event_subscriber = event_subscriber
+        self._stats_subscriber = stats_subscriber
 
     def __str__(self):
         return self.node_name
@@ -114,6 +117,10 @@ class NodeSim(object):
         if self._event_subscriber:
             self._processes["event_subscriber"] = \
                 start_event_subscriber(self.env)
+
+        if self._stats_subscriber:
+            self._processes["stats_subscriber"] = \
+                start_stats_subscriber(self.env)
 
         if self._performance_packager:
             self._processes["performance-packager"] = \

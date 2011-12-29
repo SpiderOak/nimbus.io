@@ -15,7 +15,7 @@ import zlib
 
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
-from web_server.local_database_util import most_recent_timestamp_for_key
+from web_server.local_database_util import current_status_of_key
 from tools.data_definitions import create_timestamp, \
     create_priority, \
     random_string
@@ -141,17 +141,17 @@ class TestDataReader(unittest.TestCase):
         self.assertEqual(reply["result"], "success")
 
         # get file info from the local database
-        file_info = most_recent_timestamp_for_key(
+        _conjoined_row, segment_rows = current_status_of_key(
             self._database_connection, collection_id, key
         )
 
-        self.assertNotEqual(file_info, None)
+        self.assertEqual(len(segment_rows), 1)
 
         message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "retrieve-key-start",
             "message-id"        : message_id,
-            "collection-id"         : collection_id,
+            "collection-id"     : collection_id,
             "key"               : key, 
             "timestamp-repr"    : repr(timestamp),
             "segment-num"       : segment_num
@@ -293,11 +293,11 @@ class TestDataReader(unittest.TestCase):
         self.assertEqual(reply["result"], "success")
 
         # get file info from the local database
-        file_info = most_recent_timestamp_for_key(
+        _conjoined_row, segment_rows = current_status_of_key(
             self._database_connection, collection_id, key
         )
 
-        self.assertNotEqual(file_info, None)
+        self.assertEqual(len(segment_rows), 1)
 
         retrieved_data_list = list()
 

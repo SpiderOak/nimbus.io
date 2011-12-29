@@ -23,8 +23,99 @@ The API itself is designed to be simple, adopting a RESTful interface to
 key-value storage. It is similar to Amazon's S3 API, and we plan on providing 
 a drop-in module to help you migrate your application from S3 to nimbus.io.
 
+
+Users, Groups, Collections, Objects, and Permissions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+In Nimbus.io, users create collections for their data, and then store objects inside a specific collection.  Every collection and every object within a collection has a specific owner and permissions associated with it.
+
+As of this writing, Nimbus.io only supports a the simplest of permissions: authenticated users can access their own objects, and nothing else.   
+
+Very soon this will be expanded to allow permissions to be set on some objects for public access.  That will be followed by a more rich Unix style user and group permission model, and then full ACLs.  
+
+Command line tools
+^^^^^^^^^^^^^^^^^^
+
+If you have lumberyard (the Python library for accessing Nimbus.io) installed, you can use a command line tool to list, delete, and archive data into your nimbus collections using familiar unix commands like cp, mv, and rm.  
+
+Alternatively, you can also use the tools from the command line tools from the "motoboto" package which have a similar interface to the "boto" tools (s3put, lss3, fetch_file, etc.)
+
+Here are some examples using the Nimbus.io command line client:
+
+::
+
+    nimbus.io ls collection_name -- list keys in collection 
+    nimbus.io rm collection_name key_name  -- delete a key in a collection
+    nimbus.io cp filename.ext nimbus.io://collection_name/key_name  -- copy the local file filename.ext to key_name in collection_name (use a filename of - to copy stdin)
+    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext -- copy the contents of key_name in collection_name mylocalfile.ext
+    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext -- copy the contents of key_name in collection_name to the local file mylocalfile.ext
+    nimbus.io cp nimbus.io://collection_name1/key_name1 nimbusio://collection_name2/key_name2 -- copy a key from one nimbus.io location to another
+    nimbus.io cp s3://bucket_name/key_name nimbusio://collection_name/key_name -- copy a key from s3 to nimbus.io
+    nimbus.io cp nimbusio://collection_name/key_name s3://bucket_name/key_name  -- copy a key from nimbus.io to s3
+    nimbus.io mv s3://bucket_name/key_name nimbusio://collection_name/key_name -- move a key from s3 to nimbus.io
+
+Running Nimbus.io locally for dev
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For development and testing, you can simulate a full Nimbus.io cluster locally.  Included is a  cluster simulator script which can spawn and configure all the nodes for a full cluster on a single machine.  This is suitable for development work on inclusion in unit tests.  
+
+::
+    
+    src:scripts/spawn_simulated_cluster.sh -- spawn a new simulated cluster in a folder.  You will have 10 nodes, each listening on a local TCP port for REST API commands.  The first of these will be on whatever the --baseport argument was (default 9000).
+    src:scripts/run_tests_on_simcluster.sh -- run the standard unit tests against a simulated cluster (requires lumberyard and motoboto libs to be installed)
+    src:scripts/
+    src:customer/customer_main.py -- command line tool for creating customer accounts within a local cluster
+    src:scripts/run_greenlet_benchmark_on_simcluster.sh -- creates 1,000 test users, and spawns a process to simulate them interacting with the cluster
+
+ 
+For fault tolerance, production Nimbus.io storage clusters normally operate across at least 10 independent computers.  (More details available in the Nimbus.io Administrator's Guide.)
+
+Libraries for Programming Languages 
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Nearly any programming language will able to use the Nimbus.IO REST API directly over HTTP (described below.).  However there are also libraries available to abstract the REST  API and provide a higher level interface.
+
+The primary client library for Nimbus.io is called "lumberyard" and is available as a Python module from PyPI.  
+
+We've ported the popular Amazon S3 library "boto" to use Nimbus.io and we call this module "motoboto."  It internally uses lumberyard, but presents the same interface as boto so applications using boto could easily use motoboto instead as a drop in alternative.
+
+The development roadmap includes expand the selection of client libraries to include options for PHP, Perl, Ruby, Java, C#, Erlang, and Haskel.  Please contact us if you'd like to create a library for your favorite language, or even if you just have a recommendation on which popular S3 libraries you'd like to have ported to use Nimbus.io.
+
+Similar to the Nimbus.io server software itself, all the client libraries we write are free software released under the LGPL license.
+
+Migrating data
+
+Nimbus.io is intended to facilitate easy bidirectional migration between Nimbus.io, Amazon S3, and other cloud storage systems.  The nimbus.io command line tool and libraries know how to interact with multiple platforms.   Since the Nimbus.io platform is available under the GPL free software license, there's also always the option to bring your data home.  (See "Rolling your Own Cloud")
+
+To further ease interoperability, the Nimbus.io feature roadmap includes a REMOTE COPY operation within the Nimbus.io API to facilitate direct server-to-server data transfer between Nimbus.IO, S3, or other network accessible storage resources.  
+
+Rolling Your Own Cloud
+^^^^^^^^^^^^^^^^^^^^^^
+TODO write this blah blah 
+
+API Usage
+^^^^^^^^^
+The basic idea of REST is that you have "resources" (URLs) that represent 
+ideas or concepts in your problem domain, and then you use HTTP verbs to 
+perform actions on the resources.
+
+nimbus.io resources for a customer:
+
+* The customer's account
+* The collections owned by the customer
+* The keys within a collection
+* The data (and meta data) for a key
+
+These are represented as:
+
+::
+
+   https://nimbus.io/customers/<username>
+   https://nimbus.io/customers/<username>/collections
+   https://<collection name>.nimbus.io/data/
+   https://<collection name>.nimbus.io/data/<key>
+
 Authentication
-^^^^^^^^^^^^^^
+##############
 Each request to the nimbus.io API must be authenticated using a key, 
 assigned to you when you sign up for the service. You may request additional 
 keys to be associated with your account if you wish.
@@ -33,7 +124,7 @@ Authentication is accomplished using the HTTP Authorization header with a
 special scheme name of NIMBUSIO. The format of this header is detailed below.
 
 HTTP Authorization Header
-#########################
++++++++++++++++++++++++++
 The format of the HTTP Authorization header is:
 
 Authorization: NIMBUS.IO <key_id>:<signature>
@@ -46,7 +137,7 @@ signature
    A hex string signature, generated for each request as described in Authentication Signature
 
 Authentication Signature
-########################
+++++++++++++++++++++++++
 The authentication signature is a SHA256 HMAC hex string generated using a 
 string representing the request and your authentication key. This string is 
 made up of the following fields, separated by newline characters 
@@ -91,7 +182,7 @@ The following Python function will generate a valid signature for its inputs:
        return hmac_value.hexdigest()
 
 X-NIMBUS-IO-Timestamp
-#####################
++++++++++++++++++++++
 
 To provide some protection against replay attacks, the authentication 
 signature contains a timestamp field. In order for the server to verify the 
@@ -110,7 +201,7 @@ or the server will reject the authentication. Please synchronize your clock to
 an NTP server or otherwise make sure it is correct.
 
 Authentication Example
-######################
+++++++++++++++++++++++
 Using the following example credentials, we use the make_signature function 
 from Authentication Signature to generate an HTTP Authorization header.
 
@@ -129,28 +220,6 @@ Resulting HTTP Headers:
 
    Authorization: NIMBUS.IO 5001:e0942c34ee095825302dd6aede9ac7f7c8fc5985998f9eaacbe906b673855876
    X-NIMBUS.IO-Timestamp: 1276808600
-
-API Usage
-^^^^^^^^^
-The basic idea of REST is that you have "resources" (URLs) that represent 
-ideas or concepts in your problem domain, and then you use HTTP verbs to 
-perform actions on the resources.
-
-nimbus.io resources for a customer:
-
-* The customer's account
-* The collections owned by the customer
-* The keys within a collection
-* The data (and meta data) for a key
-
-These are represented as:
-
-::
-
-   https://nimbus.io/customers/<username>
-   https://nimbus.io/customers/<username>/collections
-   https://<collection name>.nimbus.io/data/
-   https://<collection name>.nimbus.io/data/<key>
 
 Customer's Account
 ##################

@@ -14,7 +14,7 @@ from web_server.exceptions import (
     DestroyFailedError,
 )
 
-from web_server.local_database_util import most_recent_timestamp_for_key
+from web_server.local_database_util import current_status_of_key
 
 class Destroyer(object):
     """Performs a destroy query on all data writers."""
@@ -63,11 +63,16 @@ class Destroyer(object):
             raise AlreadyInProgress()
 
         # TODO: find a non-blocking way to do this
-        file_info = most_recent_timestamp_for_key(
+        conjoined_row, segment_rows = current_status_of_key(
             self._node_local_connection , self.collection_id, self.key
         )
 
-        file_size = (0 if file_info is None else file_info.file_size)
+        conjoined_identifier = (
+            None if conjoined_row is None \
+            else uuid.UUID(bytes=conjoined_row.identifer)
+        )
+
+        file_size = sum([row.file_size for row in segment_rows])
 
         for i, data_writer in enumerate(self.data_writers):
             segment_num = i + 1
@@ -77,6 +82,7 @@ class Destroyer(object):
                 data_writer.destroy_key,
                 self.collection_id,
                 self.key,
+                conjoined_identifier,
                 self.timestamp,
                 segment_num
             )

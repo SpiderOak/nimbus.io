@@ -17,7 +17,6 @@ import logging
 import os
 import sys
 import time
-import uuid
 
 import zmq
 
@@ -32,6 +31,8 @@ from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
 from tools.data_definitions import parse_timestamp_repr, \
+        parse_conjoined_identifier_hex, \
+        parse_conjoined_part, \
         nimbus_meta_prefix
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -106,16 +107,11 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier_hex = message.get("conjoined-identifier-hex")
-    if conjoined_identifier_hex is not None and \
-       len(conjoined_identifier_hex) > 0:
-        conjoined_identifier = uuid.UUID(hex=conjoined_identifier_hex)
-    else:
-        conjoined_identifier = None
+    conjoined_identifier = parse_conjoined_identifier_hex(
+        message.get("conjoined-identifier-hex")
+    )
 
-    conjoined_part = message.get("conjoined-part")
-    if conjoined_part is None:
-        conjoined_part = 0
+    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
@@ -236,16 +232,10 @@ def _handle_archive_key_final(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier_hex = message.get("conjoined-identifier-hex")
-    if conjoined_identifier_hex is not None and \
-       len(conjoined_identifier_hex) > 0:
-        conjoined_identifier = uuid.UUID(hex=conjoined_identifier_hex)
-    else:
-        conjoined_identifier = None
-
-    conjoined_part = message.get("conjoined-part")
-    if conjoined_part is None:
-        conjoined_part = 0
+    conjoined_identifier = parse_conjoined_identifier_hex(
+        message.get("conjoined-identifier-hex")
+    )
+    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
@@ -337,7 +327,10 @@ def _handle_start_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = uuid.UUID(hex=message["conjoined-identifier-hex"])
+    conjoined_identifier = parse_conjoined_identifier_hex(
+        message.get("conjoined-identifier-hex")
+    )
+    assert conjoined_identifier is not None
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].start_conjoined_archive(
@@ -365,7 +358,10 @@ def _handle_abort_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = uuid.UUID(hex=message["conjoined-identifier-hex"])
+    conjoined_identifier = parse_conjoined_identifier_hex(
+        message.get("conjoined-identifier-hex")
+    )
+    assert conjoined_identifier is not None
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].abort_conjoined_archive(
@@ -393,7 +389,10 @@ def _handle_finish_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = uuid.UUID(hex=message["conjoined-identifier-hex"])
+    conjoined_identifier = parse_conjoined_identifier_hex(
+        message.get("conjoined-identifier-hex")
+    )
+    assert conjoined_identifier is not None
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].finish_conjoined_archive(

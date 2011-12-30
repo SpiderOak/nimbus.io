@@ -8,7 +8,8 @@ import logging
 
 from tools.data_definitions import segment_row_template, \
         segment_sequence_template, \
-        compute_value_file_path
+        compute_value_file_path, \
+        conjoined_identifier_binary
 
 def _all_segment_rows_for_key(connection, collection_id, key):
     """
@@ -24,11 +25,20 @@ def _all_segment_rows_for_key(connection, collection_id, key):
     return [segment_row_template._make(row) for row in result]
 
 def _all_sequence_rows_for_segment(
-    connection, collection_id, key, timestamp, segment_num
+    connection, 
+    collection_id, 
+    key, 
+    timestamp, 
+    segment_num
 ):
     """
     retrieve all rows for a segment identified by 
-    (collection_id, key, timestamp, segment_num)
+     * collection_id
+     * key
+     * timestamp
+     * conjoined_identifier
+     * conjoined_part
+     * segment_num
     """
     result = connection.fetch_all_rows("""
         select %s from nimbusio_node.segment_sequence
@@ -36,11 +46,54 @@ def _all_sequence_rows_for_segment(
             select distinct id from nimbusio_node.segment 
             where collection_id = %%s and key = %%s 
             and timestamp=%%s::timestamp and segment_num=%%s
+            and conjoined_identifier is null and conjoined_part = 0
             and file_tombstone=false
         )
         order by sequence_num asc
-    """ % (",".join(segment_sequence_template._fields), ), 
-    [collection_id, key, timestamp, segment_num, ])
+    """ % (",".join(segment_sequence_template._fields), ), [
+        collection_id, 
+        key, 
+        timestamp, 
+        segment_num, 
+    ])
+    return [segment_sequence_template._make(row) for row in result]
+
+def _all_sequence_rows_for_conjoined_segment(
+    connection, 
+    collection_id, 
+    key, 
+    timestamp, 
+    conjoined_identifier, 
+    conjoined_part,
+    segment_num
+):
+    """
+    retrieve all rows for a segment identified by 
+     * collection_id
+     * key
+     * timestamp
+     * conjoined_identifier
+     * conjoined_part
+     * segment_num
+    """
+    result = connection.fetch_all_rows("""
+        select %s from nimbusio_node.segment_sequence
+        where segment_id = (
+            select distinct id from nimbusio_node.segment 
+            where collection_id = %%s and key = %%s 
+            and timestamp=%%s::timestamp and segment_num=%%s
+            and conjoined_identifier = %%s and conjoined_part = %%s
+            and file_tombstone=false
+        )
+        order by sequence_num asc
+    """ % (",".join(segment_sequence_template._fields), ), [
+        collection_id, 
+        key, 
+        timestamp, 
+        segment_num, 
+        conjoined_identifier_binary(conjoined_identifier),
+        conjoined_part
+    ])
     return [segment_sequence_template._make(row) for row in result]
 
 class Reader(object):
@@ -65,20 +118,37 @@ class Reader(object):
         return _all_segment_rows_for_key(self._connection, collection_id, key)
    
     def generate_all_sequence_rows_for_segment(
-        self, collection_id, key, timestamp, segment_num
+        self, 
+        collection_id, 
+        key, 
+        timestamp, 
+        conjoined_identifier, 
+        conjoined_part,
+        segment_num
     ):
         """
         a generator to return sequence data for a segment in order
         """
         open_value_files = dict()
 
-        sequence_rows = _all_sequence_rows_for_segment(
-            self._connection, 
-            collection_id, 
-            key, 
-            timestamp,
-            segment_num
-        )
+        if conjoined_identifier is None:
+            sequence_rows = _all_sequence_rows_for_segment(
+                self._connection, 
+                collection_id, 
+                key, 
+                timestamp,
+                segment_num
+            )
+        else:
+            sequence_rows = _all_sequence_rows_for_conjoined_segment(
+                self._connection, 
+                collection_id, 
+                key, 
+                timestamp,
+                conjoined_identifier, 
+                conjoined_part, 
+                segment_num
+            )
 
         # first yield is count of sequences
         yield len(sequence_rows)

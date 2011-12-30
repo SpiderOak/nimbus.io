@@ -113,20 +113,22 @@ class TestDataReader(unittest.TestCase):
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "archive-key-entire",
-            "message-id"        : message_id,
-            "priority"          : archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : file_size,
-            "segment-adler32"   : file_adler32,
-            "segment-md5-digest": b64encode(file_md5.digest()),
-            "file-size"         : file_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5.digest()),
-            "handoff-node-name" : None,
+            "message-type"              : "archive-key-entire",
+            "message-id"                : message_id,
+            "priority"                  : archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+            "segment-size"              : file_size,
+            "segment-adler32"           : file_adler32,
+            "segment-md5-digest"        : b64encode(file_md5.digest()),
+            "file-size"                 : file_size,
+            "file-adler32"              : file_adler32,
+            "file-hash"                 : b64encode(file_md5.digest()),
+            "handoff-node-name"         : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -149,12 +151,14 @@ class TestDataReader(unittest.TestCase):
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "retrieve-key-start",
-            "message-id"        : message_id,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num
+            "message-type"              : "retrieve-key-start",
+            "message-id"                : message_id,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "timestamp-repr"            : repr(timestamp),
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "segment-num"               : segment_num
         }
 
         reply, data = send_request_and_get_reply_and_data(
@@ -196,17 +200,19 @@ class TestDataReader(unittest.TestCase):
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "archive-key-start",
-            "message-id"        : message_id,
-            "priority"          : archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(test_data[slice_start:slice_end]),
-            "segment-adler32"   : segment_adler32,
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "sequence-num"      : sequence_num,
+            "message-type"              : "archive-key-start",
+            "message-id"                : message_id,
+            "priority"                  : archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+            "segment-size"              : len(test_data[slice_start:slice_end]),
+            "segment-adler32"           : segment_adler32,
+            "segment-md5-digest"        : b64encode(segment_md5.digest()),
+            "sequence-num"              : sequence_num,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -230,17 +236,21 @@ class TestDataReader(unittest.TestCase):
 
             message_id = uuid.uuid1().hex
             message = {
-                "message-type"      : "archive-key-next",
-                "message-id"        : message_id,
-                "priority"          : archive_priority,
-                "collection-id"     : collection_id,
-                "key"               : key, 
-                "timestamp-repr"    : repr(timestamp),
-                "segment-num"       : segment_num,
-                "segment-size"      : len(test_data[slice_start:slice_end]),
-                "segment-adler32"   : segment_adler32,
-                "segment-md5-digest": b64encode(segment_md5.digest()),
-                "sequence-num"      : sequence_num,
+                "message-type"              : "archive-key-next",
+                "message-id"                : message_id,
+                "priority"                  : archive_priority,
+                "collection-id"             : collection_id,
+                "key"                       : key, 
+                "conjoined-identifier-hex"  : None,
+                "conjoined-part"            : 0,
+                "timestamp-repr"            : repr(timestamp),
+                "segment-num"               : segment_num,
+                "segment-size"              : len(
+                    test_data[slice_start:slice_end]
+                ),
+                "segment-adler32"           : segment_adler32,
+                "segment-md5-digest"        : b64encode(segment_md5.digest()),
+                "sequence-num"              : sequence_num,
             }
             reply = send_request_and_get_reply(
                 _local_node_name,
@@ -264,21 +274,23 @@ class TestDataReader(unittest.TestCase):
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "archive-key-final",
-            "message-id"        : message_id,
-            "priority"          : archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(test_data[slice_start:slice_end]),
-            "segment-adler32"   : segment_adler32,
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "sequence-num"      : sequence_num,
-            "file-size"         : total_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5.digest()),
-            "handoff-node-name" : None,
+            "message-type"              : "archive-key-final",
+            "message-id"                : message_id,
+            "priority"                  : archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+            "segment-size"              : len(test_data[slice_start:slice_end]),
+            "segment-adler32"           : segment_adler32,
+            "segment-md5-digest"        : b64encode(segment_md5.digest()),
+            "sequence-num"              : sequence_num,
+            "file-size"                 : total_size,
+            "file-adler32"              : file_adler32,
+            "file-hash"                 : b64encode(file_md5.digest()),
+            "handoff-node-name"         : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -303,12 +315,14 @@ class TestDataReader(unittest.TestCase):
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "retrieve-key-start",
-            "message-id"        : message_id,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num
+            "message-type"              : "retrieve-key-start",
+            "message-id"                : message_id,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "timestamp-repr"            : repr(timestamp),
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "segment-num"               : segment_num
         }
 
         reply, data = send_request_and_get_reply_and_data(
@@ -329,12 +343,14 @@ class TestDataReader(unittest.TestCase):
         while True:
             message_id = uuid.uuid1().hex
             message = {
-                "message-type"      : "retrieve-key-next",
-                "message-id"        : message_id,
-                "collection-id"     : collection_id,
-                "key"               : key, 
-                "timestamp-repr"    : repr(timestamp),
-                "segment-num"       : segment_num
+                "message-type"              : "retrieve-key-next",
+                "message-id"                : message_id,
+                "collection-id"             : collection_id,
+                "key"                       : key, 
+                "timestamp-repr"            : repr(timestamp),
+                "conjoined-identifier-hex"  : None,
+                "conjoined-part"            : 0,
+                "segment-num"               : segment_num
             }
 
             reply, data = send_request_and_get_reply_and_data(

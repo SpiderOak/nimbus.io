@@ -8,6 +8,8 @@ from base64 import b64decode
 import hashlib
 import logging
 
+from tools.data_definitions import conjoined_identifier_hex
+
 class DataReader(object):
 
     def __init__(self, node_name, resilient_client):
@@ -27,15 +29,21 @@ class DataReader(object):
         self,
         collection_id,
         key,
+        conjoined_identifier,
+        conjoined_part,
         timestamp,
         segment_num
     ):
         message = {
-            "message-type"      : "retrieve-key-start",
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
+            "message-type"              : "retrieve-key-start",
+            "collection-id"             : collection_id,
+            "key"                       : key,
+            "conjoined-identifier-hex"  : conjoined_identifier_hex(
+                conjoined_identifier
+            ),
+            "conjoined-part"            : conjoined_part,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
@@ -71,15 +79,21 @@ class DataReader(object):
         self,
         collection_id,
         key,
+        conjoined_identifier,
+        conjoined_part,
         timestamp,
         segment_num
     ):
         message = {
-            "message-type"      : "retrieve-key-next",
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
+            "message-type"              : "retrieve-key-next",
+            "collection-id"             : collection_id,
+            "key"                       : key,
+            "conjoined-identifier-hex"  : conjoined_identifier_hex(
+                conjoined_identifier
+            ),
+            "conjoined-part"            : conjoined_part,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)

@@ -6,12 +6,12 @@ Manage writing segment values to disk
 """
 import logging
 import os
-
 import psycopg2
 
 from tools.data_definitions import segment_row_template, \
         segment_sequence_template, \
         parse_timestamp_repr, \
+        conjoined_identifier_binary, \
         meta_row_template
 from data_writer.output_value_file import OutputValueFile
 
@@ -305,20 +305,15 @@ class Writer(object):
 
         timestamp = parse_timestamp_repr(timestamp_repr)
 
-        if conjoined_identifier is None:
-            conjoined_identifier_bytes = None
-        else:
-            conjoined_identifier_bytes = psycopg2.Binary(
-                conjoined_identifier.bytes
-            )
-
         segment_row = segment_row_template(
             id=segment_entry["segment-id"],
             collection_id=collection_id,
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,
-            conjoined_identifier=conjoined_identifier_bytes,
+            conjoined_identifier=conjoined_identifier_binary(
+                conjoined_identifier
+            ),
             conjoined_part=conjoined_part,
             file_size=file_size,
             file_adler32=file_adler32,
@@ -378,7 +373,9 @@ class Writer(object):
         conjoined_dict = {
             "collection_id"     : collection_id,
             "key"               : key,
-            "identifier"        : psycopg2.Binary(conjoined_identifier.bytes),
+            "identifier"        : conjoined_identifier_binary(
+                conjoined_identifier
+            ),
             "create_timestamp"  : timestamp
         }
         _insert_conjoined_row(self._connection, conjoined_dict)
@@ -392,7 +389,9 @@ class Writer(object):
         conjoined_dict = {
             "collection_id"     : collection_id,
             "key"               : key,
-            "identifier"        : psycopg2.Binary(conjoined_identifier.bytes),
+            "identifier"        : conjoined_identifier_binary(
+                conjoined_identifier
+            ),
             "abort_timestamp"   : timestamp
         }
         _set_conjoined_abort_timestamp(self._connection, conjoined_dict)
@@ -406,7 +405,9 @@ class Writer(object):
         conjoined_dict = {
             "collection_id"      : collection_id,
             "key"                : key,
-            "identifier"         : psycopg2.Binary(conjoined_identifier.bytes),
+            "identifier"         : conjoined_identifier_binary(
+                conjoined_identifier
+            ),
             "completed_timestamp": timestamp
         }
         _set_conjoined_complete_timestamp(self._connection, conjoined_dict)

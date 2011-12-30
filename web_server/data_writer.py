@@ -9,7 +9,8 @@ import hashlib
 import logging
 import zlib
 
-from tools.data_definitions import create_priority
+from tools.data_definitions import create_priority, \
+        conjoined_identifier_hex
 
 from web_server.exceptions import (
     ArchiveFailedError,
@@ -208,17 +209,21 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        conjoined_identifier,
         timestamp,
         segment_num
     ):
         try:
             message = {
-                "message-type"      : "destroy-key",
-                "priority"          : create_priority(),
-                "collection-id"     : collection_id,
-                "key"               : key,
-                "timestamp-repr"    : repr(timestamp),
-                "segment-num"       : segment_num,
+                "message-type"              : "destroy-key",
+                "priority"                  : create_priority(),
+                "collection-id"             : collection_id,
+                "key"                       : key,
+                "conjoined-identifier-hex"  : conjoined_identifier_hex(
+                    conjoined_identifier
+                ),
+                "timestamp-repr"            : repr(timestamp),
+                "segment-num"               : segment_num,
             }
             delivery_channel = \
                     self._resilient_client.queue_message_for_send(message)

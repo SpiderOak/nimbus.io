@@ -6,6 +6,7 @@ Contents:
 .. toctree::
    :maxdepth: 10
 
+   resilience 
    tools
    web_server
    node_servers

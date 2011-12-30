@@ -24,7 +24,9 @@ from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection
-from tools.data_definitions import parse_timestamp_repr
+from tools.data_definitions import parse_timestamp_repr, \
+        parse_conjoined_identifier_hex, \
+        parse_conjoined_part
 
 from data_reader.reader import Reader
 from data_reader.state_cleaner import StateCleaner
@@ -94,12 +96,20 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    conjoined_identifier = parse_conjoined_identifier_hex(
+        message.get("conjoined-identifier-hex")
+    )
+    conjoined_part = parse_conjoined_part(
+        message.get("conjoined-part")
+    )
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     sequence_generator = state["reader"].generate_all_sequence_rows_for_segment(
         message["collection-id"],
         message["key"],
         timestamp,
+        conjoined_identifier,
+        conjoined_part,
         message["segment-num"]
     )
 

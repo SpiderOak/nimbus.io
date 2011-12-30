@@ -828,15 +828,15 @@ class Application(object):
         ))
 
         getter = StatGetter(self._node_local_connection)
-        file_info = getter.stat(
+        segment_rows = getter.stat(
             collection_entry.collection_id, key, _reply_timeout
         )
-        if file_info is None or file_info.file_tombstone:
+        if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)
-        response.content_length = file_info.file_size 
-        response.content_md5 = b64encode(file_info.file_hash)
+        response.content_length = segment_rows[0].file_size 
+        response.content_md5 = b64encode(segment_rows[0].file_hash)
 
         return response
 

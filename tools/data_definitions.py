@@ -8,8 +8,10 @@ common data definitions
 from collections import namedtuple
 from datetime import datetime
 import os.path
+import psycopg2
 import re
 import time
+import uuid
 
 # our internal message format
 message_format = namedtuple("Message", "ident control body")
@@ -71,6 +73,39 @@ def parse_timestamp_repr(timestamp_repr):
     )
 
     return timestamp
+
+def parse_conjoined_identifier_hex(conjoined_identifier_hex):
+    """
+    return the UUID or None
+    """
+    if conjoined_identifier_hex is not None and \
+       len(conjoined_identifier_hex) > 0:
+        conjoined_identifier = uuid.UUID(hex=conjoined_identifier_hex)
+    else:
+        conjoined_identifier = None
+
+    return conjoined_identifier
+
+def conjoined_identifier_hex(conjoined_identifier):
+    """
+    return a hex string or None
+    """
+    if conjoined_identifier is None:
+        return None
+
+    return conjoined_identifier.hex
+
+def conjoined_identifier_binary(conjoined_identifier):
+    """
+    return a psycopg2 binary or None
+    """
+    if conjoined_identifier is None:
+        return None
+
+    return psycopg2.Binary( conjoined_identifier.bytes)
+
+def parse_conjoined_part(conjoined_part):
+    return (0 if conjoined_part is None else conjoined_part) 
 
 cluster_row_template = namedtuple("ClusterRow", [
     "id",

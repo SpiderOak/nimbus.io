@@ -22,6 +22,7 @@ _ack_timeout = float(os.environ.get("NIMBUSIO_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
 _max_idle_time = 10 * 60.0
 _reporting_interval = 60.0
+_connect_delay = 60.0
 
 _status_handshaking = 1
 _status_connected = 2
@@ -261,6 +262,14 @@ class GreenletResilientClient(Greenlet):
 
     def _run(self):
         while True:
+
+            # loop (with delay) until we are connected
+            if self._dealer_socket is None:
+                self._log.warn("not connected (%s), waiting %s seconds" % (
+                    _status_name[self._status], _connect_delay
+                ))
+                gevent.sleep(_connect_delay)
+                continue
 
             # block until we get a message to send
             message_to_send = self._send_queue.get()

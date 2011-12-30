@@ -1,2 +1,5 @@
 *.pyc
 *.log
+docs/_build/*
+django/*
+

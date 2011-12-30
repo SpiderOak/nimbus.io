@@ -13,13 +13,14 @@ import unittest
 import uuid
 import zlib
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.database_connection import get_node_local_connection
-from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
-from diyapi_tools.data_definitions import create_timestamp
+from tools.standard_logging import initialize_logging
+from tools.database_connection import get_node_local_connection
+from web_server.local_database_util import current_status_of_key
+from tools.data_definitions import create_timestamp, \
+    create_priority, \
+    random_string
 
-from unit_tests.util import random_string, \
-        generate_key, \
+from unit_tests.util import generate_key, \
         start_event_publisher, \
         start_data_writer, \
         start_data_reader, \
@@ -28,16 +29,16 @@ from unit_tests.util import random_string, \
 from unit_tests.gevent_zeromq_util import send_request_and_get_reply_and_data, \
         send_request_and_get_reply
 
-_log_path = "/var/log/pandora/test_data_reader.log"
+_log_path = "%s/test_data_reader.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "test_dir")
 _repository_path = os.path.join(_test_dir, "repository")
 _cluster_name = "multi-node-cluster"
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_local_node_name = "multi-node-01"
 _data_writer_address = "tcp://127.0.0.1:8100"
 _data_reader_address = "tcp://127.0.0.1:8200"
 _client_address = "tcp://127.0.0.1:8900"
 _event_publisher_pull_address = \
-    "ipc:///tmp/spideroak-event-publisher-%s/socket" % (_local_node_name, )
+    "ipc:///tmp/nimbusio-event-publisher-%s/socket" % (_local_node_name, )
 _event_publisher_pub_address = "tcp://127.0.0.1:8800"
 
 class TestDataReader(unittest.TestCase):
@@ -71,6 +72,7 @@ class TestDataReader(unittest.TestCase):
         self._data_reader_process = start_data_reader(
             _local_node_name, 
             _data_reader_address,
+            _event_publisher_pull_address,
             _repository_path
         )
         poll_result = poll_process(self._data_reader_process)
@@ -102,6 +104,7 @@ class TestDataReader(unittest.TestCase):
         file_content = random_string(file_size) 
         collection_id = 1001
         key  = self._key_generator.next()
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         segment_num = 2
 
@@ -110,16 +113,22 @@ class TestDataReader(unittest.TestCase):
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "archive-key-entire",
-            "message-id"        : message_id,
-            "collection-id"         : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "file-size"         : file_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5.digest()),
-            "handoff-node-name" : None,
+            "message-type"              : "archive-key-entire",
+            "message-id"                : message_id,
+            "priority"                  : archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+            "segment-size"              : file_size,
+            "segment-adler32"           : file_adler32,
+            "segment-md5-digest"        : b64encode(file_md5.digest()),
+            "file-size"                 : file_size,
+            "file-adler32"              : file_adler32,
+            "file-hash"                 : b64encode(file_md5.digest()),
+            "handoff-node-name"         : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -134,20 +143,22 @@ class TestDataReader(unittest.TestCase):
         self.assertEqual(reply["result"], "success")
 
         # get file info from the local database
-        file_info = most_recent_timestamp_for_key(
+        _conjoined_row, segment_rows = current_status_of_key(
             self._database_connection, collection_id, key
         )
 
-        self.assertNotEqual(file_info, None)
+        self.assertEqual(len(segment_rows), 1)
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "retrieve-key-start",
-            "message-id"        : message_id,
-            "collection-id"         : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num
+            "message-type"              : "retrieve-key-start",
+            "message-id"                : message_id,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "timestamp-repr"            : repr(timestamp),
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "segment-num"               : segment_num
         }
 
         reply, data = send_request_and_get_reply_and_data(
@@ -172,6 +183,7 @@ class TestDataReader(unittest.TestCase):
         test_data = random_string(total_size)
 
         collection_id = 1001
+        archive_priority = create_priority()
         timestamp = create_timestamp()
         key  = self._key_generator.next()
         segment_num = 4
@@ -183,15 +195,24 @@ class TestDataReader(unittest.TestCase):
         slice_start = 0
         slice_end = slice_size
 
+        segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
+        segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
+
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "archive-key-start",
-            "message-id"        : message_id,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "sequence-num"      : sequence_num,
+            "message-type"              : "archive-key-start",
+            "message-id"                : message_id,
+            "priority"                  : archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+            "segment-size"              : len(test_data[slice_start:slice_end]),
+            "segment-adler32"           : segment_adler32,
+            "segment-md5-digest"        : b64encode(segment_md5.digest()),
+            "sequence-num"              : sequence_num,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -209,15 +230,27 @@ class TestDataReader(unittest.TestCase):
             sequence_num += 1
             slice_start += slice_size
             slice_end += slice_size
+            
+            segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
+            segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
+
             message_id = uuid.uuid1().hex
             message = {
-                "message-type"      : "archive-key-next",
-                "collection-id"     : collection_id,
-                "key"               : key, 
-                "timestamp-repr"    : repr(timestamp),
-                "segment-num"       : segment_num,
-                "message-id"        : message_id,
-                "sequence-num"      : sequence_num,
+                "message-type"              : "archive-key-next",
+                "message-id"                : message_id,
+                "priority"                  : archive_priority,
+                "collection-id"             : collection_id,
+                "key"                       : key, 
+                "conjoined-identifier-hex"  : None,
+                "conjoined-part"            : 0,
+                "timestamp-repr"            : repr(timestamp),
+                "segment-num"               : segment_num,
+                "segment-size"              : len(
+                    test_data[slice_start:slice_end]
+                ),
+                "segment-adler32"           : segment_adler32,
+                "segment-md5-digest"        : b64encode(segment_md5.digest()),
+                "sequence-num"              : sequence_num,
             }
             reply = send_request_and_get_reply(
                 _local_node_name,
@@ -235,19 +268,29 @@ class TestDataReader(unittest.TestCase):
         slice_start += slice_size
         slice_end += slice_size
         self.assertEqual(slice_end, total_size)
+
+        segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
+        segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
+
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "archive-key-final",
-            "message-id"        : message_id,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "sequence-num"      : sequence_num,
-            "file-size"         : total_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5.digest()),
-            "handoff-node-name" : None,
+            "message-type"              : "archive-key-final",
+            "message-id"                : message_id,
+            "priority"                  : archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+            "segment-size"              : len(test_data[slice_start:slice_end]),
+            "segment-adler32"           : segment_adler32,
+            "segment-md5-digest"        : b64encode(segment_md5.digest()),
+            "sequence-num"              : sequence_num,
+            "file-size"                 : total_size,
+            "file-adler32"              : file_adler32,
+            "file-hash"                 : b64encode(file_md5.digest()),
+            "handoff-node-name"         : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -262,22 +305,24 @@ class TestDataReader(unittest.TestCase):
         self.assertEqual(reply["result"], "success")
 
         # get file info from the local database
-        file_info = most_recent_timestamp_for_key(
+        _conjoined_row, segment_rows = current_status_of_key(
             self._database_connection, collection_id, key
         )
 
-        self.assertNotEqual(file_info, None)
+        self.assertEqual(len(segment_rows), 1)
 
         retrieved_data_list = list()
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "retrieve-key-start",
-            "message-id"        : message_id,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num
+            "message-type"              : "retrieve-key-start",
+            "message-id"                : message_id,
+            "collection-id"             : collection_id,
+            "key"                       : key, 
+            "timestamp-repr"            : repr(timestamp),
+            "conjoined-identifier-hex"  : None,
+            "conjoined-part"            : 0,
+            "segment-num"               : segment_num
         }
 
         reply, data = send_request_and_get_reply_and_data(
@@ -298,12 +343,14 @@ class TestDataReader(unittest.TestCase):
         while True:
             message_id = uuid.uuid1().hex
             message = {
-                "message-type"      : "retrieve-key-next",
-                "message-id"        : message_id,
-                "collection-id"     : collection_id,
-                "key"               : key, 
-                "timestamp-repr"    : repr(timestamp),
-                "segment-num"       : segment_num
+                "message-type"              : "retrieve-key-next",
+                "message-id"                : message_id,
+                "collection-id"             : collection_id,
+                "key"                       : key, 
+                "timestamp-repr"            : repr(timestamp),
+                "conjoined-identifier-hex"  : None,
+                "conjoined-part"            : 0,
+                "segment-num"               : segment_num
             }
 
             reply, data = send_request_and_get_reply_and_data(
@@ -329,5 +376,7 @@ class TestDataReader(unittest.TestCase):
 
 if __name__ == "__main__":
     initialize_logging(_log_path)
+    os.environ["NIMBUSIO_NODE_NAME"] = _local_node_name
+    os.environ["NIMBUSIO_NODE_USER_PASSWORD"] = "pork"
     unittest.main()
 

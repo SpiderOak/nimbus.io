@@ -12,15 +12,17 @@ import time
 
 import zmq
 
-from diyapi_tools.zeromq_pollster import ZeroMQPollster
-from diyapi_tools.resilient_server import ResilientServer
-from diyapi_tools.deque_dispatcher import DequeDispatcher
-from diyapi_tools import time_queue_driven_process
+from tools.zeromq_pollster import ZeroMQPollster
+from tools.resilient_server import ResilientServer
+from tools.deque_dispatcher import DequeDispatcher
+from tools import time_queue_driven_process
 
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
-_log_path = u"/var/log/pandora/resilient_server_shell.log"
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = u"%s/resilient_server_shell.log" % (
+    os.environ["NIMBUSIO_LOG_DIR"], 
+)
 _test_server_address = os.environ.get(
-    "DIYAPI_TEST_SERVER_ADDRESS",
+    "NIMBUSIO_TEST_SERVER_ADDRESS",
     "tcp://127.0.0.1:8000"
 )
 

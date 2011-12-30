@@ -7,14 +7,22 @@ using the same gevent driven objects used by the web server
 """
 import logging
 
+from gevent import monkey
+monkey.patch_all()
+
+import gevent_zeromq
+gevent_zeromq.monkey_patch()
+
 import gevent
 from gevent_zeromq import zmq
 
-from diyapi_tools.greenlet_zeromq_pollster import GreenletZeroMQPollster
-from diyapi_tools.greenlet_resilient_client import GreenletResilientClient
-from diyapi_tools.greenlet_pull_server import GreenletPULLServer
-from diyapi_tools.deliverator import Deliverator
-from diyapi_tools.greenlet_push_client import GreenletPUSHClient
+from tools.greenlet_resilient_client import GreenletResilientClient
+from tools.greenlet_pull_server import GreenletPULLServer
+from tools.deliverator import Deliverator
+from tools.greenlet_push_client import GreenletPUSHClient
+
+class UtilError(Exception):
+    pass
 
 def send_request_and_get_reply(
     server_node_name,
@@ -43,8 +51,7 @@ def send_request_and_get_reply_and_data(
     data=None
 ):
     log = logging.getLogger("send_request_and_get_reply_and_data")
-    context = zmq.context.Context()
-    pollster = GreenletZeroMQPollster()
+    context = zmq.Context()
     deliverator = Deliverator()
 
     pull_server = GreenletPULLServer(
@@ -52,34 +59,45 @@ def send_request_and_get_reply_and_data(
         client_address,
         deliverator
     )
-    pull_server.register(pollster)
+    pull_server.start()
 
     resilient_client = GreenletResilientClient(
         context,
-        pollster,
         server_node_name,
         server_address,
         client_tag,
         client_address,
         deliverator,
     )
+    resilient_client.start()
 
-    pollster.start()
+    # loop until the resilient client connects
+    test_status_count = 0
+    while True:
+        status_name, _, __ = resilient_client.test_current_status()
+        if status_name == "connected":
+            break
+        test_status_count += 1
+        if test_status_count > 5:
+            log.error("too many status retries")
+            raise UtilError("too many status retries")
+
+        log.warn("status retry delay")
+        gevent.sleep(10.0)
 
     delivery_channel = resilient_client.queue_message_for_send(request, data)
     reply, data = delivery_channel.get()
 
-    pollster.kill()
-    pollster.join(timeout=3.0)
-
-    pull_server.close()
-    resilient_client.close()
+    pull_server.kill()
+    resilient_client.kill()
+    pull_server.join()
+    resilient_client.join()
 
     context.term()
     return reply, data
 
 def send_to_pipeline(node_name, address, message_generator):
-    context = zmq.context.Context()
+    context = zmq.Context()
     push_client = GreenletPUSHClient(
         context,
         node_name,

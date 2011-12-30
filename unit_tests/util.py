@@ -10,10 +10,6 @@ import os.path
 import subprocess
 import sys
 
-def random_string(size):
-    with open('/dev/urandom', 'rb') as f:
-        return f.read(size)
-
 def generate_key():
     """generate a unique key for data storage"""
     n = 0
@@ -46,59 +42,105 @@ def terminate_process(process):
         print >> sys.stderr, " "
         print >> sys.stderr, "-" * 15
         print >> sys.stderr, process.returncode
-        print >> sys.stderr, process.stderr.read()
+        if process.stderr is not None:
+            print >> sys.stderr, process.stderr.read()
         print >> sys.stderr, "-" * 15
         print >> sys.stderr, process.returncode
-    assert process.returncode == 0, \
-        process.returncode
+
+def start_event_aggregator(
+    address, 
+    event_publisher_pull_address, 
+    event_publisher_pub_addresses,
+    environment = None
+):
+    log = logging.getLogger("start_event_aggregator")
+    server_dir = identify_program_dir(u"event_aggregator")
+    server_path = os.path.join(server_dir, "event_aggregator_main.py")
+    
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"        : address,
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+            "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES" : \
+                " ".join(event_publisher_pub_addresses),
+        }        
+
+    log.info("starting %s %s" % (args, environment, ))
+    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_data_writer(
     cluster_name, 
     node_name, 
     address, 
     event_publisher_pull_address, 
-    repository_path
+    repository_path,
+    central_db_pw = "pork", 
+    central_db_port = 5432,
+    node_db_pw = "pork", 
+    node_db_port = 5432,
+    environment = None,
 ):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_data_writer")
-    server_path = os.path.join(server_dir, "diyapi_data_writer_main.py")
+    server_dir = identify_program_dir(u"data_writer")
+    server_path = os.path.join(server_dir, "data_writer_main.py")
     
     args = [
         sys.executable,
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_DATA_WRITER_ADDRESS"        : address,
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-        "DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS" : \
-            event_publisher_pull_address,
-        "PANDORA_DB_PW_pandora"             : "pork",
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
+            "NIMBUSIO_NODE_NAME"         : node_name,
+            "NIMBUSIO_DATA_WRITER_ADDRESS"        : address,
+            "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+            "NIMBUSIO_CENTRAL_USER_PASSWORD"          : central_db_pw,
+            "NIMBUSIO_NODE_USER_PASSWORD"             : node_db_pw,
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_data_reader(node_name, address, repository_path):
+def start_data_reader(
+    node_name, 
+    address, 
+    event_publisher_pull_address, 
+    repository_path,
+    environment=None
+):
     log = logging.getLogger("start_data_reader_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_data_reader")
-    server_path = os.path.join(server_dir, "diyapi_data_reader_main.py")
+    server_dir = identify_program_dir(u"data_reader")
+    server_path = os.path.join(server_dir, "data_reader_main.py")
     
     args = [
         sys.executable,
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_DATA_READER_ADDRESS"        : address,
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-        "PANDORA_DB_PW_pandora"             : "pork",
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_NODE_NAME"         : node_name,
+            "NIMBUSIO_DATA_READER_ADDRESS"        : address,
+            "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+            "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
@@ -109,11 +151,13 @@ def start_anti_entropy_server(
     node_name, 
     anti_entropy_server_addresses,
     pipeline_address,
+    event_publisher_pull_address, 
+    environment = None,
 ):
     log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_anti_entropy_server")
+    server_dir = identify_program_dir(u"anti_entropy_server")
     server_path = os.path.join(
-        server_dir, "diyapi_anti_entropy_server_main.py"
+        server_dir, "anti_entropy_server_main.py"
     )
     
     args = [
@@ -121,30 +165,37 @@ def start_anti_entropy_server(
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name,
-        "SPIDEROAK_MULTI_NODE_NAME_SEQ"     : \
-            " ".join(node_names),
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "DIYAPI_ANTI_ENTROPY_SERVER_ADDRESSES": \
-            " ".join(anti_entropy_server_addresses),
-        "DIYAPI_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
-        "PANDORA_DB_PW_pandora_storage_server" : \
-            os.environ["PANDORA_DB_PW_pandora_storage_server"],
-        "PANDORA_DB_PW_pandora" : os.environ["PANDORA_DB_PW_pandora"],
-        "PANDORA_DB_PW_diyapi_auditor" : \
-            os.environ["PANDORA_DB_PW_diyapi_auditor"]
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
+            "NIMBUSIO_NODE_NAME_SEQ"     : \
+                " ".join(node_names),
+            "NIMBUSIO_NODE_NAME"         : node_name,
+            "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
+                " ".join(anti_entropy_server_addresses),
+            "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
+            "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+            "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_space_accounting_server(node_name, address, pipeline_address):
+def start_space_accounting_server(
+    node_name, 
+    address, 
+    pipeline_address,
+    event_publisher_pull_address, 
+    environment = None,
+):
     log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_space_accounting_server")
+    server_dir = identify_program_dir(u"space_accounting_server")
     server_path = os.path.join(
-        server_dir, "diyapi_space_accounting_server_main.py"
+        server_dir, "space_accounting_server_main.py"
     )
     
     args = [
@@ -152,13 +203,17 @@ def start_space_accounting_server(node_name, address, pipeline_address):
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"         : node_name,
-        "PANDORA_DB_PW_pandora" : os.environ["PANDORA_DB_PW_pandora"],
-        "DIYAPI_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
-        "DIYAPI_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_NODE_NAME"         : node_name,
+            "NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS" : address,
+            "NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS" : pipeline_address,
+            "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
@@ -170,59 +225,72 @@ def start_handoff_server(
     pipeline_address, 
     data_reader_addresses, 
     data_writer_addresses, 
-    repository_path
+    event_publisher_pull_address, 
+    repository_path,
+    environment=None
 ):
     log = logging.getLogger("start_handoff_server_%s" % (local_node_name, ))
-    server_dir = identify_program_dir(u"diyapi_handoff_server")
-    server_path = os.path.join(server_dir, "diyapi_handoff_server_main.py")
+    server_dir = identify_program_dir(u"handoff_server")
+    server_path = os.path.join(server_dir, "handoff_server_main.py")
     
     args = [
         sys.executable,
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_CLUSTER_NAME"      : cluster_name, 
-        "SPIDEROAK_MULTI_NODE_NAME"         : local_node_name,
-        "DIYAPI_HANDOFF_SERVER_ADDRESSES"        : " ".join(
-            handoff_server_addresses
-        ),
-        "DIYAPI_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
-        "DIYAPI_DATA_READER_ADDRESSES"    : " ".join(data_reader_addresses),
-        "DIYAPI_DATA_WRITER_ADDRESSES"    : " ".join(data_writer_addresses),
-        "DIYAPI_REPOSITORY_PATH"            : repository_path,
-        "PANDORA_DB_PW_pandora" :  os.environ["PANDORA_DB_PW_pandora"],
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_CLUSTER_NAME"      : cluster_name, 
+            "NIMBUSIO_NODE_NAME"         : local_node_name,
+            "NIMBUSIO_HANDOFF_SERVER_ADDRESSES"        : " ".join(
+                handoff_server_addresses
+            ),
+            "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS": pipeline_address,
+            "NIMBUSIO_DATA_READER_ADDRESSES"    : 
+                " ".join(data_reader_addresses),
+            "NIMBUSIO_DATA_WRITER_ADDRESSES"    : 
+                " ".join(data_writer_addresses),
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
+                event_publisher_pull_address,
+            "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
+            "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
+            "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_event_publisher(node_name, pull_address, pub_address):
+def start_event_publisher(node_name, pull_address, pub_address, 
+                          environment=None):
     log = logging.getLogger("start_event_publisher_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_event_publisher")
-    server_path = os.path.join(server_dir, "diyapi_event_publisher_main.py")
+    server_dir = identify_program_dir(u"event_publisher")
+    server_path = os.path.join(server_dir, "event_publisher_main.py")
     
     args = [
         sys.executable,
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                            : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"             : node_name,
-        "DIYAPI_EVENT_PUBLISHER_PULL_ADDRESS"   : pull_address,
-        "DIYAPI_EVENT_PUBLISHER_PUB_ADDRESS"    : pub_address,
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                            : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_NODE_NAME"             : node_name,
+            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS"   : pull_address,
+            "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS"    : pub_address,
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_performance_packager(node_name, pub_addresses):
+def start_performance_packager(node_name, event_aggregator_pub_address,
+                               environment = None):
     log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"diyapi_performance_packager")
+    server_dir = identify_program_dir(u"performance_packager")
     server_path = os.path.join(
-        server_dir, "diyapi_performance_packager_main.py"
+        server_dir, "performance_packager_main.py"
     )
     
     args = [
@@ -230,12 +298,30 @@ def start_performance_packager(node_name, pub_addresses):
         server_path,
     ]
 
-    environment = {
-        "PYTHONPATH"                            : os.environ["PYTHONPATH"],
-        "SPIDEROAK_MULTI_NODE_NAME"             : node_name,
-        "DIYAPI_EVENT_PUBLISHER_PUB_ADDRESSES"  : " ".join(pub_addresses),
-    }        
+    if environment is None:
+        environment = {
+            "PYTHONPATH"                            : os.environ["PYTHONPATH"],
+            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
+            "NIMBUSIO_NODE_NAME"             : node_name,
+            "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"  : \
+                event_aggregator_pub_address,
+        }        
 
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
+def start_web_server(node_name, environment):
+    log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
+    server_dir = identify_program_dir(u"web_server")
+    server_path = os.path.join(
+        server_dir, "web_server_main.py"
+    )
+    args = [
+        sys.executable,
+        server_path,
+    ]
+    log.info("starting %s %s" % (args, environment, ))
+    #return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
+    #the webserver writes enough stderr/out to fill up the pipe and make the
+    #subprocess block.
+    return subprocess.Popen(args, stderr=None, env=environment)

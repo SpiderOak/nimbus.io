@@ -14,28 +14,27 @@ import zlib
 
 import psycopg2
 
-from diyapi_tools.standard_logging import initialize_logging
-from diyapi_tools.database_connection import get_node_local_connection
+from tools.standard_logging import initialize_logging
+from tools.database_connection import get_node_local_connection
 
-from diyapi_web_server.local_database_util import most_recent_timestamp_for_key
-from diyapi_web_server.data_slicer import DataSlicer
-from diyapi_web_server.zfec_segmenter import ZfecSegmenter
-from diyapi_data_writer.output_value_file import OutputValueFile, \
+from web_server.local_database_util import most_recent_timestamp_for_key
+from web_server.data_slicer import DataSlicer
+from web_server.zfec_segmenter import ZfecSegmenter
+from data_writer.output_value_file import OutputValueFile, \
         value_file_template
-from diyapi_data_writer.writer import Writer
-from diyapi_data_reader.reader import Reader
-from diyapi_tools.data_definitions import create_timestamp
+from data_writer.writer import Writer
+from data_reader.reader import Reader
+from tools.data_definitions import create_timestamp, \
+        random_string
 
-from unit_tests.util import random_string
-
-_log_path = "/var/log/pandora/test_read_and_write.log"
+_log_path = "%s/test_read_and_write.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 _test_dir = os.path.join("/tmp", "test_read_and_write")
-_repository_path = os.path.join(_test_dir, "diyapi")
-_local_node_name = os.environ["SPIDEROAK_MULTI_NODE_NAME"]
+_repository_path = os.path.join(_test_dir, "nimbusio")
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
 def _retrieve_value_file_row(connection, value_file_id):
     result = connection.fetch_one_row("""
-        select %s from diy.value_file 
+        select %s from nimbusio_node.value_file 
         where id = %%s
     """ % (",".join(value_file_template._fields), ), [value_file_id, ])
     return value_file_template._make(result)

@@ -15,8 +15,7 @@ available Nimbus.io cloud storage service.
 
 Much like the SR71 Blackbird does not operate efficiently at low speeds in
 favor of elegant behavior at extreme speed, Nimbus.io is efficient for
-storing vast amounts of data. (TODO: Footnote: Link to relevant nerdy information
-about the SR71 and how it leaks fuel on the ground.)
+storing vast amounts of data. [#]_ 
 
 Production Nimubs.io storage clusters involve groups of 10 computers acting
 redundantly with data stripped across all of them.  Much like RAID6
@@ -27,10 +26,7 @@ Nimbus.io eats storage nodes 10 at a time.  Generally each of the 10 nodes
 has dozens of TB of internal storage capacity.  When the first storage
 cluster approaches capacity, it is not possible to incrementally expand by
 buying a few more storage nodes; you must instead buy a second complete
-storage cluster.  (Footnote: Although there are some ways you can
-incrementally extend a single cluster, such as buying 10 machines, but only
-1/3 of the hard drives to fill them, and adding more drives over time as
-needed.)
+storage cluster. [#]_ 
 
 At current market rates, a complete set of hardware for operating a
 Nimbus.io 10 node storage cluster might represent a one time cost of
@@ -125,9 +121,7 @@ volumes to store the bulk of the data and service reads.
 
 It's critical to configure the raid controller to work in write-through
 mode (not caching writes.)  Expect data corruption if your rack loses power
-and you have not done this.  We don't trust battery backup units.
-(Footnote: there are some advanced and durable alternatives to this if you
-absolutely need the added performance of write caching.)
+and you have not done this.  We don't trust battery backup units. [#]_
 
 Feel free to contact us if you would like advise on specific hardware
 selection.  You may also purchase Nimbus.io storage clusters directly from
@@ -237,28 +231,38 @@ Configuring Nimbus.io for your site
 
 TODO write all these subsections
 
-= Chose a domain name. Get SSL certificates if desired. 
+Chose a domain name. Get SSL certificates if desired. 
++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-= Allocate External and Internal IP addresses.
+Allocate External and Internal IP addresses.
+++++++++++++++++++++++++++++++++++++++++++++
 
-= Create the central database and apply the schema
+Create the central database and apply the schema
+++++++++++++++++++++++++++++++++++++++++++++++++
 
-= Insert records for data centers, storage clusters, storage nodes
+Insert records for data centers, storage clusters, storage nodes
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-= Setup dynamic DNS
+Setup dynamic DNS
++++++++++++++++++
 
 For each storage node:
+++++++++++++++++++++++
 
-= Create and apply schemas for the local database
+Create and apply schemas for the local database
+-----------------------------------------------
 
-= Create the node's config script
+Create the node's config script
+-------------------------------
 
-= Setup Runit And Run Scripts
+Setup Runit And Run Scripts
+---------------------------
 
 Connecting Nimbus.io clients to your own site
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-= Set NIMBUSIO_SIM_HOSTNAME variable and SSL variables as appropriate
+Set NIMBUSIO_SIM_HOSTNAME variable and SSL variables as appropriate
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 Management and Monitoring
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -313,6 +317,14 @@ The general procedure for failure from partial node loss is:
 #. For any storage volume that was lost, delete all entries in the node local database for value files located on that storage volume (use a cascade delete, also deleting any keys that reference the lost value files.) 
 
 #. Bring the node's Nimbus.io services online, and allow anti entropy to begin. 
+
+.. rubric:: Footnotes:
+
+.. [#] TODO: Link to relevant nerdy information about the SR71 and how it leaks fuel on the ground.
+
+.. [#] Although there are some ways you can incrementally extend a single cluster, such as buying 10 machines, but only 1/3 of the hard drives to fill them, and adding more drives over time as needed.
+
+.. [#] There are some advanced and durable alternatives to this if you absolutely need the added performance of write caching.
 
 `nimbus.io <https://nimbus.io/>`_ 
 

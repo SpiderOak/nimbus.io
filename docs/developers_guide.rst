@@ -83,6 +83,7 @@ The development roadmap includes expand the selection of client libraries to inc
 Similar to the Nimbus.io server software itself, all the client libraries we write are free software released under the LGPL license.
 
 Migrating data
+^^^^^^^^^^^^^^
 
 Nimbus.io is intended to facilitate easy bidirectional migration between Nimbus.io, Amazon S3, and other cloud storage systems.  The nimbus.io command line tool and libraries know how to interact with multiple platforms.   Since the Nimbus.io platform is available under the GPL free software license, there's also always the option to bring your data home.  (See "Rolling your Own Cloud")
 

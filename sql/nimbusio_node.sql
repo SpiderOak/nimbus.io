@@ -145,7 +145,7 @@ create table value_file (
      * */
     /* this is the count of records appended into the file. should be updated
      * only on closing the file */
-    sequence_count int4,
+    segment_sequence_count int4,
     /* storing min and max key ids is cheap and makes it possible to use the
      * btree indexes to find the specific key and segment_sequence records stored
      * in this file via >= <= operators. */

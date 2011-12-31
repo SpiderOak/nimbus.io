@@ -128,7 +128,7 @@ value_file_template = namedtuple("ValueFile", [
     "close_time",
     "size",
     "hash",
-    "sequence_count",
+    "segment_sequence_count",
     "min_segment_id",
     "max_segment_id",
     "distinct_collection_count",

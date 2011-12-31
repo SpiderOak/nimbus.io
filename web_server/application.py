@@ -421,7 +421,7 @@ class Application(object):
             value = urllib.unquote_plus(value)
             value = value.decode("utf-8")
             if len(value) > 0:
-                conjoined_dict["conjoined_identifer"] = uuid.UUID(hex=value)
+                conjoined_dict["conjoined_identifier"] = uuid.UUID(hex=value)
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]

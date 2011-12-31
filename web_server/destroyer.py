@@ -5,6 +5,7 @@ destroyer.py
 A class that performs a destroy query on all data writers.
 """
 import logging
+import uuid
 
 import gevent
 import gevent.pool
@@ -69,7 +70,7 @@ class Destroyer(object):
 
         conjoined_identifier = (
             None if conjoined_row is None \
-            else uuid.UUID(bytes=conjoined_row.identifer)
+            else uuid.UUID(bytes=conjoined_row.identifier)
         )
 
         file_size = sum([row.file_size for row in segment_rows])

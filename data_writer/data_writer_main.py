@@ -31,7 +31,7 @@ from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
 from tools.data_definitions import parse_timestamp_repr, \
-        parse_conjoined_identifier_hex, \
+        parse_identifier_hex, \
         parse_conjoined_part, \
         nimbus_meta_prefix
 from web_server.central_database_util import get_cluster_row, \
@@ -107,7 +107,7 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
 
@@ -232,7 +232,7 @@ def _handle_archive_key_final(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
@@ -327,7 +327,7 @@ def _handle_start_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     assert conjoined_identifier is not None
@@ -358,7 +358,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     assert conjoined_identifier is not None
@@ -389,7 +389,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     assert conjoined_identifier is not None

@@ -8,7 +8,7 @@ from base64 import b64decode
 import hashlib
 import logging
 
-from tools.data_definitions import conjoined_identifier_hex
+from tools.data_definitions import identifier_hex
 
 class DataReader(object):
 
@@ -38,7 +38,7 @@ class DataReader(object):
             "message-type"              : "retrieve-key-start",
             "collection-id"             : collection_id,
             "key"                       : key,
-            "conjoined-identifier-hex"  : conjoined_identifier_hex(
+            "conjoined-identifier-hex"  : identifier_hex(
                 conjoined_identifier
             ),
             "conjoined-part"            : conjoined_part,
@@ -88,7 +88,7 @@ class DataReader(object):
             "message-type"              : "retrieve-key-next",
             "collection-id"             : collection_id,
             "key"                       : key,
-            "conjoined-identifier-hex"  : conjoined_identifier_hex(
+            "conjoined-identifier-hex"  : identifier_hex(
                 conjoined_identifier
             ),
             "conjoined-part"            : conjoined_part,

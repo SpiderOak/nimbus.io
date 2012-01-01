@@ -11,7 +11,7 @@ import psycopg2
 from tools.data_definitions import segment_row_template, \
         segment_sequence_template, \
         parse_timestamp_repr, \
-        conjoined_identifier_binary, \
+        identifier_binary, \
         meta_row_template
 from data_writer.output_value_file import OutputValueFile
 
@@ -311,7 +311,7 @@ class Writer(object):
             key=key,
             timestamp=timestamp,
             segment_num=segment_num,
-            conjoined_identifier=conjoined_identifier_binary(
+            conjoined_identifier=identifier_binary(
                 conjoined_identifier
             ),
             conjoined_part=conjoined_part,
@@ -373,9 +373,7 @@ class Writer(object):
         conjoined_dict = {
             "collection_id"     : collection_id,
             "key"               : key,
-            "identifier"        : conjoined_identifier_binary(
-                conjoined_identifier
-            ),
+            "identifier"        : identifier_binary(conjoined_identifier),
             "create_timestamp"  : timestamp
         }
         _insert_conjoined_row(self._connection, conjoined_dict)
@@ -389,9 +387,7 @@ class Writer(object):
         conjoined_dict = {
             "collection_id"     : collection_id,
             "key"               : key,
-            "identifier"        : conjoined_identifier_binary(
-                conjoined_identifier
-            ),
+            "identifier"        : identifier_binary(conjoined_identifier),
             "abort_timestamp"   : timestamp
         }
         _set_conjoined_abort_timestamp(self._connection, conjoined_dict)
@@ -405,9 +401,7 @@ class Writer(object):
         conjoined_dict = {
             "collection_id"      : collection_id,
             "key"                : key,
-            "identifier"         : conjoined_identifier_binary(
-                conjoined_identifier
-            ),
+            "identifier"         : identifier_binary(conjoined_identifier),
             "completed_timestamp": timestamp
         }
         _set_conjoined_complete_timestamp(self._connection, conjoined_dict)

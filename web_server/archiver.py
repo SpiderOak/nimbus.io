@@ -12,6 +12,8 @@ from collections import defaultdict
 import gevent
 import gevent.pool
 
+from tools.data_definitions import identifier_hex
+
 from web_server.exceptions import (
     AlreadyInProgress,
     ArchiveFailedError,
@@ -35,11 +37,9 @@ class Archiver(object):
         self.key = key
         self.timestamp = timestamp
         self._meta_dict = meta_dict
-        if conjoined_dict["conjoined_identifier"] is None:
-            self._conjoined_identifier_hex = None
-        else:
-            self._conjoined_identifier_hex = \
-                    conjoined_dict["conjoined_identifier"].hex
+        self._conjoined_identifier_hex = identifier_hex(
+             conjoined_dict["conjoined_identifier"]
+        )
         self._conjoined_part = conjoined_dict["conjoined_part"]
         self.sequence_num = 0
         self._adler32s = {}

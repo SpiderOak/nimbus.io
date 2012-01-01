@@ -9,7 +9,7 @@ import logging
 from tools.data_definitions import segment_row_template, \
         segment_sequence_template, \
         compute_value_file_path, \
-        conjoined_identifier_binary
+        identifier_binary
 
 def _all_segment_rows_for_key(connection, collection_id, key):
     """
@@ -91,7 +91,7 @@ def _all_sequence_rows_for_conjoined_segment(
         key, 
         timestamp, 
         segment_num, 
-        conjoined_identifier_binary(conjoined_identifier),
+        identifier_binary(conjoined_identifier),
         conjoined_part
     ])
     return [segment_sequence_template._make(row) for row in result]

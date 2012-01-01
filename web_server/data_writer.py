@@ -10,7 +10,7 @@ import logging
 import zlib
 
 from tools.data_definitions import create_priority, \
-        conjoined_identifier_hex
+        identifier_hex
 
 from web_server.exceptions import (
     ArchiveFailedError,
@@ -196,7 +196,9 @@ class DataWriter(object):
             delivery_channel = self._resilient_client.queue_message_for_send(
                 message, data=segment
             )
-            self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
+            self._log.debug(
+                '%(message-type)s: %(collection-id)s %(key)s' % message
+            )
             reply, _data = delivery_channel.get()
             if reply["result"] != "success":
                 self._log.error("failed: %s" % (reply, ))
@@ -219,7 +221,7 @@ class DataWriter(object):
                 "priority"                  : create_priority(),
                 "collection-id"             : collection_id,
                 "key"                       : key,
-                "conjoined-identifier-hex"  : conjoined_identifier_hex(
+                "conjoined-identifier-hex"  : identifier_hex(
                     conjoined_identifier
                 ),
                 "timestamp-repr"            : repr(timestamp),

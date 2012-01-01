@@ -75,7 +75,7 @@ Storage clusters may be located across in any number of data centers.
 Dynamic DNS maps requests for each collection (which has a unique hostname)
 to network addresses within the data center that service it.  For example,
 the key "giraffe" in collection "kansas-city-zoo" might have the URL of:
-https://kansas-city-zoo.nimbus.io/data/giraffe. DNS resolution for
+`https://kansas-city-zoo.nimbus.io/data/giraffe <https://kansas-city-zoo.nimbus.io/data/giraffe>`_. DNS resolution for
 kansas-city-zoo.nimbus.io would resolve to an IP in the data center hosting
 the storage cluster that services the kansas-city-zoo collection.
 
@@ -153,7 +153,7 @@ after 200 days of uptime, because of this Kernel bug: TODO
 The PostgreSQL documentation's chapter on data write to disk reliability
 should be considered required reading.  Everything discussed there applies
 equally to reliable writes to persistent hardware with Nimbus.io.  
-http://www.postgresql.org/docs/9.1/static/wal-reliability.html
+`http://www.postgresql.org/docs/9.1/static/wal-reliability.html <http://www.postgresql.org/docs/9.1/static/wal-reliability.html>`_
 
 Webserver and Load Balancer Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -210,7 +210,8 @@ production uses.
 
 First, checkout the latest version of the source code:
 
-git clone https://nimbus.io/dev/git/nimbus.io/
+git clone `https://nimbus.io/dev/git/nimbus.io/ <https://nimbus.io/dev/git/nimbus.io/>`_
+
 
 Install all the needed libraries and other dependencies.  There are well
 commented shell scripts to guide you through this for some operating

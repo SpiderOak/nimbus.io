@@ -411,24 +411,27 @@ class Application(object):
 
         meta_dict = _build_meta_dict(req.GET)
 
-        conjoined_dict = {
-            "conjoined_identifier"      : None,
-            "conjoined_part"            : 0,
-        }
+        conjoined_identifier = None
+        conjoined_part = 0
 
         if "conjoined_identifier" in req.GET:
             value = req.GET["conjoined_identifier"]
             value = urllib.unquote_plus(value)
             value = value.decode("utf-8")
             if len(value) > 0:
-                conjoined_dict["conjoined_identifier"] = uuid.UUID(hex=value)
+                conjoined_identifier = uuid.UUID(hex=value)
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
             value = urllib.unquote_plus(value)
             value = value.decode("utf-8")
             if len(value) > 0:
-                conjoined_dict["conjoined_part"] = int(value)
+                conjoined_part = int(value)
+
+        if conjoined_identifier is not None:
+            version_identifier = conjoined_identifier
+        else:
+            version_identifier = uuid.uuid1()
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -441,9 +444,11 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
+            version_identifier,
             timestamp,
             meta_dict,
-            conjoined_dict
+            conjoined_identifier,
+            conjoined_part
         )
         segmenter = ZfecSegmenter(
             8,
@@ -760,6 +765,7 @@ class Application(object):
             self._data_writer_clients
         )
 
+        version_identifier = uuid.uuid1()
         timestamp = create_timestamp()
 
         destroyer = Destroyer(
@@ -767,6 +773,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
+            version_identifier,
             timestamp
         )
 

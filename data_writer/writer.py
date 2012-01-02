@@ -68,6 +68,7 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
             id,
             collection_id,
             key,
+            version_identifier,
             timestamp,
             segment_num,
             conjoined_identifier, 
@@ -81,6 +82,7 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
             %(id)s,
             %(collection_id)s,
             %(key)s,
+            %(version_identifier)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
             %(conjoined_identifier)s, 
@@ -121,6 +123,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
         insert into nimbusio_node.segment (
             collection_id,
             key,
+            version_identifier,
             timestamp,
             segment_num,
             file_size,
@@ -131,6 +134,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
         ) values (
             %(collection_id)s,
             %(key)s,
+            %(version_identifier)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
             %(file_size)s,
@@ -181,14 +185,6 @@ def _get_segment_id(connection, collection_id, key, timestamp, segment_num):
     (segment_id, ) = result
     return segment_id
 
-def _purge_segment_rows(connection, segment_id):
-    connection.execute("""
-        delete from nimbusio_node.segment_sequence where segment_id = %s;
-        delete from nimbusio_node.segment where id = %s;
-        """, [segment_id, segment_id]
-    )
-    connection.commit()
-
 class Writer(object):
     """
     Manage writing segment values to disk
@@ -210,6 +206,7 @@ class Writer(object):
     def start_new_segment(
         self, 
         collection_id, 
+        version_identifier,
         key, 
         timestamp_repr, 
         segment_num
@@ -217,9 +214,13 @@ class Writer(object):
         """
         Initiate storing a segment of data for a file
         """
-        segment_key = (collection_id, key, timestamp_repr, segment_num, )
-        self._log.info("start_new_segment %s %s %s %s" % (
-            collection_id, key, timestamp_repr, segment_num, 
+        segment_key = (version_identifier.hex, segment_num, )
+        self._log.info("start_new_segment %s %s %s %s %s" % (
+            collection_id, 
+            key, 
+            version_identifier.hex, 
+            timestamp_repr, 
+            segment_num, 
         ))
         if segment_key in self._active_segments:
             raise ValueError("duplicate segment %s" % (segment_key, ))
@@ -232,6 +233,7 @@ class Writer(object):
         self, 
         collection_id, 
         key, 
+        version_identifier,
         timestamp_repr, 
         segment_num, 
         segment_size,
@@ -243,10 +245,11 @@ class Writer(object):
         """
         store one piece (sequence) of segment data
         """
-        segment_key = (collection_id, key, timestamp_repr, segment_num, )
-        self._log.info("store_sequence %s %s %s %s: %s (%s)" % (
+        segment_key = (version_identifier.hex, segment_num, )
+        self._log.info("store_sequence %s %s %s %s %s: %s (%s)" % (
             collection_id, 
             key, 
+            version_identifier.hex,
             timestamp_repr, 
             segment_num, 
             sequence_num,
@@ -283,6 +286,7 @@ class Writer(object):
         self, 
         collection_id, 
         key, 
+        version_identifier,
         timestamp_repr, 
         meta_dict,
         segment_num,
@@ -297,9 +301,13 @@ class Writer(object):
         """
         finalize storing one segment of data for a file
         """
-        segment_key = (collection_id, key, timestamp_repr, segment_num, )
-        self._log.info("finish_new_segment %s %s %s %s" % (
-            collection_id, key, timestamp_repr, segment_num, 
+        segment_key = (version_identifier.hex, segment_num, )
+        self._log.info("finish_new_segment %s %s %s %s %s" % (
+            collection_id, 
+            key, 
+            version_identifier.hex, 
+            timestamp_repr, 
+            segment_num, 
         ))
         segment_entry = self._active_segments.pop(segment_key)
 
@@ -309,6 +317,9 @@ class Writer(object):
             id=segment_entry["segment-id"],
             collection_id=collection_id,
             key=key,
+            version_identifier=identifier_binary(
+                version_identifier
+            ),
             timestamp=timestamp,
             segment_num=segment_num,
             conjoined_identifier=identifier_binary(
@@ -334,17 +345,9 @@ class Writer(object):
 
         _insert_segment_row_with_meta(self._connection, segment_row, meta_rows)
     
-    def purge_segment(self, collection_id, key, timestamp, segment_num):
-        """
-        remove all database rows referring to a segment
-        """
-        segment_id = _get_segment_id(
-            self._connection, collection_id, key, timestamp, segment_num
-        )
-        if segment_id is not None:
-            _purge_segment_rows(self._connection, segment_id)
-        
-    def set_tombstone(self, collection_id, key, timestamp, segment_num):
+    def set_tombstone(
+        self, collection_id, key, version_identifier, timestamp, segment_num
+    ):
         """
         mark a key as deleted
         """
@@ -352,6 +355,9 @@ class Writer(object):
             id=None,
             collection_id=collection_id,
             key=key,
+            version_identifier=identifier_binary(
+                version_identifier
+            ),
             timestamp=timestamp,
             segment_num=segment_num,
             conjoined_identifier=None,

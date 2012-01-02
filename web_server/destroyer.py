@@ -25,6 +25,7 @@ class Destroyer(object):
         data_writers,
         collection_id, 
         key,
+        version_identifier,
         timestamp        
     ):
         self.log = logging.getLogger('Destroyer')
@@ -33,6 +34,7 @@ class Destroyer(object):
         self.data_writers = data_writers
         self.collection_id = collection_id
         self.key = key
+        self._version_identifier = version_identifier
         self.timestamp = timestamp
         self._pending = gevent.pool.Group()
         self._done = []
@@ -68,6 +70,9 @@ class Destroyer(object):
             self._node_local_connection , self.collection_id, self.key
         )
 
+        if len(segment_rows) == 0:
+            raise DestroyFailedError
+
         conjoined_identifier = (
             None if conjoined_row is None \
             else uuid.UUID(bytes=conjoined_row.identifier)
@@ -83,8 +88,9 @@ class Destroyer(object):
                 data_writer.destroy_key,
                 self.collection_id,
                 self.key,
-                conjoined_identifier,
+                self._version_identifier,
                 self.timestamp,
+                conjoined_identifier,
                 segment_num
             )
         self._join(timeout)

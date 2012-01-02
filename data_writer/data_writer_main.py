@@ -80,8 +80,14 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
     state["writer"].start_new_segment(
         message["collection-id"], 
+        version_identifier,
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -90,6 +96,7 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -116,6 +123,7 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
@@ -148,9 +156,15 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"]
     )
@@ -158,6 +172,7 @@ def _handle_archive_key_start(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -182,9 +197,15 @@ def _handle_archive_key_next(state, message, data):
         message["segment-num"]
     ))
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -215,9 +236,15 @@ def _handle_archive_key_final(state, message, data):
         message["segment-num"]
     ))
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -240,6 +267,7 @@ def _handle_archive_key_final(state, message, data):
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
@@ -273,44 +301,23 @@ def _handle_destroy_key(state, message, _data):
         message["segment-num"]
     ))
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].set_tombstone(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         timestamp,
         message["segment-num"]
     )
 
     reply = {
         "message-type"  : "destroy-key-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
-    state["resilient-server"].send_reply(reply)
-
-def _handle_purge_key(state, message, _data):
-    log = logging.getLogger("_handle_purge_key")
-    log.info("%s %s %s %s" % (
-        message["collection-id"], 
-        message["key"], 
-        message["timestamp-repr"],
-        message["segment-num"]
-    ))
-
-    timestamp = parse_timestamp_repr(message["timestamp-repr"])
-
-    state["writer"].purge_segment(
-        message["collection-id"], 
-        message["key"], 
-        timestamp,
-        message["segment-num"]
-    )
-
-    reply = {
-        "message-type"  : "purge-key-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
         "result"        : "success",
@@ -417,7 +424,6 @@ _dispatch_table = {
     "archive-key-next"          : _handle_archive_key_next,
     "archive-key-final"         : _handle_archive_key_final,
     "destroy-key"               : _handle_destroy_key,
-    "purge-key"                 : _handle_purge_key,
     "start-conjoined-archive"   : _handle_start_conjoined_archive,
     "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
     "finish-conjoined-archive"  : _handle_finish_conjoined_archive,

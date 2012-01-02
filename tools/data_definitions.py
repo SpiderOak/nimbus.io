@@ -137,6 +137,7 @@ segment_row_template = namedtuple(
         "id",
         "collection_id",
         "key",
+        "version_identifier",
         "timestamp",
         "segment_num",
         "conjoined_identifier",

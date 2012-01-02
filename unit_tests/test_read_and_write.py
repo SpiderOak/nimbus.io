@@ -103,13 +103,6 @@ class TestReadAndWrite(unittest.TestCase):
 
         # clean out any segments that are laying around for this (test) keu
         reader = Reader(self._database_connection, _repository_path)
-        for segment_row in reader.get_all_segment_rows_for_key(collection_id, key):
-            writer.purge_segment(
-                collection_id, 
-                key, 
-                segment_row.timestamp, 
-                segment_row.segment_num
-            )
 
         writer.start_new_segment(collection_id, key, repr(timestamp), segment_num)
         writer.store_sequence(

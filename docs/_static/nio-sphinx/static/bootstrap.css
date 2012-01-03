@@ -2474,3 +2474,12 @@ div.section {
     padding-top: 35px;
 }
 
+.brand {
+    position: relative !important;
+    float: left !important;
+    height: 40px !important;
+    width: 120px !important;
+    background: url('logo_sm.png') top left no-repeat;
+    margin: 0 !important;
+    padding: 0 !important;
+}

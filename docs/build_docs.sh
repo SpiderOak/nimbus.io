@@ -21,6 +21,6 @@ export NIMBUSIO_HANDOFF_SERVER_ADDRESSES=""
 export NIMBUSIO_REPOSITORY_PATH=""
 
 pushd "${CODEBASE}/docs"
-cd /docs; make clean
+make clean
 make html
 popd

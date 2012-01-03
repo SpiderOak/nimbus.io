@@ -81,7 +81,7 @@ $(function() {
     findA($span);
 
     // Wipe out old list and patch in new one.
-    return $span.empty("ul").append($tocList);
+    return $span.empty('ul').append($tocList);
   };
 
   $(document).ready(function () {
@@ -98,7 +98,7 @@ $(function() {
 
 {% block header %}{{ navBar() }}{% endblock %}
 
-{# Silence the sidebar's, relbar's #}
+{# Silence the sidebar's, relbar's #} 
 {% block sidebar1 %}{% endblock %}
 {% block sidebar2 %}{% endblock %}
 {% block relbar1 %}{% endblock %}
@@ -114,7 +114,7 @@ $(function() {
 <footer class="footer">
   <div class="container">
     <p class="pull-right"><a href="#">Back to top</a></p>
-    <p>
+   <p>
     {%- if show_copyright %}
       {%- if hasdoc('copyright') %}
         {% trans path=pathto('copyright'), copyright=copyright|e %}&copy; <a href="{{ path }}">Copyright</a> {{ copyright }}.{% endtrans %}<br/>
@@ -122,6 +122,7 @@ $(function() {
         {% trans copyright=copyright|e %}&copy; Copyright {{ copyright }}.{% endtrans %}<br/>
       {%- endif %}
     {%- endif %}
+    </p><p>
     {%- if last_updated %}
       {% trans last_updated=last_updated|e %}Last updated on {{ last_updated }}.{% endtrans %}<br/>
     {%- endif %}

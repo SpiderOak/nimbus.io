@@ -58,7 +58,7 @@ from web_server.data_slicer import DataSlicer
 from web_server.zfec_segmenter import ZfecSegmenter
 from web_server.archiver import Archiver
 from web_server.destroyer import Destroyer
-from web_server.listmatcher import listmatch
+from web_server.listmatcher import list_keys, list_versions
 from web_server.space_usage_getter import SpaceUsageGetter
 from web_server.stat_getter import StatGetter
 from web_server.retriever import Retriever
@@ -72,6 +72,7 @@ from web_server.url_discriminator import parse_url, \
         action_list_collections, \
         action_create_collection, \
         action_delete_collection, \
+        action_list_versions, \
         action_space_usage, \
         action_archive_key, \
         action_list_keys, \
@@ -187,6 +188,7 @@ class Application(object):
             action_list_collections     : self._list_collections,
             action_create_collection    : self._create_collection,
             action_delete_collection    : self._delete_collection,
+            action_list_versions        : self._list_versions,
             action_space_usage          : self._collection_space_usage,
             action_archive_key          : self._archive_key,
             action_list_keys            : self._list_keys,
@@ -332,6 +334,59 @@ class Application(object):
             self._central_connection.commit()
 
         return Response('OK')
+
+    def _list_versions(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+        variable_names = [
+            "prefix",
+            "max_keys",
+            "delimiter",
+            "key_marker",
+            "versio0n_id_marker",
+        ]
+
+        # pass on any variable names we recognize as keyword args
+        kwargs = dict()
+        for variable_name in variable_names:
+            if variable_name in req.GET:
+                variable_value = req.GET[variable_name]
+                variable_value = urllib.unquote_plus(variable_value)
+                variable_value = variable_value.decode("utf-8")
+                kwargs[variable_name] = variable_value
+
+        self._log.debug(
+            "_list_versions: collection = (%s) username = %r %r %s" % (
+                collection_entry.collection_id,
+                collection_entry.collection_name,
+                collection_entry.username,
+                kwargs
+            )
+        )
+        result_dict = list_versions(
+            self._node_local_connection,
+            collection_entry.collection_id, 
+            **kwargs
+        )
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(result_dict))
+        return response
 
     def _collection_space_usage(self, req, match_object):
         username = match_object.group("username")
@@ -544,7 +599,7 @@ class Application(object):
             "marker"
         ]
 
-        # pass on any variable names we recognize as keyword args to listmatch
+        # pass on any variable names we recognize as keyword args
         kwargs = dict()
         for variable_name in variable_names:
             if variable_name in req.GET:
@@ -561,7 +616,7 @@ class Application(object):
                 kwargs
             )
         )
-        result_dict = listmatch(
+        result_dict = list_keys(
             self._node_local_connection,
             collection_entry.collection_id, 
             **kwargs
@@ -872,7 +927,7 @@ class Application(object):
             "conjoined_identifier_marker"
         ]
 
-        # pass on any variable names we recognize as keyword args to listmatch
+        # pass on any variable names we recognize as keyword args
         kwargs = dict()
         for variable_name in variable_names:
             if variable_name in req.GET:

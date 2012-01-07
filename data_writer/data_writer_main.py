@@ -37,6 +37,7 @@ from tools.data_definitions import parse_timestamp_repr, \
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
+from data_writer.output_value_file import mark_value_files_as_closed
 from data_writer.writer import Writer
 from data_writer.stats_reporter import StatsReporter
 
@@ -481,6 +482,10 @@ def _setup(_halt_event, state):
     )
 
     state["database-connection"] = get_node_local_connection()
+
+    # Ticket #1646 mark output value files as closed at startup
+    mark_value_files_as_closed(state["database-connection"])
+
     state["writer"] = Writer(
         state["database-connection"],
         _repository_path

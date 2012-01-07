@@ -33,50 +33,44 @@ def _open_value_file(value_file_path):
         flags |= os.O_SYNC
     return os.open(value_file_path, flags)
 
-def _insert_value_file_row(connection, value_file_row):
+def _update_value_file_row(connection, value_file_row):
     """
     Insert one value_file entry
     """
-    cursor = connection._connection.cursor()
-    cursor.execute("""
-        insert into nimbusio_node.value_file (
-            id,
-            creation_time,
-            close_time,
-            size,
-            hash,
-            segment_sequence_count,
-            min_segment_id,
-            max_segment_id,
-            distinct_collection_count,
-            collection_ids,
-            garbage_size_estimate,
-            fragmentation_estimate,
-            last_cleanup_check_time,
-            last_integrity_check_time
-        ) values (
-            %(id)s,
-            %(creation_time)s::timestamp,
-            %(close_time)s::timestamp,
-            %(size)s,
-            %(hash)s,
-            %(segment_sequence_count)s,
-            %(min_segment_id)s,
-            %(max_segment_id)s,
-            %(distinct_collection_count)s,
-            %(collection_ids)s,
-            %(garbage_size_estimate)s,
-            %(fragmentation_estimate)s,
-            %(last_cleanup_check_time)s::timestamp,
-            %(last_integrity_check_time)s::timestamp
-        )
-        returning id
+    connection.execute("""
+        update nimbusio_node.value_file set
+            creation_time=%(creation_time)s::timestamp,
+            close_time=%(close_time)s::timestamp,
+            size=%(size)s,
+            hash=%(hash)s,
+            segment_sequence_count=%(segment_sequence_count)s,
+            min_segment_id=%(min_segment_id)s,
+            max_segment_id=%(max_segment_id)s,
+            distinct_collection_count=%(distinct_collection_count)s,
+            collection_ids=%(collection_ids)s
+        where id = %(id)s
     """, value_file_row._asdict())
+    connection.commit()
+
+def mark_value_files_as_closed(connection):
+    """
+    mark as closed any files that were left marked open:
+    set close_time in any rows where it is null
+    """
+    connection.execute(
+        """
+        update nimbusio_node.value_file set close_time=current_timestamp
+        where close_time is null
+        """, [])
     connection.commit()
 
 class OutputValueFile(object):
     def __init__(self, connection, repository_path):
-        self._value_file_id = _get_next_value_file_id(connection)
+        # Ticket #1646: insert a row of defaults right at open
+        self._value_file_id = connection.execute(
+           "insert into nimbusio_node.value_file default values", [] 
+        )
+        connection.commit()
         self._log = logging.getLogger("VF%08d" % (self._value_file_id, ))
         self._connection = connection
         self._value_file_path = compute_value_file_path(
@@ -149,5 +143,5 @@ class OutputValueFile(object):
             last_cleanup_check_time=None,
             last_integrity_check_time=None
         )
-        _insert_value_file_row(self._connection, value_file_row)
+        _update_value_file_row(self._connection, value_file_row)
 

@@ -58,10 +58,9 @@ def list_keys(
     # XXX: there may be some SQL way to do this efficiently
     prefix_set = set()
     for key_entry in key_list:
-        stub = key_entry["key"][len(prefix):]
-        delimiter_pos = stub.find(delimiter)
+        delimiter_pos = key_entry["key"].find(delimiter, len(prefix))
         if delimiter_pos > 0:
-            prefix_set.add(stub[:delimiter_pos+1])
+            prefix_set.add(key_entry["key"][:delimiter_pos+1])
 
     return {"prefixes" : list(prefix_set), "truncated" : truncated}
 
@@ -126,11 +125,9 @@ def list_versions(
     # XXX: there may be some SQL way to do this efficiently
     prefix_set = set()
     for key_entry in key_list:
-        stub = key_entry["key"][len(prefix):]
-        delimiter_pos = stub.find(delimiter)
+        delimiter_pos = key_entry["key"].find(delimiter, len(prefix))
         if delimiter_pos > 0:
-            prefix_set.add(stub[:delimiter_pos+1])
+            prefix_set.add(key_entry["key"][:delimiter_pos+1])
 
     return {"prefixes" : list(prefix_set), "truncated" : truncated}
-
 

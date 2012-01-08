@@ -13,6 +13,7 @@ ACK back to to requestor includes size (from the database server)
 of any previous key this key supersedes (for space accounting.)
 """
 from base64 import b64decode
+import hashlib
 import logging
 import os
 import sys
@@ -86,6 +87,39 @@ def _handle_archive_key_entire(state, message, data):
     )
     assert version_identifier is not None
 
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     state["writer"].start_new_segment(
         message["collection-id"], 
         version_identifier,
@@ -101,7 +135,7 @@ def _handle_archive_key_entire(state, message, data):
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         sequence_num,
         data
@@ -162,6 +196,40 @@ def _handle_archive_key_start(state, message, data):
     )
     assert version_identifier is not None
 
+    
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
@@ -177,7 +245,7 @@ def _handle_archive_key_start(state, message, data):
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
         data
@@ -198,10 +266,51 @@ def _handle_archive_key_next(state, message, data):
         message["segment-num"]
     ))
 
+    reply = {
+        "message-type"  : "archive-key-next-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
     version_identifier = parse_identifier_hex(
         message.get("version-identifier-hex")
     )
     assert version_identifier is not None
+
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
 
     state["writer"].store_sequence(
         message["collection-id"], 
@@ -210,7 +319,7 @@ def _handle_archive_key_next(state, message, data):
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
         data
@@ -219,13 +328,7 @@ def _handle_archive_key_next(state, message, data):
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
-    reply = {
-        "message-type"  : "archive-key-next-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
+    reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_final(state, message, data):
@@ -237,10 +340,51 @@ def _handle_archive_key_final(state, message, data):
         message["segment-num"]
     ))
 
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
     version_identifier = parse_identifier_hex(
         message.get("version-identifier-hex")
     )
     assert version_identifier is not None
+
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
 
     state["writer"].store_sequence(
         message["collection-id"], 
@@ -249,7 +393,7 @@ def _handle_archive_key_final(state, message, data):
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
         data
@@ -284,13 +428,7 @@ def _handle_archive_key_final(state, message, data):
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
-    reply = {
-        "message-type"  : "archive-key-final-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
+    reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
 def _handle_destroy_key(state, message, _data):

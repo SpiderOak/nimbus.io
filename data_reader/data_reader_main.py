@@ -9,6 +9,7 @@ Responds with content or "not available"
 """
 from base64 import b64encode
 from collections import deque, namedtuple
+import hashlib
 import logging
 import os.path
 import sys
@@ -134,6 +135,24 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data_content)
+    if segment_md5.digest() != str(sequence_row.hash):
+        error_message = "md5 mismatch (%s, %s) %s %s %s %s" % (
+            segment_md5.digest(),
+            sequence_row.hash,
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     Statgrabber.accumulate('nimbusio_read_requests', 1)
     Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
 
@@ -202,6 +221,22 @@ def _handle_retrieve_key_next(state, message, _data):
         log.exception("retrieving")
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
+        state["resilient-server"].send_reply(reply)
+        return
+
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data_content)
+    if segment_md5.digest() != str(sequence_row.hash):
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
         state["resilient-server"].send_reply(reply)
         return
 

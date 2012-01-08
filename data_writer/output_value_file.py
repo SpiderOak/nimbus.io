@@ -24,6 +24,16 @@ def _get_next_value_file_id(connection):
     connection.commit()
     return next_value_file_id
 
+def _insert_value_file_default_row(connection):
+    # Ticket #1646: insert a row of defaults right at open
+    value_file_id = connection.execute_and_return_id("""
+        insert into nimbusio_node.value_file default values 
+        returning id
+    """)
+    connection.commit()
+
+    return value_file_id
+
 def _open_value_file(value_file_path):
     value_file_dir = os.path.dirname(value_file_path)
     if not os.path.exists(value_file_dir):
@@ -66,11 +76,7 @@ def mark_value_files_as_closed(connection):
 
 class OutputValueFile(object):
     def __init__(self, connection, repository_path):
-        # Ticket #1646: insert a row of defaults right at open
-        self._value_file_id = connection.execute(
-           "insert into nimbusio_node.value_file default values", [] 
-        )
-        connection.commit()
+        self._value_file_id =  _insert_value_file_default_row(connection)
         self._log = logging.getLogger("VF%08d" % (self._value_file_id, ))
         self._connection = connection
         self._value_file_path = compute_value_file_path(

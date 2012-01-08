@@ -65,13 +65,23 @@ class DatabaseConnection(object):
         cursor.close()
         
     def execute(self, query, *args):
-        """run a statement and return the last row id inserted"""
+        """run a statement"""
         cursor = self._connection.cursor()
         cursor.execute(query, *args)
-        lastrowid = cursor.lastrowid
+        cursor.close()
+        
+    def execute_and_return_id(self, query, *args):
+        """
+        run a statement
+        presumably an insert that includes 'returning id'
+        return the id
+        """
+        cursor = self._connection.cursor()
+        cursor.execute(query, *args)
+        (returned_id, ) = cursor.fetchone()
         cursor.close()
 
-        return lastrowid
+        return returned_id
         
     def commit(self):
         """commit any pending transaction"""

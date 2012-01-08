@@ -15,7 +15,8 @@ state_audit_error = "audit-error"
 _start_audit_command = """
 INSERT INTO nimbusio_central.audit_result
 (collection_id, state, audit_started)
-VALUES(%s, %s, %s::timestamp);
+VALUES(%s, %s, %s::timestamp)
+returning id;
 """.strip()
 
 _audit_retry_command = """
@@ -59,7 +60,7 @@ class AuditResultDatabase(object):
 
     def start_audit(self, collection_id, timestamp):
         """insert a row to mark the start of an audit"""
-        row_id = self._connection.execute(
+        row_id = self._connection.execute_and_regturn_id(
             _start_audit_command, 
             [collection_id, state_audit_started, timestamp, ]
         )

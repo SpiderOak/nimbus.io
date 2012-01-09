@@ -17,13 +17,6 @@ from tools.data_definitions import compute_value_file_path, \
 
 _sync_strategy = os.environ.get("NIMBUS_IO_SYNC_STRATEGY", "NONE")
 
-def _get_next_value_file_id(connection):
-    (next_value_file_id, ) = connection.fetch_one_row(
-        "select nextval('nimbusio_node.value_file_id_seq');"
-    )
-    connection.commit()
-    return next_value_file_id
-
 def _insert_value_file_default_row(connection):
     # Ticket #1646: insert a row of defaults right at open
     value_file_id = connection.execute_and_return_id("""

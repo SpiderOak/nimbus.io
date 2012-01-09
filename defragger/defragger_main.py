@@ -3,6 +3,7 @@
 defragger.py
 """
 from collections import namedtuple
+import hashlib
 import logging
 import os
 import signal
@@ -14,7 +15,11 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
-from tools.data_definitions import value_file_template
+from tools.data_definitions import compute_value_file_path, \
+        value_file_template
+
+from defragger.input_value_file import InputValueFile
+from defragger.output_value_file import OutputValueFile
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_defragger_{1}.log".format(
@@ -28,6 +33,7 @@ _min_bytes_for_defrag_pass = int(
 _max_bytes_for_defrag_pass = int(
     os.environ.get("NIMBUSIO_MAX_BYTES_FOR_DEFRAG_PASS", "10000000000")
 )
+_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _reference_template = namedtuple("Reference", [
     "segment_id",
     "handoff_node_id",
@@ -47,7 +53,7 @@ def _create_signal_handler(halt_event):
         halt_event.set()
     return cb_handler
 
-def _query_value_file_candidate_rows(local_connection):
+def _query_value_file_candidate_rows(connection):
     """
     query the database for qualifying value files:
 
@@ -55,7 +61,7 @@ def _query_value_file_candidate_rows(local_connection):
     * have more than 1 distinct collection, or null distinct collection
       (likely b/c of unclean shutdown)
     """
-    result = local_connection.generate_all_rows("""
+    result = connection.generate_all_rows("""
         select {0} from nimbusio_node.value_file 
         where close_time is not null
         and (distinct_collection_count > 1 or 
@@ -65,29 +71,29 @@ def _query_value_file_candidate_rows(local_connection):
     for row in result:
         yield  value_file_template._make(row)
 
-def _identify_defrag_candidates(local_connection):
+def _identify_defrag_candidates(connection):
     log = logging.getLogger("_identify_defrag_candidates")
     candidates = list()
-    defragable_bytes = 0
-    for value_file_row in _query_value_file_candidate_rows(local_connection):
-       if defragable_bytes > _min_bytes_for_defrag_pass and \
-          defragable_bytes + value_file_row.size > _max_bytes_for_defrag_pass:
+    defraggable_bytes = 0
+    for value_file_row in _query_value_file_candidate_rows(connection):
+       if defraggable_bytes > _min_bytes_for_defrag_pass and \
+          defraggable_bytes + value_file_row.size > _max_bytes_for_defrag_pass:
            break
        candidates.append(value_file_row)
-       defragable_bytes += value_file_row.size
+       defraggable_bytes += value_file_row.size
 
-    if defragable_bytes < _min_bytes_for_defrag_pass:
-        log.debug("too few defragable bytes {0} in {1} value files".format(
-            defragable_bytes, len(candidates)
+    if defraggable_bytes < _min_bytes_for_defrag_pass:
+        log.debug("too few defraggable bytes {0} in {1} value files".format(
+            defraggable_bytes, len(candidates)
         ))
         return 0, []
 
-    log.debug("found {0} defragable bytes in {1} value files".format(
-        defragable_bytes, len(candidates)
+    log.debug("found {0} defraggable bytes in {1} value files".format(
+        defraggable_bytes, len(candidates)
     ))
-    return defragable_bytes, candidates
+    return defraggable_bytes, candidates
 
-def _query_value_file_references(local_connection, value_file_ids):
+def _query_value_file_references(connection, value_file_ids):
     """
     Query the database to obtain all references to those value files sorted by: 
     
@@ -97,7 +103,7 @@ def _query_value_file_references(local_connection, value_file_ids):
      * segment.timestamp, 
      * segment_sequence.sequence_num
     """
-    result = local_connection.generate_all_rows("""
+    result = connection.generate_all_rows("""
         select segment.id,
                segment.handoff_node_id,
                segment.collection_id, 
@@ -122,7 +128,89 @@ def _query_value_file_references(local_connection, value_file_ids):
     for row in result:
         yield  _reference_template._make(row)
 
-def _defrag_pass(local_connection, event_push_client):
+def _generate_work(connection, value_file_rows):
+    log = logging.getLogger("_generate_work")
+    prev_handoff_node_id = None
+    prev_collection_id = None
+    input_value_file = None
+    output_value_file = None
+    for reference in _query_value_file_references(
+        connection, [row.id for row in value_file_rows]
+    ):
+        if reference.handoff_node_id is not None:
+            # one distinct value file per handoff node
+            if reference.handoff_node_id != prev_handoff_node_id:
+                if prev_handoff_node_id is not None:
+                    log.debug(
+                        "closing output value file handoff node {0}".format(
+                            prev_handoff_node_id
+                        )
+                    )
+                    assert output_value_file is not None
+                    output_value_file.close()
+                    output_value_file = None
+                log.debug(
+                    "opening value file for handoff node {0}".format(
+                        handoff_node_id
+                    )
+                )
+                assert output_value_file is None
+                output_value_file = OutputValueFile(
+                    connection, _repository_path
+                )
+                prev_handoff_node_id = reference.handoff_node_id
+        elif reference.collection_id != prev_collection_id:
+            if prev_handoff_node_id is not None:
+                log.debug(
+                    "closing value file for handoff node {0}".format(
+                        prev_handoff_node_id
+                    )
+                )
+                assert output_value_file is not None
+                output_value_file.close()
+                output_value_file = None
+                prev_handoff_node_id = None
+
+            # one distinct value file per collection_id
+            if prev_collection_id is not None:
+                log.debug(
+                    "closing value file for collection {0}".format(
+                        prev_collection_id
+                    )
+                )
+                assert output_value_file is not None
+                output_value_file.close()
+                output_value_file = None
+
+            log.debug(
+                "opening value file for collection {0}".format( 
+                    reference.collection_id
+                )
+            )
+            assert output_value_file is None
+            output_value_file = OutputValueFile(
+                connection, _repository_path
+            )
+            prev_collection_id = reference.collection_id
+
+        assert output_value_file is not None
+        yield reference, output_value_file
+    
+    if prev_handoff_node_id is not None:
+        log.debug(
+            "closing final value file for handoff node {0}".format(
+                prev_handoff_node_id
+            )
+        )
+
+    if prev_collection_id is not None:
+        log.debug(
+            "closing final value file for collection {0}".format(
+                prev_collection_id
+            )
+        )
+
+def _defrag_pass(connection, event_push_client):
     """
     Make a single defrag pass
     Open target value files as follows:
@@ -134,70 +222,61 @@ def _defrag_pass(local_connection, event_push_client):
     """
     log = logging.getLogger("_defrag_pass")
 
-    defragable_bytes, value_file_rows = _identify_defrag_candidates(
-        local_connection
+    defraggable_bytes, value_file_rows = _identify_defrag_candidates(
+        connection
     )
-    if defragable_bytes == 0:
+    if defraggable_bytes == 0:
         return 0
 
-    prev_handoff_node_id = None
-    prev_collection_id = None
-    for reference in _query_value_file_references(
-        local_connection, [row.id for row in value_file_rows]
+    input_value_files = dict()
+    for value_file_row in value_file_rows:
+        input_value_file = InputValueFile(
+            connection, _repository_path, value_file_row
+        )
+        input_value_files[input_value_file.value_file_id] = input_value_file
+
+    bytes_defragged = 0
+    for reference, output_value_file in _generate_work(
+        connection, value_file_rows
     ):
-        if reference.handoff_node_id is not None:
-            # one distinct value file per handoff node
-            if reference.handoff_node_id != prev_handoff_node_id:
-                if prev_handoff_node_id is not None:
-                    log.debug(
-                        "closing value file for handoff node {0}".format(
-                            prev_handoff_node_id
-                        )
-                    )
-                log.debug(
-                    "opening value file for handoff node {0}".format(
-                        handoff_node_id
-                    )
-                )
-                prev_handoff_node_id = reference.handoff_node_id
-        elif reference.collection_id != prev_collection_id:
-            if prev_handoff_node_id is not None:
-                log.debug(
-                    "closing value file for handoff node {0}".format(
-                        prev_handoff_node_id
-                    )
-                )
-                prev_handoff_node_id = None
-
-            # one distinct value file per collection_id
-            if prev_collection_id is not None:
-                log.debug(
-                    "closing value file for collection {0}".format(
-                        prev_collection_id
-                    )
-                )
-            log.debug(
-                "opening value file for collection {0}".format( 
-                    reference.collection_id
-                )
-            )
-            prev_collection_id = reference.collection_id
-
-    if prev_handoff_node_id is not None:
-        log.debug(
-            "closing value file for handoff node {0}".format(
-                prev_handoff_node_id
-            )
+        # read the segment sequence from the old value_file
+        input_value_file = input_value_files[reference.value_file_id]
+        data = input_value_file.read(
+            reference.value_file_offset, reference.sequence_size
         )
-
-    if prev_collection_id is not None:
-        log.debug(
-            "closing value file for collection {0}".format(
-                prev_collection_id
+        sequence_md5 = hashlib.md5()
+        sequence_md5.update(data)
+        if sequence_md5.digest() != bytes(reference.sequence_hash):
+            log.error(
+                "md5 mismatch {0} {1} {2} {3} {4} {5} {6} {7} {8}".format(
+                    reference.segment_id,
+                    reference.handoff_node_id,
+                    reference.collection_id, 
+                    reference.key, 
+                    reference.timestamp,
+                    reference.sequence_num,
+                    reference.value_file_id,
+                    reference.value_file_offset,
+                    reference.sequence_size
+                )
             )
-        )
+            #TODO - insert into repair table
+            continue
 
-    return 0
+        # write the segment_sequence to the new value file
+        output_value_file.write_data_for_one_sequence(
+            reference.collection_id, 
+            reference.segment_id, 
+            data
+        )
+        bytes_defragged += reference.sequence_size
+
+        # TODO adjust segment_sequence row
+
+    assert bytes_defragged == defraggable_bytes, (
+        bytes_defragged, defraggable_bytes, 
+    )
+    return bytges_defragged
 
 def main():
     """
@@ -217,14 +296,14 @@ def main():
     event_push_client = EventPushClient(zmq_context, "defragger")
     event_push_client.info("program-start", "defragger starts")  
 
-    local_connection = None
+    connection = None
 
     while not halt_event.is_set():
 
         # if we don't have an open database connection, get one
-        if local_connection is None:
+        if connection is None:
             try:
-                local_connection = get_node_local_connection()
+                connection = get_node_local_connection()
             except Exception as instance:
                 exctype, value = sys.exc_info()[:2]
                 event_push_client.exception(
@@ -236,14 +315,18 @@ def main():
                 halt_event.wait(_database_retry_interval)
                 continue
 
+        # start a transaction
+        connection.execute("begin")
+
         # try one defrag pass
         bytes_defragged = 0
         try:
             bytes_defragged = _defrag_pass(
-                local_connection, event_push_client
+                connection, event_push_client
             )
         except KeyboardInterrupt:
             halt_event.set()
+            connection.rollback()
         except Exception as instance:
             log.exception(str(instance))
             event_push_client.exception(
@@ -251,16 +334,19 @@ def main():
                 str(instance),
                 exctype=instance.__class__.__name__
             )
+            connection.rollback()
+        else:
+            connection.commit()
 
         log.info("bytes defragged = {0}".format(bytes_defragged))
 
-        # if we didn't do anythibng on this pass...
+        # if we didn't do anything on this pass...
         if bytes_defragged == 0:
 
             # close the database connection
-            if local_connection is not None:
-                local_connection.close()
-                local_connection = None
+            if connection is not None:
+                connection.close()
+                connection = None
 
             # wait and try again
             try:
@@ -268,8 +354,8 @@ def main():
             except KeyboardInterrupt:
                 halt_event.set()
                 
-    if local_connection is not None:
-        local_connection.close()
+    if connection is not None:
+        connection.close()
 
     event_push_client.close()
     zmq_context.term()

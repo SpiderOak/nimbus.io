@@ -77,10 +77,12 @@ def _identify_defrag_candidates(connection):
     defraggable_bytes = 0
     for value_file_row in _query_value_file_candidate_rows(connection):
        if defraggable_bytes > _min_bytes_for_defrag_pass and \
+          value_file_row.size is not None and \
           defraggable_bytes + value_file_row.size > _max_bytes_for_defrag_pass:
            break
        candidates.append(value_file_row)
-       defraggable_bytes += value_file_row.size
+       if value_file_row.size is not None:
+           defraggable_bytes += value_file_row.size
 
     if defraggable_bytes < _min_bytes_for_defrag_pass:
         log.debug("too few defraggable bytes {0} in {1} value files".format(
@@ -264,6 +266,7 @@ def _defrag_pass(connection, event_push_client):
             continue
 
         # write the segment_sequence to the new value file
+        new_value_file_offset = output_value_file.size
         output_value_file.write_data_for_one_sequence(
             reference.collection_id, 
             reference.segment_id, 
@@ -271,12 +274,21 @@ def _defrag_pass(connection, event_push_client):
         )
         bytes_defragged += reference.sequence_size
 
-        # TODO adjust segment_sequence row
+        # adjust segment_sequence row
+        connection.execute("""
+            update nimbusio_node.segment_sequence
+            set value_file_id = %s, value_file_offset = %s
+            where collection_id = %s and segment_id = %s
+        """, [output_value_file.value_file_id, 
+              new_value_file_offset,
+              reference.collection_id,
+              reference.segment_id])
 
-    assert bytes_defragged == defraggable_bytes, (
-        bytes_defragged, defraggable_bytes, 
-    )
-    return bytges_defragged
+    # close (and remove) the old value files
+    for input_value_file in input_value_files.values():
+        input_value_file.close()
+
+    return bytes_defragged
 
 def main():
     """
@@ -321,9 +333,7 @@ def main():
         # try one defrag pass
         bytes_defragged = 0
         try:
-            bytes_defragged = _defrag_pass(
-                connection, event_push_client
-            )
+            bytes_defragged = _defrag_pass(connection, event_push_client)
         except KeyboardInterrupt:
             halt_event.set()
             connection.rollback()

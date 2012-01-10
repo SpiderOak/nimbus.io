@@ -89,6 +89,14 @@ class OutputValueFile(object):
         self._max_segment_id = None
         self._collection_ids = set()
 
+    @property
+    def size(self):
+        return self._size
+
+    @property
+    def value_file_id(self):
+        return self._value_file_id
+
     def write_data_for_one_sequence(self, collection_id, segment_id, data):
         """
         write the data for one sequence

@@ -60,7 +60,7 @@ class AuditResultDatabase(object):
 
     def start_audit(self, collection_id, timestamp):
         """insert a row to mark the start of an audit"""
-        row_id = self._connection.execute_and_regturn_id(
+        row_id = self._connection.execute_and_return_id(
             _start_audit_command, 
             [collection_id, state_audit_started, timestamp, ]
         )

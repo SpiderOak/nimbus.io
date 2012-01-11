@@ -121,8 +121,8 @@ class OutputValueFile(object):
             self._value_file_path, self._size, self._segment_sequence_count
         )) 
 
+        os.fsync(self._value_file_fd)
         os.close(self._value_file_fd)
-        #TODO: fsync
 
         value_file_row = value_file_template(
             id=self._value_file_id,

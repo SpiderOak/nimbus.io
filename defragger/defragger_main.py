@@ -34,6 +34,10 @@ _max_bytes_for_defrag_pass = int(
     os.environ.get("NIMBUSIO_MAX_BYTES_FOR_DEFRAG_PASS", "10000000000")
 )
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_max_value_file_size = int(os.environ.get(
+    "NIMBUS_IO_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024))
+)
+
 _reference_template = namedtuple("Reference", [
     "segment_id",
     "handoff_node_id",
@@ -140,7 +144,7 @@ def _generate_work(connection, value_file_rows):
         connection, [row.id for row in value_file_rows]
     ):
         if reference.handoff_node_id is not None:
-            # one distinct value file per handoff node
+            # at least one distinct value file per handoff node
             if reference.handoff_node_id != prev_handoff_node_id:
                 if prev_handoff_node_id is not None:
                     log.debug(
@@ -173,7 +177,7 @@ def _generate_work(connection, value_file_rows):
                 output_value_file = None
                 prev_handoff_node_id = None
 
-            # one distinct value file per collection_id
+            # at least one distinct value file per collection_id
             if prev_collection_id is not None:
                 log.debug(
                     "closing value file for collection {0}".format(
@@ -196,6 +200,17 @@ def _generate_work(connection, value_file_rows):
             prev_collection_id = reference.collection_id
 
         assert output_value_file is not None
+
+        # if this write would put us over the max size,
+        # start a new output value file
+        expected_size = output_value_file.size + reference.sequence_size
+        if expected_size > _max_value_file_size:
+            log.debug("closing value_file and opening new one due to size")
+            output_value_file.close()
+            output_value_file = OutputValueFile(
+                connection, _repository_path
+            )
+
         yield reference, output_value_file
     
     if prev_handoff_node_id is not None:
@@ -211,6 +226,8 @@ def _generate_work(connection, value_file_rows):
                 prev_collection_id
             )
         )
+
+    output_value_file.close()
 
 def _defrag_pass(connection, event_push_client):
     """

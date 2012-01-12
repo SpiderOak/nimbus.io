@@ -157,7 +157,7 @@ def _generate_work(connection, value_file_rows):
                     output_value_file = None
                 log.debug(
                     "opening value file for handoff node {0}".format(
-                        handoff_node_id
+                        reference.handoff_node_id
                     )
                 )
                 assert output_value_file is None

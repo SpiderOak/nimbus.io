@@ -61,7 +61,7 @@ def start_event_subscriber(environment):
     args = [
         sys.executable,
         server_path,
-        "warn"
+        "error"
     ]
 
     log.info("starting %s %s" % (args, environment, ))

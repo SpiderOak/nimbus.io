@@ -688,7 +688,7 @@ class Application(object):
             self._log.error("retrieve failed: %s %s" % (
                 description, instance,
             ))
-            self._event_push_client.error(
+            self._event_push_client.warn(
                 "retrieve-failed",
                 "%s: %s" % (description, instance, )
             )
@@ -703,7 +703,7 @@ class Application(object):
                     sent += len(data)
                     yield data
             except RetrieveFailedError, instance:
-                self._event_push_client.error(
+                self._event_push_client.warn(
                     "retrieve-failed",
                     "%s: %s" % (description, instance, )
                 )

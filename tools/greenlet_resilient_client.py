@@ -233,9 +233,11 @@ class GreenletResilientClient(Greenlet):
         self._status_time = time.time()
 
     def join(self, timeout=3.0):
+        self._log.debug("joining")
         if self._dealer_socket is not None:
             self._dealer_socket.close()
         Greenlet.join(self, timeout)
+        self._log.debug("join complete")
 
     def queue_message_for_send(self, message_control, data=None):
 

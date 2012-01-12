@@ -53,8 +53,6 @@ class Deliverator(object):
         Deliver the reply nessage over the channel for its message-id
 
         And discard the channel
-
-        raise KeyError if there is no channel for the request
         """
         self._lock.acquire()
         try:
@@ -68,4 +66,18 @@ class Deliverator(object):
             self._log.error("undeliverable message %s" % (message.control, ))
         else:
             channel.put((message.control, message.body, ))
+
+    def discard_delivery_channel(self, message_id):
+        """
+        Discard a delivery channel without attempting to put a reply
+
+        This is used for handshakes, which don't get a reply
+        """
+        self._lock.acquire()
+        try:
+            self._active_requests.pop(message_id)
+        except KeyError:
+            self._log.error("unknown message_id %s" % (message_id, ))
+        finally:
+            self._lock.release()
 

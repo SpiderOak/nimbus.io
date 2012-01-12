@@ -175,14 +175,7 @@ class GreenletResilientClient(Greenlet):
             "client-address"    : self._client_address,
         }
 
-        # we don't call queue_message_for_send, because the only
-        # reply we expect is an ack, so we don't want a delivery
-        # channel
-        message = message_format(
-            ident=None, control=message_control, body=None
-        )
-
-        self._send_queue.put(message)
+        self.queue_message_for_send(message_control)
 
     def _handle_status_connected(self):
 
@@ -297,6 +290,9 @@ class GreenletResilientClient(Greenlet):
             # if we got an ack to a handshake request, we are connected
             if message_type == "resilient-server-handshake":
                 assert self._status == _status_handshaking, self._status
+                self._deliverator.discard_delivery_channel(
+                    message["message-id"]
+                )
                 self._status = _status_connected
                 self._log.info("status = %s" % (_status_name[self._status], ))
                 self._status_time = time.time()                

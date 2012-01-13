@@ -69,14 +69,27 @@ def _retrieve_handoffs_for_node(connection, node_id):
 
     segment_row_list = list()
     for entry in result:
-        segment_row = segment_row_template._make(entry)
+        row = segment_row_template._make(entry)
 
-        # file_hash (md5.digest()) comes out of the database as a buffer
-        # object
-        segment_row = segment_row._replace(
-            file_hash = str(segment_row.file_hash)
+        # bytea columns come out of the database as buffer objects
+        if row.version_identifer is None: 
+            version_identifier = None
+        else: 
+            version_identifier = str(row.version_identifier)
+        if row.conjoined_identifer is None: 
+            conjoined_identifier = None
+        else: 
+            conjoined_identifier = str(row.conjoined_identifier)
+        if row.file_hash is None: 
+            file_hash = None
+        else: 
+            file_hash = str(row.file_hash)
+        row = row._replace(
+            version_identifier=version_identifier,
+            conjoined_identifier=conjoined_identifier,
+            file_hash=file_hash
         )
-        segment_row_list.append(segment_row)
+        segment_row_list.append(row)
 
     return segment_row_list
 

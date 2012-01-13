@@ -34,7 +34,7 @@ class PriorityQueue(object):
         try:
             priority = message_tuple[0]["priority"]
         except KeyError:
-            self._log.error("message lacks priority %s" % (message, ))
+            self._log.error("message lacks priority %s" % (message_tuple[0], ))
             priority = create_priority()
 
         heapq.heappush(

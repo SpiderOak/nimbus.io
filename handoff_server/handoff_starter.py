@@ -34,7 +34,7 @@ class HandoffStarter(object):
 
     def run(self, halt_event):
         """
-        send 'request-handoffs' to all remote handoff servers
+        start a forwarder coroutine for a segment
         """
         if halt_event.is_set():
             return

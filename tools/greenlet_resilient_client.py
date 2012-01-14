@@ -210,7 +210,14 @@ class GreenletResilientClient(Greenlet):
         self._pending_message_start_time = None
 
     def _handle_status_handshaking(self):    
-        assert self._pending_message is not None
+
+        # there's a race condition where we hit this check before the
+        # handshake request gets sent. So we just return and hope
+        # to hit it next time
+        if self._pending_message is None:
+            self._log.warn("_handle_status_handshaking with no pending message")
+            return
+
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
             return

@@ -464,6 +464,25 @@ def _handle_destroy_key(state, message, _data):
     }
     state["resilient-server"].send_reply(reply)
 
+def _handle_purge_handoff_source(state, message, _data):
+    log = logging.getLogger("_handle_purge_handoff_source")
+    log.info("%s %s %s" % (
+        message["collection-id"], 
+        message["version-identifier-hex"], 
+        message["handoff-node-id"],
+    ))
+
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
+    state["writer"].purge_handoff_source(
+        message["collection-id"], 
+        version_identifier,
+        message["handoff-node-id"]
+    )
+
 def _handle_start_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_start_conjoined_archive")
     log.info("%r %r %s %s" % (
@@ -563,6 +582,7 @@ _dispatch_table = {
     "archive-key-next"          : _handle_archive_key_next,
     "archive-key-final"         : _handle_archive_key_final,
     "destroy-key"               : _handle_destroy_key,
+    "purge-handoff-source"      : _handle_purge_handoff_source,
     "start-conjoined-archive"   : _handle_start_conjoined_archive,
     "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
     "finish-conjoined-archive"  : _handle_finish_conjoined_archive,

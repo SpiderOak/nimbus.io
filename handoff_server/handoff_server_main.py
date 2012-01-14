@@ -11,6 +11,7 @@ import cPickle as pickle
 import random
 import sys
 import time
+import uuid
 
 import zmq
 
@@ -24,7 +25,7 @@ from tools import time_queue_driven_process
 from tools.database_connection import \
         get_node_local_connection, \
         get_central_connection
-from tools.data_definitions import segment_row_template
+from tools.data_definitions import segment_row_template, create_priority
 
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -72,11 +73,11 @@ def _retrieve_handoffs_for_node(connection, node_id):
         row = segment_row_template._make(entry)
 
         # bytea columns come out of the database as buffer objects
-        if row.version_identifer is None: 
+        if row.version_identifier is None: 
             version_identifier = None
         else: 
             version_identifier = str(row.version_identifier)
-        if row.conjoined_identifer is None: 
+        if row.conjoined_identifier is None: 
             conjoined_identifier = None
         else: 
             conjoined_identifier = str(row.conjoined_identifier)
@@ -98,6 +99,7 @@ def _convert_dict_to_segment_row(segment_dict):
         id=segment_dict["id"],
         collection_id=segment_dict["collection_id"],
         key=segment_dict["key"],
+        version_identifier=segment_dict["version_identifier"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
         conjoined_identifier=segment_dict.get("conjoined_identifier"),
@@ -134,6 +136,9 @@ def _handle_request_handoffs(state, message, _data):
         )
     except Exception, instance:
         log.exception(str(instance))
+        state["event-push-client"].exception(
+            "_retrieve_handoffs_for_node", str(instance)
+        )  
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
@@ -243,13 +248,15 @@ def _handle_archive_reply(state, message, _data):
             timestamp_repr=repr(segment_row.timestamp)
         )
         
+        version_identifier = uuid.UUID(bytes=segment_row.version_identifier)
+
         # purge the handoff source(s)
         message = {
-            "message-type"      : "purge-key",
+            "message-type"      : "purge-handoff-source",
+            "priority"          : create_priority(),
             "collection-id"     : segment_row.collection_id,
-            "key"               : segment_row.key,
-            "timestamp-repr"    : repr(segment_row.timestamp),
-            "segment-num"       : segment_row.segment_num,
+            "version-identifier-hex" : version_identifier.hex,
+            "handoff-node-id"   : segment_row.handoff_node_id
         }
         for source_node_name in source_node_names:
             writer_client = state["writer-client-dict"][source_node_name]
@@ -440,6 +447,7 @@ def _setup(_halt_event, state):
     state["event-push-client"].info("program-start", "handoff_server starts")  
 
     timer_driven_callbacks = [
+        (state["handoff-starter"].run, state["handoff-starter"].next_run(), ),
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         # try to spread out handoff polling, if all nodes start together

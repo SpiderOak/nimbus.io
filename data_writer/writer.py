@@ -185,6 +185,32 @@ def _get_segment_id(connection, collection_id, key, timestamp, segment_num):
     (segment_id, ) = result
     return segment_id
 
+def _purge_handoff_source(
+    connection, collection_id, version_identifier, handoff_node_id
+):
+    """
+    remove handoff source from local database
+    """
+    connection.execute("""
+        delete from nimbusio_node.segment_sequence 
+        where segment_id = (
+            select segment_id from nimbusio_node.segment
+            where collection_id = %s 
+            and version_identifier = %s
+            and handoff_node_id = %s
+        );
+        delete from nimbusio_node.segment
+        where collection_id = %s 
+        and version_identifier = %s
+        and handoff_node_id = %s;
+    """, [collection_id,
+          psycopg2.Binary(version_identifier.bytes),
+          handoff_node_id,
+          collection_id,
+          psycopg2.Binary(version_identifier.bytes),
+          handoff_node_id])
+    connection.commit()
+
 class Writer(object):
     """
     Manage writing segment values to disk
@@ -369,6 +395,19 @@ class Writer(object):
             handoff_node_id=None
         )
         _insert_segment_tombstone_row(self._connection, segment_row)
+
+    def purge_handoff_source(
+        self, collection_id, version_identifier, handoff_node_id
+    ):
+        """
+        delete rows for a handoff source
+        """
+        _purge_handoff_source(
+            self._connection, 
+            collection_id, 
+            version_identifier, 
+            handoff_node_id
+        )
 
     def start_conjoined_archive(
         self, collection_id, key, conjoined_identifier, timestamp

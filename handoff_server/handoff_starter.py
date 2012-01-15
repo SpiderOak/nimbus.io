@@ -39,6 +39,10 @@ class HandoffStarter(object):
         if halt_event.is_set():
             return
 
+        self._log.debug("%s pending handoffs" % (
+            len(self._state["pending-handoffs"])
+        ))
+
         if self._state["forwarder"] is not None:
             # run again, after the polling interval
             return [(self.run, self.next_run(), )]

@@ -194,7 +194,7 @@ def _purge_handoff_source(
     connection.execute("""
         delete from nimbusio_node.segment_sequence 
         where segment_id = (
-            select segment_id from nimbusio_node.segment
+            select id from nimbusio_node.segment
             where collection_id = %s 
             and version_identifier = %s
             and handoff_node_id = %s

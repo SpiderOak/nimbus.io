@@ -9,6 +9,7 @@ import hashlib
 import logging
 
 from tools.data_definitions import identifier_hex
+from tools.greenlet_resilient_client import ResilientClientError
 
 class DataReader(object):
 
@@ -45,8 +46,13 @@ class DataReader(object):
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
         }
-        delivery_channel = \
-                self._resilient_client.queue_message_for_send(message)
+        try:
+            delivery_channel = \
+                    self._resilient_client.queue_message_for_send(message)
+        except ResilientClientError:
+            self._log.exception("retrieve_key_start")
+            return None
+
         self._log.debug(
             '%(message-type)s: %(collection-id)s '
             'key = %(key)r '
@@ -95,8 +101,12 @@ class DataReader(object):
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
         }
-        delivery_channel = \
-                self._resilient_client.queue_message_for_send(message)
+        try:
+            delivery_channel = \
+                    self._resilient_client.queue_message_for_send(message)
+        except ResilientClientError:
+            self._log.exception("retrieve_key_start")
+            return None
         self._log.debug(
             '%(message-type)s: %(collection-id)s %(key)s' % message
         )

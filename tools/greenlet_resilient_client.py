@@ -17,6 +17,9 @@ from gevent_zeromq import zmq
 
 from tools.data_definitions import message_format
 
+class ResilientClientError(Exception):
+    pass
+
 _polling_interval = 3.0
 _ack_timeout = float(os.environ.get("NIMBUSIO_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
@@ -175,7 +178,7 @@ class GreenletResilientClient(Greenlet):
             "client-address"    : self._client_address,
         }
 
-        self.queue_message_for_send(message_control)
+        self.queue_message_for_send(message_control, handshake=True)
 
     def _handle_status_connected(self):
 
@@ -193,30 +196,35 @@ class GreenletResilientClient(Greenlet):
         )
 
         self._disconnect()
-
-        # deliver a failure reply to whoever is waiting for this message
-        reply = {
-            "message-type"  : "ack-timeout-reply",
-            "message-id"    : self._pending_message.control["message-id"],
-            "result"        : "ack timeout",
-            "error-message" : "timeout waiting ack: treating as disconnect",
-        }
-
-        message = message_format(ident=None, control=reply, body=None)
-        self._deliverator.deliver_reply(message)
-
-        # heave the message; we're heaving the whole request
+        
+        work_message = self._pending_message
         self._pending_message = None
         self._pending_message_start_time = None
 
-    def _handle_status_handshaking(self):    
+        self._lock.acquire()
 
-        # there's a race condition where we hit this check before the
-        # handshake request gets sent. So we just return and hope
-        # to hit it next time
-        if self._pending_message is None:
-            self._log.warn("_handle_status_handshaking with no pending message")
-            return
+        # deliver a failure reply to everyone  waiting for this socket
+        while work_message is not None:
+
+            reply = {
+                "message-type"  : "ack-timeout-reply",
+                "message-id"    : work_message.control["message-id"],
+                "result"        : "ack timeout",
+                "error-message" : "timeout waiting ack: treating as disconnect"
+            }
+
+            message = message_format(ident=None, control=reply, body=None)
+            self._deliverator.deliver_reply(message)
+
+            try:
+                work_message = self._send_queue.get_nowait()
+            except gevent.queue.Empty:
+                work_message = None
+
+        self._lock.release()
+
+    def _handle_status_handshaking(self):    
+        assert self._pending_message is not None
 
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
@@ -246,7 +254,22 @@ class GreenletResilientClient(Greenlet):
         Greenlet.join(self, timeout)
         self._log.debug("join complete")
 
-    def queue_message_for_send(self, message_control, data=None):
+    def queue_message_for_send(
+        self, message_control, data=None, handshake=False
+    ):
+        if handshake:
+            if self._status != _status_handshaking:
+                raise ResilientClientError(
+                    "queue_message_for_send while handshake %s" % (
+                        message_control,
+                    )
+                )
+        elif not self.connected:
+            raise ResilientClientError(
+                "queue_message_for_send while not connected  %s" % (
+                    message_control,
+                )
+            )
 
         if not "message-id" in message_control:
             message_control["message-id"] = uuid.uuid1().hex

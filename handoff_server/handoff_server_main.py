@@ -34,7 +34,6 @@ from handoff_server.pending_handoffs import PendingHandoffs
 from handoff_server.handoff_requestor import HandoffRequestor, \
         handoff_polling_interval
 from handoff_server.handoff_starter import HandoffStarter
-from handoff_server.forwarder_coroutine import forwarder_coroutine
 
 class HandoffError(Exception):
     pass
@@ -261,30 +260,6 @@ def _handle_archive_reply(state, message, _data):
         for source_node_name in source_node_names:
             writer_client = state["writer-client-dict"][source_node_name]
             writer_client.queue_message_for_send(message)
-
-        # see if we have another handoff to this node
-        try:
-            segment_row, source_node_names = state["pending-handoffs"].pop()
-        except IndexError:
-            log.debug("all handoffs done")
-            # run the handoff requestor again, after the polling interval
-            return [(state["handoff-requestor"].run, 
-                     state["handoff-requestor"].next_run(), )]
-        
-        # we pick the first source name, because it's easy, and because,
-        # since that source responded to us first, it might have better 
-        # response
-        # TODO: switch over to the second source on error
-        source_node_name = source_node_names[0]
-        reader_client = state["reader-client-dict"][source_node_name]
-
-        state["forwarder"] = forwarder_coroutine(
-            segment_row, 
-            source_node_names, 
-            state["writer-client-dict"][_local_node_name], 
-            reader_client
-        )
-        state["forwarder"] .next()
 
 def _handle_purge_key_reply(_state, message, _data):
     log = logging.getLogger("_handle_purge_key_reply")

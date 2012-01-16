@@ -359,7 +359,7 @@ class Application(object):
             "max_keys",
             "delimiter",
             "key_marker",
-            "versio0n_id_marker",
+            "version_id_marker",
         ]
 
         # pass on any variable names we recognize as keyword args

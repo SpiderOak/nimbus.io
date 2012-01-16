@@ -44,7 +44,7 @@ def list_keys(
             continue
         prev_key = key
         if tombstone:
-            continue
+            break
         version_identifier = uuid.UUID(bytes=version_identifier_bytes)
         key_list.append(
             {"key" : key, 
@@ -89,7 +89,7 @@ def list_versions(
         and key like %s
         and key > %s
         and version_identifier > %s
-        order by key asc, version_identifier asc, timestamp desc
+        order by key asc, timestamp desc
         limit %s
         """.strip(),
         [collection_id, 
@@ -111,7 +111,7 @@ def list_versions(
         prev_key = key
         prev_version_identifier_bytes = version_identifier_bytes
         if tombstone:
-            continue
+           break 
         version_identifier = uuid.UUID(bytes=version_identifier_bytes)
         key_list.append(
             {"key" : key, 

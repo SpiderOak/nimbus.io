@@ -223,8 +223,15 @@ class GreenletResilientClient(Greenlet):
 
         self._lock.release()
 
-    def _handle_status_handshaking(self):    
-        assert self._pending_message is not None
+    def _handle_status_handshaking(self):
+
+        # race condition: the handshake message may still be in the send queue
+        if self._pending_message is None:
+            self._log.warn(
+                "_handle_status_handshaking with no pending message"
+            )
+            assert len(self._send_queue) == 1, Len(self._send_queue)
+            return
 
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:

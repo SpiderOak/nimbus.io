@@ -674,7 +674,7 @@ class Application(object):
             _max_segments)
         retriever = Retriever(
             self._node_local_connection,
-            connected_data_readers,
+            self.data_readers,
             collection_entry.collection_id,
             key,
             _min_segments

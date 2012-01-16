@@ -84,6 +84,12 @@ class Retriever(object):
                 ))
                 # send a request to all node
                 for i, data_reader in enumerate(self._data_readers):
+                    if not data_reader.connected:
+                        self._log.warn("ignoring disconnected reader %s" % (
+                            str(data_reader),
+                        ))
+                        continue
+
                     segment_number = i + 1
                     if start:
                         function = data_reader.retrieve_key_start

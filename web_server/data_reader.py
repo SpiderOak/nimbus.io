@@ -20,7 +20,7 @@ class DataReader(object):
 
     @property
     def connected(self):
-        return self._resilient_client
+        return self._resilient_client.connected
 
     @property
     def node_name(self):

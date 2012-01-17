@@ -36,8 +36,7 @@ class Watcher(Greenlet):
                             client.test_current_status()
                 except Exception, instance:
                     self._log.error("reader client %s" % (instance, ))
-                    self._halt_event.wait(_interval)
-                    continue
+                    status, elapsed_time, queue_size = "error", 0.0, -1
 
                 if status != "connected":
                     self._log.info(
@@ -54,8 +53,7 @@ class Watcher(Greenlet):
                             client.test_current_status()
                 except Exception, instance:
                     self._log.error("writer client %s" % (instance, ))
-                    self._halt_event.wait(_interval)
-                    continue
+                    status, elapsed_time, queue_size = "error", 0.0, -1
 
                 if status != "connected":
                     self._log.info(

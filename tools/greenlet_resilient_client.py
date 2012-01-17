@@ -160,7 +160,9 @@ class GreenletResilientClient(Greenlet):
     def _handle_status_disconnected(self):
         elapsed_time = time.time() - self._status_time 
         if elapsed_time < _handshake_retry_interval:
-            return
+            return (_status_name[self._status], 
+                    elapsed_time, 
+                    self._send_queue.qsize()) 
 
         assert self._dealer_socket is None
         self._dealer_socket = self._context.socket(zmq.XREQ)
@@ -180,14 +182,22 @@ class GreenletResilientClient(Greenlet):
 
         self.queue_message_for_send(message_control, handshake=True)
 
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
+
     def _handle_status_connected(self):
 
         if self._pending_message_start_time is None:
-            return
+            return (_status_name[self._status], 
+                    0.0, 
+                    self._send_queue.qsize()) 
 
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
-            return
+            return (_status_name[self._status], 
+                    elapsed_time, 
+                    self._send_queue.qsize()) 
 
         self._log.error(
             "timeout waiting ack: treating as disconnect %s" % (
@@ -223,6 +233,10 @@ class GreenletResilientClient(Greenlet):
 
         self._lock.release()
 
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
+
     def _handle_status_handshaking(self):
 
         # race condition: the handshake message may still be in the send queue
@@ -230,12 +244,16 @@ class GreenletResilientClient(Greenlet):
             self._log.warn(
                 "_handle_status_handshaking with no pending message"
             )
-            assert len(self._send_queue) == 1, Len(self._send_queue)
-            return
+            assert self._send_queue.qsize() == 1, self._send_queue.qsize()
+            return (_status_name[self._status], 
+                    0.0, 
+                    self._send_queue.qsize()) 
 
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
-            return
+            return (_status_name[self._status], 
+                    elapsed_time, 
+                    self._send_queue.qsize()) 
 
         self._log.warn("timeout waiting handshake ack")
 
@@ -243,6 +261,10 @@ class GreenletResilientClient(Greenlet):
 
         self._pending_message = None
         self._pending_message_start_time = None
+
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
 
     def _disconnect(self):
         self._log.debug("disconnecting")

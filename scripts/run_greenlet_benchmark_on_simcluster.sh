@@ -24,8 +24,8 @@ CLIENT_PATH=$BASEDIR/client
 source $BASEDIR/config/central_config.sh
 source $BASEDIR/config/client_config.sh
 
-# create 1000 test users
-for i in {0..999} ; do
+# create 100 test users
+for i in {0..99} ; do
     printf -v TEST_USERNAME "motoboto-benchmark-%03d" $i
     MOTOBOTO_IDENTIY="$CLIENT_PATH/$TEST_USERNAME"
     if [ ! -e $MOTOBOTO_IDENTIY ]; then
@@ -35,9 +35,11 @@ for i in {0..999} ; do
     fi 
 done
 
+export NIMBUSIO_CONNECTION_TIMEOUT=60.0
+
 # run the benchmark
 python ../motoboto_benchmark/motoboto_benchmark_greenlet_main.py \
     --test-script="$HOME/motoboto_big_test_script.json" \
     --user-identity-dir="$CLIENT_PATH" \
     --max-users=100 \
-    --test-duration=1800
+    --test-duration=3600

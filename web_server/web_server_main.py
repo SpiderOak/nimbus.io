@@ -38,12 +38,14 @@ from tools.greenlet_push_client import GreenletPUSHClient
 from tools.database_connection import get_central_connection, \
         get_node_local_connection
 from tools.event_push_client import EventPushClient
+from tools.unified_id_factory import UnifiedIDFactory
 
 from web_server.application import Application
 from web_server.data_reader import DataReader
 from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
 from web_server.watcher import Watcher
+from web_server.central_database_util import get_cluster_row, get_node_rows
 
 _log_path = "%s/nimbusio_web_server_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
@@ -74,13 +76,33 @@ def _signal_handler_closure(halt_event):
         halt_event.set()
     return _signal_handler
 
+def _get_shard_id(central_connection, cluster_id):
+    """
+    use node_id as shard id
+    """
+    for node_row in get_node_rows(central_connection, cluster_id):
+        if node_row.name == _local_node_name:
+            return node_row.id
+
+    # if we make it here, this cluster is misconfigured
+    raise ValueError(
+        "node name {0} is not in node rows for cluster {1}".format(
+            _local_node_name, cluster_id
+        )
+    )
+
 class WebServer(object):
     def __init__(self):
         self._log = logging.getLogger("WebServer")
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
+        self._cluster_row = get_cluster_row(self._central_connection)
         self._node_local_connection = get_node_local_connection()
+        self._unified_id_factory = UnifiedIDFactory(
+            self._central_connection,
+            _get_shard_id(self._central_connection, self._cluster_row.id)
+        )
 
         self._deliverator = Deliverator()
 
@@ -160,6 +182,8 @@ class WebServer(object):
         self.application = Application(
             self._central_connection,
             self._node_local_connection,
+            self._cluster_row,
+            self._unified_id_factory,
             self._data_writer_clients,
             self._data_readers,
             authenticator,

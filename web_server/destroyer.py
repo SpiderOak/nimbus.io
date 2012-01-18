@@ -5,7 +5,6 @@ destroyer.py
 A class that performs a destroy query on all data writers.
 """
 import logging
-import uuid
 
 import gevent
 import gevent.pool
@@ -25,7 +24,7 @@ class Destroyer(object):
         data_writers,
         collection_id, 
         key,
-        version_identifier,
+        unified_id,
         timestamp        
     ):
         self.log = logging.getLogger('Destroyer')
@@ -34,7 +33,7 @@ class Destroyer(object):
         self.data_writers = data_writers
         self.collection_id = collection_id
         self.key = key
-        self._version_identifier = version_identifier
+        self._unified_id = unified_id
         self.timestamp = timestamp
         self._pending = gevent.pool.Group()
         self._done = []
@@ -73,11 +72,6 @@ class Destroyer(object):
         if len(segment_rows) == 0:
             raise DestroyFailedError
 
-        conjoined_identifier = (
-            None if conjoined_row is None \
-            else uuid.UUID(bytes=conjoined_row.identifier)
-        )
-
         file_size = sum([row.file_size for row in segment_rows])
 
         for i, data_writer in enumerate(self.data_writers):
@@ -88,9 +82,9 @@ class Destroyer(object):
                 data_writer.destroy_key,
                 self.collection_id,
                 self.key,
-                self._version_identifier,
+                self._unified_id,
                 self.timestamp,
-                conjoined_identifier,
+                (None if conjoined_row is None else conjoined_row.unified_id),
                 segment_num
             )
         self._join(timeout)

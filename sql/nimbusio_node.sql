@@ -20,7 +20,7 @@ create table conjoined (
     combined_size int8,
     combined_hash bytea
 );
-create unique index conjoined_identifier_idx on nimbusio_node.conjoined ("identifier");
+create unique index conjoined_unified_id_idx on nimbusio_node.conjoined ("unified_id");
 
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and

@@ -9,8 +9,7 @@ import hashlib
 import logging
 import zlib
 
-from tools.data_definitions import create_priority, \
-        identifier_hex
+from tools.data_definitions import create_priority
 
 from web_server.exceptions import (
     ArchiveFailedError,
@@ -32,10 +31,10 @@ class DataWriter(object):
         self,
         collection_id,
         key,
-        version_identifier_hex,
+        unified_id,
         timestamp,
         meta_dict,
-        conjoined_identifier_hex,
+        conjoined_unified_id,
         conjoined_part,
         segment_num,
         file_size,
@@ -51,9 +50,9 @@ class DataWriter(object):
             "priority"                  : create_priority(),
             "collection-id"             : collection_id,
             "key"                       : key, 
-            "version-identifier-hex"    : version_identifier_hex,
+            "unified-id"                : unified_id,
             "timestamp-repr"            : repr(timestamp),
-            "conjoined-identifier-hex"  : conjoined_identifier_hex,
+            "conjoined-unified-id"      : conjoined_unified_id,
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
             "segment-size"              : len(segment),
@@ -83,7 +82,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
-        version_identifier_hex,
+        unified_id,
         timestamp,
         segment_num,
         sequence_num,
@@ -99,7 +98,7 @@ class DataWriter(object):
             "priority"              : self._archive_priority,
             "collection-id"         : collection_id,
             "key"                   : key, 
-            "version-identifier-hex": version_identifier_hex,
+            "unified-id"            : unified_id,
             "timestamp-repr"        : repr(timestamp),
             "segment-num"           : segment_num,
             "segment-size"          : len(segment),
@@ -124,7 +123,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
-        version_identifier_hex,
+        unified_id,
         timestamp,
         segment_num,
         sequence_num,
@@ -138,7 +137,7 @@ class DataWriter(object):
             "priority"              : self._archive_priority,
             "collection-id"         : collection_id,
             "key"                   : key,
-            "version-identifier-hex": version_identifier_hex,
+            "unified_id"            : unified_id,
             "timestamp-repr"        : repr(timestamp),
             "segment-num"           : segment_num,
             "segment-size"          : len(segment),
@@ -162,10 +161,10 @@ class DataWriter(object):
         self,
         collection_id,
         key,
-        version_identifier_hex,
+        unified_id,
         timestamp,
         meta_dict,
-        conjoined_identifier_hex,
+        conjoined_unified_id,
         conjoined_part,
         segment_num,
         sequence_num,
@@ -183,9 +182,9 @@ class DataWriter(object):
                 "priority"                  : self._archive_priority,
                 "collection-id"             : collection_id,
                 "key"                       : key,
-                "version-identifier-hex"    : version_identifier_hex,
+                "unified-id"                : unified_id,
                 "timestamp-repr"            : repr(timestamp),
-                "conjoined-identifier-hex"  : conjoined_identifier_hex,
+                "conjoined-unified-id"      : conjoined_unified_id,
                 "conjoined-part"            : conjoined_part,
                 "segment-num"               : segment_num,
                 "segment-size"              : len(segment),
@@ -219,9 +218,9 @@ class DataWriter(object):
         self,
         collection_id,
         key,
-        version_identifier,
+        unified_id,
         timestamp,
-        conjoined_identifier,
+        conjoined_unified_id,
         segment_num
     ):
         try:
@@ -230,11 +229,9 @@ class DataWriter(object):
                 "priority"                  : create_priority(),
                 "collection-id"             : collection_id,
                 "key"                       : key,
-                "version-identifier-hex"    : version_identifier.hex,
+                "unified-id"                : unified_id,
                 "timestamp-repr"            : repr(timestamp),
-                "conjoined-identifier-hex"  : identifier_hex(
-                    conjoined_identifier
-                ),
+                "conjoined-unified-id"      : conjoined_unified_id,
                 "segment-num"               : segment_num,
             }
             delivery_channel = \

@@ -8,10 +8,8 @@ common data definitions
 from collections import namedtuple
 from datetime import datetime
 import os.path
-import psycopg2
 import re
 import time
-import uuid
 
 # our internal message format
 message_format = namedtuple("Message", "ident control body")
@@ -74,29 +72,6 @@ def parse_timestamp_repr(timestamp_repr):
 
     return timestamp
 
-def parse_identifier_hex(identifier_hex_string):
-    """
-    return the UUID or None
-    """
-    if identifier_hex_string is not None and len(identifier_hex_string) > 0:
-        identifier = uuid.UUID(hex=identifier_hex_string)
-    else:
-        identifier = None
-
-    return identifier
-
-def identifier_hex(identifier):
-    """
-    return a hex string or None
-    """
-    return (None if  identifier is None else identifier.hex)
-
-def identifier_binary(identifier):
-    """
-    return a psycopg2 binary or None
-    """
-    return (None if identifier is None else psycopg2.Binary(identifier.bytes))
-
 def parse_conjoined_part(conjoined_part):
     return (0 if conjoined_part is None else conjoined_part) 
 
@@ -137,10 +112,10 @@ segment_row_template = namedtuple(
         "id",
         "collection_id",
         "key",
-        "version_identifier",
+        "unified_id",
         "timestamp",
         "segment_num",
-        "conjoined_identifier",
+        "conjoined_unified_id",
         "conjoined_part",
         "file_size",
         "file_adler32",
@@ -178,7 +153,7 @@ conjoined_row_template = namedtuple(
         "id",
         "collection_id",
         "key",
-        "identifier",
+        "unified_id",
         "create_timestamp",
         "abort_timestamp",
         "complete_timestamp",

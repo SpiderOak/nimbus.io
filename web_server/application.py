@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 application.py
 
@@ -29,7 +28,6 @@ import hashlib
 import json
 from itertools import chain
 import urllib
-import uuid
 import time
 
 from webob.dec import wsgify
@@ -45,7 +43,6 @@ from tools.collection import get_username_and_collection_id, \
         list_collections, \
         delete_collection
 
-from web_server.central_database_util import get_cluster_row
 from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
         RetrieveFailedError, \
@@ -165,6 +162,8 @@ class Application(object):
         self, 
         central_connection,
         node_local_connection,
+        cluster_row,
+        unified_id_factory,
         data_writer_clients, 
         data_readers,
         authenticator, 
@@ -175,6 +174,8 @@ class Application(object):
         self._log = logging.getLogger("Application")
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
+        self._cluster_row = cluster_row
+        self._unified_id_factory = unified_id_factory
         self._data_writer_clients = data_writer_clients
         self.data_readers = data_readers
         self._authenticator = authenticator
@@ -182,7 +183,6 @@ class Application(object):
         self._event_push_client = event_push_client
         self._stats = stats
 
-        self._cluster_row = get_cluster_row(self._central_connection)
 
         self._dispatch_table = {
             action_list_collections     : self._list_collections,
@@ -474,7 +474,7 @@ class Application(object):
             value = urllib.unquote_plus(value)
             value = value.decode("utf-8")
             if len(value) > 0:
-                conjoined_identifier = uuid.UUID(hex=value)
+                conjoined_identifier = long(value)
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
@@ -483,10 +483,7 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-        if conjoined_identifier is not None:
-            version_identifier = conjoined_identifier
-        else:
-            version_identifier = uuid.uuid1()
+        unified_id = self._unified_id_factory.next()
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -499,7 +496,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            version_identifier,
+            unified_id,
             timestamp,
             meta_dict,
             conjoined_identifier,
@@ -820,7 +817,7 @@ class Application(object):
             self._data_writer_clients
         )
 
-        version_identifier = uuid.uuid1()
+        unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
         destroyer = Destroyer(
@@ -828,7 +825,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            version_identifier,
+            unified_id,
             timestamp
         )
 
@@ -995,10 +992,12 @@ class Application(object):
             # the cluster. They may or may not be connected.
             self._data_writer_clients
         ) 
+        unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
         result = start_conjoined_archive(
             data_writers,
+            unified_id,
             collection_entry.collection_id,
             key,
             timestamp
@@ -1012,7 +1011,7 @@ class Application(object):
     def _finish_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+        conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -1042,7 +1041,7 @@ class Application(object):
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier_hex
+            conjoined_identifier
         ))
 
         data_writers = _create_data_writers(
@@ -1057,7 +1056,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            conjoined_identifier_hex,
+            conjoined_identifier,
             timestamp
         )
 
@@ -1066,7 +1065,7 @@ class Application(object):
     def _abort_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+        conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -1096,7 +1095,7 @@ class Application(object):
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier_hex
+            conjoined_identifier
         ))
 
         data_writers = _create_data_writers(
@@ -1111,7 +1110,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            conjoined_identifier_hex,
+            conjoined_identifier,
             timestamp
         )
 

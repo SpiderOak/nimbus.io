@@ -9,7 +9,7 @@ from base64 import b64encode
 import logging
 import uuid
 
-from tools.data_definitions import create_priority, identifier_hex
+from tools.data_definitions import create_priority
 
 def forwarder_coroutine(
     segment_row, source_node_names, writer_client, reader_client
@@ -21,14 +21,6 @@ def forwarder_coroutine(
     log = logging.getLogger("forwarder_coroutine")
     archive_priority = create_priority()
 
-    version_identifier = uuid.UUID(bytes=segment_row.version_identifier)
-    if segment_row.conjoined_identifier is None:
-        conjoined_identifier = None
-    else:
-        conjoined_identifier = uuid.UUID(
-            bytes=segment_row.conjoined_identifier
-        )
-
     # start retrieving from our reader
     message_id = uuid.uuid1().hex
     message = {
@@ -36,13 +28,9 @@ def forwarder_coroutine(
         "message-id"        : message_id,
         "collection-id"     : segment_row.collection_id,
         "key"               : segment_row.key,
-        "version-identifier-hex"  : identifier_hex(
-            version_identifier
-        ),
-        "conjoined-identifier-hex"  : identifier_hex(
-            conjoined_identifier
-        ),
-        "conjoined-part"            : segment_row.conjoined_part,
+        "unified-id"        : segment_row.unified_id,
+        "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+        "conjoined-part"    : segment_row.conjoined_part,
         "timestamp-repr"    : repr(segment_row.timestamp),
         "segment-num"       : segment_row.segment_num,
     }
@@ -71,13 +59,9 @@ def forwarder_coroutine(
             "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
-            "version-identifier-hex"  : identifier_hex(
-                version_identifier
-            ),
-            "conjoined-identifier-hex"  : identifier_hex(
-                conjoined_identifier
-            ),
-            "conjoined-part"            : segment_row.conjoined_part,
+            "unified-id"           : segment_row.unified_id,
+            "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+            "conjoined-part"    : segment_row.conjoined_part,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
             "segment-size"      : reply["segment-size"],
@@ -95,13 +79,9 @@ def forwarder_coroutine(
             "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
-            "version-identifier-hex"  : identifier_hex(
-                version_identifier
-            ),
-            "conjoined-identifier-hex"  : identifier_hex(
-                conjoined_identifier
-            ),
-            "conjoined-part"            : segment_row.conjoined_part,
+            "unified-id"        : segment_row.unified_id,
+            "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+            "conjoined-part"    : segment_row.conjoined_part,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
             "segment-size"      : reply["segment-size"],
@@ -131,13 +111,9 @@ def forwarder_coroutine(
             "message-id"        : message_id,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key,
-            "version-identifier-hex"  : identifier_hex(
-                version_identifier
-            ),
-            "conjoined-identifier-hex"  : identifier_hex(
-                conjoined_identifier
-            ),
-            "conjoined-part"            : segment_row.conjoined_part,
+            "unified-id"        : segment_row.unified_id,
+            "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+            "conjoined-part"    : segment_row.conjoined_part,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
             "sequence-num"      : sequence,
@@ -156,13 +132,9 @@ def forwarder_coroutine(
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
-                "version-identifier-hex"  : identifier_hex(
-                    version_identifier
-                ),
-                "conjoined-identifier-hex"  : identifier_hex(
-                    conjoined_identifier
-                ),
-                "conjoined-part"            : segment_row.conjoined_part,
+                "unified-id"        : segment_row.unified_id,
+                "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+                "conjoined-part"    : segment_row.conjoined_part,
                 "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
                 "segment-size"      : reply["segment-size"],
@@ -181,13 +153,9 @@ def forwarder_coroutine(
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
-                "version-identifier-hex"  : identifier_hex(
-                    version_identifier
-                ),
-                "conjoined-identifier-hex"  : identifier_hex(
-                    conjoined_identifier
-                ),
-                "conjoined-part"            : segment_row.conjoined_part,
+                "unified-id"        : segment_row.unified_id,
+                "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+                "conjoined-part"    : segment_row.conjoined_part,
                 "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
                 "segment-size"      : reply["segment-size"],

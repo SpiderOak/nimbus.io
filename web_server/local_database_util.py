@@ -4,7 +4,6 @@ local_database_util.py
 
 utility routines for the node local database
 """
-import psycopg2
 
 from tools.data_definitions import conjoined_row_template, segment_row_template
 
@@ -48,10 +47,10 @@ def current_status_of_key(connection, collection_id, key):
 
         result = connection.fetch_all_rows("""
             select %s from nimbusio_node.segment 
-            where conjoined_identifier = %%s 
+            where conjoined_unified_id = %%s 
             order by conjoined_part
         """ % (",".join(segment_row_template._fields), ), 
-        [psycopg2.Binary(conjoined_row.identifier), ])
+        [conjoined_row.unified_id, ])
 
         segment_rows = [segment_row_template._make(r) for r in result]
 

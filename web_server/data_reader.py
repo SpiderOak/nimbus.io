@@ -8,7 +8,6 @@ from base64 import b64decode
 import hashlib
 import logging
 
-from tools.data_definitions import identifier_hex
 from tools.greenlet_resilient_client import ResilientClientError
 
 class DataReader(object):
@@ -30,7 +29,7 @@ class DataReader(object):
         self,
         collection_id,
         key,
-        conjoined_identifier,
+        conjoined_unified_id,
         conjoined_part,
         timestamp,
         segment_num
@@ -39,9 +38,7 @@ class DataReader(object):
             "message-type"              : "retrieve-key-start",
             "collection-id"             : collection_id,
             "key"                       : key,
-            "conjoined-identifier-hex"  : identifier_hex(
-                conjoined_identifier
-            ),
+            "conjoined-unified-id"      : conjoined_unified_id,
             "conjoined-part"            : conjoined_part,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
@@ -85,7 +82,7 @@ class DataReader(object):
         self,
         collection_id,
         key,
-        conjoined_identifier,
+        conjoined_unified_id,
         conjoined_part,
         timestamp,
         segment_num
@@ -94,9 +91,7 @@ class DataReader(object):
             "message-type"              : "retrieve-key-next",
             "collection-id"             : collection_id,
             "key"                       : key,
-            "conjoined-identifier-hex"  : identifier_hex(
-                conjoined_identifier
-            ),
+            "conjoined-unified-id"      : conjoined_unified_id,
             "conjoined-part"            : conjoined_part,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,

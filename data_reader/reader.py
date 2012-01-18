@@ -8,8 +8,7 @@ import logging
 
 from tools.data_definitions import segment_row_template, \
         segment_sequence_template, \
-        compute_value_file_path, \
-        identifier_binary
+        compute_value_file_path
 
 def _all_segment_rows_for_key(connection, collection_id, key):
     """
@@ -36,7 +35,7 @@ def _all_sequence_rows_for_segment(
      * collection_id
      * key
      * timestamp
-     * conjoined_identifier
+     * conjoined_unified_id
      * conjoined_part
      * segment_num
     """
@@ -46,7 +45,7 @@ def _all_sequence_rows_for_segment(
             select distinct id from nimbusio_node.segment 
             where collection_id = %%s and key = %%s 
             and timestamp=%%s::timestamp and segment_num=%%s
-            and conjoined_identifier is null and conjoined_part = 0
+            and conjoined_unified_id is null and conjoined_part = 0
             and file_tombstone=false
         )
         order by sequence_num asc
@@ -63,7 +62,7 @@ def _all_sequence_rows_for_conjoined_segment(
     collection_id, 
     key, 
     timestamp, 
-    conjoined_identifier, 
+    conjoined_unified_id, 
     conjoined_part,
     segment_num
 ):
@@ -72,7 +71,7 @@ def _all_sequence_rows_for_conjoined_segment(
      * collection_id
      * key
      * timestamp
-     * conjoined_identifier
+     * conjoined_univied_id
      * conjoined_part
      * segment_num
     """
@@ -82,7 +81,7 @@ def _all_sequence_rows_for_conjoined_segment(
             select distinct id from nimbusio_node.segment 
             where collection_id = %%s and key = %%s 
             and timestamp=%%s::timestamp and segment_num=%%s
-            and conjoined_identifier = %%s and conjoined_part = %%s
+            and conjoined_unified_id = %%s and conjoined_part = %%s
             and file_tombstone=false
         )
         order by sequence_num asc
@@ -91,7 +90,7 @@ def _all_sequence_rows_for_conjoined_segment(
         key, 
         timestamp, 
         segment_num, 
-        identifier_binary(conjoined_identifier),
+        conjoined_unified_id,
         conjoined_part
     ])
     return [segment_sequence_template._make(row) for row in result]
@@ -122,7 +121,7 @@ class Reader(object):
         collection_id, 
         key, 
         timestamp, 
-        conjoined_identifier, 
+        conjoined_unified_id, 
         conjoined_part,
         segment_num
     ):
@@ -131,7 +130,7 @@ class Reader(object):
         """
         open_value_files = dict()
 
-        if conjoined_identifier is None:
+        if conjoined_unified_id is None:
             sequence_rows = _all_sequence_rows_for_segment(
                 self._connection, 
                 collection_id, 
@@ -145,7 +144,7 @@ class Reader(object):
                 collection_id, 
                 key, 
                 timestamp,
-                conjoined_identifier, 
+                conjoined_unified_id, 
                 conjoined_part, 
                 segment_num
             )

@@ -26,7 +26,6 @@ from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection
 from tools.data_definitions import parse_timestamp_repr, \
-        parse_identifier_hex, \
         parse_conjoined_part
 
 from data_reader.reader import Reader
@@ -97,9 +96,6 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
     conjoined_part = parse_conjoined_part(
         message.get("conjoined-part")
     )
@@ -109,7 +105,7 @@ def _handle_retrieve_key_start(state, message, _data):
         message["collection-id"],
         message["key"],
         timestamp,
-        conjoined_identifier,
+        message["conjoined-unified-id"],
         conjoined_part,
         message["segment-num"]
     )

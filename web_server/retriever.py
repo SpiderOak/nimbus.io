@@ -6,7 +6,6 @@ A class that retrieves data from data readers.
 """
 import logging
 import time
-import uuid
 
 import gevent
 import gevent.pool
@@ -61,12 +60,10 @@ class Retriever(object):
             ))
 
         is_deleted = False
-        conjoined_identifier = None
         if conjoined_row is None:
             is_deleted = segment_rows[0].file_tombstone
         else:
             is_deleted = conjoined_row.delete_timestamp is not None
-            conjoined_identifier = uuid.UUID(bytes=conjoined_row.identifier)
 
         if is_deleted:
             raise RetrieveFailedError("key is deleted %s %s" % (
@@ -99,7 +96,7 @@ class Retriever(object):
                         function, 
                         self._collection_id,
                         self._key,
-                        conjoined_identifier,
+                        segment_row.conjoined_unified_id,
                         segment_row.conjoined_part,
                         segment_row.timestamp,
                         segment_number

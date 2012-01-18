@@ -74,35 +74,28 @@ def parse_timestamp_repr(timestamp_repr):
 
     return timestamp
 
-def parse_conjoined_identifier_hex(conjoined_identifier_hex):
+def parse_identifier_hex(identifier_hex_string):
     """
     return the UUID or None
     """
-    if conjoined_identifier_hex is not None and \
-       len(conjoined_identifier_hex) > 0:
-        conjoined_identifier = uuid.UUID(hex=conjoined_identifier_hex)
+    if identifier_hex_string is not None and len(identifier_hex_string) > 0:
+        identifier = uuid.UUID(hex=identifier_hex_string)
     else:
-        conjoined_identifier = None
+        identifier = None
 
-    return conjoined_identifier
+    return identifier
 
-def conjoined_identifier_hex(conjoined_identifier):
+def identifier_hex(identifier):
     """
     return a hex string or None
     """
-    if conjoined_identifier is None:
-        return None
+    return (None if  identifier is None else identifier.hex)
 
-    return conjoined_identifier.hex
-
-def conjoined_identifier_binary(conjoined_identifier):
+def identifier_binary(identifier):
     """
     return a psycopg2 binary or None
     """
-    if conjoined_identifier is None:
-        return None
-
-    return psycopg2.Binary( conjoined_identifier.bytes)
+    return (None if identifier is None else psycopg2.Binary(identifier.bytes))
 
 def parse_conjoined_part(conjoined_part):
     return (0 if conjoined_part is None else conjoined_part) 
@@ -128,7 +121,7 @@ value_file_template = namedtuple("ValueFile", [
     "close_time",
     "size",
     "hash",
-    "sequence_count",
+    "segment_sequence_count",
     "min_segment_id",
     "max_segment_id",
     "distinct_collection_count",
@@ -144,6 +137,7 @@ segment_row_template = namedtuple(
         "id",
         "collection_id",
         "key",
+        "version_identifier",
         "timestamp",
         "segment_num",
         "conjoined_identifier",

@@ -35,39 +35,47 @@ _sub_topics = [
 def _handle_web_server_stats(state, message, _data):
     log = logging.getLogger("_handle_web_server_stats")
 
-    report_line = _web_server_line_template % (
-        message["node-name"],
-        "retrieve",
-        message["stats"]["retrieves"],
-        message["reader"][0][2],
-        message["reader"][1][2],
-        message["reader"][2][2],
-        message["reader"][3][2],
-        message["reader"][4][2],
-        message["reader"][5][2],
-        message["reader"][6][2],
-        message["reader"][7][2],
-        message["reader"][8][2],
-        message["reader"][9][2],
-    )
-    log.info(report_line)
-
-    report_line = _web_server_line_template % (
-        message["node-name"],
-        "archive",
-        message["stats"]["archives"],
-        message["writer"][0][2],
-        message["writer"][1][2],
-        message["writer"][2][2],
-        message["writer"][3][2],
-        message["writer"][4][2],
-        message["writer"][5][2],
-        message["writer"][6][2],
-        message["writer"][7][2],
-        message["writer"][8][2],
-        message["writer"][9][2],
-    )
-    log.info(report_line)
+    try:
+        report_line = _web_server_line_template % (
+            message["node-name"],
+            "retrieve",
+            message["stats"]["retrieves"],
+            message["reader"][0][2],
+            message["reader"][1][2],
+            message["reader"][2][2],
+            message["reader"][3][2],
+            message["reader"][4][2],
+            message["reader"][5][2],
+            message["reader"][6][2],
+            message["reader"][7][2],
+            message["reader"][8][2],
+            message["reader"][9][2],
+        )
+    except Exception:
+        log.exception(str(message))
+    else:
+        log.info(report_line)
+        
+    try:
+        report_line = _web_server_line_template % (
+            message["node-name"],
+            "archive",
+            message["stats"]["archives"],
+            message["writer"][0][2],
+            message["writer"][1][2],
+            message["writer"][2][2],
+            message["writer"][3][2],
+            message["writer"][4][2],
+            message["writer"][5][2],
+            message["writer"][6][2],
+            message["writer"][7][2],
+            message["writer"][8][2],
+            message["writer"][9][2],
+        )
+    except Exception:
+        log.exception(str(message))
+    else:
+        log.info(report_line)
 
 def _handle_queue_size(state, message, _data):
     log = logging.getLogger("_handle_queue_size")

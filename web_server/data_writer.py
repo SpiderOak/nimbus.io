@@ -10,7 +10,7 @@ import logging
 import zlib
 
 from tools.data_definitions import create_priority, \
-        conjoined_identifier_hex
+        identifier_hex
 
 from web_server.exceptions import (
     ArchiveFailedError,
@@ -32,6 +32,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        version_identifier_hex,
         timestamp,
         meta_dict,
         conjoined_identifier_hex,
@@ -50,6 +51,7 @@ class DataWriter(object):
             "priority"                  : create_priority(),
             "collection-id"             : collection_id,
             "key"                       : key, 
+            "version-identifier-hex"    : version_identifier_hex,
             "timestamp-repr"            : repr(timestamp),
             "conjoined-identifier-hex"  : conjoined_identifier_hex,
             "conjoined-part"            : conjoined_part,
@@ -81,6 +83,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        version_identifier_hex,
         timestamp,
         segment_num,
         sequence_num,
@@ -92,16 +95,17 @@ class DataWriter(object):
         self._archive_priority = create_priority()
 
         message = {
-            "message-type"      : "archive-key-start",
-            "priority"          : self._archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(segment),
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "segment-adler32"   : zlib.adler32(segment),
-            "sequence-num"      : sequence_num,
+            "message-type"          : "archive-key-start",
+            "priority"              : self._archive_priority,
+            "collection-id"         : collection_id,
+            "key"                   : key, 
+            "version-identifier-hex": version_identifier_hex,
+            "timestamp-repr"        : repr(timestamp),
+            "segment-num"           : segment_num,
+            "segment-size"          : len(segment),
+            "segment-md5-digest"    : b64encode(segment_md5.digest()),
+            "segment-adler32"       : zlib.adler32(segment),
+            "sequence-num"          : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -120,6 +124,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        version_identifier_hex,
         timestamp,
         segment_num,
         sequence_num,
@@ -129,16 +134,17 @@ class DataWriter(object):
         segment_md5.update(segment)
 
         message = {
-            "message-type"      : "archive-key-next",
-            "priority"          : self._archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(segment),
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "segment-adler32"   : zlib.adler32(segment),
-            "sequence-num"      : sequence_num,
+            "message-type"          : "archive-key-next",
+            "priority"              : self._archive_priority,
+            "collection-id"         : collection_id,
+            "key"                   : key,
+            "version-identifier-hex": version_identifier_hex,
+            "timestamp-repr"        : repr(timestamp),
+            "segment-num"           : segment_num,
+            "segment-size"          : len(segment),
+            "segment-md5-digest"    : b64encode(segment_md5.digest()),
+            "segment-adler32"       : zlib.adler32(segment),
+            "sequence-num"          : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -156,6 +162,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        version_identifier_hex,
         timestamp,
         meta_dict,
         conjoined_identifier_hex,
@@ -176,6 +183,7 @@ class DataWriter(object):
                 "priority"                  : self._archive_priority,
                 "collection-id"             : collection_id,
                 "key"                       : key,
+                "version-identifier-hex"    : version_identifier_hex,
                 "timestamp-repr"            : repr(timestamp),
                 "conjoined-identifier-hex"  : conjoined_identifier_hex,
                 "conjoined-part"            : conjoined_part,
@@ -196,7 +204,9 @@ class DataWriter(object):
             delivery_channel = self._resilient_client.queue_message_for_send(
                 message, data=segment
             )
-            self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
+            self._log.debug(
+                '%(message-type)s: %(collection-id)s %(key)s' % message
+            )
             reply, _data = delivery_channel.get()
             if reply["result"] != "success":
                 self._log.error("failed: %s" % (reply, ))
@@ -209,8 +219,9 @@ class DataWriter(object):
         self,
         collection_id,
         key,
-        conjoined_identifier,
+        version_identifier,
         timestamp,
+        conjoined_identifier,
         segment_num
     ):
         try:
@@ -219,10 +230,11 @@ class DataWriter(object):
                 "priority"                  : create_priority(),
                 "collection-id"             : collection_id,
                 "key"                       : key,
-                "conjoined-identifier-hex"  : conjoined_identifier_hex(
+                "version-identifier-hex"    : version_identifier.hex,
+                "timestamp-repr"            : repr(timestamp),
+                "conjoined-identifier-hex"  : identifier_hex(
                     conjoined_identifier
                 ),
-                "timestamp-repr"            : repr(timestamp),
                 "segment-num"               : segment_num,
             }
             delivery_channel = \

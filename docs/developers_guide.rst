@@ -305,6 +305,33 @@ To list the keys in a collection, issue a listmatch request.
 
     :statuscode 200: no error
 
+Listing Versions
+++++++++++++++++
+To list the versions in a collection, issue a ?versions request. 
+
+Server will return a JSON dictionary containing:
+
+ * version_list (list of dictionaries)
+ * truncated (boolean)
+
+where the version_list entries contain:
+
+ * key
+ * version_identifier
+ * timestamp 
+
+.. http:get:: /?versions
+
+    :query max_keys: The maximum number of versionss to retrieve
+    :query prefix: The prefix of the keys you want to retrieve
+    :query key_marker: where you are in the result set keys
+    :query version_marker: where you are in the result set versions
+    :query delimiter: Keys that contain the same string between the prefix and the 
+                first occurrence of the delimiter will be rolled up into a single 
+                result element. 
+
+    :statuscode 200: no error
+
 Downloading From a Key
 ++++++++++++++++++++++
 Downloading an object from a collection is just a simple GET request. 

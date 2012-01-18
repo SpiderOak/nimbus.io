@@ -13,6 +13,7 @@ ACK back to to requestor includes size (from the database server)
 of any previous key this key supersedes (for space accounting.)
 """
 from base64 import b64decode
+import hashlib
 import logging
 import os
 import sys
@@ -31,12 +32,13 @@ from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
 from tools.data_definitions import parse_timestamp_repr, \
-        parse_conjoined_identifier_hex, \
+        parse_identifier_hex, \
         parse_conjoined_part, \
         nimbus_meta_prefix
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
+from data_writer.output_value_file import mark_value_files_as_closed
 from data_writer.writer import Writer
 from data_writer.stats_reporter import StatsReporter
 
@@ -80,8 +82,47 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     state["writer"].start_new_segment(
         message["collection-id"], 
+        version_identifier,
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -90,10 +131,11 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         sequence_num,
         data
@@ -107,7 +149,7 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
 
@@ -116,6 +158,7 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
@@ -148,9 +191,49 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
+    
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"]
     )
@@ -158,10 +241,11 @@ def _handle_archive_key_start(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
         data
@@ -182,13 +266,60 @@ def _handle_archive_key_next(state, message, data):
         message["segment-num"]
     ))
 
+    reply = {
+        "message-type"  : "archive-key-next-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
         data
@@ -197,13 +328,7 @@ def _handle_archive_key_next(state, message, data):
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
-    reply = {
-        "message-type"  : "archive-key-next-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
+    reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
 def _handle_archive_key_final(state, message, data):
@@ -215,13 +340,60 @@ def _handle_archive_key_final(state, message, data):
         message["segment-num"]
     ))
 
+    reply = {
+        "message-type"  : "archive-key-final-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : None,
+        "error-message" : None,
+    }
+
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
+    if len(data) != message["segment-size"]:
+        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+            len(data),
+            message["segment-size"],
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("size-mismatch", error_message)  
+        reply["result"] = "size-mismatch"
+        reply["error-message"] = "segment size does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+    segment_md5 = hashlib.md5()
+    segment_md5.update(data)
+    if segment_md5.digest() != expected_segment_md5_digest:
+        error_message = "md5 mismatch %s %s %s %s" % (
+            message["collection-id"], 
+            message["key"], 
+            message["timestamp-repr"],
+            message["segment-num"]
+        )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
-        b64decode(message["segment-md5-digest"]),
+        expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
         data
@@ -232,7 +404,7 @@ def _handle_archive_key_final(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
@@ -240,6 +412,7 @@ def _handle_archive_key_final(state, message, data):
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
@@ -255,13 +428,7 @@ def _handle_archive_key_final(state, message, data):
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
-    reply = {
-        "message-type"  : "archive-key-final-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
+    reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
 def _handle_destroy_key(state, message, _data):
@@ -273,11 +440,17 @@ def _handle_destroy_key(state, message, _data):
         message["segment-num"]
     ))
 
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
+    )
+    assert version_identifier is not None
+
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].set_tombstone(
         message["collection-id"], 
         message["key"], 
+        version_identifier,
         timestamp,
         message["segment-num"]
     )
@@ -291,32 +464,24 @@ def _handle_destroy_key(state, message, _data):
     }
     state["resilient-server"].send_reply(reply)
 
-def _handle_purge_key(state, message, _data):
-    log = logging.getLogger("_handle_purge_key")
-    log.info("%s %s %s %s" % (
+def _handle_purge_handoff_source(state, message, _data):
+    log = logging.getLogger("_handle_purge_handoff_source")
+    log.info("%s %s %s" % (
         message["collection-id"], 
-        message["key"], 
-        message["timestamp-repr"],
-        message["segment-num"]
+        message["version-identifier-hex"], 
+        message["handoff-node-id"],
     ))
 
-    timestamp = parse_timestamp_repr(message["timestamp-repr"])
-
-    state["writer"].purge_segment(
-        message["collection-id"], 
-        message["key"], 
-        timestamp,
-        message["segment-num"]
+    version_identifier = parse_identifier_hex(
+        message.get("version-identifier-hex")
     )
+    assert version_identifier is not None
 
-    reply = {
-        "message-type"  : "purge-key-reply",
-        "client-tag"    : message["client-tag"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
-    }
-    state["resilient-server"].send_reply(reply)
+    state["writer"].purge_handoff_source(
+        message["collection-id"], 
+        version_identifier,
+        message["handoff-node-id"]
+    )
 
 def _handle_start_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_start_conjoined_archive")
@@ -327,7 +492,7 @@ def _handle_start_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     assert conjoined_identifier is not None
@@ -358,7 +523,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     assert conjoined_identifier is not None
@@ -389,7 +554,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_conjoined_identifier_hex(
+    conjoined_identifier = parse_identifier_hex(
         message.get("conjoined-identifier-hex")
     )
     assert conjoined_identifier is not None
@@ -417,7 +582,7 @@ _dispatch_table = {
     "archive-key-next"          : _handle_archive_key_next,
     "archive-key-final"         : _handle_archive_key_final,
     "destroy-key"               : _handle_destroy_key,
-    "purge-key"                 : _handle_purge_key,
+    "purge-handoff-source"      : _handle_purge_handoff_source,
     "start-conjoined-archive"   : _handle_start_conjoined_archive,
     "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
     "finish-conjoined-archive"  : _handle_finish_conjoined_archive,
@@ -475,6 +640,10 @@ def _setup(_halt_event, state):
     )
 
     state["database-connection"] = get_node_local_connection()
+
+    # Ticket #1646 mark output value files as closed at startup
+    mark_value_files_as_closed(state["database-connection"])
+
     state["writer"] = Writer(
         state["database-connection"],
         _repository_path

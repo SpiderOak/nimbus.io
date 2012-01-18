@@ -31,7 +31,13 @@ class Watcher(Greenlet):
 
             reader_info = list()
             for client in self._reader_clients:
-                status, elapsed_time, queue_size = client.test_current_status()
+                try:
+                    status, elapsed_time, queue_size = \
+                            client.test_current_status()
+                except Exception, instance:
+                    self._log.error("reader client %s" % (instance, ))
+                    status, elapsed_time, queue_size = "error", 0.0, -1
+
                 if status != "connected":
                     self._log.info(
                         "reader %s elapsed_time=%s queue_size = %s" % (
@@ -42,7 +48,13 @@ class Watcher(Greenlet):
 
             writer_info = list()
             for client in self._writer_clients:
-                status, elapsed_time, queue_size = client.test_current_status()
+                try:
+                    status, elapsed_time, queue_size = \
+                            client.test_current_status()
+                except Exception, instance:
+                    self._log.error("writer client %s" % (instance, ))
+                    status, elapsed_time, queue_size = "error", 0.0, -1
+
                 if status != "connected":
                     self._log.info(
                         "writer %s elapsed_time=%s queue_size = %s" % (
@@ -68,9 +80,10 @@ class Watcher(Greenlet):
         self._log.debug("ending")
 
     def join(self, timeout=None):
-        self._log.debug("join")
+        self._log.debug("joining")
         self._halt_event.set()
         Greenlet.join(self, timeout)
+        self._log.debug("join complete")
 
     def __str__(self):
         return "StatsReporter"

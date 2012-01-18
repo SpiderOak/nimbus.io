@@ -26,8 +26,8 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
-import gevent.pool
 from gevent_zeromq import zmq
+import gevent
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
@@ -81,8 +81,6 @@ class WebServer(object):
 
         self._central_connection = get_central_connection()
         self._node_local_connection = get_node_local_connection()
-
-        self._greenlet_group = gevent.pool.Group()
 
         self._deliverator = Deliverator()
 
@@ -176,22 +174,38 @@ class WebServer(object):
         )
 
     def start(self):
-        self._greenlet_group.start(self._space_accounting_dealer_client)
-        self._greenlet_group.start(self._pull_server)
-        self._greenlet_group.start(self._watcher)
+        self._space_accounting_dealer_client.start()
+        self._pull_server.start()
+        self._watcher.start()
         for client in self._data_writer_clients:
-            self._greenlet_group.start(client)
+            client.start()
         for client in self._data_reader_clients:
-            self._greenlet_group.start(client)
+            client.start()
         self.wsgi_server.start()
 
     def stop(self):
+        self._log.info("stopping wsgi web server")
         self.wsgi_server.stop()
         self._accounting_client.close()
-        self._greenlet_group.kill()
-        self._greenlet_group.join()
+        self._log.debug("killing greenlets")
+        self._space_accounting_dealer_client.kill()
+        self._pull_server.kill()
+        self._watcher.kill()
+        for client in self._data_writer_clients:
+            client.kill()
+        for client in self._data_reader_clients:
+            client.kill()
+        self._log.debug("joining greenlets")
+        self._space_accounting_dealer_client.join()
+        self._pull_server.join()
+        self._watcher.join()
+        for client in self._data_writer_clients:
+            client.join()
+        for client in self._data_reader_clients:
+            client.join()
         self._event_push_client.close()
         self._zeromq_context.term()
+        self._log.info("closing database connections")
         self._central_connection.close()
         self._node_local_connection.close()
 
@@ -229,6 +243,7 @@ def main():
         log.exception(str(instance))
         return -1
 
+    log.info("program terminates normally")
     return 0
 
 if __name__ == '__main__':

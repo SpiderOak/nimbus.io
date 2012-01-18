@@ -13,8 +13,8 @@ import time
  
 from handoff_server.forwarder_coroutine import forwarder_coroutine
 
-handoff_starter_delay = float(os.environ.get(
-    "NIMBUSIO_HANDOFF_STARTER_DELAY", str(15.0 * 60.0)
+_handoff_starter_polling_interval = float(os.environ.get(
+    "NIMBUSIO_HANDOFF_STARTER_POLLING_INTERVAL", str(60.0)
 ))
 
 class HandoffStarter(object):
@@ -30,25 +30,30 @@ class HandoffStarter(object):
 
     @classmethod
     def next_run(cls):
-        return time.time() + handoff_starter_delay
+        return time.time() + _handoff_starter_polling_interval
 
     def run(self, halt_event):
         """
-        send 'request-handoffs' to all remote handoff servers
+        start a forwarder coroutine for a segment
         """
         if halt_event.is_set():
             return
 
-        assert self._state["forwarder"] is None
+        self._log.debug("%s pending handoffs" % (
+            len(self._state["pending-handoffs"])
+        ))
+
+        if self._state["forwarder"] is not None:
+            # run again, after the polling interval
+            return [(self.run, self.next_run(), )]
 
         try:
             segment_row, source_node_names = \
                     self._state["pending-handoffs"].pop()
         except IndexError:
             self._log.debug("no handoffs found")
-            # run the handoff requestor again, after the polling interval
-            return [(self._state["handoff-requestor"].run, 
-                     self._state["handoff-requestor"].next_run(), )]
+            # run again, after the polling interval
+            return [(self.run, self.next_run(), )]
 
         # we pick the first source name, because it's easy, and because,
         # since that source responded to us first, it might have better 
@@ -82,6 +87,5 @@ class HandoffStarter(object):
         )
         self._state["forwarder"].next()
 
-        # don't return anything, we're not going to run again until
-        # all these pending handoffs complete
-
+        # run again, after the polling interval
+        return [(self.run, self.next_run(), )]

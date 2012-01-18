@@ -17,6 +17,9 @@ from gevent_zeromq import zmq
 
 from tools.data_definitions import message_format
 
+class ResilientClientError(Exception):
+    pass
+
 _polling_interval = 3.0
 _ack_timeout = float(os.environ.get("NIMBUSIO_ACK_TIMEOOUT", "10.0"))
 _handshake_retry_interval = 60.0
@@ -157,7 +160,9 @@ class GreenletResilientClient(Greenlet):
     def _handle_status_disconnected(self):
         elapsed_time = time.time() - self._status_time 
         if elapsed_time < _handshake_retry_interval:
-            return
+            return (_status_name[self._status], 
+                    elapsed_time, 
+                    self._send_queue.qsize()) 
 
         assert self._dealer_socket is None
         self._dealer_socket = self._context.socket(zmq.XREQ)
@@ -175,23 +180,24 @@ class GreenletResilientClient(Greenlet):
             "client-address"    : self._client_address,
         }
 
-        # we don't call queue_message_for_send, because the only
-        # reply we expect is an ack, so we don't want a delivery
-        # channel
-        message = message_format(
-            ident=None, control=message_control, body=None
-        )
+        self.queue_message_for_send(message_control, handshake=True)
 
-        self._send_queue.put(message)
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
 
     def _handle_status_connected(self):
 
         if self._pending_message_start_time is None:
-            return
+            return (_status_name[self._status], 
+                    0.0, 
+                    self._send_queue.qsize()) 
 
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
-            return
+            return (_status_name[self._status], 
+                    elapsed_time, 
+                    self._send_queue.qsize()) 
 
         self._log.error(
             "timeout waiting ack: treating as disconnect %s" % (
@@ -200,27 +206,54 @@ class GreenletResilientClient(Greenlet):
         )
 
         self._disconnect()
-
-        # deliver a failure reply to whoever is waiting for this message
-        reply = {
-            "message-type"  : "ack-timeout-reply",
-            "message-id"    : self._pending_message.control["message-id"],
-            "result"        : "ack timeout",
-            "error-message" : "timeout waiting ack: treating as disconnect",
-        }
-
-        message = message_format(ident=None, control=reply, body=None)
-        self._deliverator.deliver_reply(message)
-
-        # heave the message; we're heaving the whole request
+        
+        work_message = self._pending_message
         self._pending_message = None
         self._pending_message_start_time = None
 
-    def _handle_status_handshaking(self):    
-        assert self._pending_message is not None
+        self._lock.acquire()
+
+        # deliver a failure reply to everyone  waiting for this socket
+        while work_message is not None:
+
+            reply = {
+                "message-type"  : "ack-timeout-reply",
+                "message-id"    : work_message.control["message-id"],
+                "result"        : "ack timeout",
+                "error-message" : "timeout waiting ack: treating as disconnect"
+            }
+
+            message = message_format(ident=None, control=reply, body=None)
+            self._deliverator.deliver_reply(message)
+
+            try:
+                work_message = self._send_queue.get_nowait()
+            except gevent.queue.Empty:
+                work_message = None
+
+        self._lock.release()
+
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
+
+    def _handle_status_handshaking(self):
+
+        # race condition: the handshake message may still be in the send queue
+        if self._pending_message is None:
+            self._log.warn(
+                "_handle_status_handshaking with no pending message"
+            )
+            assert self._send_queue.qsize() == 1, self._send_queue.qsize()
+            return (_status_name[self._status], 
+                    0.0, 
+                    self._send_queue.qsize()) 
+
         elapsed_time = time.time() - self._pending_message_start_time
         if elapsed_time < _ack_timeout:
-            return
+            return (_status_name[self._status], 
+                    elapsed_time, 
+                    self._send_queue.qsize()) 
 
         self._log.warn("timeout waiting handshake ack")
 
@@ -228,6 +261,10 @@ class GreenletResilientClient(Greenlet):
 
         self._pending_message = None
         self._pending_message_start_time = None
+
+        return (_status_name[self._status], 
+                elapsed_time, 
+                self._send_queue.qsize()) 
 
     def _disconnect(self):
         self._log.debug("disconnecting")
@@ -240,11 +277,28 @@ class GreenletResilientClient(Greenlet):
         self._status_time = time.time()
 
     def join(self, timeout=3.0):
+        self._log.debug("joining")
         if self._dealer_socket is not None:
             self._dealer_socket.close()
         Greenlet.join(self, timeout)
+        self._log.debug("join complete")
 
-    def queue_message_for_send(self, message_control, data=None):
+    def queue_message_for_send(
+        self, message_control, data=None, handshake=False
+    ):
+        if handshake:
+            if self._status != _status_handshaking:
+                raise ResilientClientError(
+                    "queue_message_for_send while handshake %s" % (
+                        message_control,
+                    )
+                )
+        elif not self.connected:
+            raise ResilientClientError(
+                "queue_message_for_send while not connected  %s" % (
+                    message_control,
+                )
+            )
 
         if not "message-id" in message_control:
             message_control["message-id"] = uuid.uuid1().hex
@@ -297,6 +351,9 @@ class GreenletResilientClient(Greenlet):
             # if we got an ack to a handshake request, we are connected
             if message_type == "resilient-server-handshake":
                 assert self._status == _status_handshaking, self._status
+                self._deliverator.discard_delivery_channel(
+                    message["message-id"]
+                )
                 self._status = _status_connected
                 self._log.info("status = %s" % (_status_name[self._status], ))
                 self._status_time = time.time()                

@@ -8,7 +8,8 @@ from base64 import b64decode
 import hashlib
 import logging
 
-from tools.data_definitions import conjoined_identifier_hex
+from tools.data_definitions import identifier_hex
+from tools.greenlet_resilient_client import ResilientClientError
 
 class DataReader(object):
 
@@ -19,7 +20,7 @@ class DataReader(object):
 
     @property
     def connected(self):
-        return self._resilient_client
+        return self._resilient_client.connected
 
     @property
     def node_name(self):
@@ -38,15 +39,20 @@ class DataReader(object):
             "message-type"              : "retrieve-key-start",
             "collection-id"             : collection_id,
             "key"                       : key,
-            "conjoined-identifier-hex"  : conjoined_identifier_hex(
+            "conjoined-identifier-hex"  : identifier_hex(
                 conjoined_identifier
             ),
             "conjoined-part"            : conjoined_part,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
         }
-        delivery_channel = \
-                self._resilient_client.queue_message_for_send(message)
+        try:
+            delivery_channel = \
+                    self._resilient_client.queue_message_for_send(message)
+        except ResilientClientError:
+            self._log.exception("retrieve_key_start")
+            return None
+
         self._log.debug(
             '%(message-type)s: %(collection-id)s '
             'key = %(key)r '
@@ -88,15 +94,19 @@ class DataReader(object):
             "message-type"              : "retrieve-key-next",
             "collection-id"             : collection_id,
             "key"                       : key,
-            "conjoined-identifier-hex"  : conjoined_identifier_hex(
+            "conjoined-identifier-hex"  : identifier_hex(
                 conjoined_identifier
             ),
             "conjoined-part"            : conjoined_part,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
         }
-        delivery_channel = \
-                self._resilient_client.queue_message_for_send(message)
+        try:
+            delivery_channel = \
+                    self._resilient_client.queue_message_for_send(message)
+        except ResilientClientError:
+            self._log.exception("retrieve_key_start")
+            return None
         self._log.debug(
             '%(message-type)s: %(collection-id)s %(key)s' % message
         )

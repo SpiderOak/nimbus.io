@@ -11,7 +11,7 @@ import logging.handlers
 _max_log_size = 16 * 1024 * 1024
 _max_log_backup_files = 1000
 
-_log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
+_log_format_template = '%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
 
 def format_timestamp(timestamp):
     """return python float time.time() as a human readable string"""

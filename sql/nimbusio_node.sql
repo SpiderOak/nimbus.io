@@ -40,6 +40,7 @@ create table segment (
     id int8 primary key default nextval('nimbusio_node.segment_id_seq'),
     collection_id int4 not null,
     key varchar(1024),
+    version_identifier bytea not null, 
     timestamp timestamp not null,
     segment_num int2,
     conjoined_identifier bytea, 
@@ -55,6 +56,7 @@ create table segment (
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
+    constraint version_length check (length(version_identifier)=16),
     constraint file_tombstone_zero_size check (file_tombstone is false or file_size = 0),
     constraint file_nonzero_size check (file_tombstone is true or file_size > 0),
     constraint file_adler32_not_null check
@@ -145,7 +147,7 @@ create table value_file (
      * */
     /* this is the count of records appended into the file. should be updated
      * only on closing the file */
-    sequence_count int4,
+    segment_sequence_count int4,
     /* storing min and max key ids is cheap and makes it possible to use the
      * btree indexes to find the specific key and segment_sequence records stored
      * in this file via >= <= operators. */

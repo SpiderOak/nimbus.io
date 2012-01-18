@@ -50,8 +50,10 @@ class GreenletPULLServer(Greenlet):
         """
         Clean up and wait for the greenlet to shut down
         """
+        self._log.debug("joining")
         self._pull_socket.close()
         Greenlet.join(self, timeout)
+        self._log.debug("join complete")
 
     def _run(self):
         while True:

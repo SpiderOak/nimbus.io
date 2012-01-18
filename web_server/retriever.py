@@ -4,9 +4,9 @@ retriever.py
 
 A class that retrieves data from data readers.
 """
-import itertools
 import logging
 import time
+import uuid
 
 import gevent
 import gevent.pool
@@ -66,7 +66,7 @@ class Retriever(object):
             is_deleted = segment_rows[0].file_tombstone
         else:
             is_deleted = conjoined_row.delete_timestamp is not None
-            conjoined_identifier = uuid.UUID(bytes=conjoined_row.identifer)
+            conjoined_identifier = uuid.UUID(bytes=conjoined_row.identifier)
 
         if is_deleted:
             raise RetrieveFailedError("key is deleted %s %s" % (
@@ -84,6 +84,12 @@ class Retriever(object):
                 ))
                 # send a request to all node
                 for i, data_reader in enumerate(self._data_readers):
+                    if not data_reader.connected:
+                        self._log.warn("ignoring disconnected reader %s" % (
+                            str(data_reader),
+                        ))
+                        continue
+
                     segment_number = i + 1
                     if start:
                         function = data_reader.retrieve_key_start

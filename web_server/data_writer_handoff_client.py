@@ -88,7 +88,7 @@ class DataWriterHandoffClient(object):
                    "error-message"  : data_writer_reply["error-message"],
                 }
                 message = message_format(ident=None, control=reply, body=None)
-                completion_channel.put(message)
+                completion_channel.put((message.control, message.body, ))
                 return
 
         # if we made it here all the handoffs succeeded, 
@@ -96,7 +96,7 @@ class DataWriterHandoffClient(object):
         # by sending one of the data_writer_replies 
         reply = data_writer_replies[0]
         message = message_format(ident=None, control=reply, body=None)
-        completion_channel.put(message)
+        completion_channel.put((message.control, message.body, ))
 
     def _hand_off_to_one_data_writer(self, client, message, data):
         channel = client.queue_message_for_send(message, data)

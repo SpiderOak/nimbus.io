@@ -12,7 +12,7 @@ create table conjoined (
     id int8 primary key default nextval('nimbusio_node.conjoined_id_seq'),
     collection_id int4 not null,
     key varchar(1024) not null,
-    identifier bytea not null, 
+    unified_id int8 not null, 
     create_timestamp timestamp not null default current_timestamp,
     abort_timestamp timestamp,
     complete_timestamp timestamp,
@@ -40,10 +40,10 @@ create table segment (
     id int8 primary key default nextval('nimbusio_node.segment_id_seq'),
     collection_id int4 not null,
     key varchar(1024),
-    version_identifier bytea not null, 
+    unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2,
-    conjoined_identifier bytea, 
+    conjoined_unified_id int8, 
     conjoined_part int4 not null default 0,
     file_size int8 not null default 0,
     file_adler32 int4,
@@ -56,7 +56,6 @@ create table segment (
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
-    constraint version_length check (length(version_identifier)=16),
     constraint file_tombstone_zero_size check (file_tombstone is false or file_size = 0),
     constraint file_nonzero_size check (file_tombstone is true or file_size > 0),
     constraint file_adler32_not_null check

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-shard_id_factory.py
+unified_id_factory.py
 
 generate unique ids
 """
@@ -29,7 +29,7 @@ END;
 $$ LANGUAGE PLPGSQL;
 """
 
-class ShardIDFactory(object):
+class UnifiedIDFactory(object):
     """
     Based on the instagram sharded ids
 

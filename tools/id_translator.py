@@ -81,13 +81,20 @@ class InternalIDTranslator(object):
     """
 
     def __init__(self, key, iv_key, hmac_key, hmac_size=16):
+
+        if not len(key) == len(iv_key) == len(hmac_key) == _KEY_SIZE:
+            raise ValueError("incorrect key sizes")
+
+        if not len(set([key, iv_key, hmac_key, ])) == 3:
+            raise ValueError("don't use equal keys")
+
+        if not hmac_size <= _KEY_SIZE:
+            raise ValueError("hmac size out of range")
+
         self.key = key
         self.iv_key = iv_key
         self.hmac_key = hmac_key
         self.hmac_size = hmac_size
-        if not len(key) == len(iv_key) == len(hmac_key) == _KEY_SIZE:
-            raise ValueError("incorrect key sizes")
-        assert self.hmac_size <= _KEY_SIZE
 
     def _make_iv(self, bin_str):
         "create an initial vector for aes"

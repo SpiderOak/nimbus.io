@@ -35,7 +35,7 @@ _sub_topics = [
 def _handle_web_server_stats(state, message, _data):
     log = logging.getLogger("_handle_web_server_stats")
 
-    try:
+    if message["stats"]["retrieves"] != 0:
         report_line = _web_server_line_template % (
             message["node-name"],
             "retrieve",
@@ -51,12 +51,9 @@ def _handle_web_server_stats(state, message, _data):
             message["reader"][8][2],
             message["reader"][9][2],
         )
-    except Exception:
-        log.exception(str(message))
-    else:
         log.info(report_line)
         
-    try:
+    if message["stats"]["archives"] != 0:
         report_line = _web_server_line_template % (
             message["node-name"],
             "archive",
@@ -72,10 +69,6 @@ def _handle_web_server_stats(state, message, _data):
             message["writer"][8][2],
             message["writer"][9][2],
         )
-    except Exception:
-        log.exception(str(message))
-    else:
-        log.info(report_line)
 
 def _handle_queue_size(state, message, _data):
     log = logging.getLogger("_handle_queue_size")

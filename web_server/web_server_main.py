@@ -227,6 +227,7 @@ class WebServer(object):
             client.join()
         for client in self._data_reader_clients:
             client.join()
+        self._log.debug("closing zmq")
         self._event_push_client.close()
         self._zeromq_context.term()
         self._log.info("closing database connections")

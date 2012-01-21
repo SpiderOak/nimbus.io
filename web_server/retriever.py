@@ -179,9 +179,7 @@ class Retriever(object):
                 break
 
         # if anything is still running, get rid of it
-        self._log.debug("retrieve: before join")
         self._pending.join(timeout, raise_error=True)
-        self._log.debug("retrieve: after join ")
 
         if len(result_dict) < self._segments_needed:
             error_message = "(%s) %s too few valid results %s" % (

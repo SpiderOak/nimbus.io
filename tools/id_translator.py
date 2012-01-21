@@ -1,4 +1,36 @@
-#!/usr/bin/python -w
+#!/usr/bin/env python
+
+"""
+Nimbus.io uses unified ID numbers for a variety of purposes -- most notably
+version IDs.  It is convenient to provide those same identifiers to users to
+allow them to specify particular objects to perform operations on.  
+
+However, exposing internal IDs directly also leaks some information.  For
+example, if the ID numbers were simply sequentially generated (they are not) it
+becomes trivial for end users to determine the rate at which objects are being
+added to the system.  Comparisons can be made among IDs to determine operation
+ordering.  It also facilitates a variety of forms of abuse that involve
+specifying made up IDs.
+
+The scheme here provides some rudimentary protection against the above.  
+
+Internal IDs maybe translated to an encrypted form and freely shared with the
+public.  The public form does not reveal the internal ID, public IDs are not
+comparable to determine operation order, and the use of HMAC offers some
+limited protection for erroneous public IDs being made up.
+
+Note of course that that none of these protections imply that a user who knows
+a particular public ID has rights to any object.  The only (limited) protection
+implied is that a verified public ID is likely to have originated within our
+system.
+
+Within Nimbus.io, one set of keys (such as to instantiate a
+InternalIDTranslator) should be used per organization operating a Nimbus.io
+service.  Naturally the keys should be kept secret.
+
+When using the cluster simulation infrastructure, keys for new clusters are
+automatically generated when the simulated cluster is created.
+"""
 
 import os
 import time
@@ -17,7 +49,7 @@ _IV_SIZE = 16
 
 def sec_str_eq(str1, str2):
     """
-    constant time string comparison for arbirtrary strings
+    constant time string comparison for arbitrary strings
     """
 
     if not len(str1) == len(str2):
@@ -37,6 +69,11 @@ def bin_to_int8(bin_str):
     "unpack int8 from binary string"
     return struct.unpack("!Q", bin_str)[0]
     
+def check_range(internal_id):
+    "sanity check"
+    if internal_id < MIN_ID or internal_id > MAX_ID:
+        raise ValueError("Bad ID")
+
 class InternalIDTranslator(object):
     """
     class for safely translating internal IDs to public IDs and back without
@@ -61,16 +98,12 @@ class InternalIDTranslator(object):
         return hmac.new(
             self.hmac_key, signtext, sha256).digest()[:self.hmac_size]
 
-    def _check_range(self, internal_id):
-        "sanity check"
-        if internal_id < MIN_ID or internal_id > MAX_ID:
-            raise ValueError("Bad ID")
 
     def public_id(self, internal_id):
         """
         create a public version of an internal 8 byte integer
         """
-        self._check_range(internal_id)
+        check_range(internal_id)
         binary_id = int8_to_bin(internal_id)
         aes_iv = self._make_iv(binary_id)
         ciphertxt = AES.new(self.key, AES.MODE_CFB, aes_iv).encrypt(binary_id)
@@ -92,7 +125,7 @@ class InternalIDTranslator(object):
                 break
             except TypeError, err:
                 if not "padding" in str(err):
-                    raise 
+                    raise ValueError("Bad ID")
         else: 
             raise ValueError("Bad ID")
 
@@ -114,28 +147,32 @@ class InternalIDTranslator(object):
 
         internal_id = bin_to_int8(plaintxt)
 
-        self._check_range(internal_id)
+        check_range(internal_id)
 
         return internal_id
 
-def test():
+def test(rounds=10000):
     "test translating IDs"
+
     key = os.urandom(_KEY_SIZE)
     hmac_key = os.urandom(_KEY_SIZE)
     iv_key = os.urandom(_KEY_SIZE)
 
     translator = InternalIDTranslator(key, hmac_key, iv_key, 16)
 
-    start = int(time.time() * 1000)
+    timestart = int(time.time() * 1000)
 
     for test_id in chain(
-        xrange(start, start + 1000),
-        xrange(MAX_ID, MAX_ID - 1000, -1)
+        range(MIN_ID, MIN_ID + rounds),
+        range(timestart, timestart + rounds),
+        range(MAX_ID, MAX_ID - rounds, -1)
     ):
         public = translator.public_id(test_id)
         print public, len(public)
         internal = translator.internal_id(public)
         assert test_id == internal, (test_id, internal,)
+
+    return True
 
 if __name__ == "__main__":
     test()

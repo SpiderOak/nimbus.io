@@ -31,38 +31,11 @@ class Watcher(Greenlet):
 
             reader_info = list()
             for client in self._reader_clients:
-                try:
-                    status, elapsed_time, queue_size = \
-                            client.test_current_status()
-                except Exception, instance:
-                    self._log.error("reader client %s" % (instance, ))
-                    status, elapsed_time, queue_size = "error", 0.0, -1
-
-                if status != "connected":
-                    self._log.info(
-                        "reader %s elapsed_time=%s queue_size = %s" % (
-                            status, elapsed_time, queue_size,
-                        )
-                    )
-                reader_info.append( (status, elapsed_time, queue_size, ) )
+                reader_info.append(client.queue_size)
 
             writer_info = list()
             for client in self._writer_clients:
-                try:
-                    status, elapsed_time, queue_size = \
-                            client.test_current_status()
-                except Exception, instance:
-                    self._log.error("writer client %s" % (instance, ))
-                    status, elapsed_time, queue_size = "error", 0.0, -1
-
-                if status != "connected":
-                    self._log.info(
-                        "writer %s elapsed_time=%s queue_size = %s" % (
-                            status, elapsed_time, queue_size,
-                        )
-                    )
-                writer_info.append( (status, elapsed_time, queue_size, ) )
-
+                writer_info.append(client.queue_size)
 
             self._log.info(
                 "archives: %(archives)s; retrieves: %(retrieves)s" \

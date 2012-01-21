@@ -164,6 +164,7 @@ class Application(object):
         node_local_connection,
         cluster_row,
         unified_id_factory,
+        id_translator,
         data_writer_clients, 
         data_readers,
         authenticator, 
@@ -176,6 +177,7 @@ class Application(object):
         self._node_local_connection = node_local_connection
         self._cluster_row = cluster_row
         self._unified_id_factory = unified_id_factory
+        self._id_translator = id_translator
         self._data_writer_clients = data_writer_clients
         self.data_readers = data_readers
         self._authenticator = authenticator
@@ -371,6 +373,12 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
+        # translate version id to the form we use internally
+        if "version_id_marker" in kwargs:
+            kwargs["version_id_marker"] = self._id_translator.internal_id(
+                kwargs["version_id_marker"]
+            )
+
         self._log.debug(
             "_list_versions: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
@@ -384,6 +392,15 @@ class Application(object):
             collection_entry.collection_id, 
             **kwargs
         )
+
+        # translate version ids to the form we show to the public
+        if "key_data" in result_dict:
+            for key_entry in result_dict["key_data"]:
+                key_entry["version_identifier"] = \
+                    self._id_translator.public_id(
+                        key_entry["version_identifier"]
+                    )
+
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(result_dict))
         return response
@@ -618,6 +635,15 @@ class Application(object):
             collection_entry.collection_id, 
             **kwargs
         )
+
+        # translate version ids to the form we show to the public
+        if "key_data" in result_dict:
+            for key_entry in result_dict["key_data"]:
+                key_entry["version_identifier"] = \
+                    self._id_translator.public_id(
+                        key_entry["version_identifier"]
+                    )
+
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(result_dict))
         return response

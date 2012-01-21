@@ -46,7 +46,7 @@ def list_keys(
             break
         key_list.append(
             {"key" : key, 
-             "version_idientifier" : unified_id, 
+             "version_identifier" : unified_id, 
              "timestamp_repr" : repr(timestamp)}
         )
 

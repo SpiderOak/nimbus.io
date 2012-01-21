@@ -21,6 +21,8 @@ gevent_zeromq.monkey_patch()
 
 import logging
 import os
+import os.path
+import pickle
 import signal
 import sys
 
@@ -39,6 +41,7 @@ from tools.database_connection import get_central_connection, \
         get_node_local_connection
 from tools.event_push_client import EventPushClient
 from tools.unified_id_factory import UnifiedIDFactory
+from tools.id_translator import InternalIDTranslator
 
 from web_server.application import Application
 from web_server.data_reader import DataReader
@@ -70,6 +73,7 @@ _stats = {
     "archives"    : 0,
     "retrieves"   : 0,
 }
+_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*args):
@@ -103,7 +107,6 @@ class WebServer(object):
             self._central_connection,
             _get_shard_id(self._central_connection, self._cluster_row.id)
         )
-
         self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()
@@ -179,11 +182,24 @@ class WebServer(object):
             self._event_push_client
         )
 
+        id_translator_keys_path = os.path.join(
+            _repository_path, "id_translator_keys.pkl"
+        )
+        with open(id_translator_keys_path, "r") as input_file:
+            id_translator_keys = pickle.load(input_file)
+
+        self._id_translator = InternalIDTranslator(
+            id_translator_keys["key"],
+            id_translator_keys["hmac_key"], 
+            id_translator_keys["iv_key"],
+            id_translator_keys["hmac_size"]
+        )
         self.application = Application(
             self._central_connection,
             self._node_local_connection,
             self._cluster_row,
             self._unified_id_factory,
+            self._id_translator,
             self._data_writer_clients,
             self._data_readers,
             authenticator,

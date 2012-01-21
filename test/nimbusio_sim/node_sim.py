@@ -7,6 +7,9 @@ simulate one node in a cluster
 import logging
 import os
 import os.path
+import pickle
+
+from tools.id_translator import _KEY_SIZE
 
 class SimError(Exception):
     pass
@@ -24,6 +27,14 @@ from test.nimbusio_sim.process_util import start_web_server, \
         start_stats_subscriber, \
         poll_process, \
         terminate_process
+
+def _create_id_translator_keys():
+    return {
+        "key"       : os.urandom(_KEY_SIZE),
+        "hmac_key"  : os.urandom(_KEY_SIZE),
+        "iv_key"    : os.urandom(_KEY_SIZE),
+        "hmac_size" : 16,
+    }
 
 class NodeSim(object):
     """simulate one node in a cluster"""
@@ -47,6 +58,13 @@ class NodeSim(object):
         )
         if not os.path.exists(self._home_dir):
             os.makedirs(self._home_dir)
+        id_translator_keys_path = os.path.join(
+            self._home_dir, "id_translator_keys.pkl"
+        )
+        if not os.path.exists(id_translator_keys_path):
+            id_translator_keys = _create_id_translator_keys()
+            with open(id_translator_keys_path, "w") as output_file:
+                pickle.dump(id_translator_keys, output_file)
 
         self._processes = dict()
         self._space_accounting = space_accounting

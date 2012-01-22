@@ -43,7 +43,7 @@ def list_keys(
             continue
         prev_key = key
         if tombstone:
-            break
+            continue
         key_list.append(
             {"key" : key, 
              "version_identifier" : unified_id, 
@@ -111,7 +111,7 @@ def list_versions(
             continue
         prev_key = key
         if tombstone:
-            break 
+            continue 
         key_list.append(
             {"key" : key, 
              "version_identifier" : unified_id, 

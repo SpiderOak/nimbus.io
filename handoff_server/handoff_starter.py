@@ -44,8 +44,8 @@ class HandoffStarter(object):
         ))
 
         if self._state["forwarder"] is not None:
-            # run again, after the polling interval
-            return [(self.run, self.next_run(), )]
+            # run again later
+            return [(self.run, 5.0, )]
 
         try:
             segment_row, source_node_names = \
@@ -87,5 +87,5 @@ class HandoffStarter(object):
         )
         self._state["forwarder"].next()
 
-        # run again, after the polling interval
-        return [(self.run, self.next_run(), )]
+        # run again, after a slight delay
+        return [(self.run, 5.0, )]

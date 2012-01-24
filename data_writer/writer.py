@@ -76,6 +76,7 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
             file_adler32,
             file_hash,
             file_tombstone,
+            file_tombstone_unified_id,
             handoff_node_id
         ) values (
             %(id)s,
@@ -90,6 +91,7 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
             %(file_adler32)s,
             %(file_hash)s,
             %(file_tombstone)s,
+            %(file_tombstone_unified_id)s,
             %(handoff_node_id)s
         )
     """, segment_row_dict)
@@ -129,6 +131,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
             file_adler32,
             file_hash,
             file_tombstone,
+            file_tombstone_unified_id,
             handoff_node_id
         ) values (
             %(collection_id)s,
@@ -140,6 +143,7 @@ def _insert_segment_tombstone_row(connection, segment_row):
             %(file_adler32)s,
             %(file_hash)s,
             %(file_tombstone)s,
+            %(file_tombstone_unified_id)s,
             %(handoff_node_id)s
         )
     """, segment_row_dict)
@@ -321,6 +325,7 @@ class Writer(object):
         file_adler32,
         file_hash,
         file_tombstone,
+        file_tombstone_unified_id,
         handoff_node_id
     ): 
         """
@@ -351,6 +356,7 @@ class Writer(object):
             file_adler32=file_adler32,
             file_hash=psycopg2.Binary(file_hash),
             file_tombstone=file_tombstone,
+            file_tombstone_unified_id=file_tombstone_unified_id,
             handoff_node_id=handoff_node_id
         )
         meta_rows = list()
@@ -367,7 +373,13 @@ class Writer(object):
         _insert_segment_row_with_meta(self._connection, segment_row, meta_rows)
     
     def set_tombstone(
-        self, collection_id, key, unified_id, timestamp, segment_num
+        self, 
+        collection_id, 
+        key, 
+        unified_id_to_delete,
+        unified_id, 
+        timestamp, 
+        segment_num, 
     ):
         """
         mark a key as deleted
@@ -385,6 +397,7 @@ class Writer(object):
             file_adler32=None,
             file_hash=None,
             file_tombstone=True,
+            file_tombstone_unified_id=unified_id_to_delete,
             handoff_node_id=None
         )
         _insert_segment_tombstone_row(self._connection, segment_row)

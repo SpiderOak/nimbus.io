@@ -257,7 +257,7 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         # json won't dump datetime
-        json_collections = [(n, t.isoformat()) for (n, t) in collections]
+        json_collections = [(n, v, t.isoformat()) for (n, v, t) in collections]
 
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(json_collections))
@@ -267,6 +267,7 @@ class Application(object):
     def _create_collection(self, req, match_object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
+        versioning = False
 
         self._log.debug("_create_collection: %s name = %r" % (
             username,
@@ -285,7 +286,8 @@ class Application(object):
             create_collection(
                 self._central_connection, 
                 username,
-                collection_name
+                collection_name,
+                versioning
             )
         except Exception, instance:
             self._log.error("%s error adding collection %r %s" % (
@@ -807,6 +809,7 @@ class Application(object):
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        unified_id_to_delete = None
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -831,11 +834,12 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         description = \
-            "_delete_key: collection = (%s) %r customer = %r key = %r" % (
+            "_delete_key: (%s) %r %r key = %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
                 collection_entry.username,
                 key,
+                unified_id_to_delete
             )
         self._log.debug(description)
         data_writers = _create_data_writers(
@@ -851,6 +855,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
+            unified_id_to_delete,
             unified_id,
             timestamp
         )

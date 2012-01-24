@@ -121,6 +121,7 @@ segment_row_template = namedtuple(
         "file_adler32",
         "file_hash",
         "file_tombstone",
+        "file_tombstone_unified_id",
         "handoff_node_id",
     ]
 )

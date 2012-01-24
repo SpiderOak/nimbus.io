@@ -24,6 +24,7 @@ class Destroyer(object):
         data_writers,
         collection_id, 
         key,
+        unified_id_to_delete,
         unified_id,
         timestamp        
     ):
@@ -33,6 +34,7 @@ class Destroyer(object):
         self.data_writers = data_writers
         self.collection_id = collection_id
         self.key = key
+        self.unified_id_to_delete = unified_id_to_delete
         self._unified_id = unified_id
         self.timestamp = timestamp
         self._pending = gevent.pool.Group()
@@ -82,6 +84,7 @@ class Destroyer(object):
                 data_writer.destroy_key,
                 self.collection_id,
                 self.key,
+                self.unified_id_to_delete,
                 self._unified_id,
                 self.timestamp,
                 (None if conjoined_row is None else conjoined_row.unified_id),

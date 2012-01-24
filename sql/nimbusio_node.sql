@@ -49,6 +49,7 @@ create table segment (
     file_adler32 int4,
     file_hash bytea,
     file_tombstone bool not null default false,
+    file_tombstone_unified_id int8,
     /* XXX: wasn't completely sure if this column belongs in segment or
      * segment_sequence. It's true that every sequence stored on the local node 
      * for a given key should have the same segment_num, right?  If so, it goes

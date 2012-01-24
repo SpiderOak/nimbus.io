@@ -158,6 +158,7 @@ def _handle_archive_key_entire(state, message, data):
         message["file-adler32"],
         b64decode(message["file-hash"]),
         file_tombstone=False,
+        file_tombstone_unified_id=None,
         handoff_node_id=handoff_node_id
     )
 
@@ -393,6 +394,7 @@ def _handle_archive_key_final(state, message, data):
         message["file-adler32"],
         b64decode(message["file-hash"]),
         file_tombstone=False,
+        file_tombstone_unified_id=None,
         handoff_node_id=handoff_node_id
     )
 
@@ -416,6 +418,7 @@ def _handle_destroy_key(state, message, _data):
     state["writer"].set_tombstone(
         message["collection-id"], 
         message["key"], 
+        message["unified-id-to-delete"],
         message["unified-id"],
         timestamp,
         message["segment-num"]

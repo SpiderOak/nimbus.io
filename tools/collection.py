@@ -148,6 +148,17 @@ def delete_collection(connection, collection_name):
     """, [collection_name, ]
     )
 
+def set_collection_versioning(connection, collection_name, versioning):
+    """
+    set the versioning attribute of the collection to True or False
+    """
+    connection.execute("""
+        update nimbusio_central.collection
+        set versioning = %s
+        where name = %s
+    """, [versioning, collection_name, ]
+    )
+
 def purge_collection(connection, collection_name):
     """
     really delete the collection: this is intended for use in testing

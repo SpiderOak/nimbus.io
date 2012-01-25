@@ -41,7 +41,8 @@ from tools.collection import get_username_and_collection_id, \
         compute_default_collection_name, \
         create_collection, \
         list_collections, \
-        delete_collection
+        delete_collection, \
+        set_collection_versioning
 
 from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
@@ -69,6 +70,7 @@ from web_server.url_discriminator import parse_url, \
         action_list_collections, \
         action_create_collection, \
         action_delete_collection, \
+        action_set_versioning, \
         action_list_versions, \
         action_space_usage, \
         action_archive_key, \
@@ -190,6 +192,7 @@ class Application(object):
             action_list_collections     : self._list_collections,
             action_create_collection    : self._create_collection,
             action_delete_collection    : self._delete_collection,
+            action_set_versioning       : self._set_versioning,
             action_list_versions        : self._list_versions,
             action_space_usage          : self._collection_space_usage,
             action_archive_key          : self._archive_key,
@@ -336,6 +339,33 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
         else:
             self._central_connection.commit()
+
+        return Response('OK')
+
+    def _set_versioning(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        versioning = match_object.group("versioning").lower() == "true"
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+
+        set_collection_versioning(
+            self._central_connection, collection_name, versioning
+        )
 
         return Response('OK')
 

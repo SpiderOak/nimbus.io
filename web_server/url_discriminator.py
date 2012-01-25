@@ -16,6 +16,7 @@ import os
 action_list_collections = "list-collections"
 action_create_collection = "create-collection"
 action_delete_collection = "delete-collection"
+action_set_versioning = "set-versioning"
 action_list_versions = "list-versions"
 action_space_usage = "space-usage"
 action_archive_key = "archive-key"
@@ -50,6 +51,10 @@ _delete_collection2_re = re.compile(
 
 _list_versions_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/\?versions(\&.*)?$"
+)
+
+_set_versioning_re = re.compile(
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/\?versioning=(?P<versioning>(True|true|false|False))$"
 )
 
 _space_usage_re = re.compile(
@@ -124,6 +129,9 @@ _regex_by_method = {
         (_start_conjoined_re, action_start_conjoined, ),
         (_finish_conjoined_re, action_finish_conjoined, ),
         (_abort_conjoined_re, action_abort_conjoined, ),
+    ],
+    "PUT"   : [
+        (_set_versioning_re, action_set_versioning, ),
     ],
     "DELETE"  : [
         (_delete_collection1_re, action_delete_collection, ),

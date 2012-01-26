@@ -104,6 +104,11 @@ _valid_urls_with_actions = [
     ),
     (
         "GET", 
+        "https://test-collection-name.nimbus.io/data/test-key?version_identifier=wOsvJaqCWHxCqdPC5XLvya5FKYdPMGEI3R-YlbZ6I90atidsz1hMtg",
+        action_retrieve_key
+    ),
+    (
+        "GET", 
         "https://test-collection-name.nimbus.io/data/test-key?action=meta",
         action_retrieve_meta
     ),

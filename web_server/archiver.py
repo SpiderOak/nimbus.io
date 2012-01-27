@@ -12,8 +12,6 @@ from collections import defaultdict
 import gevent
 import gevent.pool
 
-from tools.data_definitions import identifier_hex
-
 from web_server.exceptions import (
     AlreadyInProgress,
     ArchiveFailedError,
@@ -26,10 +24,10 @@ class Archiver(object):
         data_writers, 
         collection_id, 
         key, 
-        version_identifier,
+        unified_id,
         timestamp, 
         meta_dict, 
-        conjoined_identifier,
+        conjoined_unified_id,
         conjoined_part
     ):
         self.log = logging.getLogger(
@@ -37,10 +35,10 @@ class Archiver(object):
         self.data_writers = data_writers
         self.collection_id = collection_id
         self.key = key
-        self._version_identifier_hex = version_identifier.hex
+        self._unified_id = unified_id
         self.timestamp = timestamp
         self._meta_dict = meta_dict
-        self._conjoined_identifier_hex = identifier_hex(conjoined_identifier)
+        self._conjoined_unified_id = conjoined_unified_id
         self._conjoined_part = conjoined_part
         self.sequence_num = 0
         self._adler32s = {}
@@ -89,7 +87,7 @@ class Archiver(object):
                         data_writer.archive_key_start,
                         self.collection_id,
                         self.key,
-                        self._version_identifier_hex,
+                        self._unified_id,
                         self.timestamp,
                         segment_num,
                         self.sequence_num,
@@ -103,7 +101,7 @@ class Archiver(object):
                         data_writer.archive_key_next,
                         self.collection_id,
                         self.key,
-                        self._version_identifier_hex,
+                        self._unified_id,
                         self.timestamp,
                         segment_num,
                         self.sequence_num,
@@ -138,10 +136,10 @@ class Archiver(object):
                     data_writer.archive_key_entire,
                     self.collection_id,
                     self.key,
-                    self._version_identifier_hex,
+                    self._unified_id,
                     self.timestamp,
                     self._meta_dict,
-                    self._conjoined_identifier_hex,
+                    self._conjoined_unified_id,
                     self._conjoined_part,
                     segment_num,
                     file_size,
@@ -156,10 +154,10 @@ class Archiver(object):
                     data_writer.archive_key_final,
                     self.collection_id,
                     self.key,
-                    self._version_identifier_hex,
+                    self._unified_id,
                     self.timestamp,
                     self._meta_dict,
-                    self._conjoined_identifier_hex,
+                    self._conjoined_unified_id,
                     self._conjoined_part,
                     segment_num,
                     self.sequence_num,

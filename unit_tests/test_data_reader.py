@@ -118,7 +118,7 @@ class TestDataReader(unittest.TestCase):
             "priority"                  : archive_priority,
             "collection-id"             : collection_id,
             "key"                       : key, 
-            "conjoined-identifier-hex"  : None,
+            "conjoined-unified-id"      : None,
             "conjoined-part"            : 0,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
@@ -156,7 +156,7 @@ class TestDataReader(unittest.TestCase):
             "collection-id"             : collection_id,
             "key"                       : key, 
             "timestamp-repr"            : repr(timestamp),
-            "conjoined-identifier-hex"  : None,
+            "conjoined-unified-id"      : None,
             "conjoined-part"            : 0,
             "segment-num"               : segment_num
         }
@@ -205,7 +205,7 @@ class TestDataReader(unittest.TestCase):
             "priority"                  : archive_priority,
             "collection-id"             : collection_id,
             "key"                       : key, 
-            "conjoined-identifier-hex"  : None,
+            "conjoined-unified-id"      : None,
             "conjoined-part"            : 0,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
@@ -241,7 +241,7 @@ class TestDataReader(unittest.TestCase):
                 "priority"                  : archive_priority,
                 "collection-id"             : collection_id,
                 "key"                       : key, 
-                "conjoined-identifier-hex"  : None,
+                "conjoined-unified-id"      : None,
                 "conjoined-part"            : 0,
                 "timestamp-repr"            : repr(timestamp),
                 "segment-num"               : segment_num,
@@ -279,7 +279,7 @@ class TestDataReader(unittest.TestCase):
             "priority"                  : archive_priority,
             "collection-id"             : collection_id,
             "key"                       : key, 
-            "conjoined-identifier-hex"  : None,
+            "conjoined-unified-id"      : None,
             "conjoined-part"            : 0,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
@@ -320,7 +320,7 @@ class TestDataReader(unittest.TestCase):
             "collection-id"             : collection_id,
             "key"                       : key, 
             "timestamp-repr"            : repr(timestamp),
-            "conjoined-identifier-hex"  : None,
+            "conjoined-unified-id"      : None,
             "conjoined-part"            : 0,
             "segment-num"               : segment_num
         }
@@ -348,7 +348,7 @@ class TestDataReader(unittest.TestCase):
                 "collection-id"             : collection_id,
                 "key"                       : key, 
                 "timestamp-repr"            : repr(timestamp),
-                "conjoined-identifier-hex"  : None,
+                "conjoined-unified-id"      : None,
                 "conjoined-part"            : 0,
                 "segment-num"               : segment_num
             }

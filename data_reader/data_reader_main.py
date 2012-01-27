@@ -25,9 +25,6 @@ from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection
-from tools.data_definitions import parse_timestamp_repr, \
-        parse_identifier_hex, \
-        parse_conjoined_part
 
 from data_reader.reader import Reader
 from data_reader.state_cleaner import StateCleaner
@@ -56,36 +53,27 @@ def _compute_state_key(message):
     compute a key to the state for this message
     """
     return (message["client-tag"],
-            message["collection-id"], 
-            message["key"], 
-            message["timestamp-repr"],
+            message["segment-unified-id"], 
             message["segment-num"], )
 
 def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
     state_key = _compute_state_key(message)
-    log.info("%s %s %s %s" % (
-        message["collection-id"], 
-        message["key"], 
-        message["timestamp-repr"],
-        message["segment-num"]
-    ))
+    log.info(repr(state_key))
 
     reply = {
-        "message-type"      : "retrieve-key-reply",
-        "client-tag"        : message["client-tag"],
-        "message-id"        : message["message-id"],
-        "collection-id"     : message["collection-id"],
-        "key"               : message["key"],
-        "timestamp-repr"    : message["timestamp-repr"],
-        "segment-num"       : message["segment-num"],
-        "segment-size"      : None,
-        "segment-adler32"   : None,
-        "segment-md5-digest": None,
-        "sequence-num"      : None,
-        "completed"         : None,
-        "result"            : None,
-        "error-message"     : None,
+        "message-type"          : "retrieve-key-reply",
+        "client-tag"            : message["client-tag"],
+        "message-id"            : message["message-id"],
+        "segment-unified-id"    : message["segment-unified-id"],
+        "segment-num"           : message["segment-num"],
+        "segment-size"          : None,
+        "segment-adler32"       : None,
+        "segment-md5-digest"    : None,
+        "sequence-num"          : None,
+        "completed"             : None,
+        "result"                : None,
+        "error-message"         : None,
     }
 
     # if we already have a state entry for this request, something is wrong
@@ -97,20 +85,8 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
-    conjoined_part = parse_conjoined_part(
-        message.get("conjoined-part")
-    )
-    timestamp = parse_timestamp_repr(message["timestamp-repr"])
-
-    sequence_generator = state["reader"].generate_all_sequence_rows_for_segment(
-        message["collection-id"],
-        message["key"],
-        timestamp,
-        conjoined_identifier,
-        conjoined_part,
+    sequence_generator = state["reader"].generate_all_sequence_rows(
+        message["segment-unified-id"],
         message["segment-num"]
     )
 
@@ -138,13 +114,10 @@ def _handle_retrieve_key_start(state, message, _data):
     segment_md5 = hashlib.md5()
     segment_md5.update(data_content)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch (%s, %s) %s %s %s %s" % (
+        error_message = "md5 mismatch (%s, %s) %s" % (
             segment_md5.digest(),
             sequence_row.hash,
-            message["collection-id"], 
-            message["key"], 
-            message["timestamp-repr"],
-            message["segment-num"]
+            state_key, 
         )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
@@ -180,28 +153,21 @@ def _handle_retrieve_key_start(state, message, _data):
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
     state_key = _compute_state_key(message)
-    log.info("%s %s %s %s" % (
-        message["collection-id"], 
-        message["key"], 
-        message["timestamp-repr"],
-        message["segment-num"]
-    ))
+    log.info(str(state_key))
 
     reply = {
-        "message-type"      : "retrieve-key-reply",
-        "client-tag"        : message["client-tag"],
-        "message-id"        : message["message-id"],
-        "collection-id"     : message["collection-id"],
-        "key"               : message["key"],
-        "timestamp-repr"    : message["timestamp-repr"],
-        "segment-num"       : message["segment-num"],
-        "segment-size"      : None,
-        "segment-adler32"   : None,
-        "segment-md5-digest": None,
-        "sequence-num"      : None,
-        "completed"         : None,
-        "result"            : None,
-        "error-message"     : None,
+        "message-type"          : "retrieve-key-reply",
+        "client-tag"            : message["client-tag"],
+        "message-id"            : message["message-id"],
+        "segment-unified-id"    : message["segment-unified-id"],
+        "segment-num"           : message["segment-num"],
+        "segment-size"          : None,
+        "segment-adler32"       : None,
+        "segment-md5-digest"    : None,
+        "sequence-num"          : None,
+        "completed"             : None,
+        "result"                : None,
+        "error-message"         : None,
     }
 
     try:
@@ -213,7 +179,6 @@ def _handle_retrieve_key_next(state, message, _data):
         reply["error-message"] = error_string
         state["resilient-server"].send_reply(reply)
         return
-
 
     try:
         sequence_row, data_content = state_entry.generator.next()
@@ -227,12 +192,7 @@ def _handle_retrieve_key_next(state, message, _data):
     segment_md5 = hashlib.md5()
     segment_md5.update(data_content)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch %s %s %s %s" % (
-            message["collection-id"], 
-            message["key"], 
-            message["timestamp-repr"],
-            message["segment-num"]
-        )
+        error_message = "md5 mismatch %s" % (state_key, )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"

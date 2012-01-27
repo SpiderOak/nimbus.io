@@ -16,6 +16,7 @@ from handoff_server.forwarder_coroutine import forwarder_coroutine
 _handoff_starter_polling_interval = float(os.environ.get(
     "NIMBUSIO_HANDOFF_STARTER_POLLING_INTERVAL", str(60.0)
 ))
+_delay_interval = 5.0
 
 class HandoffStarter(object):
     """
@@ -44,8 +45,8 @@ class HandoffStarter(object):
         ))
 
         if self._state["forwarder"] is not None:
-            # run again, after the polling interval
-            return [(self.run, self.next_run(), )]
+            # run again later
+            return [(self.run, time.time() + _delay_interval, )]
 
         try:
             segment_row, source_node_names = \
@@ -87,5 +88,5 @@ class HandoffStarter(object):
         )
         self._state["forwarder"].next()
 
-        # run again, after the polling interval
-        return [(self.run, self.next_run(), )]
+        # run again, after a slight delay
+        return [(self.run, time.time() + _delay_interval, )]

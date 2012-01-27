@@ -32,7 +32,6 @@ from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
 from tools.data_definitions import parse_timestamp_repr, \
-        parse_identifier_hex, \
         parse_conjoined_part, \
         nimbus_meta_prefix
 from web_server.central_database_util import get_cluster_row, \
@@ -82,11 +81,6 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
-    version_identifier = parse_identifier_hex(
-        message.get("version-identifier-hex")
-    )
-    assert version_identifier is not None
-
     if len(data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
             len(data),
@@ -122,7 +116,7 @@ def _handle_archive_key_entire(state, message, data):
 
     state["writer"].start_new_segment(
         message["collection-id"], 
-        version_identifier,
+        message["unified-id"],
         message["key"], 
         message["timestamp-repr"],
         message["segment-num"]
@@ -131,7 +125,7 @@ def _handle_archive_key_entire(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -149,25 +143,22 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
-
     conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
-        conjoined_identifier,
+        message["conjoined-unified-id"],
         conjoined_part,
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
         file_tombstone=False,
+        file_tombstone_unified_id=None,
         handoff_node_id=handoff_node_id
     )
 
@@ -191,12 +182,6 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
-    version_identifier = parse_identifier_hex(
-        message.get("version-identifier-hex")
-    )
-    assert version_identifier is not None
-
-    
     if len(data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
             len(data),
@@ -233,7 +218,7 @@ def _handle_archive_key_start(state, message, data):
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         message["segment-num"]
     )
@@ -241,7 +226,7 @@ def _handle_archive_key_start(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -274,11 +259,6 @@ def _handle_archive_key_next(state, message, data):
         "error-message" : None,
     }
 
-    version_identifier = parse_identifier_hex(
-        message.get("version-identifier-hex")
-    )
-    assert version_identifier is not None
-
     if len(data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
             len(data),
@@ -315,7 +295,7 @@ def _handle_archive_key_next(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -348,11 +328,6 @@ def _handle_archive_key_final(state, message, data):
         "error-message" : None,
     }
 
-    version_identifier = parse_identifier_hex(
-        message.get("version-identifier-hex")
-    )
-    assert version_identifier is not None
-
     if len(data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
             len(data),
@@ -389,7 +364,7 @@ def _handle_archive_key_final(state, message, data):
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         message["segment-num"],
         message["segment-size"],
@@ -404,24 +379,22 @@ def _handle_archive_key_final(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
     conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id"],
         message["timestamp-repr"],
         _extract_meta(message),
         message["segment-num"],
-        conjoined_identifier,
+        message["conjoined-unified-id"],
         conjoined_part,
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
         file_tombstone=False,
+        file_tombstone_unified_id=None,
         handoff_node_id=handoff_node_id
     )
 
@@ -433,24 +406,21 @@ def _handle_archive_key_final(state, message, data):
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
-    log.info("%s %s %s %s" % (
+    log.info("%s %s %s %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["timestamp-repr"],
+        message["unified-id-to-delete"],
+        message["unified-id"],
         message["segment-num"]
     ))
-
-    version_identifier = parse_identifier_hex(
-        message.get("version-identifier-hex")
-    )
-    assert version_identifier is not None
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].set_tombstone(
         message["collection-id"], 
         message["key"], 
-        version_identifier,
+        message["unified-id-to-delete"],
+        message["unified-id"],
         timestamp,
         message["segment-num"]
     )
@@ -468,18 +438,13 @@ def _handle_purge_handoff_source(state, message, _data):
     log = logging.getLogger("_handle_purge_handoff_source")
     log.info("%s %s %s" % (
         message["collection-id"], 
-        message["version-identifier-hex"], 
+        message["unified-id"], 
         message["handoff-node-id"],
     ))
 
-    version_identifier = parse_identifier_hex(
-        message.get("version-identifier-hex")
-    )
-    assert version_identifier is not None
-
     state["writer"].purge_handoff_source(
         message["collection-id"], 
-        version_identifier,
+        message["unified-id"],
         message["handoff-node-id"]
     )
 
@@ -488,20 +453,16 @@ def _handle_start_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoined-identifier-hex"],
+        message["unified-id"],
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
-    assert conjoined_identifier is not None
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].start_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        conjoined_identifier,
+        message["unified-id"],
         timestamp
     )
 
@@ -519,20 +480,16 @@ def _handle_abort_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoined-identifier-hex"],
+        message["unified-id"],
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
-    assert conjoined_identifier is not None
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].abort_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        conjoined_identifier,
+        message["unified-id"],
         timestamp
     )
 
@@ -550,20 +507,16 @@ def _handle_finish_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoined-identifier-hex"],
+        message["unified-id"],
         message["timestamp-repr"],
     ))
 
-    conjoined_identifier = parse_identifier_hex(
-        message.get("conjoined-identifier-hex")
-    )
-    assert conjoined_identifier is not None
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
     state["writer"].finish_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        conjoined_identifier,
+        message["unified-id"],
         timestamp
     )
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-test_shard_id_factory.py
+test_unified_id_factory.py
 """
 try:
     import unittest2 as unittest
@@ -8,10 +8,10 @@ except ImportError:
     import unittest
 
 from tools.database_connection import get_node_local_connection
-from tools.shard_id_factory import ShardIDFactory
+from tools.unified_id_factory import UnifiedIDFactory
 
-class TestShardIDFactory(unittest.TestCase):
-    """test the customer authentication process"""
+class TestUnifiedIDFactory(unittest.TestCase):
+    """test the unified id factory"""
 
     def setUp(self):
         self.tearDown()
@@ -25,13 +25,13 @@ class TestShardIDFactory(unittest.TestCase):
 
     def test_increasing_ids(self):
         """test that shard ids increase"""
-        shard_id_factory = ShardIDFactory(self._connection, 1)
+        unified_id_factory = UnifiedIDFactory(self._connection, 1)
         prev_id = None
         for _ in range(1000):
-            shard_id = shard_id_factory.next()
+            unified_id = unified_id_factory.next()
             if prev_id is not None:
-                self.assertTrue(shard_id > prev_id)
-            prev_id = shard_id
+                self.assertTrue(unified_id > prev_id)
+            prev_id = unified_id
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,7 +6,6 @@ A class that retrieves data from data readers.
 """
 import logging
 import time
-import uuid
 
 import gevent
 import gevent.pool
@@ -25,6 +24,7 @@ class Retriever(object):
         data_readers, 
         collection_id, 
         key, 
+        version_id,
         segments_needed
     ):
         self._log = logging.getLogger("Retriever")
@@ -33,6 +33,7 @@ class Retriever(object):
         self._data_readers = data_readers
         self._collection_id = collection_id
         self._key = key
+        self._version_id = version_id
         self._segments_needed = segments_needed
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
@@ -52,7 +53,10 @@ class Retriever(object):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
         conjoined_row, segment_rows = current_status_of_key(
-            self._node_local_connection , self._collection_id, self._key
+            self._node_local_connection,
+            self._collection_id, 
+            self._key,
+            self._version_id
         )
 
         if len(segment_rows) == 0:
@@ -61,12 +65,10 @@ class Retriever(object):
             ))
 
         is_deleted = False
-        conjoined_identifier = None
         if conjoined_row is None:
             is_deleted = segment_rows[0].file_tombstone
         else:
             is_deleted = conjoined_row.delete_timestamp is not None
-            conjoined_identifier = uuid.UUID(bytes=conjoined_row.identifier)
 
         if is_deleted:
             raise RetrieveFailedError("key is deleted %s %s" % (
@@ -97,11 +99,7 @@ class Retriever(object):
                         function = data_reader.retrieve_key_next
                     task = self._pending.spawn(
                         function, 
-                        self._collection_id,
-                        self._key,
-                        conjoined_identifier,
-                        segment_row.conjoined_part,
-                        segment_row.timestamp,
+                        segment_row.unified_id,
                         segment_number
                     )
                     task.link(self._done_link)
@@ -182,9 +180,7 @@ class Retriever(object):
                 break
 
         # if anything is still running, get rid of it
-        self._log.debug("retrieve: before join")
         self._pending.join(timeout, raise_error=True)
-        self._log.debug("retrieve: after join ")
 
         if len(result_dict) < self._segments_needed:
             error_message = "(%s) %s too few valid results %s" % (

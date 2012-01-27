@@ -5,7 +5,6 @@ destroyer.py
 A class that performs a destroy query on all data writers.
 """
 import logging
-import uuid
 
 import gevent
 import gevent.pool
@@ -25,7 +24,8 @@ class Destroyer(object):
         data_writers,
         collection_id, 
         key,
-        version_identifier,
+        unified_id_to_delete,
+        unified_id,
         timestamp        
     ):
         self.log = logging.getLogger('Destroyer')
@@ -34,7 +34,8 @@ class Destroyer(object):
         self.data_writers = data_writers
         self.collection_id = collection_id
         self.key = key
-        self._version_identifier = version_identifier
+        self.unified_id_to_delete = unified_id_to_delete
+        self._unified_id = unified_id
         self.timestamp = timestamp
         self._pending = gevent.pool.Group()
         self._done = []
@@ -52,13 +53,9 @@ class Destroyer(object):
             return
         self._done.append(task)
 
-    def _spawn(self, segment_num, data_writer, run, *args):
-        method_name = run.__name__
+    def _spawn(self, run, *args):
         task = self._pending.spawn(run, *args)
         task.rawlink(self._done_link)
-        task.segment_num = segment_num
-        task.data_writer = data_writer
-        task.method_name = method_name
         return task
 
     def destroy(self, timeout=None):
@@ -66,31 +63,27 @@ class Destroyer(object):
             raise AlreadyInProgress()
 
         # TODO: find a non-blocking way to do this
-        conjoined_row, segment_rows = current_status_of_key(
-            self._node_local_connection , self.collection_id, self.key
+        _conjoined_row, segment_rows = current_status_of_key(
+            self._node_local_connection, 
+            self.collection_id, 
+            self.key,
+            self.unified_id_to_delete
         )
 
         if len(segment_rows) == 0:
             raise DestroyFailedError
-
-        conjoined_identifier = (
-            None if conjoined_row is None \
-            else uuid.UUID(bytes=conjoined_row.identifier)
-        )
 
         file_size = sum([row.file_size for row in segment_rows])
 
         for i, data_writer in enumerate(self.data_writers):
             segment_num = i + 1
             self._spawn(
-                segment_num,
-                data_writer,
                 data_writer.destroy_key,
                 self.collection_id,
                 self.key,
-                self._version_identifier,
+                self.unified_id_to_delete,
+                self._unified_id,
                 self.timestamp,
-                conjoined_identifier,
                 segment_num
             )
         self._join(timeout)

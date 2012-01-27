@@ -11,7 +11,6 @@ import cPickle as pickle
 import random
 import sys
 import time
-import uuid
 
 import zmq
 
@@ -72,23 +71,11 @@ def _retrieve_handoffs_for_node(connection, node_id):
         row = segment_row_template._make(entry)
 
         # bytea columns come out of the database as buffer objects
-        if row.version_identifier is None: 
-            version_identifier = None
-        else: 
-            version_identifier = str(row.version_identifier)
-        if row.conjoined_identifier is None: 
-            conjoined_identifier = None
-        else: 
-            conjoined_identifier = str(row.conjoined_identifier)
         if row.file_hash is None: 
             file_hash = None
         else: 
             file_hash = str(row.file_hash)
-        row = row._replace(
-            version_identifier=version_identifier,
-            conjoined_identifier=conjoined_identifier,
-            file_hash=file_hash
-        )
+        row = row._replace(file_hash=file_hash)
         segment_row_list.append(row)
 
     return segment_row_list
@@ -98,15 +85,16 @@ def _convert_dict_to_segment_row(segment_dict):
         id=segment_dict["id"],
         collection_id=segment_dict["collection_id"],
         key=segment_dict["key"],
-        version_identifier=segment_dict["version_identifier"],
+        unified_id=segment_dict["unified_id"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
-        conjoined_identifier=segment_dict.get("conjoined_identifier"),
+        conjoined_unified_id=segment_dict.get("conjoined_unified_id"),
         conjoined_part=segment_dict.get("conjoined_part"),
         file_size=segment_dict["file_size"],
         file_adler32=segment_dict["file_adler32"],
         file_hash=segment_dict["file_hash"],
         file_tombstone=segment_dict["file_tombstone"],
+        file_tombstone_unified_id=segment_dict["file_tombstone_unified_id"],
         handoff_node_id=segment_dict["handoff_node_id"]
     )
 
@@ -247,14 +235,12 @@ def _handle_archive_reply(state, message, _data):
             timestamp_repr=repr(segment_row.timestamp)
         )
         
-        version_identifier = uuid.UUID(bytes=segment_row.version_identifier)
-
         # purge the handoff source(s)
         message = {
             "message-type"      : "purge-handoff-source",
             "priority"          : create_priority(),
             "collection-id"     : segment_row.collection_id,
-            "version-identifier-hex" : version_identifier.hex,
+            "unified-id"        : segment_row.unified_id,
             "handoff-node-id"   : segment_row.handoff_node_id
         }
         for source_node_name in source_node_names:

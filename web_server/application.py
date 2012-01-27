@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 application.py
 
@@ -29,7 +28,6 @@ import hashlib
 import json
 from itertools import chain
 import urllib
-import uuid
 import time
 
 from webob.dec import wsgify
@@ -43,9 +41,9 @@ from tools.collection import get_username_and_collection_id, \
         compute_default_collection_name, \
         create_collection, \
         list_collections, \
-        delete_collection
+        delete_collection, \
+        set_collection_versioning
 
-from web_server.central_database_util import get_cluster_row
 from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
         RetrieveFailedError, \
@@ -72,6 +70,7 @@ from web_server.url_discriminator import parse_url, \
         action_list_collections, \
         action_create_collection, \
         action_delete_collection, \
+        action_set_versioning, \
         action_list_versions, \
         action_space_usage, \
         action_archive_key, \
@@ -165,6 +164,9 @@ class Application(object):
         self, 
         central_connection,
         node_local_connection,
+        cluster_row,
+        unified_id_factory,
+        id_translator,
         data_writer_clients, 
         data_readers,
         authenticator, 
@@ -175,6 +177,9 @@ class Application(object):
         self._log = logging.getLogger("Application")
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
+        self._cluster_row = cluster_row
+        self._unified_id_factory = unified_id_factory
+        self._id_translator = id_translator
         self._data_writer_clients = data_writer_clients
         self.data_readers = data_readers
         self._authenticator = authenticator
@@ -182,12 +187,12 @@ class Application(object):
         self._event_push_client = event_push_client
         self._stats = stats
 
-        self._cluster_row = get_cluster_row(self._central_connection)
 
         self._dispatch_table = {
             action_list_collections     : self._list_collections,
             action_create_collection    : self._create_collection,
             action_delete_collection    : self._delete_collection,
+            action_set_versioning       : self._set_versioning,
             action_list_versions        : self._list_versions,
             action_space_usage          : self._collection_space_usage,
             action_archive_key          : self._archive_key,
@@ -255,7 +260,7 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         # json won't dump datetime
-        json_collections = [(n, t.isoformat()) for (n, t) in collections]
+        json_collections = [(n, v, t.isoformat()) for (n, v, t) in collections]
 
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(json_collections))
@@ -265,6 +270,7 @@ class Application(object):
     def _create_collection(self, req, match_object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
+        versioning = False
 
         self._log.debug("_create_collection: %s name = %r" % (
             username,
@@ -283,7 +289,8 @@ class Application(object):
             create_collection(
                 self._central_connection, 
                 username,
-                collection_name
+                collection_name,
+                versioning
             )
         except Exception, instance:
             self._log.error("%s error adding collection %r %s" % (
@@ -335,6 +342,33 @@ class Application(object):
 
         return Response('OK')
 
+    def _set_versioning(self, req, match_object):
+        collection_name = match_object.group("collection_name")
+        versioning = match_object.group("versioning").lower() == "true"
+
+        try:
+            collection_entry = get_username_and_collection_id(
+                self._central_connection, collection_name
+            )
+        except Exception, instance:
+            self._log.error("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        authenticated = self._authenticator.authenticate(
+            self._central_connection,
+            collection_entry.username,
+            req
+        )
+        if not authenticated:
+            raise exc.HTTPUnauthorized()
+
+
+        set_collection_versioning(
+            self._central_connection, collection_name, versioning
+        )
+
+        return Response('OK')
+
     def _list_versions(self, req, match_object):
         collection_name = match_object.group("collection_name")
 
@@ -371,6 +405,12 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
+        # translate version id to the form we use internally
+        if "version_id_marker" in kwargs:
+            kwargs["version_id_marker"] = self._id_translator.internal_id(
+                kwargs["version_id_marker"]
+            )
+
         self._log.debug(
             "_list_versions: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
@@ -384,6 +424,15 @@ class Application(object):
             collection_entry.collection_id, 
             **kwargs
         )
+
+        # translate version ids to the form we show to the public
+        if "key_data" in result_dict:
+            for key_entry in result_dict["key_data"]:
+                key_entry["version_identifier"] = \
+                    self._id_translator.public_id(
+                        key_entry["version_identifier"]
+                    )
+
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(result_dict))
         return response
@@ -474,7 +523,7 @@ class Application(object):
             value = urllib.unquote_plus(value)
             value = value.decode("utf-8")
             if len(value) > 0:
-                conjoined_identifier = uuid.UUID(hex=value)
+                conjoined_identifier = long(value)
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
@@ -483,10 +532,7 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-        if conjoined_identifier is not None:
-            version_identifier = conjoined_identifier
-        else:
-            version_identifier = uuid.uuid1()
+        unified_id = self._unified_id_factory.next()
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -499,7 +545,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            version_identifier,
+            unified_id,
             timestamp,
             meta_dict,
             conjoined_identifier,
@@ -621,6 +667,15 @@ class Application(object):
             collection_entry.collection_id, 
             **kwargs
         )
+
+        # translate version ids to the form we show to the public
+        if "key_data" in result_dict:
+            for key_entry in result_dict["key_data"]:
+                key_entry["version_identifier"] = \
+                    self._id_translator.public_id(
+                        key_entry["version_identifier"]
+                    )
+
         response = Response(content_type='text/plain', charset='utf8')
         response.body_file.write(json.dumps(result_dict))
         return response
@@ -651,6 +706,13 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
+
+        version_id = None
+        if "version_identifier" in req.GET:
+            version_identifier = req.GET["version_identifier"]
+            version_identifier = urllib.unquote_plus(version_identifier)
+            version_id = self._id_translator.internal_id(version_identifier)
+
         connected_data_readers = _connected_clients(self.data_readers)
 
         if len(connected_data_readers) < _min_connected_clients:
@@ -658,25 +720,24 @@ class Application(object):
                 len(connected_data_readers),
             ))
 
-        description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
+        description = "retrieve: (%s)%r customer=%r key=%r version=%r" % (
             collection_entry.collection_id,
             collection_entry.collection_name,
             collection_entry.username,
-            key
+            key,
+            version_id
         )
         self._log.debug(description)
 
         start_time = time.time()
         self._stats["retrieves"] += 1
 
-        segmenter = ZfecSegmenter(
-            _min_segments,
-            _max_segments)
         retriever = Retriever(
             self._node_local_connection,
             self.data_readers,
             collection_entry.collection_id,
             key,
+            version_id,
             _min_segments
         )
 
@@ -696,6 +757,9 @@ class Application(object):
             return exc.HTTPNotFound(str(instance))
 
         def app_iterator(response):
+            segmenter = ZfecSegmenter(
+                _min_segments,
+                _max_segments)
             sent = 0
             try:
                 for segments in chain([first_segments], retrieved):
@@ -784,6 +848,7 @@ class Application(object):
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        unified_id_to_delete = None
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -808,11 +873,12 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         description = \
-            "_delete_key: collection = (%s) %r customer = %r key = %r" % (
+            "_delete_key: (%s) %r %r key = %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
                 collection_entry.username,
                 key,
+                unified_id_to_delete
             )
         self._log.debug(description)
         data_writers = _create_data_writers(
@@ -820,7 +886,7 @@ class Application(object):
             self._data_writer_clients
         )
 
-        version_identifier = uuid.uuid1()
+        unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
         destroyer = Destroyer(
@@ -828,7 +894,8 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            version_identifier,
+            unified_id_to_delete,
+            unified_id,
             timestamp
         )
 
@@ -881,17 +948,24 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        version_id = None
+        if "version_identifier" in req.GET:
+            version_identifier = req.GET["version_identifier"]
+            version_identifier = urllib.unquote_plus(version_identifier)
+            version_id = self._id_translator.internal_id(version_identifier)
+
         self._log.debug(
-            "head_key: collection = (%s) %r username = %r key = %r" % (
+            "head_key: collection = (%s) %r username = %r key = %r %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
-            key
+            key,
+            version_id
         ))
 
         getter = StatGetter(self._node_local_connection)
         segment_rows = getter.stat(
-            collection_entry.collection_id, key, _reply_timeout
+            collection_entry.collection_id, key, version_id
         )
         if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
@@ -995,10 +1069,12 @@ class Application(object):
             # the cluster. They may or may not be connected.
             self._data_writer_clients
         ) 
+        unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
         result = start_conjoined_archive(
             data_writers,
+            unified_id,
             collection_entry.collection_id,
             key,
             timestamp
@@ -1012,7 +1088,7 @@ class Application(object):
     def _finish_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+        conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -1042,7 +1118,7 @@ class Application(object):
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier_hex
+            conjoined_identifier
         ))
 
         data_writers = _create_data_writers(
@@ -1057,7 +1133,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            conjoined_identifier_hex,
+            conjoined_identifier,
             timestamp
         )
 
@@ -1066,7 +1142,7 @@ class Application(object):
     def _abort_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        conjoined_identifier_hex = match_object.group("conjoined_identifier")
+        conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -1096,7 +1172,7 @@ class Application(object):
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier_hex
+            conjoined_identifier
         ))
 
         data_writers = _create_data_writers(
@@ -1111,7 +1187,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            conjoined_identifier_hex,
+            conjoined_identifier,
             timestamp
         )
 

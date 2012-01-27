@@ -11,14 +11,14 @@ _retrieve_meta_query = """
     collection_id = %s and segment_id = %s
 """.strip()
 
-def retrieve_meta(connection, collection_id, key):
+def retrieve_meta(connection, collection_id, key, version_id=None):
     """
     get a dict of meta data associated with the segment
     """
     # TODO: find a non-blocking way to do this
     # TODO: don't just use the local node, it might be wrong
     _conjoined_row, segment_rows = current_status_of_key(
-        connection, collection_id, key
+        connection, collection_id, key, version_id
     )
     if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
         return None

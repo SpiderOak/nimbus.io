@@ -25,73 +25,26 @@ def _all_segment_rows_for_key(connection, collection_id, key):
 
 def _all_sequence_rows_for_segment(
     connection, 
-    collection_id, 
-    key, 
-    timestamp, 
+    segment_unified_id, 
     segment_num
 ):
     """
     retrieve all rows for a segment identified by 
-     * collection_id
-     * key
-     * timestamp
-     * conjoined_unified_id
-     * conjoined_part
+     * unified_id
      * segment_num
     """
     result = connection.fetch_all_rows("""
         select %s from nimbusio_node.segment_sequence
         where segment_id = (
-            select distinct id from nimbusio_node.segment 
-            where collection_id = %%s and key = %%s 
-            and timestamp=%%s::timestamp and segment_num=%%s
-            and conjoined_unified_id is null and conjoined_part = 0
+            select id from nimbusio_node.segment 
+            where unified_id = %%s
+            and segment_num = %%s
             and file_tombstone=false
         )
         order by sequence_num asc
     """ % (",".join(segment_sequence_template._fields), ), [
-        collection_id, 
-        key, 
-        timestamp, 
+        segment_unified_id, 
         segment_num, 
-    ])
-    return [segment_sequence_template._make(row) for row in result]
-
-def _all_sequence_rows_for_conjoined_segment(
-    connection, 
-    collection_id, 
-    key, 
-    timestamp, 
-    conjoined_unified_id, 
-    conjoined_part,
-    segment_num
-):
-    """
-    retrieve all rows for a segment identified by 
-     * collection_id
-     * key
-     * timestamp
-     * conjoined_univied_id
-     * conjoined_part
-     * segment_num
-    """
-    result = connection.fetch_all_rows("""
-        select %s from nimbusio_node.segment_sequence
-        where segment_id = (
-            select distinct id from nimbusio_node.segment 
-            where collection_id = %%s and key = %%s 
-            and timestamp=%%s::timestamp and segment_num=%%s
-            and conjoined_unified_id = %%s and conjoined_part = %%s
-            and file_tombstone=false
-        )
-        order by sequence_num asc
-    """ % (",".join(segment_sequence_template._fields), ), [
-        collection_id, 
-        key, 
-        timestamp, 
-        segment_num, 
-        conjoined_unified_id,
-        conjoined_part
     ])
     return [segment_sequence_template._make(row) for row in result]
 
@@ -112,17 +65,13 @@ class Reader(object):
         """
         retrieve file specific information about the segment
         there can be more than one row per file, due both to versions
-        (timestamp) and handoffs (segment_num)
+        and handoffs (segment_num)
         """
         return _all_segment_rows_for_key(self._connection, collection_id, key)
    
-    def generate_all_sequence_rows_for_segment(
+    def generate_all_sequence_rows(
         self, 
-        collection_id, 
-        key, 
-        timestamp, 
-        conjoined_unified_id, 
-        conjoined_part,
+        segment_unified_id,
         segment_num
     ):
         """
@@ -130,24 +79,11 @@ class Reader(object):
         """
         open_value_files = dict()
 
-        if conjoined_unified_id is None:
-            sequence_rows = _all_sequence_rows_for_segment(
-                self._connection, 
-                collection_id, 
-                key, 
-                timestamp,
-                segment_num
-            )
-        else:
-            sequence_rows = _all_sequence_rows_for_conjoined_segment(
-                self._connection, 
-                collection_id, 
-                key, 
-                timestamp,
-                conjoined_unified_id, 
-                conjoined_part, 
-                segment_num
-            )
+        sequence_rows = _all_sequence_rows_for_segment(
+            self._connection, 
+            segment_unified_id, 
+            segment_num
+        )
 
         # first yield is count of sequences
         yield len(sequence_rows)

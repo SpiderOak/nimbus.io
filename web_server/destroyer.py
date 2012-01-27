@@ -53,13 +53,9 @@ class Destroyer(object):
             return
         self._done.append(task)
 
-    def _spawn(self, segment_num, data_writer, run, *args):
-        method_name = run.__name__
+    def _spawn(self, run, *args):
         task = self._pending.spawn(run, *args)
         task.rawlink(self._done_link)
-        task.segment_num = segment_num
-        task.data_writer = data_writer
-        task.method_name = method_name
         return task
 
     def destroy(self, timeout=None):
@@ -67,8 +63,11 @@ class Destroyer(object):
             raise AlreadyInProgress()
 
         # TODO: find a non-blocking way to do this
-        conjoined_row, segment_rows = current_status_of_key(
-            self._node_local_connection , self.collection_id, self.key
+        _conjoined_row, segment_rows = current_status_of_key(
+            self._node_local_connection, 
+            self.collection_id, 
+            self.key,
+            self.unified_id_to_delete
         )
 
         if len(segment_rows) == 0:
@@ -79,15 +78,12 @@ class Destroyer(object):
         for i, data_writer in enumerate(self.data_writers):
             segment_num = i + 1
             self._spawn(
-                segment_num,
-                data_writer,
                 data_writer.destroy_key,
                 self.collection_id,
                 self.key,
                 self.unified_id_to_delete,
                 self._unified_id,
                 self.timestamp,
-                (None if conjoined_row is None else conjoined_row.unified_id),
                 segment_num
             )
         self._join(timeout)

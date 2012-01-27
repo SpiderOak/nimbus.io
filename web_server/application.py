@@ -706,6 +706,13 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
+
+        version_id = None
+        if "version_identifier" in req.GET:
+            version_identifier = req.GET["version_identifier"]
+            version_identifier = urllib.unquote_plus(version_identifier)
+            version_id = self._id_translator.internal_id(version_identifier)
+
         connected_data_readers = _connected_clients(self.data_readers)
 
         if len(connected_data_readers) < _min_connected_clients:
@@ -713,25 +720,24 @@ class Application(object):
                 len(connected_data_readers),
             ))
 
-        description = "retrieve: collection=(%s)%r customer=%r key=%r" % (
+        description = "retrieve: (%s)%r customer=%r key=%r version=%r" % (
             collection_entry.collection_id,
             collection_entry.collection_name,
             collection_entry.username,
-            key
+            key,
+            version_id
         )
         self._log.debug(description)
 
         start_time = time.time()
         self._stats["retrieves"] += 1
 
-        segmenter = ZfecSegmenter(
-            _min_segments,
-            _max_segments)
         retriever = Retriever(
             self._node_local_connection,
             self.data_readers,
             collection_entry.collection_id,
             key,
+            version_id,
             _min_segments
         )
 
@@ -751,6 +757,9 @@ class Application(object):
             return exc.HTTPNotFound(str(instance))
 
         def app_iterator(response):
+            segmenter = ZfecSegmenter(
+                _min_segments,
+                _max_segments)
             sent = 0
             try:
                 for segments in chain([first_segments], retrieved):
@@ -939,17 +948,24 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
+        version_id = None
+        if "version_identifier" in req.GET:
+            version_identifier = req.GET["version_identifier"]
+            version_identifier = urllib.unquote_plus(version_identifier)
+            version_id = self._id_translator.internal_id(version_identifier)
+
         self._log.debug(
-            "head_key: collection = (%s) %r username = %r key = %r" % (
+            "head_key: collection = (%s) %r username = %r key = %r %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
-            key
+            key,
+            version_id
         ))
 
         getter = StatGetter(self._node_local_connection)
         segment_rows = getter.stat(
-            collection_entry.collection_id, key, _reply_timeout
+            collection_entry.collection_id, key, version_id
         )
         if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))

@@ -406,10 +406,11 @@ def _handle_archive_key_final(state, message, data):
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
-    log.info("%s %s %s %s" % (
+    log.info("%s %s %s %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["timestamp-repr"],
+        message["unified-id-to-delete"],
+        message["unified-id"],
         message["segment-num"]
     ))
 

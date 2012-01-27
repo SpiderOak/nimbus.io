@@ -25,22 +25,10 @@ class DataReader(object):
     def node_name(self):
         return self._node_name
 
-    def retrieve_key_start(
-        self,
-        collection_id,
-        key,
-        conjoined_unified_id,
-        conjoined_part,
-        timestamp,
-        segment_num
-    ):
+    def retrieve_key_start(self, segment_unified_id, segment_num):
         message = {
             "message-type"              : "retrieve-key-start",
-            "collection-id"             : collection_id,
-            "key"                       : key,
-            "conjoined-unified-id"      : conjoined_unified_id,
-            "conjoined-part"            : conjoined_part,
-            "timestamp-repr"            : repr(timestamp),
+            "segment-unified-id"        : segment_unified_id,
             "segment-num"               : segment_num,
         }
         try:
@@ -51,10 +39,9 @@ class DataReader(object):
             return None
 
         self._log.debug(
-            '%(message-type)s: %(collection-id)s '
-            'key = %(key)r '
-            'segment_num = %(segment-num)d' % message
-            )
+            "%(message-type)s: %(segment-unified-id)s %(segment-num)s" \
+            % message
+        )
 
         reply, data = delivery_channel.get()
 
@@ -78,22 +65,10 @@ class DataReader(object):
 
         return data, reply["completed"]
 
-    def retrieve_key_next(
-        self,
-        collection_id,
-        key,
-        conjoined_unified_id,
-        conjoined_part,
-        timestamp,
-        segment_num
-    ):
+    def retrieve_key_next(self, segment_unified_id, segment_num):
         message = {
             "message-type"              : "retrieve-key-next",
-            "collection-id"             : collection_id,
-            "key"                       : key,
-            "conjoined-unified-id"      : conjoined_unified_id,
-            "conjoined-part"            : conjoined_part,
-            "timestamp-repr"            : repr(timestamp),
+            "segment-unified-id"        : segment_unified_id,
             "segment-num"               : segment_num,
         }
         try:
@@ -102,8 +77,10 @@ class DataReader(object):
         except ResilientClientError:
             self._log.exception("retrieve_key_start")
             return None
+
         self._log.debug(
-            '%(message-type)s: %(collection-id)s %(key)s' % message
+            "%(message-type)s: %(segment-unified-id)s %(segment-num)s" \
+            % message
         )
         reply, data = delivery_channel.get()
 

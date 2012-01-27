@@ -221,34 +221,28 @@ class DataWriter(object):
         unified_id_to_delete,
         unified_id,
         timestamp,
-        conjoined_unified_id,
         segment_num
     ):
-        try:
-            message = {
-                "message-type"              : "destroy-key",
-                "priority"                  : create_priority(),
-                "collection-id"             : collection_id,
-                "key"                       : key,
-                "unified-id-to-delete"      : unified_id_to_delete,
-                "unified-id"                : unified_id,
-                "timestamp-repr"            : repr(timestamp),
-                "conjoined-unified-id"      : conjoined_unified_id,
-                "segment-num"               : segment_num,
-            }
-            delivery_channel = \
-                    self._resilient_client.queue_message_for_send(message)
+        message = {
+            "message-type"              : "destroy-key",
+            "priority"                  : create_priority(),
+            "collection-id"             : collection_id,
+            "key"                       : key,
+            "unified-id-to-delete"      : unified_id_to_delete,
+            "unified-id"                : unified_id,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+        }
+        delivery_channel = \
+                self._resilient_client.queue_message_for_send(message)
 
-            self._log.debug(
-                '%(message-type)s: '
-                'key = %(key)r '
-                'segment_num = %(segment-num)d' % message
-                )
-            reply, _data = delivery_channel.get()
-            if reply["result"] != "success":
-                self._log.error("failed: %s" % (reply, ))
-                raise DestroyFailedError(reply["error-message"])
-        except Exception:
-            self._log.exception("destroy_key")
-            raise
+        self._log.debug(
+            '%(message-type)s: '
+            'key = %(key)r '
+            'segment_num = %(segment-num)d' % message
+            )
+        reply, _data = delivery_channel.get()
+        if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
+            raise DestroyFailedError(reply["error-message"])
 

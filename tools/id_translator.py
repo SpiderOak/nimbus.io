@@ -128,7 +128,7 @@ class InternalIDTranslator(object):
         for n in range(3):
             try:
                 padding = n * '='
-                binary = base64.urlsafe_b64decode(public_id + padding)
+                binary = base64.urlsafe_b64decode(str(public_id) + padding)
                 break
             except TypeError, err:
                 if not "padding" in str(err):

@@ -617,7 +617,14 @@ class Application(object):
             bytes_archived=req.content_length
         )
 
-        return Response('OK')
+        response_dict = {
+            "version_identifier" : self._id_translator.public_id(unified_id),
+        }
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(response_dict))
+
+        return response
 
     def _list_keys(self, req, match_object):
         collection_name = match_object.group("collection_name")

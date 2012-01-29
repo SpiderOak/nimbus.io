@@ -77,10 +77,10 @@ _retrieve_key_re = re.compile(
 )
 
 _delete_key1_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)(\?.*)?$"
 )
 _delete_key2_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)\?action=delete$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/data/(?P<key>\S+?)\?action=delete(\&.*)?$"
 )
 
 _head_key_re = re.compile(

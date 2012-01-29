@@ -118,8 +118,18 @@ _valid_urls_with_actions = [
         action_delete_key
     ),
     (
+        "DELETE", 
+        "https://test-collection-name.nimbus.io/data/test-key?version_identifier=8kKx9Ov0OkJwqsb32KqzNFIp4wrM3UBtSakQGs9zhThOlFgIXtxXQw",
+        action_delete_key
+    ),
+    (
         "POST", 
         "https://test-collection-name.nimbus.io/data/test-key?action=delete",
+        action_delete_key
+    ),
+    (
+        "POST", 
+        "https://test-collection-name.nimbus.io/data/test-key?action=delete&version_identifier=8kKx9Ov0OkJwqsb32KqzNFIp4wrM3UBtSakQGs9zhThOlFgIXtxXQw",
         action_delete_key
     ),
     (

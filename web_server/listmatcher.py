@@ -126,7 +126,7 @@ def list_versions(
         if tombstone_key is not None and row.key == tombstone_key:
             continue
         if tombstone_unified_id is not None and \
-           row.file_tomebstone_unified_id == tombstone_unified_id:
+           row.file_tombstone_unified_id == tombstone_unified_id:
             tombstone_unified_id = None
             continue
         if row.file_tombstone:

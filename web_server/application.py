@@ -617,7 +617,14 @@ class Application(object):
             bytes_archived=req.content_length
         )
 
-        return Response('OK')
+        response_dict = {
+            "version_identifier" : self._id_translator.public_id(unified_id),
+        }
+
+        response = Response(content_type='text/plain', charset='utf8')
+        response.body_file.write(json.dumps(response_dict))
+
+        return response
 
     def _list_keys(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -848,7 +855,6 @@ class Application(object):
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        unified_id_to_delete = None
 
         try:
             collection_entry = get_username_and_collection_id(
@@ -871,6 +877,14 @@ class Application(object):
             key = key.decode("utf-8")
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
+
+        unified_id_to_delete = None
+        if "version_identifier" in req.GET:
+            version_identifier = req.GET["version_identifier"]
+            version_identifier = urllib.unquote_plus(version_identifier)
+            unified_id_to_delete = self._id_translator.internal_id(
+                version_identifier
+            )
 
         description = \
             "_delete_key: (%s) %r %r key = %r %s" % (

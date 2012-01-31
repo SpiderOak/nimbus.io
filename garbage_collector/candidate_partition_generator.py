@@ -31,6 +31,16 @@ with batched_rows as (
 select * from batched_rows where key_row_count > 1;
 """
 
+def _test_partition(partition):
+    """
+    Consistency checks suggested by Alan 
+    """
+    assert(
+        [r.key_row_number for r in partition] == \
+        list(range(1, 1 + len(partition)))
+    )
+    assert(all([r.key_row_count == len(partition) for r in partition]))
+
 def generate_candidate_partitions(connection):
     """
     * Select all records ordered by collection_id, key, unified_id, 
@@ -51,6 +61,7 @@ def generate_candidate_partitions(connection):
         if current_partition_id is None:
             current_partition_id = partition_id
         elif partition_id != current_partition_id:
+            _test_partition(current_partition)
             yield current_partition
             current_partition = list()
             current_partition_id = partition_id
@@ -58,5 +69,6 @@ def generate_candidate_partitions(connection):
         current_partition.append(entry)
 
     if current_partition_id is not None:
+        _test_partition(current_partition)
         yield current_partition
 

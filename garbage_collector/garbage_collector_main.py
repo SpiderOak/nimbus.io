@@ -2,6 +2,7 @@
 """
 garbage_collector_main.py
 """
+import io
 import logging
 import os
 import signal
@@ -18,13 +19,14 @@ from garbage_collector.options import get_options
 from garbage_collector.versioned_collections import get_versioned_collections
 from garbage_collector.candidate_partition_generator import \
         generate_candidate_partitions
+from garbage_collector.archiver import archive_collectable_segment_rows
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_garbage_collector_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 
-def _evaluate_versioned_partition(partition):
+def _evaluate_versioned_partition(collectable_segment_ids, partition):
     """
     return a list of segment_id's that are candidates for collection
 
@@ -34,9 +36,6 @@ def _evaluate_versioned_partition(partition):
     * A row is collectable if a specific matching tombstone exists 
       (where file_tombstone_unified_id = unified_id)
     """
-    log = logging.getLogger("_evaluate_versioned_partition")
-    candidate_segment_ids = list()
-
     # reverse the partition list to get the newest (highest unified_id) first
     partition.reverse()
 
@@ -45,7 +44,7 @@ def _evaluate_versioned_partition(partition):
     for entry in partition:
         if collect_the_rest:
             if not entry.file_tombstone:
-                candidate_segment_ids.append(entry.segment_id)
+                collectable_segment_ids.write("{0}\n".format(entry.segment_id))
             continue
         if entry.file_tombstone and entry.file_tombstone_unified_id is None:
             collect_the_rest = True
@@ -54,24 +53,16 @@ def _evaluate_versioned_partition(partition):
             collect_unified_ids.add(entry.file_tombstone_unified_id)
             continue
         if entry.unified_id in collect_unified_ids:
-            collect_unified_ids.add(entry.file_tombstone_unified_id)
+            collectable_segment_ids.write("{0}\n".format(entry.segment_id))
             continue
 
-    if len(candidate_segment_ids) > 0:
-        log.debug(str(candidate_segment_ids))
-
-    return candidate_segment_ids
-
-def _evaluate_unversioned_partition(partition):
+def _evaluate_unversioned_partition(collectable_segment_ids, partition):
     """
     return a list of segment_id's that are candidates for collection
 
     * If versioning is not enabled for the collection, 
       a row is collectable if a later version exists
     """
-    log = logging.getLogger("_evaluate_unversioned_partition")
-    candidate_segment_ids = list()
-
     # reverse the partition list to get the newest (highest unified_id) first
     partition.reverse()
 
@@ -79,16 +70,11 @@ def _evaluate_unversioned_partition(partition):
     for entry in partition:
         if collect_the_rest:
             if not entry.file_tombstone:
-                candidate_segment_ids.append(entry.segment_id)
+                collectable_segment_ids.write("{0}\n".format(entry.segment_id))
             continue
         # this must be the most recent entry, (i.e. highest unified_id)
         # we want to collect every segment that comes before it 
         collect_the_rest = True
-
-    if len(candidate_segment_ids) > 0:
-        log.debug(str(candidate_segment_ids))
-
-    return candidate_segment_ids
 
 def main():
     """
@@ -114,13 +100,23 @@ def main():
 
     return_code = 0
 
+    collectable_segment_ids = io.StringIO()
+
     try:
         versioned_collections = get_versioned_collections()
         for partition in generate_candidate_partitions(connection):
             if partition[0].collection_id in versioned_collections:
-                candidate_ids = _evaluate_versioned_partition(partition)
+                _evaluate_versioned_partition(
+                    collectable_segment_ids, partition
+                )
             else:
-                candidate_ids = _evaluate_unversioned_partition(partition)
+                _evaluate_unversioned_partition(
+                    collectable_segment_ids, partition
+                )
+        archive_collectable_segment_rows(
+            connection, collectable_segment_ids
+        )
+        collectable_segment_ids.close()
     except Exception:
         log.exception("_garbage_collection")
         return_code = -2

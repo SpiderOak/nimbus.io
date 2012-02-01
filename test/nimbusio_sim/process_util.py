@@ -61,7 +61,7 @@ def start_event_subscriber(environment):
     args = [
         sys.executable,
         server_path,
-        "warn"
+        "error"
     ]
 
     log.info("starting %s %s" % (args, environment, ))
@@ -237,6 +237,14 @@ def start_web_server(node_name, environment, profile):
     server_path = os.path.join(
         server_dir, "web_server_main.py"
     )
+    # the gevent wsgi server spews out a lot of cruft onto stdout and stderr
+    # so we capture it in a separate log
+    log_dir = environment["NIMBUSIO_LOG_DIR"]
+    wsgi_log_path = "%s/nimbusio_web_server_%s_wsgi.log" % (
+        log_dir, node_name, 
+    )
+    wsgi_log_file = open(wsgi_log_path, "w")
+
     args = [
         sys.executable,
         server_path,
@@ -256,7 +264,7 @@ def start_web_server(node_name, environment, profile):
 
     log.info("starting %s %s" % (args, environment, ))
 
-    #the webserver writes enough stderr/out to fill up the pipe and make the
-    #subprocess block.
-    return subprocess.Popen(args, stderr=None, env=environment)
+    return subprocess.Popen(
+        args, stdout=wsgi_log_file, stderr=subprocess.STDOUT, env=environment
+    )
 

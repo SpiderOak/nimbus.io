@@ -31,9 +31,10 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        unified_id,
         timestamp,
         meta_dict,
-        conjoined_identifier_hex,
+        conjoined_unified_id,
         conjoined_part,
         segment_num,
         file_size,
@@ -49,8 +50,9 @@ class DataWriter(object):
             "priority"                  : create_priority(),
             "collection-id"             : collection_id,
             "key"                       : key, 
+            "unified-id"                : unified_id,
             "timestamp-repr"            : repr(timestamp),
-            "conjoined-identifier-hex"  : conjoined_identifier_hex,
+            "conjoined-unified-id"      : conjoined_unified_id,
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
             "segment-size"              : len(segment),
@@ -80,6 +82,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        unified_id,
         timestamp,
         segment_num,
         sequence_num,
@@ -91,16 +94,17 @@ class DataWriter(object):
         self._archive_priority = create_priority()
 
         message = {
-            "message-type"      : "archive-key-start",
-            "priority"          : self._archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(segment),
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "segment-adler32"   : zlib.adler32(segment),
-            "sequence-num"      : sequence_num,
+            "message-type"          : "archive-key-start",
+            "priority"              : self._archive_priority,
+            "collection-id"         : collection_id,
+            "key"                   : key, 
+            "unified-id"            : unified_id,
+            "timestamp-repr"        : repr(timestamp),
+            "segment-num"           : segment_num,
+            "segment-size"          : len(segment),
+            "segment-md5-digest"    : b64encode(segment_md5.digest()),
+            "segment-adler32"       : zlib.adler32(segment),
+            "sequence-num"          : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -119,6 +123,7 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        unified_id,
         timestamp,
         segment_num,
         sequence_num,
@@ -128,16 +133,17 @@ class DataWriter(object):
         segment_md5.update(segment)
 
         message = {
-            "message-type"      : "archive-key-next",
-            "priority"          : self._archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : len(segment),
-            "segment-md5-digest": b64encode(segment_md5.digest()),
-            "segment-adler32"   : zlib.adler32(segment),
-            "sequence-num"      : sequence_num,
+            "message-type"          : "archive-key-next",
+            "priority"              : self._archive_priority,
+            "collection-id"         : collection_id,
+            "key"                   : key,
+            "unified_id"            : unified_id,
+            "timestamp-repr"        : repr(timestamp),
+            "segment-num"           : segment_num,
+            "segment-size"          : len(segment),
+            "segment-md5-digest"    : b64encode(segment_md5.digest()),
+            "segment-adler32"       : zlib.adler32(segment),
+            "sequence-num"          : sequence_num,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -155,9 +161,10 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        unified_id,
         timestamp,
         meta_dict,
-        conjoined_identifier_hex,
+        conjoined_unified_id,
         conjoined_part,
         segment_num,
         sequence_num,
@@ -175,8 +182,9 @@ class DataWriter(object):
                 "priority"                  : self._archive_priority,
                 "collection-id"             : collection_id,
                 "key"                       : key,
+                "unified-id"                : unified_id,
                 "timestamp-repr"            : repr(timestamp),
-                "conjoined-identifier-hex"  : conjoined_identifier_hex,
+                "conjoined-unified-id"      : conjoined_unified_id,
                 "conjoined-part"            : conjoined_part,
                 "segment-num"               : segment_num,
                 "segment-size"              : len(segment),
@@ -195,7 +203,9 @@ class DataWriter(object):
             delivery_channel = self._resilient_client.queue_message_for_send(
                 message, data=segment
             )
-            self._log.debug('%(message-type)s: %(collection-id)s %(key)s' % message)
+            self._log.debug(
+                '%(message-type)s: %(collection-id)s %(key)s' % message
+            )
             reply, _data = delivery_channel.get()
             if reply["result"] != "success":
                 self._log.error("failed: %s" % (reply, ))
@@ -208,31 +218,31 @@ class DataWriter(object):
         self,
         collection_id,
         key,
+        unified_id_to_delete,
+        unified_id,
         timestamp,
         segment_num
     ):
-        try:
-            message = {
-                "message-type"      : "destroy-key",
-                "priority"          : create_priority(),
-                "collection-id"     : collection_id,
-                "key"               : key,
-                "timestamp-repr"    : repr(timestamp),
-                "segment-num"       : segment_num,
-            }
-            delivery_channel = \
-                    self._resilient_client.queue_message_for_send(message)
+        message = {
+            "message-type"              : "destroy-key",
+            "priority"                  : create_priority(),
+            "collection-id"             : collection_id,
+            "key"                       : key,
+            "unified-id-to-delete"      : unified_id_to_delete,
+            "unified-id"                : unified_id,
+            "timestamp-repr"            : repr(timestamp),
+            "segment-num"               : segment_num,
+        }
+        delivery_channel = \
+                self._resilient_client.queue_message_for_send(message)
 
-            self._log.debug(
-                '%(message-type)s: '
-                'key = %(key)r '
-                'segment_num = %(segment-num)d' % message
-                )
-            reply, _data = delivery_channel.get()
-            if reply["result"] != "success":
-                self._log.error("failed: %s" % (reply, ))
-                raise DestroyFailedError(reply["error-message"])
-        except Exception:
-            self._log.exception("destroy_key")
-            raise
+        self._log.debug(
+            '%(message-type)s: '
+            'key = %(key)r '
+            'segment_num = %(segment-num)d' % message
+            )
+        reply, _data = delivery_channel.get()
+        if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
+            raise DestroyFailedError(reply["error-message"])
 

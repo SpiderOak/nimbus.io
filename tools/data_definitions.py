@@ -72,6 +72,9 @@ def parse_timestamp_repr(timestamp_repr):
 
     return timestamp
 
+def parse_conjoined_part(conjoined_part):
+    return (0 if conjoined_part is None else conjoined_part) 
+
 cluster_row_template = namedtuple("ClusterRow", [
     "id",
     "name",
@@ -93,7 +96,7 @@ value_file_template = namedtuple("ValueFile", [
     "close_time",
     "size",
     "hash",
-    "sequence_count",
+    "segment_sequence_count",
     "min_segment_id",
     "max_segment_id",
     "distinct_collection_count",
@@ -109,14 +112,16 @@ segment_row_template = namedtuple(
         "id",
         "collection_id",
         "key",
+        "unified_id",
         "timestamp",
         "segment_num",
-        "conjoined_identifier",
+        "conjoined_unified_id",
         "conjoined_part",
         "file_size",
         "file_adler32",
         "file_hash",
         "file_tombstone",
+        "file_tombstone_unified_id",
         "handoff_node_id",
     ]
 )
@@ -149,7 +154,7 @@ conjoined_row_template = namedtuple(
         "id",
         "collection_id",
         "key",
-        "identifier",
+        "unified_id",
         "create_timestamp",
         "abort_timestamp",
         "complete_timestamp",

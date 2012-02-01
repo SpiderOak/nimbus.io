@@ -32,7 +32,6 @@ def _handle_incoming_message(state, message, _data):
 
     report_line = _report_line_template % message
     log.info(report_line)
-    print report_line
 
 def _create_state():
     return {

@@ -48,7 +48,7 @@ def purge_customer(connection, username):
         delete from nimbusio_central.customer where id = %(customer_id)s;
     """.strip(), {"customer_id" : customer_id})
     
-def create_customer(connection, username):
+def create_customer(connection, username, versioning):
     """
     create a customer record for this username
     """
@@ -56,7 +56,7 @@ def create_customer(connection, username):
     connection.execute("""
         insert into nimbusio_central.customer (username) values (%s)
     """, [username, ])
-    create_default_collection(connection, username)
+    create_default_collection(connection, username, versioning)
 
 def add_key_to_customer(connection, username):
     """

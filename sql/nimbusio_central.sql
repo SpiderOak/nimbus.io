@@ -49,6 +49,7 @@ create table collection (
     id int4 primary key default nextval('nimbusio_central.collection_id_seq'),
     name varchar(63) unique not null,
     customer_id int4 not null references nimbusio_central.customer(id),
+    versioning bool not null default false,
     creation_time timestamp not null default 'now',
     deletion_time timestamp
 );

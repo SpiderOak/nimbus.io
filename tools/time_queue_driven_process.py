@@ -1,9 +1,36 @@
 # -*- coding: utf-8 -*-
 """
-nimbus.io servers run as time queue driven processes built around the
-time queue
+nimbus.io back-end servers perform two kinds of tasks:
+ * message-driven
+ * periodic
+ 
+The message-driven tasks are periodic also, in the sense that they get messages
+by periodically polling a zeromq dealer (xreq) socket.
 
-The work is done by callback functions passed in at main main::
+All the back-end servers run a series of small tasks, 
+ * processing an incoming message and sending a reply
+ * performing some recurring job
+
+   * polling zeromq socket(s) for incoming messages
+   * garbage collection
+   * statistics reporting
+   * etc
+
+The tasks are organized in a :ref:`time-queue-label`
+
+The server's processing loop is:
+ * wait for the next task's time to come due
+ * pop the task from the time queue
+ * execute the task
+ * add new tasks to the time queue
+
+Each task can return a list of tuples to define new tasks to be added to
+The time queue. A task can 'loop' by returning its own callback function.
+
+This behavior is the same on all back-end servers, so we have encapsulated
+the code in a 'time queue driven process'.
+
+The server is driven by callback functions passed in at startup::
 
     if __name__ == "__main__":
         state = _create_state()

@@ -75,7 +75,7 @@ class StateCleaner(object):
         self._state["retry-list"].append(
             retry_entry_tuple(
                 retry_time=retry_time(), 
-                collection_id=request_state.collection_id,
+                collection_id=collection_id,
                 row_id=request_state.row_id,
                 retry_count=request_state.retry_count, 
             )

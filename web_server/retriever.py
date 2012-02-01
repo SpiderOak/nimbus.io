@@ -4,7 +4,6 @@ retriever.py
 
 A class that retrieves data from data readers.
 """
-import itertools
 import logging
 import time
 
@@ -13,7 +12,7 @@ import gevent.pool
 import gevent.queue
 
 from web_server.exceptions import RetrieveFailedError
-from web_server.local_database_util import most_recent_timestamp_for_key
+from web_server.local_database_util import current_status_of_key
 
 _task_timeout = 60.0
 
@@ -25,6 +24,7 @@ class Retriever(object):
         data_readers, 
         collection_id, 
         key, 
+        version_id,
         segments_needed
     ):
         self._log = logging.getLogger("Retriever")
@@ -33,6 +33,7 @@ class Retriever(object):
         self._data_readers = data_readers
         self._collection_id = collection_id
         self._key = key
+        self._version_id = version_id
         self._segments_needed = segments_needed
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
@@ -51,59 +52,73 @@ class Retriever(object):
     def retrieve(self, timeout):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
-        file_info = most_recent_timestamp_for_key(
-            self._node_local_connection , self._collection_id, self._key
+        conjoined_row, segment_rows = current_status_of_key(
+            self._node_local_connection,
+            self._collection_id, 
+            self._key,
+            self._version_id
         )
 
-        if file_info is None:
+        if len(segment_rows) == 0:
             raise RetrieveFailedError("key not found %s %s" % (
                 self._collection_id, self._key,
             ))
 
-        if file_info.file_tombstone:
+        is_deleted = False
+        if conjoined_row is None:
+            is_deleted = segment_rows[0].file_tombstone
+        else:
+            is_deleted = conjoined_row.delete_timestamp is not None
+
+        if is_deleted:
             raise RetrieveFailedError("key is deleted %s %s" % (
                 self._collection_id, self._key,
             ))
 
-        # spawn retrieve_key start, then spawn retrieve key next
-        # until we are done
-        start = True
-        while True:
-            self._sequence += 1
-            self._log.debug("retrieve: starting sequence %s" % (
-                self._sequence,
-            ))
-            # send a request to all node
-            for i, data_reader in enumerate(self._data_readers):
-                segment_number = i + 1
+        for segment_row in segment_rows:
+            # spawn retrieve_key start, then spawn retrieve key next
+            # until we are done
+            start = True
+            while True:
+                self._sequence += 1
+                self._log.debug("retrieve: starting sequence %s part %s" % (
+                    self._sequence, segment_row.conjoined_part,
+                ))
+                # send a request to all node
+                for i, data_reader in enumerate(self._data_readers):
+                    if not data_reader.connected:
+                        self._log.warn("ignoring disconnected reader %s" % (
+                            str(data_reader),
+                        ))
+                        continue
+
+                    segment_number = i + 1
+                    if start:
+                        function = data_reader.retrieve_key_start
+                    else:
+                        function = data_reader.retrieve_key_next
+                    task = self._pending.spawn(
+                        function, 
+                        segment_row.unified_id,
+                        segment_number
+                    )
+                    task.link(self._done_link)
+                    task.segment_number = segment_number
+                    task.data_reader = data_reader
+                    task.sequence = self._sequence
+
+                # wait for, and process, replies from the nodes
+                result_dict, completed = self._process_node_replies(timeout)
+                self._log.debug("retrieve: completed sequence %s" % (
+                    self._sequence,
+                ))
+
+                yield result_dict
+                if completed:
+                    break
+
                 if start:
-                    function = data_reader.retrieve_key_start
-                else:
-                    function = data_reader.retrieve_key_next
-                task = self._pending.spawn(
-                    function, 
-                    self._collection_id,
-                    self._key,
-                    file_info.timestamp,
-                    segment_number
-                )
-                task.link(self._done_link)
-                task.segment_number = segment_number
-                task.data_reader = data_reader
-                task.sequence = self._sequence
-
-            # wait for, and process, replies from the nodes
-            result_dict, completed = self._process_node_replies(timeout)
-            self._log.debug("retrieve: completed sequence %s" % (
-                self._sequence,
-            ))
-
-            yield result_dict
-            if completed:
-                break
-
-            if start:
-                start = False
+                    start = False
 
     def _process_node_replies(self, timeout):
         finished_task_count = 0
@@ -165,9 +180,7 @@ class Retriever(object):
                 break
 
         # if anything is still running, get rid of it
-        self._log.debug("retrieve: before join")
         self._pending.join(timeout, raise_error=True)
-        self._log.debug("retrieve: after join ")
 
         if len(result_dict) < self._segments_needed:
             error_message = "(%s) %s too few valid results %s" % (

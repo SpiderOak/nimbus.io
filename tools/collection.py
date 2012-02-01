@@ -21,7 +21,7 @@ _collection_name_re = re.compile(r'[a-z0-9][a-z0-9-]*[a-z0-9]$')
 _max_collection_name_size = 63
 _collection_entry_template = namedtuple(
     "CollectionEntry",
-    ["collection_name", "collection_id", "username"]
+    ["collection_name", "collection_id", "username", "versioning", ]
 )
 
 def get_username_and_collection_id(connection, collection_name):
@@ -30,8 +30,10 @@ def get_username_and_collection_id(connection, collection_name):
     """
     result = connection.fetch_one_row("""
         select nimbusio_central.collection.id, 
-               nimbusio_central.customer.username
-        from nimbusio_central.collection inner join nimbusio_central.customer
+               nimbusio_central.customer.username,
+               nimbusio_central.collection.versioning
+        from nimbusio_central.collection 
+        inner join nimbusio_central.customer
         on (nimbusio_central.collection.customer_id =
                                       nimbusio_central.customer.id)
         where nimbusio_central.collection.name = %s
@@ -39,14 +41,15 @@ def get_username_and_collection_id(connection, collection_name):
           and nimbusio_central.customer.deletion_time is null
     """.strip(), [collection_name.lower(), ])
     if result is None:
-        raise UnparseableCollection("collection name %r not in database" % (
-            collection_name, 
-        ))
-    (collection_id, username, ) = result
+        raise UnparseableCollection(
+            "collection name %r not in database" % (collection_name, )
+        )
+    (collection_id, username, versioning, ) = result
     return _collection_entry_template(
         collection_name=collection_name,
         collection_id=collection_id,
-        username=username
+        username=username,
+        versioning=versioning
     )
 
 def valid_collection_name(collection_name):
@@ -73,7 +76,7 @@ def get_collection_id(connection, collection_name):
     (collection_id, ) = result
     return collection_id
 
-def create_collection(connection, username, collection_name):
+def create_collection(connection, username, collection_name, versioning):
     """
     create a collection for the customer
     """
@@ -90,18 +93,19 @@ def create_collection(connection, username, collection_name):
         if deletion_time is not None:
             connection.execute("""
                 update nimbusio_central.collection
-                set deletion_time = null
+                set deletion_time = null, versioning = %s
                 where name = %s
-            """, [collection_name, ])
+            """, [versioning, collection_name, ])
         return row_id
 
     (row_id, ) = connection.fetch_one_row("""
         insert into nimbusio_central.collection
-        (name, customer_id)
+        (name, customer_id, versioning)
         values (%s, 
-                (select id from nimbusio_central.customer where username = %s))
+                (select id from nimbusio_central.customer where username = %s),
+                %s)
         returning id
-    """, [collection_name, username, ]
+    """, [collection_name, username, versioning, ]
     )
 
     return row_id
@@ -112,19 +116,19 @@ def compute_default_collection_name(username):
     """
     return "-".join([_default_collection_prefix, username, ])
 
-def create_default_collection(connection, username):
+def create_default_collection(connection, username, versioning):
     """
     create the customer's default collection, based on username
     """
     collection_name = compute_default_collection_name(username)
-    return create_collection(connection, username, collection_name)
+    return create_collection(connection, username, collection_name, versioning)
 
 def list_collections(connection, username):
     """
     list all collections for the customer, for all clusters
     """
     result = connection.fetch_all_rows("""
-        select name, creation_time from nimbusio_central.collection   
+        select name, versioning, creation_time from nimbusio_central.collection   
         where customer_id = (select id from nimbusio_central.customer 
                                        where username = %s) 
         and deletion_time is null
@@ -142,6 +146,17 @@ def delete_collection(connection, collection_name):
         set deletion_time = current_timestamp
         where name = %s
     """, [collection_name, ]
+    )
+
+def set_collection_versioning(connection, collection_name, versioning):
+    """
+    set the versioning attribute of the collection to True or False
+    """
+    connection.execute("""
+        update nimbusio_central.collection
+        set versioning = %s
+        where name = %s
+    """, [versioning, collection_name, ]
     )
 
 def purge_collection(connection, collection_name):

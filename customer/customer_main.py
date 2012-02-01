@@ -52,6 +52,11 @@ def _parse_command_line():
         '-p', "--purge-customer", dest="command", action="store_const",
         const=_purge_customer, help="remove a customer from the database"
     )
+    parser.add_option(
+        "--versioning", dest="versioning", action="store_true",
+        help="does user have versioning on his default collection"
+    )
+    parser.set_defaults(versioning=False)
 
     options, _ = parser.parse_args()
 
@@ -65,34 +70,34 @@ def _parse_command_line():
 
     return options
 
-def _handle_create_customer(connection, username):
-    create_customer(connection, username)
-    add_key_to_customer(connection, username)
-    key_id, key = list_customer_keys(connection, username)[0]
-    print "Username",  username
+def _handle_create_customer(connection, options):
+    create_customer(connection, options.username, options.versioning)
+    add_key_to_customer(connection, options.username)
+    key_id, key = list_customer_keys(connection, options.username)[0]
+    print "Username",  options.username
     print "AuthKeyId",  str(key_id)
     print "AuthKey", key
     print
 
-def _handle_add_key(connection, username):
-    print >> sys.stderr, "adding key to customer", username
-    add_key_to_customer(connection, username)
+def _handle_add_key(connection, options):
+    print >> sys.stderr, "adding key to customer", options.username
+    add_key_to_customer(connection, options.username)
     print >> sys.stderr, "key added"
 
-def _handle_list_keys(connection, username):
-    print >> sys.stderr, "listing customer keys", username
-    for key_id, key in list_customer_keys(connection, username):
+def _handle_list_keys(connection, options):
+    print >> sys.stderr, "listing customer keys", options.username
+    for key_id, key in list_customer_keys(connection, options.username):
         print >> sys.stderr, "%6d" % key_id, key
     print >> sys.stderr, "listed"
 
-def _handle_delete_customer(connection, username):
-    print >> sys.stderr, "deleting customer", username
+def _handle_delete_customer(_connection, options):
+    print >> sys.stderr, "deleting customer", options.username
     print >> sys.stderr, "*** not implemented ***"
 
-def _handle_purge_customer(connection, username):
-    print >> sys.stderr, "purging customer", username
-    purge_customer(connection, username)
-    print >> sys.stderr, "purged", username
+def _handle_purge_customer(connection, options):
+    print >> sys.stderr, "purging customer", options.username
+    purge_customer(connection, options.username)
+    print >> sys.stderr, "purged", options.username
 
 _dispatch_table = {
     _create_customer    : _handle_create_customer,
@@ -110,7 +115,7 @@ def main():
     connection = get_central_connection()
 
     try:
-        _dispatch_table[options.command](connection, options.username)
+        _dispatch_table[options.command](connection, options)
     except Exception:
         connection.rollback()
         raise

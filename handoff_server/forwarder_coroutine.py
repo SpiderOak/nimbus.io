@@ -26,16 +26,12 @@ def forwarder_coroutine(
     message = {
         "message-type"      : "retrieve-key-start",
         "message-id"        : message_id,
-        "collection-id"     : segment_row.collection_id,
-        "key"               : segment_row.key,
-        "timestamp-repr"    : repr(segment_row.timestamp),
+        "segment-unified-id": segment_row.unified_id,
         "segment-num"       : segment_row.segment_num,
     }
 
-    log.debug("sending retrieve-key-start %s %s %s %s" % (
-        segment_row.collection_id, 
-        segment_row.key, 
-        segment_row.timestamp, 
+    log.debug("sending retrieve-key-start %s %s" % (
+        segment_row.unified_id, 
         segment_row.segment_num
     ))
     
@@ -56,6 +52,9 @@ def forwarder_coroutine(
             "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
+            "unified-id"           : segment_row.unified_id,
+            "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+            "conjoined-part"    : segment_row.conjoined_part,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
             "segment-size"      : reply["segment-size"],
@@ -73,6 +72,9 @@ def forwarder_coroutine(
             "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
+            "unified-id"        : segment_row.unified_id,
+            "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+            "conjoined-part"    : segment_row.conjoined_part,
             "timestamp-repr"    : repr(segment_row.timestamp),
             "segment-num"       : segment_row.segment_num,
             "segment-size"      : reply["segment-size"],
@@ -100,10 +102,7 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "retrieve-key-next",
             "message-id"        : message_id,
-            "collection-id"     : segment_row.collection_id,
-            "key"               : segment_row.key,
-            "timestamp-repr"    : repr(segment_row.timestamp),
-            "segment-num"       : segment_row.segment_num,
+            "segment-unified-id": segment_row.unified_id,
             "sequence-num"      : sequence,
         }
         reader_client.queue_message_for_send(message, data=None)
@@ -120,6 +119,9 @@ def forwarder_coroutine(
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
+                "unified-id"        : segment_row.unified_id,
+                "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+                "conjoined-part"    : segment_row.conjoined_part,
                 "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
                 "segment-size"      : reply["segment-size"],
@@ -138,6 +140,9 @@ def forwarder_coroutine(
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
+                "unified-id"        : segment_row.unified_id,
+                "conjoined-unified-id"  : segment_row.conjoined_unified_id,
+                "conjoined-part"    : segment_row.conjoined_part,
                 "timestamp-repr"    : repr(segment_row.timestamp),
                 "segment-num"       : segment_row.segment_num,
                 "segment-size"      : reply["segment-size"],

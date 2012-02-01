@@ -81,8 +81,8 @@ class ClusterConfig(object):
             # support SSL
             ( "NIMBUS_IO_SERVICE_SSL",
                 "0", ), 
-            ( "USE_MOTOBOTO", 
-                "1", ), 
+            ( "USE_BOTO", 
+                "0", ), 
             ( "NIMBUS_IO_CLIENT_PATH", 
                 self.client_path, ),
         ]

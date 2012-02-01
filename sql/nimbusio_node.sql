@@ -12,7 +12,7 @@ create table conjoined (
     id int8 primary key default nextval('nimbusio_node.conjoined_id_seq'),
     collection_id int4 not null,
     key varchar(1024) not null,
-    identifier bytea not null, 
+    unified_id int8 not null, 
     create_timestamp timestamp not null default current_timestamp,
     abort_timestamp timestamp,
     complete_timestamp timestamp,
@@ -20,7 +20,7 @@ create table conjoined (
     combined_size int8,
     combined_hash bytea
 );
-create unique index conjoined_identifier_idx on nimbusio_node.conjoined ("identifier");
+create unique index conjoined_unified_id_idx on nimbusio_node.conjoined ("unified_id");
 
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and
@@ -40,14 +40,16 @@ create table segment (
     id int8 primary key default nextval('nimbusio_node.segment_id_seq'),
     collection_id int4 not null,
     key varchar(1024),
+    unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2,
-    conjoined_identifier bytea, 
+    conjoined_unified_id int8, 
     conjoined_part int4 not null default 0,
     file_size int8 not null default 0,
     file_adler32 int4,
     file_hash bytea,
     file_tombstone bool not null default false,
+    file_tombstone_unified_id int8,
     /* XXX: wasn't completely sure if this column belongs in segment or
      * segment_sequence. It's true that every sequence stored on the local node 
      * for a given key should have the same segment_num, right?  If so, it goes
@@ -65,6 +67,12 @@ create table segment (
         (file_tombstone is true or segment_num is not null),
     constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
+
+/* The segment_archived table is exactly like the segment table, 
+ * but with no indexes. 
+ * Garbage collected rows from segment are moved to segment_archived, 
+ * so they can still be used for billing and such. */
+create table segment_archived as select * from segment where 0 = 1;
 
 /* I need to research more about the actual implementation of multi column
  * indexes.  The goal here is to keep writes reasonably efficient even when the
@@ -145,7 +153,7 @@ create table value_file (
      * */
     /* this is the count of records appended into the file. should be updated
      * only on closing the file */
-    sequence_count int4,
+    segment_sequence_count int4,
     /* storing min and max key ids is cheap and makes it possible to use the
      * btree indexes to find the specific key and segment_sequence records stored
      * in this file via >= <= operators. */

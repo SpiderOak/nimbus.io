@@ -32,8 +32,10 @@ class GreenletDealerClient(Greenlet):
         self._delivery_queues = dict()
 
     def join(self, timeout=3.0):
+        self._log.debug("joining")
         Greenlet.join(self, timeout)
         self._dealer_socket.close()
+        self._log.debug("join complete")
 
     def queue_message_for_send(self, message_control, data=None):
         """

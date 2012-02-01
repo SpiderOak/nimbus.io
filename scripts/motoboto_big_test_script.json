@@ -1,0 +1,19 @@
+{
+   "low-delay"       : 1.0,
+   "high-delay"      : 10.0,
+   "distribution"    : {
+      "create-bucket"           : 5,
+      "create-versioned-bucket" : 5,
+      "delete-bucket"           : 2,
+      "archive-new-key"         : 25,
+      "archive-new-version"     : 15,
+      "archive-overwrite"       : 3,
+      "retrieve-latest"         : 20,
+      "retrieve-version"        : 15,
+      "delete-key"              : 5,
+      "delete-version"          : 5
+   },
+   "max-bucket-count": 1000,
+   "min-file-size"   : 1000000,
+   "max-file-size"   : 10000000
+}

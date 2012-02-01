@@ -12,6 +12,8 @@ from web_server.url_discriminator import parse_url, \
         action_list_collections, \
         action_create_collection, \
         action_delete_collection, \
+        action_set_versioning, \
+        action_list_versions, \
         action_space_usage, \
         action_archive_key, \
         action_list_keys, \
@@ -61,6 +63,16 @@ _valid_urls_with_actions = [
         action_space_usage
     ),
     (
+        "PUT", 
+        "https://test-collection-name.nimbus.io/?versioning=True",
+        action_set_versioning
+    ),
+    (
+        "GET", 
+        "https://test-collection-name.nimbus.io/?versions",
+        action_list_versions
+    ),
+    (
         "POST", 
         "https://test-collection-name.nimbus.io/data/test-key",
         action_archive_key
@@ -92,6 +104,11 @@ _valid_urls_with_actions = [
     ),
     (
         "GET", 
+        "https://test-collection-name.nimbus.io/data/test-key?version_identifier=wOsvJaqCWHxCqdPC5XLvya5FKYdPMGEI3R-YlbZ6I90atidsz1hMtg",
+        action_retrieve_key
+    ),
+    (
+        "GET", 
         "https://test-collection-name.nimbus.io/data/test-key?action=meta",
         action_retrieve_meta
     ),
@@ -101,8 +118,18 @@ _valid_urls_with_actions = [
         action_delete_key
     ),
     (
+        "DELETE", 
+        "https://test-collection-name.nimbus.io/data/test-key?version_identifier=8kKx9Ov0OkJwqsb32KqzNFIp4wrM3UBtSakQGs9zhThOlFgIXtxXQw",
+        action_delete_key
+    ),
+    (
         "POST", 
         "https://test-collection-name.nimbus.io/data/test-key?action=delete",
+        action_delete_key
+    ),
+    (
+        "POST", 
+        "https://test-collection-name.nimbus.io/data/test-key?action=delete&version_identifier=8kKx9Ov0OkJwqsb32KqzNFIp4wrM3UBtSakQGs9zhThOlFgIXtxXQw",
         action_delete_key
     ),
     (
@@ -152,6 +179,13 @@ def _valid_create_collection(match_object):
 def _valid_delete_collection(match_object):
     return match_object.group("username") == "test-user-name" \
     and match_object.group("collection_name") == "test-collection-name"
+
+def _valid_set_versioning(match_object):
+    return match_object.group("collection_name") == "test-collection-name" \
+    and match_object.group("versioning") == "True"
+
+def _valid_list_versions(match_object):
+    return match_object.group("collection_name") == "test-collection-name"
 
 def _valid_space_usage(match_object):
     if match_object.group("username") != "test-user-name":
@@ -209,6 +243,8 @@ _match_object_dispatch_table = {
     action_list_collections     : _valid_list_collections,
     action_create_collection    : _valid_create_collection,
     action_delete_collection    : _valid_delete_collection,
+    action_set_versioning       : _valid_set_versioning,
+    action_list_versions        : _valid_list_versions,
     action_space_usage          : _valid_space_usage,
     action_archive_key          : _valid_archive_key,
     action_list_keys            : _valid_list_keys,

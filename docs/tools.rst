@@ -8,6 +8,13 @@ Contents:
 
 These are common tools used by most nimbus.io processes
 
+.. _time-queue-label:
+
+Time Queue
+----------
+.. automodule:: tools.time_queue
+    :members:
+
 Time Queue Driven Process
 --------------------------
 .. automodule:: tools.time_queue_driven_process
@@ -23,15 +30,21 @@ Deque Dispatcher
 .. autoclass:: tools.deque_dispatcher.DequeDispatcher
     :members:
 
+.. _resilient-client-label:
+
 Resilient Client
 ----------------
 .. autoclass:: tools.resilient_client.ResilientClient
     :members:
 
+.. _pull-server-label:
+
 Pull Server
 -----------
 .. autoclass:: tools.pull_server.PULLServer
     :members:
+
+.. _resilient-server-label:
 
 Resilient Server
 ----------------

@@ -21,13 +21,15 @@ gevent_zeromq.monkey_patch()
 
 import logging
 import os
+import os.path
+import pickle
 import signal
 import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
-import gevent.pool
 from gevent_zeromq import zmq
+import gevent
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
@@ -38,12 +40,15 @@ from tools.greenlet_push_client import GreenletPUSHClient
 from tools.database_connection import get_central_connection, \
         get_node_local_connection
 from tools.event_push_client import EventPushClient
+from tools.unified_id_factory import UnifiedIDFactory
+from tools.id_translator import InternalIDTranslator
 
 from web_server.application import Application
 from web_server.data_reader import DataReader
 from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
 from web_server.watcher import Watcher
+from web_server.central_database_util import get_cluster_row, get_node_rows
 
 _log_path = "%s/nimbusio_web_server_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
@@ -68,11 +73,27 @@ _stats = {
     "archives"    : 0,
     "retrieves"   : 0,
 }
+_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*args):
         halt_event.set()
     return _signal_handler
+
+def _get_shard_id(central_connection, cluster_id):
+    """
+    use node_id as shard id
+    """
+    for node_row in get_node_rows(central_connection, cluster_id):
+        if node_row.name == _local_node_name:
+            return node_row.id
+
+    # if we make it here, this cluster is misconfigured
+    raise ValueError(
+        "node name {0} is not in node rows for cluster {1}".format(
+            _local_node_name, cluster_id
+        )
+    )
 
 class WebServer(object):
     def __init__(self):
@@ -80,10 +101,12 @@ class WebServer(object):
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
+        self._cluster_row = get_cluster_row(self._central_connection)
         self._node_local_connection = get_node_local_connection()
-
-        self._greenlet_group = gevent.pool.Group()
-
+        self._unified_id_factory = UnifiedIDFactory(
+            self._central_connection,
+            _get_shard_id(self._central_connection, self._cluster_row.id)
+        )
         self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()
@@ -159,9 +182,24 @@ class WebServer(object):
             self._event_push_client
         )
 
+        id_translator_keys_path = os.path.join(
+            _repository_path, "id_translator_keys.pkl"
+        )
+        with open(id_translator_keys_path, "r") as input_file:
+            id_translator_keys = pickle.load(input_file)
+
+        self._id_translator = InternalIDTranslator(
+            id_translator_keys["key"],
+            id_translator_keys["hmac_key"], 
+            id_translator_keys["iv_key"],
+            id_translator_keys["hmac_size"]
+        )
         self.application = Application(
             self._central_connection,
             self._node_local_connection,
+            self._cluster_row,
+            self._unified_id_factory,
+            self._id_translator,
             self._data_writer_clients,
             self._data_readers,
             authenticator,
@@ -176,22 +214,39 @@ class WebServer(object):
         )
 
     def start(self):
-        self._greenlet_group.start(self._space_accounting_dealer_client)
-        self._greenlet_group.start(self._pull_server)
-        self._greenlet_group.start(self._watcher)
+        self._space_accounting_dealer_client.start()
+        self._pull_server.start()
+        self._watcher.start()
         for client in self._data_writer_clients:
-            self._greenlet_group.start(client)
+            client.start()
         for client in self._data_reader_clients:
-            self._greenlet_group.start(client)
+            client.start()
         self.wsgi_server.start()
 
     def stop(self):
+        self._log.info("stopping wsgi web server")
         self.wsgi_server.stop()
         self._accounting_client.close()
-        self._greenlet_group.kill()
-        self._greenlet_group.join()
+        self._log.debug("killing greenlets")
+        self._space_accounting_dealer_client.kill()
+        self._pull_server.kill()
+        self._watcher.kill()
+        for client in self._data_writer_clients:
+            client.kill()
+        for client in self._data_reader_clients:
+            client.kill()
+        self._log.debug("joining greenlets")
+        self._space_accounting_dealer_client.join()
+        self._pull_server.join()
+        self._watcher.join()
+        for client in self._data_writer_clients:
+            client.join()
+        for client in self._data_reader_clients:
+            client.join()
+        self._log.debug("closing zmq")
         self._event_push_client.close()
         self._zeromq_context.term()
+        self._log.info("closing database connections")
         self._central_connection.close()
         self._node_local_connection.close()
 
@@ -229,6 +284,7 @@ def main():
         log.exception(str(instance))
         return -1
 
+    log.info("program terminates normally")
     return 0
 
 if __name__ == '__main__':

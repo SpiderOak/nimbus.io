@@ -24,7 +24,7 @@ from tools import time_queue_driven_process
 from tools.database_connection import \
         get_node_local_connection, \
         get_central_connection
-from tools.data_definitions import segment_row_template
+from tools.data_definitions import segment_row_template, create_priority
 
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -33,7 +33,6 @@ from handoff_server.pending_handoffs import PendingHandoffs
 from handoff_server.handoff_requestor import HandoffRequestor, \
         handoff_polling_interval
 from handoff_server.handoff_starter import HandoffStarter
-from handoff_server.forwarder_coroutine import forwarder_coroutine
 
 class HandoffError(Exception):
     pass
@@ -69,14 +68,15 @@ def _retrieve_handoffs_for_node(connection, node_id):
 
     segment_row_list = list()
     for entry in result:
-        segment_row = segment_row_template._make(entry)
+        row = segment_row_template._make(entry)
 
-        # file_hash (md5.digest()) comes out of the database as a buffer
-        # object
-        segment_row = segment_row._replace(
-            file_hash = str(segment_row.file_hash)
-        )
-        segment_row_list.append(segment_row)
+        # bytea columns come out of the database as buffer objects
+        if row.file_hash is None: 
+            file_hash = None
+        else: 
+            file_hash = str(row.file_hash)
+        row = row._replace(file_hash=file_hash)
+        segment_row_list.append(row)
 
     return segment_row_list
 
@@ -85,14 +85,16 @@ def _convert_dict_to_segment_row(segment_dict):
         id=segment_dict["id"],
         collection_id=segment_dict["collection_id"],
         key=segment_dict["key"],
+        unified_id=segment_dict["unified_id"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
-        conjoined_identifier=segment_dict.get("conjoined_identifier"),
+        conjoined_unified_id=segment_dict.get("conjoined_unified_id"),
         conjoined_part=segment_dict.get("conjoined_part"),
         file_size=segment_dict["file_size"],
         file_adler32=segment_dict["file_adler32"],
         file_hash=segment_dict["file_hash"],
         file_tombstone=segment_dict["file_tombstone"],
+        file_tombstone_unified_id=segment_dict["file_tombstone_unified_id"],
         handoff_node_id=segment_dict["handoff_node_id"]
     )
 
@@ -121,6 +123,9 @@ def _handle_request_handoffs(state, message, _data):
         )
     except Exception, instance:
         log.exception(str(instance))
+        state["event-push-client"].exception(
+            "_retrieve_handoffs_for_node", str(instance)
+        )  
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
         state["resilient-server"].send_reply(reply)
@@ -232,39 +237,15 @@ def _handle_archive_reply(state, message, _data):
         
         # purge the handoff source(s)
         message = {
-            "message-type"      : "purge-key",
+            "message-type"      : "purge-handoff-source",
+            "priority"          : create_priority(),
             "collection-id"     : segment_row.collection_id,
-            "key"               : segment_row.key,
-            "timestamp-repr"    : repr(segment_row.timestamp),
-            "segment-num"       : segment_row.segment_num,
+            "unified-id"        : segment_row.unified_id,
+            "handoff-node-id"   : segment_row.handoff_node_id
         }
         for source_node_name in source_node_names:
             writer_client = state["writer-client-dict"][source_node_name]
             writer_client.queue_message_for_send(message)
-
-        # see if we have another handoff to this node
-        try:
-            segment_row, source_node_names = state["pending-handoffs"].pop()
-        except IndexError:
-            log.debug("all handoffs done")
-            # run the handoff requestor again, after the polling interval
-            return [(state["handoff-requestor"].run, 
-                     state["handoff-requestor"].next_run(), )]
-        
-        # we pick the first source name, because it's easy, and because,
-        # since that source responded to us first, it might have better 
-        # response
-        # TODO: switch over to the second source on error
-        source_node_name = source_node_names[0]
-        reader_client = state["reader-client-dict"][source_node_name]
-
-        state["forwarder"] = forwarder_coroutine(
-            segment_row, 
-            source_node_names, 
-            state["writer-client-dict"][_local_node_name], 
-            reader_client
-        )
-        state["forwarder"] .next()
 
 def _handle_purge_key_reply(_state, message, _data):
     log = logging.getLogger("_handle_purge_key_reply")
@@ -427,6 +408,7 @@ def _setup(_halt_event, state):
     state["event-push-client"].info("program-start", "handoff_server starts")  
 
     timer_driven_callbacks = [
+        (state["handoff-starter"].run, state["handoff-starter"].next_run(), ),
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         # try to spread out handoff polling, if all nodes start together

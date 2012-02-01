@@ -46,14 +46,17 @@ delete from segment_sequence where exists (
 """
 
 _archive_old_tombstones = """
-insert into segment_archived where file_tombstone is true 
-and current_timestamp - timestamp  > %s::interval;
+insert into segment_archived
+    select * from segment where file_tombstone is true 
+    and age(timestamp) > %(max_node_offline_time)s::interval;
 
 delete from segment where file_tombstone is true 
-and current_timestamp - timestamp > %s::interval;
+and age(timestamp) > %(max_node_offline_time)s::interval;
 """
 
-def _archive_collectable_segment_rows(connection, collectable_segment_ids):
+def _archive_collectable_segment_rows(
+    connection, collectable_segment_ids, max_node_offline_time
+):
     connection.execute(_create_temp_table, [])
 
     # bulk load the temp table, before the index is created
@@ -74,7 +77,13 @@ def _archive_collectable_segment_rows(connection, collectable_segment_ids):
     # now delete from segment_sequences (they are not archived)
     connection.execute(_delete_segment_sequences, [])
 
-def archive_collectable_segment_rows(connection, collectable_segment_ids):
+    # finally clean out old tombstones
+    connection.execute(_archive_old_tombstones, 
+                       {"max_node_offline_time" : max_node_offline_time, })
+
+def archive_collectable_segment_rows(
+    connection, collectable_segment_ids, max_node_offline_time
+):
     """
     In a DB transaction:
     * create an unlogged single column temp table and insert the accumulated 
@@ -87,7 +96,9 @@ def archive_collectable_segment_rows(connection, collectable_segment_ids):
     """
     connection.execute("begin")
     try:
-        _archive_collectable_segment_rows(connection, collectable_segment_ids)
+        _archive_collectable_segment_rows(connection, 
+                                          collectable_segment_ids,
+                                          max_node_offline_time)
     except Exception:
         connection.rollback()
         raise

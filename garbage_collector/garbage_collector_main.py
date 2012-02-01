@@ -106,16 +106,14 @@ def main():
         versioned_collections = get_versioned_collections()
         for partition in generate_candidate_partitions(connection):
             if partition[0].collection_id in versioned_collections:
-                _evaluate_versioned_partition(
-                    collectable_segment_ids, partition
-                )
+                _evaluate_versioned_partition(collectable_segment_ids, 
+                                              partition)
             else:
-                _evaluate_unversioned_partition(
-                    collectable_segment_ids, partition
-                )
-        archive_collectable_segment_rows(
-            connection, collectable_segment_ids
-        )
+                _evaluate_unversioned_partition(collectable_segment_ids, 
+                                                partition)
+        archive_collectable_segment_rows(connection, 
+                                         collectable_segment_ids,
+                                         options.max_node_offline_time)
         collectable_segment_ids.close()
     except Exception:
         log.exception("_garbage_collection")

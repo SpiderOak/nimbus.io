@@ -10,10 +10,8 @@ import logging
 import os
 
 # default constants; can be overridden from command line
-_max_node_offline_time = float(
-    os.environ.get("NIMBUSIO_GC_MAX_NODE_OFFLINE_TIME",  
-                   str(30.0 * 24.0 * 60.0 * 60.0))
-)
+_max_node_offline_time = os.environ.get("NIMBUSIO_GC_MAX_NODE_OFFLINE_TIME",  
+                                        "30 days")
 _max_sort_mem = int(
     os.environ.get("NIMBISIO_GC_MAX_SORT_MEM_GB", "3")
 )
@@ -33,8 +31,10 @@ def _parse_command_line():
     """
     parser = argparse.ArgumentParser(description='Garbage Collection')
     parser.add_argument("-o", "--max-node-offline-time", 
-                         type=float,
-                         default=_max_node_offline_time)
+                         type=str,
+                         default=_max_node_offline_time,
+                         help="tombstone garbage collection time in the format"
+                              " of a postgresql interval")
     parser.add_argument("-m", "--max-sort-mem", 
                          type=int,
                          default=_max_sort_mem)

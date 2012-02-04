@@ -68,7 +68,7 @@ class Archiver(object):
         task.method_name = method_name
         return task
 
-    def archive_slice(self, segments, timeout=None):
+    def archive_slice(self, segments, zfec_padding_size, timeout=None):
         if self._pending:
             raise AlreadyInProgress()
         for i, segment in enumerate(segments):
@@ -90,6 +90,7 @@ class Archiver(object):
                         self._unified_id,
                         self.timestamp,
                         segment_num,
+                        zfec_padding_size,
                         self.sequence_num,
                         segment
                     )
@@ -104,6 +105,7 @@ class Archiver(object):
                         self._unified_id,
                         self.timestamp,
                         segment_num,
+                        zfec_padding_size,
                         self.sequence_num,
                         segment
                     )
@@ -117,6 +119,7 @@ class Archiver(object):
         file_adler32, 
         file_md5,
         segments, 
+        zfec_padding_size,
         timeout=None
     ):
         if self._pending:
@@ -142,6 +145,7 @@ class Archiver(object):
                     self._conjoined_unified_id,
                     self._conjoined_part,
                     segment_num,
+                    zfec_padding_size,
                     file_size,
                     file_adler32,
                     file_md5,
@@ -160,6 +164,7 @@ class Archiver(object):
                     self._conjoined_unified_id,
                     self._conjoined_part,
                     segment_num,
+                    zfec_padding_size,
                     self.sequence_num,
                     file_size,
                     file_adler32,

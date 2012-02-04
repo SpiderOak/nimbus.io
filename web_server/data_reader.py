@@ -63,7 +63,7 @@ class DataReader(object):
             self._log.error("md5 digest mismatch %s" % (reply, ))
             return None
 
-        return data, reply["completed"]
+        return data, reply["zfec-padding-size"], reply["completed"]
 
     def retrieve_key_next(self, segment_unified_id, segment_num):
         message = {
@@ -102,5 +102,5 @@ class DataReader(object):
             self._log.error("md5 digest mismatch %s" % (reply, ))
             return None
 
-        return data, reply["completed"]
+        return data, reply["zfec-padding-size"], reply["completed"]
 

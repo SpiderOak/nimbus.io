@@ -130,6 +130,7 @@ segment_sequence_template = namedtuple(
     "SegmentSequence", [
         "collection_id",
         "segment_id",
+        "zfec_padding_size",
         "value_file_id",
         "sequence_num",
         "value_file_offset",

@@ -2,6 +2,7 @@
 """
 garbage_collector_main.py
 """
+import io
 import logging
 import os
 import signal
@@ -18,26 +19,62 @@ from garbage_collector.options import get_options
 from garbage_collector.versioned_collections import get_versioned_collections
 from garbage_collector.candidate_partition_generator import \
         generate_candidate_partitions
+from garbage_collector.archiver import archive_collectable_segment_rows
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_garbage_collector_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 
-def _evaluate_one_partition(
-    options, connection, event_push_client, versioned_collections, partition
-):
+def _evaluate_versioned_partition(collectable_segment_ids, partition):
     """
+    return a list of segment_id's that are candidates for collection
+
     * Tombstone rows are not collectable in this phase (but see below.)
     * A row is collectable if a later tombstone exists where 
       file_tombstone_unified_id is null
     * A row is collectable if a specific matching tombstone exists 
       (where file_tombstone_unified_id = unified_id)
+    """
+    # reverse the partition list to get the newest (highest unified_id) first
+    partition.reverse()
+
+    collect_the_rest = False
+    collect_unified_ids = set()
+    for entry in partition:
+        if collect_the_rest:
+            if not entry.file_tombstone:
+                collectable_segment_ids.write("{0}\n".format(entry.segment_id))
+            continue
+        if entry.file_tombstone and entry.file_tombstone_unified_id is None:
+            collect_the_rest = True
+            continue
+        if entry.file_tombstone:
+            collect_unified_ids.add(entry.file_tombstone_unified_id)
+            continue
+        if entry.unified_id in collect_unified_ids:
+            collectable_segment_ids.write("{0}\n".format(entry.segment_id))
+            continue
+
+def _evaluate_unversioned_partition(collectable_segment_ids, partition):
+    """
+    return a list of segment_id's that are candidates for collection
+
     * If versioning is not enabled for the collection, 
       a row is collectable if a later version exists
     """
-    log = logging.getLogger("_evaluate_on_partition")
-    log.debug(str(partition))
+    # reverse the partition list to get the newest (highest unified_id) first
+    partition.reverse()
+
+    collect_the_rest = False
+    for entry in partition:
+        if collect_the_rest:
+            if not entry.file_tombstone:
+                collectable_segment_ids.write("{0}\n".format(entry.segment_id))
+            continue
+        # this must be the most recent entry, (i.e. highest unified_id)
+        # we want to collect every segment that comes before it 
+        collect_the_rest = True
 
 def main():
     """
@@ -63,16 +100,21 @@ def main():
 
     return_code = 0
 
+    collectable_segment_ids = io.StringIO()
+
     try:
         versioned_collections = get_versioned_collections()
         for partition in generate_candidate_partitions(connection):
-            _evaluate_one_partition(
-                options, 
-                connection, 
-                event_push_client, 
-                versioned_collections, 
-                partition
-            )
+            if partition[0].collection_id in versioned_collections:
+                _evaluate_versioned_partition(collectable_segment_ids, 
+                                              partition)
+            else:
+                _evaluate_unversioned_partition(collectable_segment_ids, 
+                                                partition)
+        archive_collectable_segment_rows(connection, 
+                                         collectable_segment_ids,
+                                         options.max_node_offline_time)
+        collectable_segment_ids.close()
     except Exception:
         log.exception("_garbage_collection")
         return_code = -2

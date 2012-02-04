@@ -8,7 +8,7 @@ _partition_entry = namedtuple("PartitionEntry", [
     "segment_id", 
     "collection_id", 
     "key", 
-    "version_unified_id", 
+    "unified_id", 
     "file_tombstone",
     "file_tombstone_unified_id",
     "key_row_number",

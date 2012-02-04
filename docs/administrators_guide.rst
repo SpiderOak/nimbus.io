@@ -9,9 +9,9 @@ Contents:
 To cloud or not to cloud?
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Sts section provides background and recommendations for when to chose
-running your own Nimbus.io cloud locally vs. using the commercially
-available Nimbus.io cloud storage service.
+This section provides background and recommendations for when to chose running
+your own Nimbus.io service vs. using the commercially available Nimbus.io cloud
+storage service.
 
 Much like the SR71 Blackbird does not operate efficiently at low speeds in
 favor of elegant behavior at extreme speed, Nimbus.io is efficient for
@@ -28,25 +28,24 @@ cluster approaches capacity, it is not possible to incrementally expand by
 buying a few more storage nodes; you must instead buy a second complete
 storage cluster. [#]_ 
 
-At current market rates, a complete set of hardware for operating a
-Nimbus.io 10 node storage cluster might represent a one time cost of
-$90,000 providing a storage capacity of 320 TB.  It might also cost $1000
-per month in electricity, and some small amount for physical
-administration.  
+At current market rates, a complete set of hardware for operating a Nimbus.io
+10 node storage cluster might represent a one time cost of $110,000 providing a
+storage capacity of 320 TB.  It might also cost $1000 per month in electricity,
+and some small amount for physical administration.  
 
 At Amazon S3 storage rates, 320 TB of data would cost almost $37,000 every
-month, or $19200 for The Nimbus.io cloud storage service.  Clearly, with
-data approaching this large a capacity, rolling your own cloud has the
-opportunity for substantial cost savings.  However, for more typically
-sized collections of data, we recommend chosing a cloud storage service.
+month, or $19200 for The Nimbus.io cloud storage service.  Clearly, with data
+approaching this large a capacity, rolling your own cloud has the opportunity
+for substantial cost savings.  However, for more typically sized collections of
+data, we recommend chosing a cloud storage service.
 
-Operating your own Nimbus.io infrastructure might also make economic sense
-for other reasons other than storage costs, such as bandwidth costs, or the
-cost of local computing infrastructure vs. the higher cost of cloud
-computing infrastructure. 
+Operating your own Nimbus.io infrastructure might also make economic sense for
+other reasons other than storage costs, such as bandwidth costs, or the cost of
+local computing infrastructure vs. the higher cost of cloud computing
+infrastructure.  
 
-Storage Network and Cluster Architecture  
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Data Center, Network, and Storage Cluster Architecture  
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A Nimbus.io service needs a tiny central database, and then 1 or more
 storage clusters.  The central database is independent of any storage
@@ -65,11 +64,11 @@ multiple physical servers.  Creating a highly avaliable PostgreSQL setup
 for the central database is outside the scope of this document, as there
 are many excellent guides available.
 
-Storage clusters are groups of 10 homogeneous machines acting as a team.
-The hardware and the role of each machine is identical (i.e. there are no
-special machines or single points of failure within a storage cluster.)
-When you need more storage, you add more storage clusters.  Migration
-processes handle moving collections among storage clusters.
+Storage Slusters are groups of 10 homogeneous machines acting as a team.  The
+hardware and the role of each machine is identical (i.e. there are no special
+machines or single points of failure within a Storage Cluster.) When you need
+more storage capacity, you add more storage clusters.  Migration processes
+handle moving collections among storage clusters.
 
 Storage clusters may be located across in any number of data centers.
 Dynamic DNS maps requests for each collection (which has a unique hostname)
@@ -79,76 +78,94 @@ the key "giraffe" in collection "kansas-city-zoo" might have the URL of:
 kansas-city-zoo.nimbus.io would resolve to an IP in the data center hosting
 the storage cluster that services the kansas-city-zoo collection.
 
-We generally allocate one public IP per storage cluster, but you can
-survive with as little as one IP per data center at the cost of some added
+We generally allocate one public IP per some number of storage clusters, but it
+is possible to use as few as one IP per data center at the cost of some added
 intelligence in the load balancers.  
 
-Load balancers at the data center direct incoming traffic to any one of the
-cluster's storage nodes.
+Load balancers at the data center direct incoming traffic to any one of a
+Storage Cluster's nodes.
 
-If you can find a few data centers with site-to-site links (such as a metro
-area fiber ring), consider locating the 10 storage nodes in a cluster
-across several sites.  For example, two nodes in each of five
-interconnected sites.  You can then achieve geographical redundancy.
-Bandwidth for site-to-site links are often dramatically less expensive than
-Internet bandwidth.
+If you can find a few data centers with site-to-site links between them (such
+as a metro area fiber ring), consider locating the 10 storage nodes in a
+cluster across several sites.  For example, two nodes in each of five
+interconnected sites.  You can then achieve geographical redundancy.  Bandwidth
+for site-to-site links are often dramatically less expensive than Internet
+bandwidth.
 
-These details of your data centers, clusters, and nodes are configured
-within the data_center, storage_cluster, and storage_node tables in the
-central database.
+These details of your data centers, clusters, and nodes are configured within
+the `data_center`, `storage_cluster`, and `storage_node` tables in the central
+database.
 
 Hardware Selection
 ^^^^^^^^^^^^^^^^^^
 
-Hardware selection should be driven mostly by the pattern of data access
-you need your clusters to support.  Note that you can have multiple
-clusters and assign collections to different clusters depending on their
-relative performance needs.  The colder your data, or the more sequential
-your access patterns, the greater storage density you can safely use.  If
-you need to support highly concurrent and low latency read access, you need
-to dedicate more and faster drives within each storage node to caching.
+Hardware selection should be driven mostly by the pattern of data access you
+need your clusters to support.  Note that you can have multiple clusters and
+assign collections to different clusters depending on their relative
+performance needs.  The colder your data, or the more sequential your access
+patterns, the slower disks and greater storage density you can safely use.  If
+you need to support highly concurrent and low latency read access, you need to
+dedicate more and faster drives within each storage node to journaling,
+caching, and database.
 
-For the Nimbus.io commercial storage service, a typical storage node
-includes 36 SATA drives, a high end RAID controller, a decent SSD, 32g of
-RAM and 4 CPUs.  The spinning drives are arranged into a few RAID6 storage
-volumes, with a few disks left over as hot spares spool or cache volumes.
-The SSD contains metadata only (i.e.  the node's own local database.)  We
-typically use the lower power "green" drives.
+The overall design of IO flow within Nimbus.io is to have disks most often
+doing what they are best at: bulk sequential reads and writes.  On spinning
+disks, these are several orders of magnitude faster than random reads and
+writes.
 
-For best performance, we recommend at least two sets of disks: one small
-volume to receive the spool of sequential incoming writes, and other
-volumes to store the bulk of the data and service reads.
+For the Nimbus.io commercial storage service, a typical storage node includes
+36 SATA drives, a high end RAID controller, a decent SSD, 32g of RAM and 4
+CPUs.  30 of the spinning drives are arranged into a few RAID6 Storage Volumes.
+We use a RAID1 Journal Volume for journaling incoming writes, and the remaining
+disks for caching or hot spares.  The SSD contains metadata only (i.e.  the
+node's own local database.)  
 
-It's critical to configure the raid controller to work in write-through
-mode (not caching writes.)  Expect data corruption if your rack loses power
-and you have not done this.  We don't trust battery backup units. [#]_
+For servicing incoming writes quickly, we recommend an absolute minumum of two
+disks per storage node.  One (perhaps much smaller) disk (a Journal Volume)
+journals incoming writes while the other disk (a Storage Volume) remains
+largely idle with regard to writes, and thus mostly available for servicing
+read requests.  Data is only written to a Storage Volume after it reaches a
+certain spooled size.  Then it is sorted and written to a Storage Volume
+sequentially in batch.  
+
+As performance needs increase, this general pattern can be expanded: multiple
+independent Journal Volumes to concurrently receive incoming writes and/or
+multiple Storage Volumes to concurrently service reads.  For many usage
+patterns, the biggest performance gains are from dedicating several independent
+(not RAIDed) disks to caching.
+
+It's critical to configure RAID controllers to work in write-through mode (not
+caching writes.)  Expect data corruption if your rack loses power and you have
+not done this.  We don't trust battery backup units. [#]_
 
 Feel free to contact us if you would like advise on specific hardware
-selection.  You may also purchase Nimbus.io storage clusters directly from
-SpiderOak.  We buy enough of them that we can charge you a very modest
-markup and still underprice other vendors.  We can drop ship a storage
-cluster in a rack ready to roll into place and run immediately. 
+selection.  You may also purchase Nimbus.io Storage Clusters directly from
+SpiderOak.  We have evolved the hardware selection and design over several
+generations since 2007.  We buy enough of them that we can charge you a modest
+markup and still underprice other vendors.  We can drop ship a storage cluster
+assembled in a rack, ready to roll into place and run immediately. 
 
 OS Configuration
 ^^^^^^^^^^^^^^^^
 
-The commercial Nimbus.io storage service operates on Linux Ubuntu LTS
-releases, but any Unixish operating system should work for running your own
-cluster.  We expect Windows might even work with minor effort, but it has
-not been tested.
+The commercial Nimbus.io storage service operates on Linux Ubuntu LTS releases,
+but any Unixish operating system should work for running your own cluster.  We
+expect Windows might even work with minor effort, but it has not been tested.
 
-On Linux, we recommend the ext4 file system for storage volumes, and ext2
-for incoming write volumes (which are basically journals themselves, making
-the journaling from ext4 redundant.)  Despite its popularity, we recommend
-against XFS for large storage volumes.
+On Linux, we recommend the ext4 file system for Storage Volumes, and ext2 for
+Journal Volumes (which are journaling themselves, making the journaling from
+ext4 redundant.)  Despite its popularity, we recommend against XFS for large
+Storage Volumes.
 
 File systems should be mounted with noatime. Set the read ahead for block
 devices to high values (blockdev --setra); experiment with 4096, 8192,
 16384 or even 32768.  Use the deadline IO scheduler if you need to limit
 read latency, otherwise stick with CFQ for higher overall throughput.  
 
-Regrettably, we also must recommend a policy of rebooting Linux machines
-after 200 days of uptime, because of this Kernel bug: TODO
+Regrettably, we also must recommend a policy of rebooting Linux machines after
+200 days of uptime, because of this Kernel bug:
+`http://www.gossamer-threads.com/lists/linux/kernel/1446451
+<http://www.gossamer-threads.com/lists/linux/kernel/1446451>`_
 
 The PostgreSQL documentation's chapter on data write to disk reliability
 should be considered required reading.  Everything discussed there applies
@@ -158,11 +175,11 @@ equally to reliable writes to persistent hardware with Nimbus.io.
 Webserver and Load Balancer Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-We use IPVS and Haproxy talking to Nginx. Nginx runs on each storage node,
-handles the SSL, and does HTTP forwarding to the application level web
-server process.
+There are a plethora of alternatives available.  We use IPVS and Haproxy
+talking to Nginx.  Nginx runs on each storage node, handles the SSL, and does
+HTTP forwarding to the application level Nimbus.io web server.
 
-Stored Node Database Configuration
+Storage Node Database Configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Each storage node has a PostgreSQL database instance that is local to that
@@ -194,24 +211,29 @@ Latency of read requests to Nimbus.io can be made arbitrarily small by
 devoting sufficient additional resources to caching.
 
 Nimbus.io is intended to integrate with Varnish and other frontend content
-caching tools.  TODO describe how to do this. Note about the streaming
-issue.
+caching tools.  
+
+TODO describe how to do this. Note about the streaming issue.
 
 Supported Platforms
 ^^^^^^^^^^^^^^^^^^^
+
+So far only Linux, but it probably works fine on other Unixen.  There's nothing
+inherent about the software design that would prevent running it on Windows but
+no effort has been made towards testing or supporting it.
 
 Installing Nimbus.io
 ^^^^^^^^^^^^^^^^^^^^
 
 To just experiment with Nimbus.io, the easiest way is to run the cluster
-simulator.(TODO: link to cluster simulator.)  This and the following
-section describe how to install Nimbus.io on for serious development or
-production uses.
+simulator locally.  (TODO: link to cluster simulator.)  
+
+This and the following section describe how to install Nimbus.io on one or more
+full Storage Clusters for serious development or production uses.
 
 First, checkout the latest version of the source code:
 
 git clone `https://nimbus.io/dev/git/nimbus.io/ <https://nimbus.io/dev/git/nimbus.io/>`_
-
 
 Install all the needed libraries and other dependencies.  There are well
 commented shell scripts to guide you through this for some operating
@@ -219,10 +241,13 @@ systems in the scripts/install folder within the source code.
 
 In general, Nimbus.io depends on all of the following:
 
-* Python 2.6+
-* PostgreSQL 9.1+
+* Python 2.6.x or 2.7.x
+* Python 3.2+ (yes, you really need both versions of Python)
+* PostgreSQL 9.0+ (9.1 recommended)
 * ZeroMQ 2.1.10+
 * Python libraries: cython, gevent, gevent-zeromq, webob, zfec
+* Optional: Perl StatGrabber library (not required)
+* Optional: Sphinx (for building the documentation, not required)
 
 To test the installation of your dependencies, try running the cluster
 simulator (TODO link to running cluster simulator in developers guide.)
@@ -235,17 +260,57 @@ TODO write all these subsections
 Chose a domain name. Get SSL certificates if desired. 
 +++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+You will need a domain name or subdomain dedicated to Nimbus.io.  
+
+For SSL you'll need two SSL certifiactes. Suppose you wish to run a Nimbus.io
+service at the domain mynimbusio.com.
+
+You will need to purchase two SSL certificates: one for `mynimbusio.com` and a
+second wildcard certificate for `*.mynimbusio.com`.  The second certificate
+secures access to specific collections (recall the collections are mapped to
+hostnames, such as `mycollection.mynimbusio.com`.)
+
 Allocate External and Internal IP addresses.
 ++++++++++++++++++++++++++++++++++++++++++++
+
+You'll need at least one IP address per data center.  If you're using SSL,
+you'll also need an IP address for each SSL certificate.  
+
+Sometimes it is convienient to have a separate IP address for each Storage
+Cluster.  This makes web server and load balancer configuration simpler, since
+dynamic DNS can direct traffic for each collection to a front end load balancer
+or web server specifiaclly for the cluster the collection resides on.
+
+We find that it's simpler just to have multiple Storage Clusters serviced from
+fewer IPs, and direct traffic to the correct Storage Cluster via configurations
+in our HTTP servers configuration via internal Dynamic DNS.
 
 Create the central database and apply the schema
 ++++++++++++++++++++++++++++++++++++++++++++++++
 
+The schema is in `sql/nimbusio_central.sql`
+
 Insert records for data centers, storage clusters, storage nodes
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
+Insert records in the `data_center` table for all data centers.
+
+Insert records in the `storage_cluster` table for each storage cluster
+(referencing the data center it's in.)
+
+Insert records in the `storage_node` table for each storage node (referencing
+the storage cluster it's in.)
+
+TODO add sample central database population scripts for a site with 2 data
+centers, each with 2 storage clusters.
+
 Setup dynamic DNS
 +++++++++++++++++
+
+We recommend PowerDNS since it can query PostgreSQL with arbitrary SQL,
+generally hitting read-only replicas from the central database.
+
+TODO much more detail needed here.
 
 For each storage node:
 ++++++++++++++++++++++
@@ -253,17 +318,40 @@ For each storage node:
 Create and apply schemas for the local database
 -----------------------------------------------
 
+The schema is in `sql/nimbusio_node.sql`
+
 Create the node's config script
 -------------------------------
 
-Setup Runit And Run Scripts
----------------------------
+TODO explain how to create node config scripts based on the templates created
+by the cluster simulator.
+
+Setup Service Supervision And Run Scripts
+-----------------------------------------
+
+We use `runit <http://smarden.org/runit/>`_ for running Nimbus.io services with
+supervision, but any similar service management system can work.
+
+TODO add sample run scripts
 
 Connecting Nimbus.io clients to your own site
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Set NIMBUSIO_SIM_HOSTNAME variable and SSL variables as appropriate
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+By default the Nimbus.io client libraries will connect to the commerical
+Nimbus.io storage service operated by SpiderOak, at the `nimbus.io` domain.  
+
+For your own Nimbus.io service, you want to make clients connect instead to
+services associated with your domain.  This can be done via setting environment
+variables.
+
+The following environment variables can be set to cause Nimbus.io client
+libraries such as Motoboto and Lumberyard to use your own domain settings.
+
+`NIMBUS_IO_SERVICE_DOMAIN` (default nimbus.io)
+`NIMBUS_IO_SERVICE_PORT` (default 443)
+`NIMBUS_IO_SERVICE_SSL` (default 1, set to 0 to disable use of SSL)
+
+TODO check formatting for above
 
 Management and Monitoring
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -290,42 +378,54 @@ clusters.  There are some home grown tools for this with goofy names like
 space cadet, space colony, and space ship which we'll work on releasing as
 free and open source software.
 
-Recovery from Node Failure
-^^^^^^^^^^^^^^^^^^^^^^^^^^
+Recovery from Storage Node Failure
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Recovering from the total hardware loss of any storage node in a cluster is
 a simple two step process: 
 
 #. Replace the storage node with a new identically configured node 
 
-#. Actually, there is no step 2.  The anti entropy process will automatically take it from here. 
+#. The anti entropy process will automatically detect and repair the
+inconsistencies in the cluster, restoring the full replication level.
 
-In practice, loss of the entire node is very rare.  Even loss of a single
-RAID6 storage volume is rare, but with enough volumes it will happen
-eventually.  The most common scenario is that  component of a machine fails,
-and the rest is salvageable.  This allows you to bring the storage cluster
-back to full health with a shorter rebuild time for the anti entropy service
-to restore replication level for lost data.
+In practice, loss of the entire node is very rare.  Even loss of a single RAID6
+storage volume is rare, but with enough volumes it does happen occasionally.
+The most common scenario is that  component of a machine fails, and the rest is
+salvageable.  This allows you to bring the storage cluster back to full health
+with a shorter rebuild time for the anti entropy service to restore replication
+level for lost data.
 
 The general procedure for failure from partial node loss is:
 
-#. Take the Nimbus.io services offline (this typically happens automatically with severe failure.)  The other nodes will continue to operate normally, creating hinted-handoffs for data destined for the offline node. 
+#. Take the Nimbus.io services offline (this typically happens automatically
+with severe failure.)  The other nodes will continue to operate normally,
+creating hinted-handoffs for data destined for the offline node. 
 
-#. If the node's local database was lost, restore from the most recent dump and then apply any archived log files to bring it close to current.  Even an old backup will reduce the amount of work anti entropy must do.  If the node local database cannot be restored at all, treat the situation as a total machine failure, re-initializing all the storage volumes, etc.
+#. Replace the failed component(s).  This may mean recreating and
+re-initializing one or more storage volumes. 
 
-#. Replace the failed component(s).  This may mean recreating and re-initializing one or more storage volumes. 
-
-#. For any storage volume that was lost, delete all entries in the node local database for value files located on that storage volume (use a cascade delete, also deleting any keys that reference the lost value files.) 
+#. If the node's local database was lost, restore the database from the most
+recent dump and then apply any archived log files to bring it close to current.
+Even an week old backup will reduce the amount of work anti entropy must do.
+If the node local database cannot be restored at all, treat the situation as a
+total machine failure.
 
 #. Bring the node's Nimbus.io services online, and allow anti entropy to begin. 
 
 .. rubric:: Footnotes:
 
-.. [#] TODO: Link to relevant nerdy information about the SR71 and how it leaks fuel on the ground.
+.. [#] TODO: Link to relevant nerdy information about the SR71 and how it leaks
+   fuel on the ground.
 
-.. [#] Although there are some ways you can incrementally extend a single cluster, such as buying 10 machines, but only 1/3 of the hard drives to fill them, and adding more drives over time as needed.
+.. [#] Although there are some ways you can incrementally extend a single
+   cluster, such as buying 10 machines, but only 1/3 of the hard drives to fill
+   them, and adding more drives over time as needed.
 
-.. [#] There are some advanced and durable alternatives to this if you absolutely need the added performance of write caching.
+.. [#] There are some advanced and durable alternatives to this if you
+   absolutely need the added performance of write caching.  Generally having a
+   dedicated "journal volume" that ONLY syncs incoming writes (and is only read
+   from in the event of crash recovery) gives excellent write performance.
 
 `nimbus.io <https://nimbus.io/>`_ 
 

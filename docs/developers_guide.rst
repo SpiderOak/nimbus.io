@@ -51,95 +51,135 @@ Alternatively, you can also use the tools from the command line tools from the
 "motoboto" package which have a similar interface to the "boto" tools (s3put,
 lss3, fetch_file, etc.)
 
-Here are some examples using the Nimbus.io command line client:
+Here are some examples using the `nio_cmd` command line tool:
 
 ::
 
-    # -- list keys in collection 
-    nimbus.io ls collection_name 
+    # list keys in collection 
+    nio_cmd ls collection_name 
 
-    # -- delete a key in a collection
-    nimbus.io rm collection_name key_name  
+    # delete a key in a collection
+    nio_cmd rm collection_name key_name  
 
-    # -- copy the local file filename.ext to key_name in collection_name (use a
-    # filename of - to copy stdin)
-    nimbus.io cp filename.ext nimbus.io://collection_name/key_name  
+    # copy the local file filename.ext to key_name in collection_name 
+    # (use a filename of - to copy stdin)
+    nio_cmd cp filename.ext nimbus.io://collection_name/key_name  
 
-    # -- copy the contents of key_name in collection_name mylocalfile.ext
-    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext 
+    # copy the contents of key_name in collection_name mylocalfile.ext
+    nio_cmd cp nimbus.io://collection_name/key_name mylocalfile.ext 
 
-    # -- copy the contents of key_name in collection_name to the local file
+    # copy the contents of key_name in collection_name to the local file
     # mylocalfile.ext
-    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext 
+    nio_cmd cp nimbus.io://collection_name/key_name mylocalfile.ext 
 
-    # -- copy a key from one nimbus.io location to another
-    nimbus.io cp nimbus.io://collection_name1/key_name1 nimbusio://collection_name2/key_name2 
+    # copy a key from one nimbus.io location to another
+    nio_cmd cp nimbus.io://collection_name1/key_name1 nimbusio://collection_name2/key_name2 
+    # copy a key from s3 to nimbus.io
+    nio_cmd cp s3://bucket_name/key_name nimbusio://collection_name/key_name 
 
-    # -- copy a key from s3 to nimbus.io
-    nimbus.io cp s3://bucket_name/key_name nimbusio://collection_name/key_name 
+    # copy a key from nimbus.io to s3
+    nio_cmd cp nimbusio://collection_name/key_name s3://bucket_name/key_name  
 
-    # -- copy a key from nimbus.io to s3
-    nimbus.io cp nimbusio://collection_name/key_name s3://bucket_name/key_name  
+    # move a key from s3 to nimbus.io
+    nio_cmd mv s3://bucket_name/key_name nimbusio://collection_name/key_name 
 
-    # -- move a key from s3 to nimbus.io
-    nimbus.io mv s3://bucket_name/key_name nimbusio://collection_name/key_name 
-
-Running Nimbus.io locally for dev
+Running Nimbus.io locally for Dev
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Production Nimbus.io storage clusters normally operate across at least 10
+independent computers.  
 
 For development and testing, you can simulate a full Nimbus.io cluster locally.
 Included is a cluster simulator script which can spawn and configure all the
 nodes for a full cluster on a single machine.  This is suitable for development
-work on inclusion in unit tests.  
+work or inclusion in unit tests.  
+
+Clone the latest version of the source code:
+
+::
+    git clone https://nimbus.io/dev/git/nimbus.io/
+
+Install all the needed libraries and other dependencies.  There are well
+commented shell scripts to guide you through this for some operating systems in
+the `scripts/install` folder within the source.  A very recent Linux
+distribution may provide everything you need as packages.
+
+In general, Nimbus.io depends on all of the following:
+
+* Python 2.6.x or 2.7.x
+* Python 3.2+
+* PostgreSQL 9.0+ (9.1+ recommended)
+* ZeroMQ 2.1.10+
+* Python libraries: cython, gevent, gevent-zeromq, webob, zfec
+* Optional: Perl StatGrabber library (not required)
+* Optional: Sphinx (for building the documentation, not required)
+
+Once all of the dependencies are available, you can spawn a simulated test
+cluster.  This will create everything needed to run Nimbus.io, simulating 10
+nodes and a central database within a folder in your file system.  New
+PostgreSQL instances will be initilized.  Configuration files for the overall
+Storage Cluster and each of the 10 Storage Nodes will be written.  
+
+The simulator will give you a command prompt where you can start and stop the
+full cluster or specific nodes.
+
+Spawn a new simulated cluster inside a local folder.  You will have 10 nodes,
+each listening on a local TCP port for REST API commands.  The first of these
+will be on whatever the `--baseport` argument was (default `9000`).  Read the
+source for details.
 
 ::
     
-    # spawn a new simulated cluster inside a local folder.  You will have 10 nodes,
-    # each listening on a local TCP port for REST API commands.  The first of
-    # these will be on whatever the --baseport argument was (default 9000).
-    # Read the source for details.
-
     # by default, this will create the cluster running in /tmp/clustersim
     scripts/spawn_simulated_cluster.sh
 
+You can use the command line tool for creating customer accounts within a local
+cluster.  Note that this tool needs the ENV variables specififying the local
+configuration to operate.  Here's a bash session loading the config scripts
+(generated by the simulator above) and then using the tool.
 
-    # run the standard unit tests against a simulated cluster (requires
-    # lumberyard and motoboto libs to be installed)
-    scripts/run_tests_on_simcluster.sh /tmp/clustersim
-
-    # command line tool for creating customer accounts within a local cluster
+::
     source /tmp/clustersim/config/central_config.sh
     source /tmp/clustersim/config/client_config.sh
     PYTHONPATH=$PWD python customer/customer_main.py --help
      
-    # creates many test users, and spawns a process to simulate them
-    # interacting with the cluster
-    scripts/run_greenlet_benchmark_on_simcluster.sh 
 
-For fault tolerance, production Nimbus.io storage clusters normally operate
-across at least 10 independent computers.  (More details available in the
-Nimbus.io Administrator's Guide.)
+Run the standard unit tests against a simulated cluster (requires `lumberyard`
+and `motoboto` libraries to be installed.).  The script will create a test user
+`mutoboto-test-01` for the unit tests to use.
 
-Libraries for Programming Languages 
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+::
+
+    scripts/run_tests_on_simcluster.sh /tmp/clustersim
+
+There's a standard benchmarking suite that uses the `motoboto` library.  This
+script creates many test users and invokes the tool with standand paramaters.
+The tool itself is driven by a JSON config file that allows specifying a
+variety of ways that the cluster will be used.
+
+::
+    scripts/run_greenlet_benchmark_on_simcluster.sh /tmp/clustersim
+ 
+Accessing Nimbus.io via a Library
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Nearly any programming language will able to use the Nimbus.IO REST API
 directly over HTTP (described below.).  However there are also libraries
 available to abstract the REST  API and provide a higher level interface.
 
-The primary client library for Nimbus.io is called "lumberyard" and is
-available as a Python module from PyPI.  
+The base client library for Nimbus.io is called `lumberyard` and is available
+as a Python module.  
 
-We've ported the popular Amazon S3 library "boto" to use Nimbus.io and we call
-this module "motoboto."  It internally uses lumberyard, but presents the same
-interface as boto so applications using boto could easily use motoboto instead
-as a drop in alternative.
+We've ported the popular Amazon S3 library `boto` to use Nimbus.io and we call
+this module `motoboto`.  It internally uses `lumberyard`, but presents the same
+interface as boto so applications using `boto` could use `motoboto` instead as
+a drop in alternative.
 
-The development roadmap includes expand the selection of client libraries to
-include options for PHP, Perl, Ruby, Java, C#, Erlang, and Haskel.  Please
-contact us if you'd like to create a library for your favorite language, or
-even if you just have a recommendation on which popular S3 libraries you'd like
-to have ported to use Nimbus.io.
+The development roadmap includes expanding the selection of client libraries to
+include options for PHP, Perl, Ruby, Java, C#, Clojure, Node.js, Erlang, and
+Haskel.  Please contact us if you'd like to create a library for your favorite
+language, or even if you just have a recommendation on which popular S3
+libraries you'd like to have ported to use Nimbus.io.
 
 Similar to the Nimbus.io server software itself, all the client libraries we
 write are free software released under the LGPL license.
@@ -149,19 +189,15 @@ Migrating data
 
 Nimbus.io is intended to facilitate easy bidirectional migration between
 Nimbus.io, Amazon S3, and other cloud storage systems.  The nimbus.io command
-line tool and libraries know how to interact with multiple platforms.   Since
-the Nimbus.io platform is available under the GPL free software license,
-there's also always the option to bring your data home.  (See "Rolling your Own
-Cloud")
+line tool and libraries knows how to interact with multiple platforms.   
 
-To further ease interoperability, the Nimbus.io feature roadmap includes a
-REMOTE COPY operation within the Nimbus.io API to facilitate direct
+Since the Nimbus.io platform is available under the AGPL free software license,
+there's also always the option to bring your data home.
+
+To further ease interoperability, the Nimbus.io development roadmap includes a
+`remote copy` operation within the Nimbus.io API to facilitate direct
 server-to-server data transfer between Nimbus.IO, S3, or other network
-accessible storage resources.  
-
-Rolling Your Own Cloud
-^^^^^^^^^^^^^^^^^^^^^^
-TODO write this blah blah 
+accessible storage resources.
 
 API Usage
 ^^^^^^^^^

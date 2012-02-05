@@ -44,6 +44,10 @@ other reasons other than storage costs, such as bandwidth costs, or the cost of
 local computing infrastructure vs. the higher cost of cloud computing
 infrastructure.  
 
+If you chose to proceed, the following sections describe how to install
+Nimbus.io on one or more full Storage Clusters for serious development or
+production uses.  Please also feel free to contact SpiderOak for assistance.
+
 Data Center, Network, and Storage Cluster Architecture  
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -64,7 +68,7 @@ multiple physical servers.  Creating a highly avaliable PostgreSQL setup
 for the central database is outside the scope of this document, as there
 are many excellent guides available.
 
-Storage Slusters are groups of 10 homogeneous machines acting as a team.  The
+Storage Clusters are groups of 10 homogeneous machines acting as a team.  The
 hardware and the role of each machine is identical (i.e. there are no special
 machines or single points of failure within a Storage Cluster.) When you need
 more storage capacity, you add more storage clusters.  Migration processes
@@ -222,35 +226,6 @@ So far only Linux, but it probably works fine on other Unixen.  There's nothing
 inherent about the software design that would prevent running it on Windows but
 no effort has been made towards testing or supporting it.
 
-Installing Nimbus.io
-^^^^^^^^^^^^^^^^^^^^
-
-To just experiment with Nimbus.io, the easiest way is to run the cluster
-simulator locally.  (TODO: link to cluster simulator.)  
-
-This and the following section describe how to install Nimbus.io on one or more
-full Storage Clusters for serious development or production uses.
-
-First, checkout the latest version of the source code:
-
-git clone `https://nimbus.io/dev/git/nimbus.io/ <https://nimbus.io/dev/git/nimbus.io/>`_
-
-Install all the needed libraries and other dependencies.  There are well
-commented shell scripts to guide you through this for some operating
-systems in the scripts/install folder within the source code.
-
-In general, Nimbus.io depends on all of the following:
-
-* Python 2.6.x or 2.7.x
-* Python 3.2+ (yes, you really need both versions of Python)
-* PostgreSQL 9.0+ (9.1 recommended)
-* ZeroMQ 2.1.10+
-* Python libraries: cython, gevent, gevent-zeromq, webob, zfec
-* Optional: Perl StatGrabber library (not required)
-* Optional: Sphinx (for building the documentation, not required)
-
-To test the installation of your dependencies, try running the cluster
-simulator (TODO link to running cluster simulator in developers guide.)
 
 Configuring Nimbus.io for your site
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

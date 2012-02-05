@@ -98,7 +98,8 @@ exclude_patterns = ['_build']
 # a list of builtin themes.
 # commented out by benny: html_theme = 'default'
 sys.path.append(os.path.abspath('_static'))
-html_theme = 'nio-sphinx'
+#html_theme = 'nio-sphinx'
+html_theme = 'default'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the

@@ -43,20 +43,16 @@ There is not currently a way to mark objects as publically accessible.
 Command line tools
 ^^^^^^^^^^^^^^^^^^
 
-If you have lumberyard (the Python library for accessing Nimbus.io) installed,
-you can use a command line tool to list, delete, and archive data into your
-nimbus collections using familiar unix commands like cp, mv, and rm.  
-
-Alternatively, you can also use the tools from the command line tools from the
-"motoboto" package which have a similar interface to the "boto" tools (s3put,
-lss3, fetch_file, etc.)
+If you have `lumberyard` and `motoboto` (the Python libraries for accessing
+Nimbus.io) installed, you can use a command line tool to list, delete, and
+archive data into your nimbus collections.
 
 Here are some examples using the `nio_cmd` command line tool:
 
 ::
 
     # list keys in collection 
-    nio_cmd ls collection_name 
+    ls_nio collection_name 
 
     # delete a key in a collection
     nio_cmd rm collection_name key_name  
@@ -86,17 +82,15 @@ Here are some examples using the `nio_cmd` command line tool:
 Running Nimbus.io locally for Dev
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Production Nimbus.io storage clusters normally operate across at least 10
-independent computers.  
+Production Nimbus.io storage clusters operate across at least 10 independent
+computers.  
 
 For development and testing, you can simulate a full Nimbus.io cluster locally.
 Included is a cluster simulator script which can spawn and configure all the
 nodes for a full cluster on a single machine.  This is suitable for development
 work or inclusion in unit tests.  
 
-Clone the latest version of the source code:
-
-::
+Clone the latest version of the source code::
     git clone https://nimbus.io/dev/git/nimbus.io/
 
 Install all the needed libraries and other dependencies.  There are well
@@ -111,7 +105,7 @@ In general, Nimbus.io depends on all of the following:
 * PostgreSQL 9.0+ (9.1+ recommended)
 * ZeroMQ 2.1.10+
 * Python libraries: cython, gevent, gevent-zeromq, webob, zfec
-* Optional: Perl StatGrabber library (not required)
+* Optional: Perl StatGrabber library (for sending runtime stats to ganglia)
 * Optional: Sphinx (for building the documentation, not required)
 
 Once all of the dependencies are available, you can spawn a simulated test
@@ -123,14 +117,16 @@ Storage Cluster and each of the 10 Storage Nodes will be written.
 The simulator will give you a command prompt where you can start and stop the
 full cluster or specific nodes.
 
-Spawn a new simulated cluster inside a local folder.  You will have 10 nodes,
-each listening on a local TCP port for REST API commands.  The first of these
-will be on whatever the `--baseport` argument was (default `9000`).  Read the
+The script below will spawn a new simulated cluster inside a local folder.  You
+will have 10 nodes, each listening on a local TCP port for REST API commands.
+The first of these will be on whatever the `--baseport` argument was (default
+`9000`).  If you get binding errors, try a different base port.  Read the
 source for details.
 
 ::
     
-    # by default, this will create the cluster running in /tmp/clustersim
+    # by default, this will create the simulated cluster running in
+    # /tmp/clustersim
     scripts/spawn_simulated_cluster.sh
 
 You can use the command line tool for creating customer accounts within a local
@@ -163,17 +159,17 @@ variety of ways that the cluster will be used.
 Accessing Nimbus.io via a Library
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Nearly any programming language will able to use the Nimbus.IO REST API
-directly over HTTP (described below.).  However there are also libraries
-available to abstract the REST  API and provide a higher level interface.
+You acn use Nimbus.io via the REST API directly over HTTP (described below.).
+However the easiest way is to use a library that abstracts the REST  API and
+provides a higher level interface.
 
 The base client library for Nimbus.io is called `lumberyard` and is available
 as a Python module.  
 
 We've ported the popular Amazon S3 library `boto` to use Nimbus.io and we call
 this module `motoboto`.  It internally uses `lumberyard`, but presents the same
-interface as boto so applications using `boto` could use `motoboto` instead as
-a drop in alternative.
+interface as `boto` so applications using `boto` could use `motoboto` as an
+easy alternative.
 
 The development roadmap includes expanding the selection of client libraries to
 include options for PHP, Perl, Ruby, Java, C#, Clojure, Node.js, Erlang, and
@@ -183,21 +179,6 @@ libraries you'd like to have ported to use Nimbus.io.
 
 Similar to the Nimbus.io server software itself, all the client libraries we
 write are free software released under the LGPL license.
-
-Migrating data
-^^^^^^^^^^^^^^
-
-Nimbus.io is intended to facilitate easy bidirectional migration between
-Nimbus.io, Amazon S3, and other cloud storage systems.  The nimbus.io command
-line tool and libraries knows how to interact with multiple platforms.   
-
-Since the Nimbus.io platform is available under the AGPL free software license,
-there's also always the option to bring your data home.
-
-To further ease interoperability, the Nimbus.io development roadmap includes a
-`remote copy` operation within the Nimbus.io API to facilitate direct
-server-to-server data transfer between Nimbus.IO, S3, or other network
-accessible storage resources.
 
 API Usage
 ^^^^^^^^^
@@ -212,9 +193,7 @@ nimbus.io resources for a customer:
 * The keys within a collection
 * The data (and meta data) for a key
 
-These are represented as:
-
-::
+These are represented as::
 
    https://nimbus.io/customers/<username>
    https://nimbus.io/customers/<username>/collections
@@ -647,4 +626,18 @@ List the known uploads in sequence
    limited browser support for the DELETE verb, we also provide an alternative
    via POST with action=delete. 
 
+
+Migrating data
+^^^^^^^^^^^^^^
+
+Nimbus.io is intended to facilitate easy bidirectional migration between
+Nimbus.io, Amazon S3, and other cloud storage systems.  
+
+Since the Nimbus.io platform is available under the AGPL free software license,
+there's also always the option to bring your data home.
+
+To further ease interoperability, the Nimbus.io development roadmap includes a
+`remote copy` operation within the Nimbus.io API to facilitate direct
+server-to-server data transfer between Nimbus.IO, S3, or other network
+accessible storage resources.
 

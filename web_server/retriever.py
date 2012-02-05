@@ -164,9 +164,10 @@ class Retriever(object):
             if result is None:
                 continue
 
-            data_segment, completion_status = result
+            data_segment, zfec_padding_size, completion_status = result
 
-            result_dict[task.segment_number] = data_segment
+            result_dict[task.segment_number] = \
+                    (data_segment, zfec_padding_size, )
             completed_list.append(completion_status)
 
             if len(result_dict) >= self._segments_needed:
@@ -241,7 +242,7 @@ class Retriever(object):
         ))
 
         # we expect retrieve_key_start to return the tuple
-        # (<data-segment>, <completion-status>, )
+        # (<data-segment>, <zfec-padding-size>, <completion-status>, )
         # where completion-status is a boolean
         # if the retrieve failed in some way, retrieve_key_start
         # returns None
@@ -256,7 +257,7 @@ class Retriever(object):
             )
             return None
 
-        data_segment, completion_status = task.value
+        data_segment, zfec_padding_size, completion_status = task.value
 
         self._log.debug("(%s) %s %s task successful complete = %r" % (
             self._collection_id,
@@ -265,5 +266,5 @@ class Retriever(object):
             completion_status,
         ))
 
-        return data_segment, completion_status
+        return data_segment, zfec_padding_size, completion_status
 

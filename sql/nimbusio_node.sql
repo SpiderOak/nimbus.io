@@ -68,6 +68,12 @@ create table segment (
     constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
 
+/* The segment_archived table is exactly like the segment table, 
+ * but with no indexes. 
+ * Garbage collected rows from segment are moved to segment_archived, 
+ * so they can still be used for billing and such. */
+create table segment_archived as select * from segment where 0 = 1;
+
 /* I need to research more about the actual implementation of multi column
  * indexes.  The goal here is to keep writes reasonably efficient even when the
  * whole index is too large to fit in RAM.  My hope is that just using a multi
@@ -170,6 +176,7 @@ create table value_file (
 create table segment_sequence (
     collection_id int4 not null,
     segment_id int8 not null,
+    zfec_padding_size int4 not null,
     value_file_id int4 not null,
     sequence_num int4 not null,
     value_file_offset int8 not null,

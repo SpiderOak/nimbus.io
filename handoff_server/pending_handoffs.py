@@ -3,7 +3,7 @@
 pending_handoffs.py
 
 a container to hold the pending handoffs for a node, ordered by
-timestamp
+unified_id
 """
 import heapq
 import logging
@@ -11,7 +11,7 @@ import logging
 class PendingHandoffs(object):
     """
     a container to hold the pending handoffs for a node, ordered by
-    timestamp
+    unified_id
     """
     def __init__(self):
         self._log = logging.getLogger("PendingHandoffs")
@@ -23,9 +23,9 @@ class PendingHandoffs(object):
         """
         add the segment row, with its source
         """
-        if incoming_segment_row.timestamp in self._dict:
+        if incoming_segment_row.unified_id in self._dict:
             segment_row, source_node_names = \
-                    self._dict[incoming_segment_row.timestamp]
+                    self._dict[incoming_segment_row.unified_id]
             assert incoming_segment_row.collection_id == \
                 segment_row.collection_id, (
                 incoming_segment_row, segment_row,
@@ -40,8 +40,8 @@ class PendingHandoffs(object):
             else:
                 source_node_names.append(source_node_name)
         else:
-            heapq.heappush(self._list, incoming_segment_row.timestamp)
-            self._dict[incoming_segment_row.timestamp] = (
+            heapq.heappush(self._list, incoming_segment_row.unified_id)
+            self._dict[incoming_segment_row.unified_id] = (
                 incoming_segment_row, [source_node_name, ], 
             )            
 
@@ -50,8 +50,8 @@ class PendingHandoffs(object):
         return a tuple of the oldest segment row wiht a list of its sources
         raise IndexError if there is none
         """
-        timestamp = heapq.heappop(self._list)
-        return self._dict.pop(timestamp)
+        unified_id = heapq.heappop(self._list)
+        return self._dict.pop(unified_id)
 
     def __len__(self):
         return len(self._list)

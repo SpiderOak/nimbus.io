@@ -184,7 +184,16 @@ def _handle_request_handoffs_reply(state, message, data):
 def _handle_retrieve_key_reply(state, message, data):
     log = logging.getLogger("_handle_retrieve_key_reply")
 
-    #TODO: we need to squawk about this somehow
+    # 2012-02-05 dougfort -- handle a race condition where we pick up a segment
+    # to be handed off after we have purged it, because the message was 
+    # in transit
+    if message["result"] == "no-sequence-rows":
+        log.warn("no-sequence-rows, assuming already purged {0}".format(
+            message
+        ))
+        state["forwarder"] = None
+        return
+
     if message["result"] != "success":
         error_message = "%s failed (%s) %s %s" % (
             message["message-type"], 

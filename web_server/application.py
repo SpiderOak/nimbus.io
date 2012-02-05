@@ -552,13 +552,14 @@ class Application(object):
             conjoined_part
         )
         segmenter = ZfecSegmenter(
-            8,
+            _min_segments,
             len(data_writers)
         )
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
         segments = None
+        zfec_padding_size = None
         try:
             # XXX refactor this loop. it's awkward because it needs to know
             # when any given slice is the last slice, so it works an iteration
@@ -568,21 +569,19 @@ class Application(object):
                                     req.content_length):
                 if segments:
                     archiver.archive_slice(
-                        segments,
-                        _reply_timeout
+                        segments, zfec_padding_size, _reply_timeout
                     )
-                    segments = None
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
                 file_md5.update(slice_item)
                 file_size += len(slice_item)
                 segments = segmenter.encode(slice_item)
-            if not segments:
-                segments = segmenter.encode('')
+                zfec_padding_size = segmenter.padding_size(slice_item)
             archiver.archive_final(
                 file_size,
                 file_adler32,
                 file_md5.digest(),
                 segments,
+                zfec_padding_size,
                 _reply_timeout
             )
         except ArchiveFailedError, instance:
@@ -764,13 +763,22 @@ class Application(object):
             return exc.HTTPNotFound(str(instance))
 
         def app_iterator(response):
-            segmenter = ZfecSegmenter(
-                _min_segments,
-                _max_segments)
+            segmenter = ZfecSegmenter( _min_segments, _max_segments)
             sent = 0
             try:
                 for segments in chain([first_segments], retrieved):
-                    data = segmenter.decode(segments.values())
+                    segment_numbers = segments.keys()
+                    encoded_segments = list()
+                    zfec_padding_size = None
+                    for segment_number in segment_numbers:
+                        encoded_segment, zfec_padding_size = \
+                                segments[segment_number]
+                        encoded_segments.append(encoded_segment)
+                    data = segmenter.decode(
+                        encoded_segments,
+                        segment_numbers,
+                        zfec_padding_size
+                    )
                     sent += len(data)
                     yield data
             except RetrieveFailedError, instance:

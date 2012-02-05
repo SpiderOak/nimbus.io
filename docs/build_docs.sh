@@ -1,7 +1,8 @@
 #!/bin/bash
-CODEBASE="${HOME}/nimbus.io"
-export PYTHONPATH="${CODEBASE}"
 
+DOCS_DIR="$(dirname $0)"
+CODEBASE="$(dirname $DOCS_DIR)"
+export PYTHONPATH="${CODEBASE}"
 export NIMBUSIO_NODE_NAME_SEQ=""
 export NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS=""
 export NIMBUSIO_NODE_NAME=""

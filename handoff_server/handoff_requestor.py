@@ -16,6 +16,7 @@ from tools.data_definitions import create_timestamp
 handoff_polling_interval = float(os.environ.get(
     "NIMBUSIO_HANDOFF_POLLING_INTERVAL", str(15.0 * 60.0)
 ))
+_delay_interval = 5.0
 
 class HandoffRequestor(object):
     """
@@ -39,6 +40,10 @@ class HandoffRequestor(object):
 
         if halt_event.is_set():
             return
+
+        if len(self._state["pending-handoffs"]) > 0:
+            # run again later
+            return [(self.run, time.time() + _delay_interval, )]
 
         self._log.debug("sending handoff requests")
 

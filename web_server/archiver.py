@@ -5,9 +5,6 @@ archiver.py
 A class that sends data segments to data writers.
 """
 import logging
-import hashlib
-import zlib
-from collections import defaultdict
 
 import gevent
 import gevent.pool
@@ -41,8 +38,6 @@ class Archiver(object):
         self._conjoined_unified_id = conjoined_unified_id
         self._conjoined_part = conjoined_part
         self.sequence_num = 0
-        self._adler32s = {}
-        self._md5s = defaultdict(hashlib.md5)
         self._pending = gevent.pool.Group()
         self._done = []
 
@@ -73,11 +68,6 @@ class Archiver(object):
             raise AlreadyInProgress()
         for i, segment in enumerate(segments):
             segment_num = i + 1
-            self._adler32s[segment_num] = zlib.adler32(
-                segment,
-                self._adler32s.get(segment_num, 1)
-            )
-            self._md5s[segment_num].update(segment)
             data_writers = [self.data_writers[i]]
             if self.sequence_num == 0:
                 for data_writer in data_writers:
@@ -126,11 +116,6 @@ class Archiver(object):
             raise AlreadyInProgress()
         for i, segment in enumerate(segments):
             segment_num = i + 1
-            self._adler32s[segment_num] = zlib.adler32(
-                segment,
-                self._adler32s.get(segment_num, 1)
-            )
-            self._md5s[segment_num].update(segment)
             data_writer = self.data_writers[i]
             if self.sequence_num == 0:
                 self._spawn(

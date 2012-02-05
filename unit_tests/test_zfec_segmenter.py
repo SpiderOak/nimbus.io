@@ -9,6 +9,7 @@ try:
 except ImportError:
     import unittest
 
+from tools.data_definitions import encoded_block_slice_size
 from web_server.zfec_segmenter import ZfecSegmenter
 
 _min_segments = 8
@@ -25,8 +26,7 @@ class TestZfecSegmenter(unittest.TestCase):
 
     def test_unpadded_segment(self):
         """test a segment that doesn't need padding"""
-        #segment_size = 10 * 1024 * 1024
-        segment_size = 32 * 1024
+        segment_size = 10 * 1024 * 1024
         test_data = os.urandom(segment_size)
         segmenter = ZfecSegmenter(_min_segments, _num_segments)
 
@@ -42,7 +42,7 @@ class TestZfecSegmenter(unittest.TestCase):
             test_segments, test_segment_numbers, padding_size
         )
 
-        self.assertEqual(decoded_segments, test_data, len(decoded_segments))
+        self.assertTrue(decoded_segments == test_data, len(decoded_segments))
 
     def test_padded_segment(self):
         """test a segment that needs padding"""
@@ -62,7 +62,7 @@ class TestZfecSegmenter(unittest.TestCase):
             test_segments, test_segment_numbers, padding_size
         )
 
-        self.assertEqual(decoded_segments, test_data, len(decoded_segments))
+        self.assertTrue(decoded_segments == test_data, len(decoded_segments))
 
 if __name__ == "__main__":
     unittest.main()

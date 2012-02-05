@@ -17,6 +17,12 @@ message_format = namedtuple("Message", "ident control body")
 def random_string(size):
     return os.urandom(size)
 
+# the size of data used for zfec encoding of a segment
+block_size = 32 * 1024
+
+# the size of a zfec encoded block
+encoded_block_slice_size = block_size / 8
+
 # datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)
 _timestamp_repr_re = re.compile(r"""
 ^datetime.datetime\(

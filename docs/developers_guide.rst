@@ -24,70 +24,140 @@ key-value storage. It is similar to Amazon's S3 API, and we plan on providing
 a drop-in module to help you migrate your application from S3 to nimbus.io.
 
 
-Users, Groups, Collections, Objects, and Permissions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-In Nimbus.io, users create collections for their data, and then store objects inside a specific collection.  Every collection and every object within a collection has a specific owner and permissions associated with it.
+Customers, Collections, Objects, and Permissions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-As of this writing, Nimbus.io only supports a the simplest of permissions: authenticated users can access their own objects, and nothing else.   
+In Nimbus.io, users create collections for their data, and then store objects
+inside a specific collection.  Every collection and every object within a
+collection has a specific owner and permissions associated with it.
 
-Very soon this will be expanded to allow permissions to be set on some objects for public access.  That will be followed by a more rich Unix style user and group permission model, and then full ACLs.  
+As of this writing, Nimbus.io only supports a the simplest of permissions:
+authenticated users can access their own objects, and nothing else.   
+
+Very soon this will be expanded to allow permissions to be set on some objects
+for public access.  That will be followed by a more rich Unix style user and
+group permission model, and then full ACLs.  
+
+There is not currently a way to mark objects as publically accessible. 
 
 Command line tools
 ^^^^^^^^^^^^^^^^^^
 
-If you have lumberyard (the Python library for accessing Nimbus.io) installed, you can use a command line tool to list, delete, and archive data into your nimbus collections using familiar unix commands like cp, mv, and rm.  
+If you have lumberyard (the Python library for accessing Nimbus.io) installed,
+you can use a command line tool to list, delete, and archive data into your
+nimbus collections using familiar unix commands like cp, mv, and rm.  
 
-Alternatively, you can also use the tools from the command line tools from the "motoboto" package which have a similar interface to the "boto" tools (s3put, lss3, fetch_file, etc.)
+Alternatively, you can also use the tools from the command line tools from the
+"motoboto" package which have a similar interface to the "boto" tools (s3put,
+lss3, fetch_file, etc.)
 
 Here are some examples using the Nimbus.io command line client:
 
 ::
 
-    nimbus.io ls collection_name -- list keys in collection 
-    nimbus.io rm collection_name key_name  -- delete a key in a collection
-    nimbus.io cp filename.ext nimbus.io://collection_name/key_name  -- copy the local file filename.ext to key_name in collection_name (use a filename of - to copy stdin)
-    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext -- copy the contents of key_name in collection_name mylocalfile.ext
-    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext -- copy the contents of key_name in collection_name to the local file mylocalfile.ext
-    nimbus.io cp nimbus.io://collection_name1/key_name1 nimbusio://collection_name2/key_name2 -- copy a key from one nimbus.io location to another
-    nimbus.io cp s3://bucket_name/key_name nimbusio://collection_name/key_name -- copy a key from s3 to nimbus.io
-    nimbus.io cp nimbusio://collection_name/key_name s3://bucket_name/key_name  -- copy a key from nimbus.io to s3
-    nimbus.io mv s3://bucket_name/key_name nimbusio://collection_name/key_name -- move a key from s3 to nimbus.io
+    # -- list keys in collection 
+    nimbus.io ls collection_name 
+
+    # -- delete a key in a collection
+    nimbus.io rm collection_name key_name  
+
+    # -- copy the local file filename.ext to key_name in collection_name (use a
+    # filename of - to copy stdin)
+    nimbus.io cp filename.ext nimbus.io://collection_name/key_name  
+
+    # -- copy the contents of key_name in collection_name mylocalfile.ext
+    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext 
+
+    # -- copy the contents of key_name in collection_name to the local file
+    # mylocalfile.ext
+    nimbus.io cp nimbus.io://collection_name/key_name mylocalfile.ext 
+
+    # -- copy a key from one nimbus.io location to another
+    nimbus.io cp nimbus.io://collection_name1/key_name1 nimbusio://collection_name2/key_name2 
+
+    # -- copy a key from s3 to nimbus.io
+    nimbus.io cp s3://bucket_name/key_name nimbusio://collection_name/key_name 
+
+    # -- copy a key from nimbus.io to s3
+    nimbus.io cp nimbusio://collection_name/key_name s3://bucket_name/key_name  
+
+    # -- move a key from s3 to nimbus.io
+    nimbus.io mv s3://bucket_name/key_name nimbusio://collection_name/key_name 
 
 Running Nimbus.io locally for dev
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For development and testing, you can simulate a full Nimbus.io cluster locally.  Included is a  cluster simulator script which can spawn and configure all the nodes for a full cluster on a single machine.  This is suitable for development work on inclusion in unit tests.  
+For development and testing, you can simulate a full Nimbus.io cluster locally.
+Included is a cluster simulator script which can spawn and configure all the
+nodes for a full cluster on a single machine.  This is suitable for development
+work on inclusion in unit tests.  
 
 ::
     
-    src:scripts/spawn_simulated_cluster.sh -- spawn a new simulated cluster in a folder.  You will have 10 nodes, each listening on a local TCP port for REST API commands.  The first of these will be on whatever the --baseport argument was (default 9000).
-    src:scripts/run_tests_on_simcluster.sh -- run the standard unit tests against a simulated cluster (requires lumberyard and motoboto libs to be installed)
-    src:scripts/
-    src:customer/customer_main.py -- command line tool for creating customer accounts within a local cluster
-    src:scripts/run_greenlet_benchmark_on_simcluster.sh -- creates 1,000 test users, and spawns a process to simulate them interacting with the cluster
+    # spawn a new simulated cluster inside a local folder.  You will have 10 nodes,
+    # each listening on a local TCP port for REST API commands.  The first of
+    # these will be on whatever the --baseport argument was (default 9000).
+    # Read the source for details.
 
- 
-For fault tolerance, production Nimbus.io storage clusters normally operate across at least 10 independent computers.  (More details available in the Nimbus.io Administrator's Guide.)
+    # by default, this will create the cluster running in /tmp/clustersim
+    scripts/spawn_simulated_cluster.sh
+
+
+    # run the standard unit tests against a simulated cluster (requires
+    # lumberyard and motoboto libs to be installed)
+    scripts/run_tests_on_simcluster.sh /tmp/clustersim
+
+    # command line tool for creating customer accounts within a local cluster
+    source /tmp/clustersim/config/central_config.sh
+    source /tmp/clustersim/config/client_config.sh
+    PYTHONPATH=$PWD python customer/customer_main.py --help
+     
+    # creates many test users, and spawns a process to simulate them
+    # interacting with the cluster
+    scripts/run_greenlet_benchmark_on_simcluster.sh 
+
+For fault tolerance, production Nimbus.io storage clusters normally operate
+across at least 10 independent computers.  (More details available in the
+Nimbus.io Administrator's Guide.)
 
 Libraries for Programming Languages 
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Nearly any programming language will able to use the Nimbus.IO REST API directly over HTTP (described below.).  However there are also libraries available to abstract the REST  API and provide a higher level interface.
+Nearly any programming language will able to use the Nimbus.IO REST API
+directly over HTTP (described below.).  However there are also libraries
+available to abstract the REST  API and provide a higher level interface.
 
-The primary client library for Nimbus.io is called "lumberyard" and is available as a Python module from PyPI.  
+The primary client library for Nimbus.io is called "lumberyard" and is
+available as a Python module from PyPI.  
 
-We've ported the popular Amazon S3 library "boto" to use Nimbus.io and we call this module "motoboto."  It internally uses lumberyard, but presents the same interface as boto so applications using boto could easily use motoboto instead as a drop in alternative.
+We've ported the popular Amazon S3 library "boto" to use Nimbus.io and we call
+this module "motoboto."  It internally uses lumberyard, but presents the same
+interface as boto so applications using boto could easily use motoboto instead
+as a drop in alternative.
 
-The development roadmap includes expand the selection of client libraries to include options for PHP, Perl, Ruby, Java, C#, Erlang, and Haskel.  Please contact us if you'd like to create a library for your favorite language, or even if you just have a recommendation on which popular S3 libraries you'd like to have ported to use Nimbus.io.
+The development roadmap includes expand the selection of client libraries to
+include options for PHP, Perl, Ruby, Java, C#, Erlang, and Haskel.  Please
+contact us if you'd like to create a library for your favorite language, or
+even if you just have a recommendation on which popular S3 libraries you'd like
+to have ported to use Nimbus.io.
 
-Similar to the Nimbus.io server software itself, all the client libraries we write are free software released under the LGPL license.
+Similar to the Nimbus.io server software itself, all the client libraries we
+write are free software released under the LGPL license.
 
 Migrating data
 ^^^^^^^^^^^^^^
 
-Nimbus.io is intended to facilitate easy bidirectional migration between Nimbus.io, Amazon S3, and other cloud storage systems.  The nimbus.io command line tool and libraries know how to interact with multiple platforms.   Since the Nimbus.io platform is available under the GPL free software license, there's also always the option to bring your data home.  (See "Rolling your Own Cloud")
+Nimbus.io is intended to facilitate easy bidirectional migration between
+Nimbus.io, Amazon S3, and other cloud storage systems.  The nimbus.io command
+line tool and libraries know how to interact with multiple platforms.   Since
+the Nimbus.io platform is available under the GPL free software license,
+there's also always the option to bring your data home.  (See "Rolling your Own
+Cloud")
 
-To further ease interoperability, the Nimbus.io feature roadmap includes a REMOTE COPY operation within the Nimbus.io API to facilitate direct server-to-server data transfer between Nimbus.IO, S3, or other network accessible storage resources.  
+To further ease interoperability, the Nimbus.io feature roadmap includes a
+REMOTE COPY operation within the Nimbus.io API to facilitate direct
+server-to-server data transfer between Nimbus.IO, S3, or other network
+accessible storage resources.  
 
 Rolling Your Own Cloud
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -135,7 +205,8 @@ key_id
 
 
 signature
-   A hex string signature, generated for each request as described in Authentication Signature
+   A hex string signature, generated for each request as described in
+   Authentication Signature
 
 Authentication Signature
 ++++++++++++++++++++++++
@@ -318,7 +389,7 @@ Each object within a collection is uniquely identified by a key. The key must
 be between 1 and 1024 characters long. When used in an HTTP request, the key
 must meet the standard HTTP restrictions. 
 
-nimbus.io does not impose, or recognize, any structure or hierarchy among the 
+Nimbus.io does not impose or recognize any structure or hierarchy among the 
 keys in a collection. 
 
 You can organize your data hierarchically by using a delimiter character in 
@@ -536,6 +607,8 @@ List the known uploads in sequence
 
     :statuscode 200: no error
 
-.. [1] In an ideal world, we would just need DELETE for the this. But due to limited browser support for the DELETE verb, we also provide an alternative via POST with action=delete. 
+.. [1] In an ideal world, we would just need DELETE for the this. But due to
+   limited browser support for the DELETE verb, we also provide an alternative
+   via POST with action=delete. 
 
 

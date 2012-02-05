@@ -375,8 +375,8 @@ tweak your cluster hardware arrangements if you need to improve performance.
 For a large Nimbus.io service with many collections and many clusters, the
 biggest management challenge is balancing space usage across the many storage
 clusters.  There are some home grown tools for this with goofy names like
-space cadet, space colony, and space ship which we'll work on releasing as
-free and open source software.
+`space cadet`, `space colony`, and `space ship` which we'll work on releasing
+as free and open source software.
 
 Recovery from Storage Node Failure
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -407,9 +407,9 @@ re-initializing one or more storage volumes.
 
 #. If the node's local database was lost, restore the database from the most
 recent dump and then apply any archived log files to bring it close to current.
-Even an week old backup will reduce the amount of work anti entropy must do.
-If the node local database cannot be restored at all, treat the situation as a
-total machine failure.
+Even database backup that is days or weeks old will reduce the amount of work
+anti entropy must do.  If the node local database cannot be restored at all,
+treat the situation as a total machine failure.
 
 #. Bring the node's Nimbus.io services online, and allow anti entropy to begin. 
 
@@ -425,7 +425,8 @@ total machine failure.
 .. [#] There are some advanced and durable alternatives to this if you
    absolutely need the added performance of write caching.  Generally having a
    dedicated "journal volume" that ONLY syncs incoming writes (and is only read
-   from in the event of crash recovery) gives excellent write performance.
+   from in the event of crash recovery) gives acceptable durable write
+   performance.
 
 `nimbus.io <https://nimbus.io/>`_ 
 

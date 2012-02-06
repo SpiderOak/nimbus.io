@@ -37,6 +37,7 @@ class DataWriter(object):
         conjoined_unified_id,
         conjoined_part,
         segment_num,
+        zfec_padding_size,
         file_size,
         file_adler32,
         file_md5,
@@ -56,6 +57,7 @@ class DataWriter(object):
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
             "segment-size"              : len(segment),
+            "zfec-padding-size"         : zfec_padding_size,
             "segment-md5-digest"        : b64encode(segment_md5.digest()),
             "segment-adler32"           : zlib.adler32(segment),
             "file-size"                 : file_size,
@@ -85,6 +87,7 @@ class DataWriter(object):
         unified_id,
         timestamp,
         segment_num,
+        zfec_padding_size,
         sequence_num,
         segment
     ):
@@ -102,6 +105,7 @@ class DataWriter(object):
             "timestamp-repr"        : repr(timestamp),
             "segment-num"           : segment_num,
             "segment-size"          : len(segment),
+            "zfec-padding-size"     : zfec_padding_size,
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
             "segment-adler32"       : zlib.adler32(segment),
             "sequence-num"          : sequence_num,
@@ -126,6 +130,7 @@ class DataWriter(object):
         unified_id,
         timestamp,
         segment_num,
+        zfec_padding_size,
         sequence_num,
         segment
     ):
@@ -141,6 +146,7 @@ class DataWriter(object):
             "timestamp-repr"        : repr(timestamp),
             "segment-num"           : segment_num,
             "segment-size"          : len(segment),
+            "zfec-padding-size"     : zfec_padding_size,
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
             "segment-adler32"       : zlib.adler32(segment),
             "sequence-num"          : sequence_num,
@@ -167,6 +173,7 @@ class DataWriter(object):
         conjoined_unified_id,
         conjoined_part,
         segment_num,
+        zfec_padding_size,
         sequence_num,
         file_size,
         file_adler32,
@@ -188,6 +195,7 @@ class DataWriter(object):
                 "conjoined-part"            : conjoined_part,
                 "segment-num"               : segment_num,
                 "segment-size"              : len(segment),
+                "zfec-padding-size"         : zfec_padding_size,
                 "segment-md5-digest"        : b64encode(segment_md5.digest()),
                 "segment-adler32"           : zlib.adler32(segment),
                 "sequence-num"              : sequence_num,

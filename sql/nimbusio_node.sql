@@ -176,6 +176,7 @@ create table value_file (
 create table segment_sequence (
     collection_id int4 not null,
     segment_id int8 not null,
+    zfec_padding_size int4 not null,
     value_file_id int4 not null,
     sequence_num int4 not null,
     value_file_offset int8 not null,

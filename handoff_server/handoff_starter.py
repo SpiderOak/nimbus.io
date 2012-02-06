@@ -40,13 +40,13 @@ class HandoffStarter(object):
         if halt_event.is_set():
             return
 
-        self._log.debug("%s pending handoffs" % (
-            len(self._state["pending-handoffs"])
-        ))
-
         if self._state["forwarder"] is not None:
             # run again later
             return [(self.run, time.time() + _delay_interval, )]
+
+        self._log.debug("%s pending handoffs" % (
+            len(self._state["pending-handoffs"])
+        ))
 
         try:
             segment_row, source_node_names = \

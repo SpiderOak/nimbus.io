@@ -157,6 +157,7 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
         insert into nimbusio_node.segment_sequence (
             "collection_id",
             "segment_id",
+            "zfec_padding_size",
             "value_file_id",
             "sequence_num",
             "value_file_offset",
@@ -166,6 +167,7 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
         ) values (
             %(collection_id)s,
             %(segment_id)s,
+            %(zfec_padding_size)s,
             %(value_file_id)s,
             %(sequence_num)s,
             %(value_file_offset)s,
@@ -266,6 +268,7 @@ class Writer(object):
         timestamp_repr, 
         segment_num, 
         segment_size,
+        zfec_padding_size,
         segment_md5_digest,
         segment_adler32,
         sequence_num, 
@@ -297,6 +300,7 @@ class Writer(object):
         segment_sequence_row = segment_sequence_template(
             collection_id=collection_id,
             segment_id=segment_entry["segment-id"],
+            zfec_padding_size=zfec_padding_size,
             value_file_id=self._value_file.value_file_id,
             sequence_num=sequence_num,
             value_file_offset=self._value_file.size,

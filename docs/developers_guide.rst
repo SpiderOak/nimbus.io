@@ -8,48 +8,31 @@ Contents:
 
 Overview
 ^^^^^^^^
-This API is intended to offer the best possible value for bulk, long term 
-archival of data. We don't attempt to deliver a low-latency solution, but 
-rather focus on reliability and bulk-transfer throughput. It is not suitable, 
-for example, for serving content on a high-performance web page, or streaming 
-rich multimedia to many users.
 
-Data is stored using an adaptation of the Reed-Solomon algorithm to distribute 
-the data across many servers with minimal overhead. Using this storage method 
-requires greater computational time for handling requests, and is one of the 
-reasons that we focus on giving great cost-value rather than high performance.
-
-The API itself is designed to be simple, adopting a RESTful interface to 
-key-value storage. It is similar to Amazon's S3 API, and we plan on providing 
-a drop-in module to help you migrate your application from S3 to nimbus.io.
-
+TODO
 
 Customers, Collections, Objects, and Permissions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-In Nimbus.io, users create collections for their data, and then store objects
-inside a specific collection.  Every collection and every object within a
-collection has a specific owner and permissions associated with it.
+A customer is someone using a Nimbus.io service.  Customers may create one or
+more Collections to organize their data in.  A default collection for each
+customer is created automatically.  Within a collection, objects maybe stored,
+retrieved, listed, and removed.  Collections can optionally support Object
+Versioning.
 
-As of this writing, Nimbus.io only supports a the simplest of permissions:
-authenticated users can access their own objects, and nothing else.   
-
-Very soon this will be expanded to allow permissions to be set on some objects
-for public access.  That will be followed by a more rich Unix style user and
-group permission model, and then full ACLs.  
-
-There is not currently a way to mark objects as publically accessible. 
+As of this writing, Nimbus.io only supports a the simplest permission system:
+authenticated users can access their own objects, and nothing else.   This will
+be expanded to allow objects to be set as publically readable.  That will be
+followed by a more rich Unix style user and group permission model and ACLs.
 
 Command line tools
 ^^^^^^^^^^^^^^^^^^
 
 If you have `lumberyard` and `motoboto` (the Python libraries for accessing
 Nimbus.io) installed, you can use a command line tool to list, delete, and
-archive data into your nimbus collections.
+archive data into your Nimbus.io Collections.
 
-Here are some examples using the `nio_cmd` command line tool:
-
-::
+Here are some examples using the `nio_cmd` command line tool::
 
     # list keys in collection 
     ls_nio collection_name 
@@ -236,7 +219,7 @@ username
 
 method
    The HTTP method being used for the request. At this time, 
-   either GET or POST.
+   either GET, POST, or DELETE.
 
 
 timestamp
@@ -271,21 +254,15 @@ The following Python function will generate a valid signature for its inputs:
 X-NIMBUS-IO-Timestamp
 +++++++++++++++++++++
 
-To provide some protection against replay attacks, the authentication 
-signature contains a timestamp field. In order for the server to verify the 
-signature, a special header must be provided in the request with the same 
-timestamp used to generate the signature. The header is X-NIMBUS-IO-Timestamp, 
-and the value is the timestamp detailed in Authentication Signature. 
+To limit the useful lifetime of an authentication signature, the signature
+includes a timestamp.  In order for the server to verify the signature, a
+special header must be provided in the request with the same timestamp used to
+generate the signature. The header is X-NIMBUS-IO-Timestamp, and the value is
+the timestamp detailed in Authentication Signature. 
 
 For example:
 
 X-NIMBUS-IO-Timestamp: 1276808600
-
-Important
-
-The timestamp must agree within 10 minutes of that on the server, 
-or the server will reject the authentication. Please synchronize your clock to 
-an NTP server or otherwise make sure it is correct.
 
 Authentication Example
 ++++++++++++++++++++++
@@ -541,6 +518,8 @@ A conjoined archive enables multiple parts of a file to be uploaded in
 parallel. And/or for individual uploads to be restarted without restarting
 the entire archive.
 
+**Note**: As of this writing, support for Conjoined Archives is incomplete.
+
 Listing Conjoined Archives
 ++++++++++++++++++++++++++
 List the conjoined archives active for this collection 
@@ -636,8 +615,7 @@ Nimbus.io, Amazon S3, and other cloud storage systems.
 Since the Nimbus.io platform is available under the AGPL free software license,
 there's also always the option to bring your data home.
 
-To further ease interoperability, the Nimbus.io development roadmap includes a
-`remote copy` operation within the Nimbus.io API to facilitate direct
-server-to-server data transfer between Nimbus.IO, S3, or other network
-accessible storage resources.
+TODO to further ease interoperability, the development roadmap includes remote
+copy additions to the API, so that data can be directly transferred between the
+Nimbus.io storage service, S3, and other network accessible resources.
 

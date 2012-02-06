@@ -39,7 +39,7 @@ class GreenletResilientClient(Greenlet):
         The zeromq address of the ROUTER_ socket of the server we connect to
 
     client_tag
-        A unique identifier for our client, to be inclused in every message
+        A unique identifier for our client, to be included in every message
         so the remote server knows where to send replies
 
     client_address

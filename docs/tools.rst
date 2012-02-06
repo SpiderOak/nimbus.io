@@ -51,8 +51,12 @@ Resilient Server
 .. autoclass:: tools.resilient_server.ResilientServer
     :members:
 
-LRU Cache
----------
-.. autoclass:: tools.LRUCache.LRUCache
-    :members:
+.. 
+    We didn't even write this. It's a standard recipe. Do we need to document
+    it? Leaving it commented for now.
+
+    LRU Cache
+    ---------
+    .. autoclass:: tools.LRUCache.LRUCache
+        :members:
 

@@ -184,7 +184,7 @@ talking to Nginx.  Nginx runs on each storage node, handles the SSL, and does
 HTTP forwarding to the application level Nimbus.io web server.
 
 Storage Node Database Configuration
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 Each storage node has a PostgreSQL database instance that is local to that
 node.  This is because filesystems are notoriously bad at storing large

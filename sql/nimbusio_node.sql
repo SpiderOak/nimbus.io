@@ -58,6 +58,7 @@ create table segment (
      * segment_sequence. It's true that every sequence stored on the local node 
      * for a given key should have the same segment_num, right?  If so, it goes
      * here. */
+    source_node_id int4,
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */

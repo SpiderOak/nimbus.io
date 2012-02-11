@@ -61,6 +61,7 @@ create table segment (
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
+    constraint possible_status check (status in ('A', 'C', 'F', 'T')),
     constraint file_tombstone_zero_size check (status != 'T' or file_size = 0),
     constraint file_nonzero_size check (status = 'T' or file_size > 0),
     constraint file_adler32_not_null check

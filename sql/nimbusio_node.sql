@@ -35,11 +35,14 @@ create unique index conjoined_unified_id_idx on nimbusio_node.conjoined ("unifie
  * old versions periodically, thus offering offering some safety of multiple
  * versions by default */
 
+create type segment_status as enum ('active', 'canceled', 'final', 'tombstone');
+
 create sequence segment_id_seq;
 create table segment (
     id int8 primary key default nextval('nimbusio_node.segment_id_seq'),
     collection_id int4 not null,
     key varchar(1024),
+    status segment_status not null,
     unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2,
@@ -48,7 +51,6 @@ create table segment (
     file_size int8 not null default 0,
     file_adler32 int4,
     file_hash bytea,
-    file_tombstone bool not null default false,
     file_tombstone_unified_id int8,
     /* XXX: wasn't completely sure if this column belongs in segment or
      * segment_sequence. It's true that every sequence stored on the local node 
@@ -57,14 +59,14 @@ create table segment (
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
-    constraint file_tombstone_zero_size check (file_tombstone is false or file_size = 0),
-    constraint file_nonzero_size check (file_tombstone is true or file_size > 0),
+    constraint file_tombstone_zero_size check (status != 'tombstone' or file_size = 0),
+    constraint file_nonzero_size check (status = 'tombstone' or file_size > 0),
     constraint file_adler32_not_null check
-        (file_tombstone is true or file_adler32 is not null),
+        (status = 'tombstone' or file_adler32 is not null),
     constraint file_hash_not_null check
-        (file_tombstone is true or file_hash is not null),
+        (status = 'tombstone' or file_hash is not null),
     constraint segment_num_not_null check
-        (file_tombstone is true or segment_num is not null),
+        (status = 'tombstone' or segment_num is not null),
     constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
 

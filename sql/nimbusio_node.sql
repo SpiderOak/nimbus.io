@@ -35,14 +35,16 @@ create unique index conjoined_unified_id_idx on nimbusio_node.conjoined ("unifie
  * old versions periodically, thus offering offering some safety of multiple
  * versions by default */
 
-create type segment_status as enum ('active', 'canceled', 'final', 'tombstone');
+/*
+segment_status 'A' = 'active', 'C' = 'canceled', 'F' = 'final', 'T'= 'tombstone'
+*/
 
 create sequence segment_id_seq;
 create table segment (
     id int8 primary key default nextval('nimbusio_node.segment_id_seq'),
     collection_id int4 not null,
     key varchar(1024),
-    status segment_status not null,
+    status char not null,
     unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2,
@@ -59,10 +61,10 @@ create table segment (
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
-    constraint file_tombstone_zero_size check (status != 'tombstone' or file_size = 0),
-    constraint file_nonzero_size check (status = 'tombstone' or file_size > 0),
+    constraint file_tombstone_zero_size check (status != 'T' or file_size = 0),
+    constraint file_nonzero_size check (status = 'T' or file_size > 0),
     constraint file_adler32_not_null check
-        (status = 'tombstone' or file_adler32 is not null),
+        (status = 'T' or file_adler32 is not null),
     constraint file_hash_not_null check
         (status = 'tombstone' or file_hash is not null),
     constraint segment_num_not_null check

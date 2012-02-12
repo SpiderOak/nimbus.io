@@ -47,10 +47,10 @@ delete from segment_sequence where exists (
 
 _archive_old_tombstones = """
 insert into segment_archived
-    select * from segment where file_tombstone is true 
+    select * from segment where status = 'T'
     and age(timestamp) > %(max_node_offline_time)s::interval;
 
-delete from segment where file_tombstone is true 
+delete from segment where status = 'T' 
 and age(timestamp) > %(max_node_offline_time)s::interval;
 """
 

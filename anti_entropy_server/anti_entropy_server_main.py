@@ -177,7 +177,7 @@ def _handle_consistency_check(state, message, _data):
         select key, timestamp, file_hash 
         from nimbusio_node.segment 
         where collection_id = %s 
-        and file_tombstone = false
+        and status = 'A'
         and handoff_node_id is null
         order by key, timestamp
         """.strip(),

@@ -58,19 +58,19 @@ create table segment (
      * segment_sequence. It's true that every sequence stored on the local node 
      * for a given key should have the same segment_num, right?  If so, it goes
      * here. */
-    source_node_id int4,
+    source_node_id int4 not null,
     handoff_node_id int4,
     /* these constraints are written separately with distinct names to make
      * error messages more clear */
     constraint possible_status check (status in ('A', 'C', 'F', 'T')),
     constraint file_tombstone_zero_size check (status != 'T' or file_size = 0),
-    constraint file_nonzero_size check (status = 'T' or file_size > 0),
+    constraint file_nonzero_size check (status != 'F' or file_size > 0),
     constraint file_adler32_not_null check
-        (status = 'T' or file_adler32 is not null),
+        (status != 'F' or file_adler32 is not null),
     constraint file_hash_not_null check
-        (status = 'tombstone' or file_hash is not null),
+        (status != 'F' or file_hash is not null),
     constraint segment_num_not_null check
-        (status = 'tombstone' or segment_num is not null),
+        (status != 'F'or segment_num is not null),
     constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
 

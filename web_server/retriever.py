@@ -11,6 +11,8 @@ import gevent
 import gevent.pool
 import gevent.queue
 
+from tools.data_definitions import segment_status_final
+
 from web_server.exceptions import RetrieveFailedError
 from web_server.local_database_util import current_status_of_key
 
@@ -64,14 +66,14 @@ class Retriever(object):
                 self._collection_id, self._key,
             ))
 
-        is_deleted = False
+        is_available = False
         if conjoined_row is None:
-            is_deleted = segment_rows[0].file_tombstone
+            is_available = segment_rows[0].status == segment_status_final
         else:
-            is_deleted = conjoined_row.delete_timestamp is not None
+            is_available = conjoined_row.delete_timestamp is not None
 
-        if is_deleted:
-            raise RetrieveFailedError("key is deleted %s %s" % (
+        if not is_available:
+            raise RetrieveFailedError("key is not available %s %s" % (
                 self._collection_id, self._key,
             ))
 

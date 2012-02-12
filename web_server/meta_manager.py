@@ -4,6 +4,8 @@ meta_manager.py
 
 functions for accessing meta data
 """
+from tools.data_definitions import segment_status_final
+
 from web_server.local_database_util import current_status_of_key
 
 _retrieve_meta_query = """
@@ -20,7 +22,8 @@ def retrieve_meta(connection, collection_id, key, version_id=None):
     _conjoined_row, segment_rows = current_status_of_key(
         connection, collection_id, key, version_id
     )
-    if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
+    if len(segment_rows) == 0 or \
+       segment_rows[0].status != segment_status_final:
         return None
 
     return dict(connection.fetch_all_rows(

@@ -10,6 +10,7 @@ Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
    intro
    developers_guide

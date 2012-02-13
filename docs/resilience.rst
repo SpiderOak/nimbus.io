@@ -1,10 +1,10 @@
 Resilience
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
 Nimbus.io server processes work together over a cluster of hosts. Servers send
 mesages to each other over `ZeroMQ Sockets <http://www.zeromq.org/>`_.

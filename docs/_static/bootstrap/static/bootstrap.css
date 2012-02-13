@@ -78,7 +78,6 @@ table {
 }
 ol, ul {
   list-style: none;
-  padding-left:18px;
 }
 q:before,
 q:after,
@@ -188,8 +187,7 @@ body {
   font-size: 1.0em;
   font-weight: normal;
   line-height: 18px;
-  /*color: #404040;*/
-  color:#000000;
+  color: #404040;
 }
 .container {
   width: 940px;
@@ -408,7 +406,6 @@ h4,
 h5,
 h6 {
   font-weight: bold;
-  margin-left:-10px;
   color: #404040;
 }
 h1 small,
@@ -552,8 +549,7 @@ code {
   padding: 1px 3px;
 }
 pre {
-  /* background-color: #f5f5f5; */
-  background-color:#f9f3d8;
+  background-color: #f5f5f5;
   display: block;
   padding: 8.5px;
   margin: 0 0 18px;
@@ -2474,19 +2470,8 @@ button.btn::-moz-focus-inner, input[type=submit].btn::-moz-focus-inner {
 div.section {
     position: relative;
     margin-top: 50px;
-    padding-top: 38px;
-}
-
-tt.descname {
-    font-size:0.9em!important;
-}
-
-.dropdown-menu {
-    font-size:70%!important;
-}
-
-tr.field {
-    padding-bottom:10px;
+    top: 30px;
+    padding-top: 35px;
 }
 
 .brand {
@@ -2498,4 +2483,3 @@ tr.field {
     margin: 0 !important;
     padding: 0 !important;
 }
-

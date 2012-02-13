@@ -1,10 +1,10 @@
 Developer's Guide
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
 Overview
 ^^^^^^^^
@@ -322,6 +322,7 @@ Deleting a Collection
     Delete an existing collection. [1]_ 
 
     :query action: delete (POST only) 
+
     :statuscode 200: no error
     :statuscode 403: forbidden to delete the default collection, or a collection contaning data.
     :statuscode 404: unknown collection

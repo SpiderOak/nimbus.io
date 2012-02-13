@@ -1,10 +1,10 @@
 Operating nimbus.io
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
 This discusses day to day operaton of nimbus.io
 

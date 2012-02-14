@@ -42,6 +42,7 @@ from tools.database_connection import get_central_connection, \
 from tools.event_push_client import EventPushClient
 from tools.unified_id_factory import UnifiedIDFactory
 from tools.id_translator import InternalIDTranslator
+from tools.data_definitions import create_priority, create_timestamp
 
 from web_server.application import Application
 from web_server.data_reader import DataReader
@@ -118,6 +119,18 @@ class WebServer(object):
         )
         self._pull_server.link_exception(self._unhandled_greenlet_exception)
 
+        # message sent to data readers and writers telling them the server
+        # is (re)starting, thereby invalidating any archvies or retrieved
+        # that are in progress for this node
+        timestamp = create_timestamp()
+        start_message = {
+            "message-type"              : "web-server-start",
+            "priority"                  : create_priority(),
+            "unified-id"                : self._unified_id_factory.next(),
+            "timestamp-repr"            : repr(timestamp),
+            "source-node-name"          : _local_node_name,
+        }
+
         self._data_writer_clients = list()
         for node_name, address in zip(_node_names, _data_writer_addresses):
             resilient_client = GreenletResilientClient(
@@ -126,7 +139,8 @@ class WebServer(object):
                 address,
                 _client_tag,
                 _web_server_pipeline_address,
-                self._deliverator
+                self._deliverator,
+                connect_messages=[start_message, ]
             )
             resilient_client.link_exception(self._unhandled_greenlet_exception)
             self._data_writer_clients.append(resilient_client)
@@ -140,7 +154,8 @@ class WebServer(object):
                 address,
                 _client_tag,
                 _web_server_pipeline_address,
-                self._deliverator
+                self._deliverator,
+                connect_messages=[start_message, ]
             )
             resilient_client.link_exception(self._unhandled_greenlet_exception)
             self._data_reader_clients.append(resilient_client)

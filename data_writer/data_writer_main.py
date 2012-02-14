@@ -534,6 +534,12 @@ def _handle_finish_conjoined_archive(state, message, _data):
     }
     state["resilient-server"].send_reply(reply)
 
+def _handle_web_server_start(state, message, _data):
+    log = logging.getLogger("_handle_web_server_start")
+    log.info("%s %s %s" % (message["unified-id"], 
+                           message["timestamp-repr"],
+                           message["source-node-name"]))
+
 _dispatch_table = {
     "archive-key-entire"        : _handle_archive_key_entire,
     "archive-key-start"         : _handle_archive_key_start,
@@ -544,6 +550,7 @@ _dispatch_table = {
     "start-conjoined-archive"   : _handle_start_conjoined_archive,
     "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
     "finish-conjoined-archive"  : _handle_finish_conjoined_archive,
+    "web-server-start"          : _handle_web_server_start,
 }
 
 def _create_state():

@@ -188,6 +188,23 @@ def _insert_segment_tombstone_row(
     )
     connection.commit()
 
+def _cancel_segment_rows(connection, source_node_id, timestamp):
+    """
+    cancel all segment rows 
+       * from a specifiic source node
+       * are in active status 
+       * with a timestamp earlier than the specified time. 
+    This is triggered by a web server restart
+    """
+    connection.execute("""
+        update nimbusio_node.segment
+        set status = 'C'
+        where source_node_id = %s 
+        and status = 'A' 
+        and timestamp < %s::timestamp
+    """, [source_node_id, timestamp, ])
+    connection.commit()
+
 def _insert_segment_sequence_row(connection, segment_sequence_row):
     """
     Insert one segment_sequence entry
@@ -434,6 +451,16 @@ class Writer(object):
             source_node_id,
             handoff_node_id
         )
+
+    def cancel_active_archives_from_node(self, source_node_id, timestamp):
+        """
+        cancel all segment rows 
+           * from a specifiic source node
+           * are in active status 
+           * with a timestamp earlier than the specified time. 
+        This is triggered by a web server restart
+        """
+        _cancel_segment_rows(self._connection, source_node_id, timestamp)
 
     def purge_handoff_source(
         self, collection_id, unified_id, handoff_node_id

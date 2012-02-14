@@ -402,6 +402,10 @@ def _handle_archive_key_final(state, message, data):
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
 
+def _handle_archive_key_cancel(state, message, _data):
+    log = logging.getLogger("_handle_archive_key_cancel")
+    log.info("%s %s" % (message["unified-id"], message["timestamp-repr"], ))
+
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
     log.info("%s %s %s %s %s" % (
@@ -540,11 +544,18 @@ def _handle_web_server_start(state, message, _data):
                            message["timestamp-repr"],
                            message["source-node-name"]))
 
+    source_node_id = state["node-id-dict"][message["source-node-name"]]
+    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+    state["writer"].cancel_active_archives_from_node(
+        source_node_id, timestamp 
+    )
+
 _dispatch_table = {
     "archive-key-entire"        : _handle_archive_key_entire,
     "archive-key-start"         : _handle_archive_key_start,
     "archive-key-next"          : _handle_archive_key_next,
     "archive-key-final"         : _handle_archive_key_final,
+    "archive-key-cancel"        : _handle_archive_key_cancel,
     "destroy-key"               : _handle_destroy_key,
     "purge-handoff-source"      : _handle_purge_handoff_source,
     "start-conjoined-archive"   : _handle_start_conjoined_archive,

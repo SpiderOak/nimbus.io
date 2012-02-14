@@ -600,6 +600,20 @@ class Application(object):
             response.retry_after = _archive_retry_interval
             self._stats["archives"] -= 1
             return response
+        except Exception, instance:
+            # 2012-07-14 dougfort -- were getting
+            # IOError: unexpected end of file while reading request
+            # if the sender croaks
+            self._event_push_client.error(
+                "archive-failed-error",
+                "%s: %s" % (description, instance, )
+            )
+            self._log.exception("archive failed: %s %s" % (
+                description, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            self._stats["archives"] -= 1
+            return response
         
         end_time = time.time()
         self._stats["archives"] -= 1

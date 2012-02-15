@@ -39,7 +39,7 @@ def _all_sequence_rows_for_segment(
             select id from nimbusio_node.segment 
             where unified_id = %%s
             and segment_num = %%s
-            and file_tombstone=false
+            and status = 'F'
         )
         order by sequence_num asc
     """ % (",".join(segment_sequence_template._fields), ), [

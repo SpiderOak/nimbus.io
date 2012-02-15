@@ -34,7 +34,9 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import create_timestamp, nimbus_meta_prefix
+from tools.data_definitions import create_timestamp, \
+        nimbus_meta_prefix, \
+        segment_status_final
 
 from tools.collection import get_username_and_collection_id, \
         get_collection_id, \
@@ -989,7 +991,8 @@ class Application(object):
         segment_rows = getter.stat(
             collection_entry.collection_id, key, version_id
         )
-        if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
+        if len(segment_rows) == 0 or \
+           segment_rows[0].status != segment_status_final:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)

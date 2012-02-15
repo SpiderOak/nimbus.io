@@ -5,6 +5,7 @@ destroyer.py
 A class that performs a destroy query on all data writers.
 """
 import logging
+import os
 
 import gevent
 import gevent.pool
@@ -15,6 +16,8 @@ from web_server.exceptions import (
 )
 
 from web_server.local_database_util import current_status_of_key
+
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
 class Destroyer(object):
     """Performs a destroy query on all data writers."""
@@ -84,7 +87,8 @@ class Destroyer(object):
                 self.unified_id_to_delete,
                 self._unified_id,
                 self.timestamp,
-                segment_num
+                segment_num,
+                _local_node_name,
             )
         self._join(timeout)
         self._done = []

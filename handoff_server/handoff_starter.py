@@ -81,6 +81,7 @@ class HandoffStarter(object):
         )
         
         self._state["forwarder"] = forwarder_coroutine(
+            self._state["node-name-dict"],
             segment_row, 
             source_node_names, 
             self._state["writer-client-dict"][self._local_node_name], 

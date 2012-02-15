@@ -45,6 +45,7 @@ class UnifiedIDFactory(object):
             raise ValueError("shard_id {0} exceeds {1}".format(
                 shard_id, _max_shard_id
             ))
+        self._shard_id = shard_id
         self._connection = connection
         shard_schema = _shard_schema_template.format(shard_id)
         self._connection.execute(shard_schema)
@@ -57,7 +58,10 @@ class UnifiedIDFactory(object):
         return the next id, by calling the postgres next_id function
         """
         (next_id, ) = self._connection.fetch_one_row(
-            "select next_id from nimbusio_shard_00001.next_id()", []
+            "select next_id from nimbusio_shard_{0:0>5}.next_id()".format(
+                self._shard_id
+            ), 
+            []
         )
 
         return next_id

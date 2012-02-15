@@ -114,12 +114,20 @@ def _handle_archive_key_entire(state, message, data):
         state["resilient-server"].send_reply(reply)
         return
 
+    source_node_id = state["node-id-dict"][message["source-node-name"]]
+    if message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].start_new_segment(
         message["collection-id"], 
-        message["unified-id"],
         message["key"], 
+        message["unified-id"],
         message["timestamp-repr"],
-        message["segment-num"]
+        message["segment-num"],
+        source_node_id,
+        handoff_node_id
     )
 
     state["writer"].store_sequence(
@@ -139,28 +147,17 @@ def _handle_archive_key_entire(state, message, data):
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
-    if message["handoff-node-name"] is None:
-        handoff_node_id = None
-    else:
-        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
-
     conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
-        message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
-        _extract_meta(message),
         message["segment-num"],
-        message["conjoined-unified-id"],
-        conjoined_part,
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
-        file_tombstone=False,
-        file_tombstone_unified_id=None,
-        handoff_node_id=handoff_node_id
+        _extract_meta(message),
     )
 
     reply["result"] = "success"
@@ -216,12 +213,22 @@ def _handle_archive_key_start(state, message, data):
         state["resilient-server"].send_reply(reply)
         return
 
+    source_node_id = state["node-id-dict"][message["source-node-name"]]
+    if message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
+    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
+
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
-        message["segment-num"]
+        message["segment-num"],
+        source_node_id,
+        handoff_node_id
     )
 
     state["writer"].store_sequence(
@@ -378,28 +385,15 @@ def _handle_archive_key_final(state, message, data):
         data
     )
 
-    if message["handoff-node-name"] is None:
-        handoff_node_id = None
-    else:
-        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
-
-    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
-
     state["writer"].finish_new_segment(
         message["collection-id"], 
-        message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
-        _extract_meta(message),
         message["segment-num"],
-        message["conjoined-unified-id"],
-        conjoined_part,
         message["file-size"],
         message["file-adler32"],
         b64decode(message["file-hash"]),
-        file_tombstone=False,
-        file_tombstone_unified_id=None,
-        handoff_node_id=handoff_node_id
+        _extract_meta(message),
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
@@ -419,6 +413,11 @@ def _handle_destroy_key(state, message, _data):
     ))
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
+    source_node_id = state["node-id-dict"][message["source-node-name"]]
+    if message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
     state["writer"].set_tombstone(
         message["collection-id"], 
@@ -426,7 +425,9 @@ def _handle_destroy_key(state, message, _data):
         message["unified-id-to-delete"],
         message["unified-id"],
         timestamp,
-        message["segment-num"]
+        message["segment-num"],
+        source_node_id,
+        handoff_node_id
     )
 
     reply = {

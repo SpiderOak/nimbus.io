@@ -6,16 +6,20 @@ listmatch query.
 """
 
 from collections import namedtuple
+from tools.data_definitions import segment_status_active, \
+    segment_status_cancelled, \
+    segment_status_final, \
+    segment_status_tombstone
 
 _keys_entry = namedtuple("KeysEntry", [
-    "key", "unified_id", "timestamp", "file_tombstone"]
+    "key", "unified_id", "status", "timestamp",]
 )
                         
 _versions_entry = namedtuple("VersionsEntry", [
     "key", 
     "unified_id", 
+    "status",
     "timestamp", 
-    "file_tombstone", 
     "file_tombstone_unified_id"]
 )
 
@@ -36,7 +40,7 @@ def list_keys(
     request_count = max_keys + 1
     result = connection.fetch_all_rows(
         """
-        select key, unified_id, timestamp, file_tombstone
+        select key, unified_id, status, timestamp
         from nimbusio_node.segment
         where collection_id = %s
         and handoff_node_id is null
@@ -55,8 +59,10 @@ def list_keys(
         row = _keys_entry._make(raw_row)
         if row.key == prev_key:
             continue
+        if row.status in [segment_status_active, segment_status_cancelled, ]:
+            continue
         prev_key = row.key
-        if row.file_tombstone:
+        if row.status == segment_status_tombstone:
             continue
         key_list.append(
             {"key" : row.key, 
@@ -99,7 +105,7 @@ def list_versions(
 
     result = connection.fetch_all_rows(
         """
-        select key, unified_id, timestamp, file_tombstone, 
+        select key, unified_id, status, timestamp, 
             file_tombstone_unified_id
         from nimbusio_node.segment
         where collection_id = %s
@@ -129,7 +135,7 @@ def list_versions(
            row.file_tombstone_unified_id == tombstone_unified_id:
             tombstone_unified_id = None
             continue
-        if row.file_tombstone:
+        if row.status == segment_status_tombstone:
             if row.file_tombstone_unified_id is None:
                 tombstone_key = row.key
                 tombstone_unified_id = None
@@ -137,6 +143,8 @@ def list_versions(
                 tombstone_key = None
                 tombstone_unified_id = row.file_tombstone_unified_id
             continue 
+        if row.status in [segment_status_active, segment_status_cancelled, ]:
+            continue
 
         key_list.append(
             {"key" : row.key, 

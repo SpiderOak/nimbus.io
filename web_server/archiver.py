@@ -5,6 +5,7 @@ archiver.py
 A class that sends data segments to data writers.
 """
 import logging
+import os
 
 import gevent
 import gevent.pool
@@ -13,6 +14,8 @@ from web_server.exceptions import (
     AlreadyInProgress,
     ArchiveFailedError,
 )
+
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
 class Archiver(object):
     """Sends data segments to data writers."""
@@ -82,7 +85,8 @@ class Archiver(object):
                         segment_num,
                         zfec_padding_size,
                         self.sequence_num,
-                        segment
+                        segment,
+                        _local_node_name
                     )
             else:
                 for data_writer in data_writers:
@@ -97,7 +101,8 @@ class Archiver(object):
                         segment_num,
                         zfec_padding_size,
                         self.sequence_num,
-                        segment
+                        segment,
+                        _local_node_name
                     )
         self._join(timeout)
         self._done = []
@@ -134,7 +139,8 @@ class Archiver(object):
                     file_size,
                     file_adler32,
                     file_md5,
-                    segment
+                    segment,
+                    _local_node_name
                 )
             else:
                 self._spawn(
@@ -154,7 +160,8 @@ class Archiver(object):
                     file_size,
                     file_adler32,
                     file_md5,
-                    segment
+                    segment,
+                    _local_node_name
                 )
         self._join(timeout)
         self._done = []

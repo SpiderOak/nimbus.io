@@ -16,9 +16,6 @@ Contents:
    developers_guide
    administrators_guide
    internals
-   configuration
-   installation
-   operation
    glossary
 
 Indices and tables

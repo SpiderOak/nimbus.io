@@ -320,13 +320,11 @@ services associated with your domain.  This can be done via setting environment
 variables.
 
 The following environment variables can be set to cause Nimbus.io client
-libraries such as Motoboto and Lumberyard to use your own domain settings.
+libraries such as Motoboto and Lumberyard to use your own domain settings::
 
 `NIMBUS_IO_SERVICE_DOMAIN` (default nimbus.io)
 `NIMBUS_IO_SERVICE_PORT` (default 443)
 `NIMBUS_IO_SERVICE_SSL` (default 1, set to 0 to disable use of SSL)
-
-TODO check formatting for above
 
 Management and Monitoring
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -348,10 +346,10 @@ by process.  This combined with atop can give you good information on how to
 tweak your cluster hardware arrangements if you need to improve performance.
 
 For a large Nimbus.io service with many collections and many clusters, the
-biggest management challenge is balancing space usage across the many storage
-clusters.  There are some home grown tools for this with goofy names like
-`space cadet`, `space colony`, and `space ship` which we'll work on releasing
-as free and open source software.
+biggest management challenge is likely to be balancing space usage across the
+many storage clusters.  There are some home grown tools for this with goofy
+names like `space cadet`, `space colony`, and `space ship` which we'll work on
+releasing as free and open source software.
 
 Recovery from Storage Node Failure
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -366,7 +364,7 @@ inconsistencies in the cluster, restoring the full replication level.
 
 In practice, loss of the entire node is very rare.  Even loss of a single RAID6
 storage volume is rare, but with enough volumes it does happen occasionally.
-The most common scenario is that  component of a machine fails, and the rest is
+The most common scenario is that components of a machine fails, and the rest is
 salvageable.  This allows you to bring the storage cluster back to full health
 with a shorter rebuild time for the anti entropy service to restore replication
 level for lost data.
@@ -391,7 +389,7 @@ treat the situation as a total machine failure.
 .. rubric:: Footnotes:
 
 .. [#] TODO: Link to relevant nerdy information about the SR71 and how it leaks
-   fuel on the ground.
+   fuel on the ground in order to be efficient at high speed in the air.
 
 .. [#] Although there are some ways you can incrementally extend a single
    cluster, such as buying 10 machines, but only 1/3 of the hard drives to fill

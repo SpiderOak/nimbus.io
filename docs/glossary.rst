@@ -11,12 +11,6 @@ Some of the deeper terms within the Nimbus.io code base are omitted.
 
 .. glossary::
 
-A list of all terms commonly used when discussing or developing Nimbus.io.
-This is organized in a somewhat top down order to minimize the number of
-forward pointing references.  
-
-Some of the deeper terms within the Nimbus.io code base are omitted.
-
     Nimbus.io
         A commercial storage service provided by SpiderOak **AND ALSO** a free
         software project for the highly available and highly durable server
@@ -33,8 +27,8 @@ Some of the deeper terms within the Nimbus.io code base are omitted.
     Nimbus.io Service Domain
         The domain used by a Nimbus.io service provider.  For the commericial
         service operated by SpiderOak, this is "nimbus.io."  This forms the
-        basis of URLs for buckets and keys.  For example, the host name for the
-        collection "mycollection" is mycollection.nimbus.io.  
+        basis of URLs for collections and keys.  For example, the host name for
+        the collection "mycollection" is mycollection.nimbus.io.  
 
         This is configured within the Nimbus.io software and client libraries
         with the environment variables::
@@ -219,7 +213,7 @@ Some of the deeper terms within the Nimbus.io code base are omitted.
 
         This continues until the full length of the :term:`Value` has been
         received and stored.  The result is that each :term:`Storage Node`
-        contains a :term`Segment` of the data.
+        contains a :term:`Segment` of the data.
 
     Segment
         The portion of a Key and Value pair stored on a single specific Storage

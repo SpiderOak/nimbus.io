@@ -35,7 +35,7 @@ for i in {0..99} ; do
     fi 
 done
 
-export NIMBUSIO_CONNECTION_TIMEOUT=60.0
+export NIMBUSIO_CONNECTION_TIMEOUT=360.0
 
 # run the benchmark
 python ../motoboto_benchmark/motoboto_benchmark_greenlet_main.py \

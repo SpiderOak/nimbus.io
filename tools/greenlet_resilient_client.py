@@ -7,7 +7,6 @@ to a resilient server
 """
 import logging
 import os
-import time
 import uuid
 
 from  gevent.greenlet import Greenlet
@@ -88,7 +87,8 @@ class GreenletResilientClient(Greenlet):
         server_address, 
         client_tag, 
         client_address,
-        deliverator
+        deliverator,
+        connect_messages=list()
     ):
         Greenlet.__init__(self)
 
@@ -105,6 +105,16 @@ class GreenletResilientClient(Greenlet):
         self._deliverator = deliverator
 
         self._send_queue = gevent.queue.Queue()
+
+        # prime the send queue with messages to be sent as soon
+        # as we connect
+        for connect_message in connect_messages:
+            if not "message-id" in connect_message:
+                connect_message["message-id"] = uuid.uuid1().hex
+            message = message_format(
+                ident=None, control=connect_message, body=None
+            )
+            self._send_queue.put(message)
 
         self._dealer_socket = None
         self.connected = False

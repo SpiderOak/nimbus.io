@@ -17,7 +17,7 @@ from gevent.queue import Queue
 
 from tools.data_definitions import message_format
 
-_data_writer_timeout = 30.0
+_data_writer_timeout = 300.0
 
 class DataWriterHandoffClient(object):
     """

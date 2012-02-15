@@ -148,7 +148,7 @@ class DataWriter(object):
             "priority"              : self._archive_priority,
             "collection-id"         : collection_id,
             "key"                   : key,
-            "unified_id"            : unified_id,
+            "unified-id"            : unified_id,
             "timestamp-repr"        : repr(timestamp),
             "segment-num"           : segment_num,
             "segment-size"          : len(segment),

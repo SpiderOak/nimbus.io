@@ -10,6 +10,7 @@ Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
    intro
    developers_guide
@@ -18,6 +19,7 @@ Contents:
    configuration
    installation
    operation
+   glossary
 
 Indices and tables
 ==================

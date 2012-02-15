@@ -1,10 +1,10 @@
 Special Purpose Servers
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
 Thes are special purpose servers
 

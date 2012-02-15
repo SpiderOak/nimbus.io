@@ -1,10 +1,10 @@
 Internals
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
    resilience 
    tools

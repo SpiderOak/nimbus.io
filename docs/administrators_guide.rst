@@ -1,10 +1,10 @@
 Administrator's Guide
 =======================================================
 
-Contents:
 
 .. toctree::
     :maxdepth: 10
+    :numbered:
 
 To cloud or not to cloud?
 ^^^^^^^^^^^^^^^^^^^^^^^^^

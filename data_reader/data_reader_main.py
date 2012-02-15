@@ -224,9 +224,16 @@ def _handle_retrieve_key_next(state, message, _data):
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=data_content)
 
+def _handle_web_server_start(state, message, _data):
+    log = logging.getLogger("_handle_web_server_start")
+    log.info("%s %s %s" % (message["unified-id"], 
+                           message["timestamp-repr"],
+                           message["source-node-name"]))
+
 _dispatch_table = {
     "retrieve-key-start"    : _handle_retrieve_key_start,
     "retrieve-key-next"     : _handle_retrieve_key_next,
+    "web-server-start"      : _handle_web_server_start,
 }
 
 def _create_state():

@@ -85,6 +85,7 @@ def _convert_dict_to_segment_row(segment_dict):
         id=segment_dict["id"],
         collection_id=segment_dict["collection_id"],
         key=segment_dict["key"],
+        status=segment_dict["status"],
         unified_id=segment_dict["unified_id"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
@@ -93,8 +94,8 @@ def _convert_dict_to_segment_row(segment_dict):
         file_size=segment_dict["file_size"],
         file_adler32=segment_dict["file_adler32"],
         file_hash=segment_dict["file_hash"],
-        file_tombstone=segment_dict["file_tombstone"],
         file_tombstone_unified_id=segment_dict["file_tombstone_unified_id"],
+        source_node_id=segment_dict["source_node_id"],
         handoff_node_id=segment_dict["handoff_node_id"]
     )
 

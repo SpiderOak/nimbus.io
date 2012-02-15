@@ -8,8 +8,8 @@ _partition_entry = namedtuple("PartitionEntry", [
     "segment_id", 
     "collection_id", 
     "key", 
+    "status",
     "unified_id", 
-    "file_tombstone",
     "file_tombstone_unified_id",
     "key_row_number",
     "key_row_count",])
@@ -17,7 +17,7 @@ _partition_entry = namedtuple("PartitionEntry", [
 _multiple_rows_for_key_query = """
 set search_path to nimbusio_node, public;
 with batched_rows as (
-    select id, collection_id, key, unified_id, file_tombstone, 
+    select id, collection_id, key, status, unified_id, 
         file_tombstone_unified_id,
         row_number() over key_rows as key_row_num,
         count(*) over key_rows as key_row_count

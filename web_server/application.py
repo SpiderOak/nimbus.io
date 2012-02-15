@@ -34,7 +34,9 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import create_timestamp, nimbus_meta_prefix
+from tools.data_definitions import create_timestamp, \
+        nimbus_meta_prefix, \
+        segment_status_final
 
 from tools.collection import get_username_and_collection_id, \
         get_collection_id, \
@@ -598,6 +600,20 @@ class Application(object):
             response.retry_after = _archive_retry_interval
             self._stats["archives"] -= 1
             return response
+        except Exception, instance:
+            # 2012-07-14 dougfort -- were getting
+            # IOError: unexpected end of file while reading request
+            # if the sender croaks
+            self._event_push_client.error(
+                "archive-failed-error",
+                "%s: %s" % (description, instance, )
+            )
+            self._log.exception("archive failed: %s %s" % (
+                description, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            self._stats["archives"] -= 1
+            return response
         
         end_time = time.time()
         self._stats["archives"] -= 1
@@ -989,7 +1005,8 @@ class Application(object):
         segment_rows = getter.stat(
             collection_entry.collection_id, key, version_id
         )
-        if len(segment_rows) == 0 or segment_rows[0].file_tombstone:
+        if len(segment_rows) == 0 or \
+           segment_rows[0].status != segment_status_final:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)

@@ -8,10 +8,13 @@ import logging
 import os
 import psycopg2
 
-from tools.data_definitions import segment_row_template, \
-        segment_sequence_template, \
+from tools.data_definitions import segment_sequence_template, \
         parse_timestamp_repr, \
-        meta_row_template
+        meta_row_template, \
+        segment_status_active, \
+        segment_status_cancelled, \
+        segment_status_final, \
+        segment_status_tombstone
 from data_writer.output_value_file import OutputValueFile
 
 _max_value_file_size = int(os.environ.get(
@@ -50,51 +53,72 @@ def _set_conjoined_complete_timestamp(connection, conjoined_dict):
         """, conjoined_dict)                   
     connection.commit()
 
-def _get_next_segment_id(connection):
-    (next_segment_id, ) = connection.fetch_one_row(
-        "select nextval('nimbusio_node.segment_id_seq');"
-    )
-    return next_segment_id
-
-def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
+def _insert_new_segment_row(
+    connection,
+    collection_id, 
+    unified_id,
+    key, 
+    timestamp, 
+    segment_num,
+    source_node_id,
+    handoff_node_id
+):
     """
-    Insert one segment entry, with pre-assigned row id, along with
-    associated meta rows
+    Insert a new segment row in 'A'ctive status and return the id
     """
-    segment_row_dict = segment_row._asdict()
-    connection.execute("""
+    return connection.execute_and_return_id("""
         insert into nimbusio_node.segment (
-            id,
             collection_id,
             key,
+            status,
             unified_id,
             timestamp,
             segment_num,
-            conjoined_unified_id, 
-            conjoined_part,
-            file_size,
-            file_adler32,
-            file_hash,
-            file_tombstone,
-            file_tombstone_unified_id,
+            source_node_id,
             handoff_node_id
         ) values (
-            %(id)s,
             %(collection_id)s,
             %(key)s,
+            %(status)s,
             %(unified_id)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
-            %(conjoined_unified_id)s, 
-            %(conjoined_part)s,
-            %(file_size)s,
-            %(file_adler32)s,
-            %(file_hash)s,
-            %(file_tombstone)s,
-            %(file_tombstone_unified_id)s,
+            %(source_node_id)s,
             %(handoff_node_id)s
-        )
-    """, segment_row_dict)
+        ) returning id""", {
+            "collection_id"     : collection_id,
+            "key"               : key,
+            "status"            : segment_status_active,
+            "unified_id"        : unified_id,
+            "timestamp"         : timestamp,
+            "segment_num"       : segment_num,
+            "source_node_id"    : source_node_id,
+            "handoff_node_id"   : handoff_node_id,
+        }
+    )
+
+def _finalize_segment_row(
+    connection, segment_id, file_size, file_adler32, file_hash, meta_rows
+):
+    """
+    Update segment row, set status to 'F'inal, include
+    associated meta rows
+    """
+    connection.execute("""
+        update nimbusio_node.segment 
+        set status = %(status)s,
+            file_size = %(file_size)s,
+            file_adler32 = %(file_adler32)s,
+            file_hash = %(file_hash)s
+        where id = %(segment_id)s
+    """, {
+        "segment_id"    : segment_id,
+        "status"        : segment_status_final,
+        "file_size"     : file_size,
+        "file_adler32"  : file_adler32,
+        "file_hash"     : psycopg2.Binary(file_hash),
+    })
+
     for meta_row in meta_rows:
         meta_row_dict = meta_row._asdict()
         connection.execute("""
@@ -115,38 +139,70 @@ def _insert_segment_row_with_meta(connection, segment_row, meta_rows):
 
     connection.commit()
 
-def _insert_segment_tombstone_row(connection, segment_row):
+def _insert_segment_tombstone_row(
+    connection,
+    collection_id, 
+    key, 
+    unified_id,
+    timestamp, 
+    segment_num,
+    unified_id_to_delete,
+    source_node_id,
+    handoff_node_id
+):
     """
     Insert one segment entry, with default row id
     """
-    segment_row_dict = segment_row._asdict()
     connection.execute("""
         insert into nimbusio_node.segment (
             collection_id,
             key,
+            status,
             unified_id,
             timestamp,
             segment_num,
-            file_size,
-            file_adler32,
-            file_hash,
-            file_tombstone,
             file_tombstone_unified_id,
+            source_node_id,
             handoff_node_id
         ) values (
             %(collection_id)s,
             %(key)s,
+            %(status)s,
             %(unified_id)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
-            %(file_size)s,
-            %(file_adler32)s,
-            %(file_hash)s,
-            %(file_tombstone)s,
             %(file_tombstone_unified_id)s,
+            %(source_node_id)s,
             %(handoff_node_id)s
-        )
-    """, segment_row_dict)
+        )""", {
+            "collection_id"             : collection_id,
+            "key"                       : key,
+            "status"                    : segment_status_tombstone,
+            "unified_id"                : unified_id,
+            "timestamp"                 : timestamp,
+            "segment_num"               : segment_num,
+            "file_tombstone_unified_id" : unified_id_to_delete,
+            "source_node_id"            : source_node_id,
+            "handoff_node_id"           : handoff_node_id,
+        }
+    )
+    connection.commit()
+
+def _cancel_segment_rows(connection, source_node_id, timestamp):
+    """
+    cancel all segment rows 
+       * from a specifiic source node
+       * are in active status 
+       * with a timestamp earlier than the specified time. 
+    This is triggered by a web server restart
+    """
+    connection.execute("""
+        update nimbusio_node.segment
+        set status = 'C'
+        where source_node_id = %s 
+        and status = 'A' 
+        and timestamp < %s::timestamp
+    """, [source_node_id, timestamp, ])
     connection.commit()
 
 def _insert_segment_sequence_row(connection, segment_sequence_row):
@@ -237,27 +293,39 @@ class Writer(object):
     def start_new_segment(
         self, 
         collection_id, 
-        unified_id,
         key, 
+        unified_id,
         timestamp_repr, 
-        segment_num
+        segment_num,
+        source_node_id,
+        handoff_node_id,
     ):
         """
         Initiate storing a segment of data for a file
         """
         segment_key = (unified_id, segment_num, )
-        self._log.info("start_new_segment %s %s %s %s %s" % (
+        self._log.info("start_new_segment %s %s %s %s %s %s" % (
             collection_id, 
             key, 
             unified_id, 
             timestamp_repr, 
             segment_num, 
+            source_node_id,
         ))
         if segment_key in self._active_segments:
             raise ValueError("duplicate segment %s" % (segment_key, ))
 
+        timestamp = parse_timestamp_repr(timestamp_repr)
+
         self._active_segments[segment_key] = {
-            "segment-id"            : _get_next_segment_id(self._connection),
+            "segment-id" : _insert_new_segment_row(self._connection,
+                                                   collection_id, 
+                                                   unified_id,
+                                                   key, 
+                                                   timestamp, 
+                                                   segment_num,
+                                                   source_node_id,
+                                                   handoff_node_id),
         }
 
     def store_sequence(
@@ -317,52 +385,27 @@ class Writer(object):
 
     def finish_new_segment(
         self, 
-        collection_id, 
-        key, 
+        collection_id,
         unified_id,
-        timestamp_repr, 
-        meta_dict,
+        timestamp_repr,
         segment_num,
-        conjoined_unified_id,
-        conjoined_part,
         file_size,
         file_adler32,
         file_hash,
-        file_tombstone,
-        file_tombstone_unified_id,
-        handoff_node_id
+        meta_dict,
     ): 
         """
         finalize storing one segment of data for a file
         """
         segment_key = (unified_id, segment_num, )
-        self._log.info("finish_new_segment %s %s %s %s %s" % (
-            collection_id, 
-            key, 
+        self._log.info("finish_new_segment %s %s" % (
             unified_id, 
-            timestamp_repr, 
             segment_num, 
         ))
         segment_entry = self._active_segments.pop(segment_key)
 
         timestamp = parse_timestamp_repr(timestamp_repr)
 
-        segment_row = segment_row_template(
-            id=segment_entry["segment-id"],
-            collection_id=collection_id,
-            key=key,
-            unified_id=unified_id,
-            timestamp=timestamp,
-            segment_num=segment_num,
-            conjoined_unified_id=conjoined_unified_id,
-            conjoined_part=conjoined_part,
-            file_size=file_size,
-            file_adler32=file_adler32,
-            file_hash=psycopg2.Binary(file_hash),
-            file_tombstone=file_tombstone,
-            file_tombstone_unified_id=file_tombstone_unified_id,
-            handoff_node_id=handoff_node_id
-        )
         meta_rows = list()
         for meta_key, meta_value in meta_dict.items():
             meta_row = meta_row_template(
@@ -374,7 +417,14 @@ class Writer(object):
             )
             meta_rows.append(meta_row)
 
-        _insert_segment_row_with_meta(self._connection, segment_row, meta_rows)
+        _finalize_segment_row(
+            self._connection, 
+            segment_entry["segment-id"],
+            file_size, 
+            file_adler32, 
+            file_hash, 
+            meta_rows
+        )
     
     def set_tombstone(
         self, 
@@ -384,27 +434,33 @@ class Writer(object):
         unified_id, 
         timestamp, 
         segment_num, 
+        source_node_id,
+        handoff_node_id
     ):
         """
         mark a key as deleted
         """
-        segment_row = segment_row_template(
-            id=None,
-            collection_id=collection_id,
-            key=key,
-            unified_id=unified_id,
-            timestamp=timestamp,
-            segment_num=segment_num,
-            conjoined_unified_id=None,
-            conjoined_part=None,
-            file_size=0,
-            file_adler32=None,
-            file_hash=None,
-            file_tombstone=True,
-            file_tombstone_unified_id=unified_id_to_delete,
-            handoff_node_id=None
+        _insert_segment_tombstone_row(
+            self._connection,
+            collection_id, 
+            key, 
+            unified_id,
+            timestamp, 
+            segment_num,
+            unified_id_to_delete,
+            source_node_id,
+            handoff_node_id
         )
-        _insert_segment_tombstone_row(self._connection, segment_row)
+
+    def cancel_active_archives_from_node(self, source_node_id, timestamp):
+        """
+        cancel all segment rows 
+           * from a specifiic source node
+           * are in active status 
+           * with a timestamp earlier than the specified time. 
+        This is triggered by a web server restart
+        """
+        _cancel_segment_rows(self._connection, source_node_id, timestamp)
 
     def purge_handoff_source(
         self, collection_id, unified_id, handoff_node_id

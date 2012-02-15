@@ -42,6 +42,7 @@ class DataWriter(object):
         file_adler32,
         file_md5,
         segment,
+        source_node_name,
     ):
         segment_md5 = hashlib.md5()
         segment_md5.update(segment)
@@ -63,6 +64,7 @@ class DataWriter(object):
             "file-size"                 : file_size,
             "file-adler32"              : file_adler32,
             "file-hash"                 : b64encode(file_md5),
+            "source-node-name"          : source_node_name,
             "handoff-node-name"         : None,
         }
         message.update(meta_dict)
@@ -89,7 +91,8 @@ class DataWriter(object):
         segment_num,
         zfec_padding_size,
         sequence_num,
-        segment
+        segment,
+        source_node_name
     ):
         segment_md5 = hashlib.md5()
         segment_md5.update(segment)
@@ -109,6 +112,8 @@ class DataWriter(object):
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
             "segment-adler32"       : zlib.adler32(segment),
             "sequence-num"          : sequence_num,
+            "source-node-name"      : source_node_name,
+            "handoff-node-name"     : None,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -132,7 +137,8 @@ class DataWriter(object):
         segment_num,
         zfec_padding_size,
         sequence_num,
-        segment
+        segment,
+        source_node_name
     ):
         segment_md5 = hashlib.md5()
         segment_md5.update(segment)
@@ -142,7 +148,7 @@ class DataWriter(object):
             "priority"              : self._archive_priority,
             "collection-id"         : collection_id,
             "key"                   : key,
-            "unified_id"            : unified_id,
+            "unified-id"            : unified_id,
             "timestamp-repr"        : repr(timestamp),
             "segment-num"           : segment_num,
             "segment-size"          : len(segment),
@@ -150,6 +156,8 @@ class DataWriter(object):
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
             "segment-adler32"       : zlib.adler32(segment),
             "sequence-num"          : sequence_num,
+            "source-node-name"      : source_node_name,
+            "handoff-node-name"     : None,
         }
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
@@ -179,48 +187,46 @@ class DataWriter(object):
         file_adler32,
         file_md5,
         segment,
+        source_node_name
     ):
-        try:
-            segment_md5 = hashlib.md5()
-            segment_md5.update(segment)
+        segment_md5 = hashlib.md5()
+        segment_md5.update(segment)
 
-            message = {
-                "message-type"              : "archive-key-final",
-                "priority"                  : self._archive_priority,
-                "collection-id"             : collection_id,
-                "key"                       : key,
-                "unified-id"                : unified_id,
-                "timestamp-repr"            : repr(timestamp),
-                "conjoined-unified-id"      : conjoined_unified_id,
-                "conjoined-part"            : conjoined_part,
-                "segment-num"               : segment_num,
-                "segment-size"              : len(segment),
-                "zfec-padding-size"         : zfec_padding_size,
-                "segment-md5-digest"        : b64encode(segment_md5.digest()),
-                "segment-adler32"           : zlib.adler32(segment),
-                "sequence-num"              : sequence_num,
-                "file-size"                 : file_size,
-                "file-adler32"              : file_adler32,
-                "file-hash"                 : b64encode(file_md5),
-                "handoff-node-name"         : None,
-            }
+        message = {
+            "message-type"              : "archive-key-final",
+            "priority"                  : self._archive_priority,
+            "collection-id"             : collection_id,
+            "key"                       : key,
+            "unified-id"                : unified_id,
+            "timestamp-repr"            : repr(timestamp),
+            "conjoined-unified-id"      : conjoined_unified_id,
+            "conjoined-part"            : conjoined_part,
+            "segment-num"               : segment_num,
+            "segment-size"              : len(segment),
+            "zfec-padding-size"         : zfec_padding_size,
+            "segment-md5-digest"        : b64encode(segment_md5.digest()),
+            "segment-adler32"           : zlib.adler32(segment),
+            "sequence-num"              : sequence_num,
+            "file-size"                 : file_size,
+            "file-adler32"              : file_adler32,
+            "file-hash"                 : b64encode(file_md5),
+            "source-node-name"          : source_node_name,
+            "handoff-node-name"         : None,
+        }
 
-            self._archive_priority = None
+        self._archive_priority = None
 
-            message.update(meta_dict)
-            delivery_channel = self._resilient_client.queue_message_for_send(
-                message, data=segment
-            )
-            self._log.debug(
-                '%(message-type)s: %(collection-id)s %(key)s' % message
-            )
-            reply, _data = delivery_channel.get()
-            if reply["result"] != "success":
-                self._log.error("failed: %s" % (reply, ))
-                raise ArchiveFailedError(reply["error-message"])
-        except Exception:
-            self._log.exception("archive_key_final")
-            raise
+        message.update(meta_dict)
+        delivery_channel = self._resilient_client.queue_message_for_send(
+            message, data=segment
+        )
+        self._log.debug(
+            '%(message-type)s: %(collection-id)s %(key)s' % message
+        )
+        reply, _data = delivery_channel.get()
+        if reply["result"] != "success":
+            self._log.error("failed: %s" % (reply, ))
+            raise ArchiveFailedError(reply["error-message"])
 
     def destroy_key(
         self,
@@ -229,7 +235,8 @@ class DataWriter(object):
         unified_id_to_delete,
         unified_id,
         timestamp,
-        segment_num
+        segment_num,
+        source_node_name
     ):
         message = {
             "message-type"              : "destroy-key",
@@ -240,6 +247,8 @@ class DataWriter(object):
             "unified-id"                : unified_id,
             "timestamp-repr"            : repr(timestamp),
             "segment-num"               : segment_num,
+            "source-node-name"          : source_node_name,
+            "handoff-node-name"         : None,
         }
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)

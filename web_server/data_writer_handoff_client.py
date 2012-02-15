@@ -17,7 +17,7 @@ from gevent.queue import Queue
 
 from tools.data_definitions import message_format
 
-_data_writer_timeout = 30.0
+_data_writer_timeout = 300.0
 
 class DataWriterHandoffClient(object):
     """
@@ -35,7 +35,7 @@ class DataWriterHandoffClient(object):
     backs up the archvie messages to two other nodes.
 
     These backed up messages will ater be handed off to the destination node
-    by te handoff server,
+    by the handoff server,
     """
     def __init__( self, dest_node_name, backup_clients):
         self._log = logging.getLogger("HandoffClient-%s" % (dest_node_name,))

@@ -12,7 +12,11 @@ import uuid
 from tools.data_definitions import create_priority
 
 def forwarder_coroutine(
-    segment_row, source_node_names, writer_client, reader_client
+    node_name_dict, 
+    segment_row, 
+    source_node_names, 
+    writer_client, 
+    reader_client
 ):
     """
     manage the message traffic for retrieving and re-archiving 
@@ -64,6 +68,7 @@ def forwarder_coroutine(
             "file-size"         : segment_row.file_size,
             "file-adler32"      : segment_row.file_adler32,
             "file-hash"         : b64encode(segment_row.file_hash),
+            "source-node-name"  : node_name_dict[segment_row.source_node_id],
             "handoff-node-name" : None,
         }
     else:
@@ -83,6 +88,8 @@ def forwarder_coroutine(
             "segment-adler32"   : reply["segment-adler32"],
             "segment-md5-digest": reply["segment-md5-digest"],
             "sequence-num"      : sequence,
+            "source-node-name"  : node_name_dict[segment_row.source_node_id],
+            "handoff-node-name" : None,
         }
             
     writer_client.queue_message_for_send(message, data=data)
@@ -105,7 +112,7 @@ def forwarder_coroutine(
             "message-type"      : "retrieve-key-next",
             "message-id"        : message_id,
             "segment-unified-id": segment_row.unified_id,
-            "sequence-num"      : sequence,
+            "segment-num"       : segment_row.segment_num,
         }
         reader_client.queue_message_for_send(message, data=None)
         reply, data = yield
@@ -134,6 +141,8 @@ def forwarder_coroutine(
                 "file-size"         : segment_row.file_size,
                 "file-adler32"      : segment_row.file_adler32,
                 "file-hash"         : b64encode(segment_row.file_hash),
+                "source-node-name"  : node_name_dict[
+                    segment_row.source_node_id],
                 "handoff-node-name" : None,
             }
         else:
@@ -153,6 +162,9 @@ def forwarder_coroutine(
                 "segment-adler32"   : reply["segment-adler32"],
                 "segment-md5-digest": reply["segment-md5-digest"],
                 "sequence-num"      : sequence,
+                "source-node-name"  : node_name_dict[
+                    segment_row.source_node_id],
+                "handoff-node-name" : None,
             }
         
         writer_client.queue_message_for_send(message, data=data)

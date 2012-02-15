@@ -113,11 +113,17 @@ value_file_template = namedtuple("ValueFile", [
     "last_integrity_check_time"]
 )
 
+segment_status_active = "A"
+segment_status_cancelled = "C"
+segment_status_final = "F"
+segment_status_tombstone = "T" 
+
 segment_row_template = namedtuple(
     "SegmentRow", [
         "id",
         "collection_id",
         "key",
+        "status", 
         "unified_id",
         "timestamp",
         "segment_num",
@@ -126,8 +132,8 @@ segment_row_template = namedtuple(
         "file_size",
         "file_adler32",
         "file_hash",
-        "file_tombstone",
         "file_tombstone_unified_id",
+        "source_node_id",
         "handoff_node_id",
     ]
 )

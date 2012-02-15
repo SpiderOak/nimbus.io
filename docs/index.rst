@@ -19,6 +19,7 @@ Contents:
    configuration
    installation
    operation
+   glossary
 
 Indices and tables
 ==================

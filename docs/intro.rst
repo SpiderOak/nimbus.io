@@ -35,18 +35,20 @@ archival class data.
 Background
 ----------
 
-Nimbus.io was created out of necessity by the storage engineers at SpiderOak
-for servicing their consumer oriented cloud storage product at petabyte scale.
-It's a fresh design based on everything we've learned since 2007 about large
-scale storage management.  
+Nimbus.io was created out of necessity by the storage engineers at `SpiderOak
+<https://spideroak.com/>`_ for servicing their consumer oriented cloud storage
+product at petabyte scale.  It's a fresh design based on everything we've
+learned since 2007 about large scale storage management.  
 
 History and Future
 ------------------
 
-* Nov 2011: Announcement of Project, Posted on Hacker News & Reddit.   3,000
-  people signup for the announcement mailing list in 5 hours.  
+Events in the lifetime of Nimbus.io, past and future:
+
+* Nov 2011: Announcement of Project, Posted on Hacker News & Reddit.
+  Thousands of people signup for the announcement mailing list in 5 hours.  
   
-  Interesting Discussion here: `Nimbus.io: Open-source alternative to Amazon S3
+  Hacker News discussion here: `Nimbus.io: Open-source alternative to Amazon S3
   <http://news.ycombinator.com/item?id=3209936>`_
 
 * 15 Feb 2011: First development milestone reached: source code, documentation,
@@ -55,5 +57,5 @@ History and Future
   <https://nimbus.io/dev/trac/wiki/NimbusIoMailingList>`_, made public.
   Developers invited to participate in the project.
 
-* Q1 or early Q2 2012 - Commercial Nimbus.io storage service becomes available.
+* Q1 2012 - Commercial Nimbus.io storage service becomes available.
 

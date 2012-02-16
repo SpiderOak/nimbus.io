@@ -94,7 +94,7 @@ Life Cycle of a PUT
 
 #. As more data is received by the webserver, the web server sends
    `archive_key_next` messages to the destinations, which result in more data
-written into value files and more segment_sequence entries.
+   written into value files and more segment_sequence entries.
 
 #. When the upload is fully received, the last segment_sequence is sent as an
    `archive_key_final` message.  At this time, each `data writer` updates the

@@ -6,24 +6,24 @@ Developer's Guide
    :maxdepth: 10
    :numbered:
 
-Overview
-^^^^^^^^
+Customers, Collections, and Objects
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-TODO
+A :term:`customer` is someone using a Nimbus.io service.  Each customer has a default 
+:term:`Collection` (what S3 calls a bucket), and may create more collections to
+organize their data in.  Within a collection, objects maybe stored, retrieved,
+listed, and removed.  Collections can optionally support Object Versioning.
 
-Customers, Collections, Objects, and Permissions
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A customer is someone using a Nimbus.io service.  Customers may create one or
-more Collections to organize their data in.  A default collection for each
-customer is created automatically.  Within a collection, objects maybe stored,
-retrieved, listed, and removed.  Collections can optionally support Object
-Versioning.
+..
+    leaving this out for now: why have a paragraph just talking about what we
+    don't do?
 
-As of this writing, Nimbus.io only supports a the simplest permission system:
-authenticated users can access their own objects, and nothing else.   This will
-be expanded to allow objects to be set as publically readable.  That will be
-followed by a more rich Unix style user and group permission model and ACLs.
+    As of this writing, Nimbus.io only supports a the simplest permission
+    system: authenticated users can access their own objects, and nothing else.
+    This will be expanded to allow objects to be set as publically readable.
+    That will be followed by a more rich Unix style user and group permission
+    model and ACLs.
 
 Command line tools
 ^^^^^^^^^^^^^^^^^^

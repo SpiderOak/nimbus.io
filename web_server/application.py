@@ -164,12 +164,15 @@ def _create_data_writers(event_push_client, clients):
 
 def _send_archive_cancel(unified_id, clients):
     # message sent to data writers telling them to cancel the archive
-    cancel_message = {
-        "message-type"              : "archive-key-cancel",
-        "priority"                  : create_priority(),
-        "unified-id"                : unified_id,
-    }
-    for client in _connected_clients(clients):
+    for i, client in enumerate(clients):
+        if not client.connected:
+            continue
+        cancel_message = {
+            "message-type"  : "archive-key-cancel",
+            "priority"      : create_priority(),
+            "unified-id"    : unified_id,
+            "segment-num"   : i+1,
+        }
         client.queue_message_for_broadcast(cancel_message)
 
 class Application(object):

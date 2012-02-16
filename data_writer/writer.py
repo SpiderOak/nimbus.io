@@ -205,6 +205,18 @@ def _cancel_segment_rows(connection, source_node_id, timestamp):
     """, [source_node_id, timestamp, ])
     connection.commit()
 
+def _cancel_segment_row(connection, unified_id):
+    """
+    cancel a specific archive, presumably one in progress
+    """
+    connection.execute("""
+        update nimbusio_node.segment
+        set status = 'C'
+        where unified_id = %s 
+        and status = 'A' 
+    """, [unified_id, ])
+    connection.commit()
+
 def _insert_segment_sequence_row(connection, segment_sequence_row):
     """
     Insert one segment_sequence entry
@@ -461,6 +473,13 @@ class Writer(object):
         This is triggered by a web server restart
         """
         _cancel_segment_rows(self._connection, source_node_id, timestamp)
+
+    def cancel_active_archive(self, unified_id):
+        """
+        cancel an archive that is in progress, presumably due to failure
+        at the web server
+        """
+        _cancel_segment_row(self._connection, unified_id)
 
     def purge_handoff_source(
         self, collection_id, unified_id, handoff_node_id

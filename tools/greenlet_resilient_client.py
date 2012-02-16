@@ -136,6 +136,13 @@ class GreenletResilientClient(Greenlet):
         self._log.debug("join complete")
 
     def queue_message_for_send(self, message_control, data=None):
+        """
+        message control must be a dict 
+        If the caller includes a 'message-id' key we will use it,
+        otherwise, we will supply one.
+        return: a gevent queue (zero size Queue) the the reply will
+        be deliverd.
+        """
         if not self.connected:
             raise ResilientClientError(
                 "queue_message_for_send while not connected  %s" % (
@@ -156,6 +163,20 @@ class GreenletResilientClient(Greenlet):
         self._send_queue.put(message)
 
         return delivery_channel
+
+    def queue_message_for_broadcast(self, message_control, data=None):
+        """
+        queue a message for send, but do not create a delivery channel:
+        we are not expecting a reply
+        """
+        if not "message-id" in message_control:
+            message_control["message-id"] = uuid.uuid1().hex
+
+        message = message_format(
+            ident=None, control=message_control, body=data
+        )
+
+        self._send_queue.put(message)
 
     def _run(self):
         while True:

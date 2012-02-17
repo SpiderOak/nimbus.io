@@ -1,6 +1,7 @@
 //Additional commands for layout
 
 $(function(){
+    $('.brand').attr('href', '/');
     $('h2, h3').addClass('btn').css({'font-size' : '130%', 'margin-bottom' : '12px'});
     $('h4').addClass('btn').css({'font-size' : '90%', 'margin-bottom' : '10px'});
     $('body>div.container').css({'padding-left' : '30px'});

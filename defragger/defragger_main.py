@@ -296,10 +296,12 @@ def _defrag_pass(connection, event_push_client):
             update nimbusio_node.segment_sequence
             set value_file_id = %s, value_file_offset = %s
             where collection_id = %s and segment_id = %s
+            and sequence_num = %s
         """, [output_value_file.value_file_id, 
               new_value_file_offset,
               reference.collection_id,
-              reference.segment_id])
+              reference.segment_id,
+              reference.sequence_num])
 
     # close (and remove) the old value files
     for input_value_file in input_value_files.values():

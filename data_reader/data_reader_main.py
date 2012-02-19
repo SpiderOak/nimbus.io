@@ -115,11 +115,7 @@ def _handle_retrieve_key_start(state, message, _data):
     segment_md5 = hashlib.md5()
     segment_md5.update(data_content)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch (%s, %s) %s" % (
-            segment_md5.digest(),
-            sequence_row.hash,
-            state_key, 
-        )
+        error_message = "md5 mismatch %s" % (state_key, )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"

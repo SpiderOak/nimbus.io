@@ -2,101 +2,56 @@
 """
 rewrite_value_files.py
 """
-from collections import defaultdict
 import logging
-import os
-import os.path
 
 from tools.data_definitions import compute_value_file_path
 
-_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+def _process_batch(connection, refs, value_file_data):
+    log = logging.getLogger("_process_batch")
 
-def _segment_sequence_size_sum(connection, value_file_id):
-    (segment_sequence_size_sum, ) = connection.fetch_one_row("""
-        select sum(size) from nimbusio_node.segment_sequence
-        where value_file_id = %s""", [value_file_id, ])
+def _remove_old_value_files(value_file_ids):
+    log = logging.getLogger("_remove_old_value_files")
 
-    return segment_sequence_size_sum
+def rewrite_value_files(options, connection, repository_path, ref_generator):
+    log = logging.getLogger("_rewrite_value_files")
+    max_sort_mem = options.max_sort_mem * 1024 ** 3
 
-def _find_ids_of_value_files_to_work_on(options, connection):
-    """
-    Meet one of these criteria:
+    batch_size = 0
+    refs = list()
+    value_file_data = dict()
 
-    * Only value file IDs that are already defragged 
-      (i.e. distinct collection count is 1.)
-    * they are too big (i.e. their disk size is larger than the sum of 
-      the size of segment sequences they store) such that they are too big 
-      by > MIN_GC_SAVINGS_SIZE or too big by MIN_GC_SAVINGS_RATIO
-    * they are too small (i.e. their disk size is smaller than 
-      MAX_VALUE_SIZE_TO_AGG) AND there will be multiple value files to work on
-      for this collection_id within this collection effort 
-      (it wouldn't make sense to aggregate a single file -- 
-      nothing to aggregate it with)
-    """
-    log = logging.getLogger("_find_ids_of_value_files_to_work_on")
-    value_file_ids = set()
+    while True:
 
-    # convert option from megabytes
-    min_savings_size = options.min_savings_size * 1024 ** 2
-    max_value_file_size_to_agg = options.max_value_file_size_to_agg * 1024 ** 2
+        try:
+            ref = next(ref_generator)
+        except StopIteration:
+            break
+        log.debug("{0}".format(ref))
 
-    potential_value_file_ids = list()
-    collection_id_value_file_counts = defaultdict(int)
+        # this should be the start of a partition
+        assert(ref.value_row_num == 1, ref)
 
-    result = connection.fetch_all_rows("""
-        select id, collection_ids from nimbusio_node.value_file 
-        where distinct_collection_count = 1;""", [])
+        if batch_size + ref.value_file_size > max_sort_mem:
+            _process_batch(connection, refs, value_file_data)
+            _remove_old_value_files(value_file_data.keys())
 
-    for (value_file_id, [collection_id, ]) in result:
-        potential_value_file_ids.append((value_file_id, collection_id, ))
-        collection_id_value_file_counts[collection_id] += 1
+            batch_size = 0
+            refs = list()
+            value_file_data = dict()
 
-    for (value_file_id, collection_id, ) in potential_value_file_ids:
-        value_file_path = compute_value_file_path(_repository_path,
-                                                  value_file_id)
-        
-        value_file_size = os.path.getsize(value_file_path)
+        # get the value file data
+        assert(ref.value_file_id not in value_file_data)
+        value_file_path = \
+                compute_value_file_path(repository_path, ref.value_file_id)
+        with open(value_file_path, "rb") as input_file:
+            value_file_data[ref.value_file_id] = input_file.read()
 
-        segment_sequence_size = \
-                _segment_sequence_size_sum(connection, value_file_id)
+        # load up the refs for this partition
+        refs.append(ref)
+        for _ in range(ref.value_row_count-1):
+            refs.append(next(ref_generator)) 
 
-        if segment_sequence_size is None:
-            continue
+    if len(refs) > 0:
+        _process_batch(connection, refs, value_file_data)
 
-        if segment_sequence_size == value_file_size:
-            continue
-
-        if segment_sequence_size > value_file_size:
-            log.error("{0} size={1} segment_sequece_size={2}".format(
-                value_file_id, value_file_size, segment_sequence_size))
-            # TODO: we should deal wiht this somehow
-            continue
-
-        savings_size = value_file_size - segment_sequence_size
-        savings_ratio = float(savings_size) / float(value_file_size) 
-
-        log.debug("{0} size={1} segment={2} savings={3} ratio={4}".format(
-            value_file_id, 
-            value_file_size, 
-            segment_sequence_size,
-            savings_size,
-            savings_ratio
-        ))
-
-        # they are too big (i.e. their disk size is larger than the sum of 
-        # the size of segment sequences they store) such that they are too big 
-        # by > MIN_GC_SAVINGS_SIZE or too big by MIN_GC_SAVINGS_RATIO
-        if savings_size > min_savings_size \
-        or savings_ratio > options.min_savings_ratio:
-            value_file_ids.add(value_file_id)
-            continue
-
-        # they are too small (i.e. their disk size is smaller than 
-        # MAX_VALUE_SIZE_TO_AGG) AND there will be multiple value files to 
-        # work on for this collection_id within this collection effort 
-        if value_file_size < max_value_file_size_to_agg:
-            if collection_id_value_file_counts[collection_id] > 1:
-                value_file_ids.add(value_file_id)
-
-        return list(value_file_ids)
 

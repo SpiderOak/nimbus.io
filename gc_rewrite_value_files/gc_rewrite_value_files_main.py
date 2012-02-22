@@ -20,22 +20,16 @@ from gc_rewrite_value_files.unused_value_files import \
         unlink_totally_unused_value_files
 from gc_rewrite_value_files.unreachable_value_files import \
         unlink_unreachable_value_files
+from gc_rewrite_value_files.value_file_reference_generator import \
+        generate_value_file_references
 from gc_rewrite_value_files.rewrite_value_files import \
-        _find_ids_of_value_files_to_work_on
+        rewrite_value_files
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_gc_rewrite_value_files_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
-
-def _rewrite_value_files(options, connection, event_push_client):
-    log = logging.getLogger("_rewrite_value_files")
-    value_file_ids = _find_ids_of_value_files_to_work_on(options, connection)
-
-    log.debug("found {0} value file ids to work on".format(
-        len(value_file_ids),
-    ))
 
 def main():
     """
@@ -62,9 +56,11 @@ def main():
     return_code = 0
 
     try:
-#        unlink_totally_unused_value_files(connection, _repository_path)
-#        unlink_unreachable_value_files(connection, _repository_path)
-        _rewrite_value_files(options, connection, event_push_client)
+        unlink_totally_unused_value_files(connection, _repository_path)
+        unlink_unreachable_value_files(connection, _repository_path)
+        ref_generator =  generate_value_file_references(options, connection)
+        rewrite_value_files(
+            options, connection, _repository_path, ref_generator)
     except Exception:
         log.exception("_garbage_collection")
         return_code = -2

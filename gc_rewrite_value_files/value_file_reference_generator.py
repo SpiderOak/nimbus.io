@@ -5,11 +5,16 @@ value_file_reference_generator.py
 from collections import namedtuple
 
 _ref_row = namedtuple("RefRow", [
+    "segment_id",
     "collection_id", 
     "key",
     "unified_id",
+    "sequence_num",
     "value_file_id", 
     "value_file_offset",
+    "data_size",
+    "data_hash",
+    "data_adler32",
     "value_file_size",
     "value_row_num",
     "value_row_count",
@@ -89,8 +94,9 @@ create temp table gc_collectable_value_files as
 /* gew all the references to our value files sequentially.
  * we'll read them in batches, sort in memory, write sequentially, unlink
  */
-select s.collection_id, s.key, s.unified_id, 
-ss.value_file_id, ss.value_file_offset,
+select s.id, s.collection_id, s.key, s.unified_id, 
+ss.sequence_num, ss.value_file_id, ss.value_file_offset, ss.size, ss.hash, 
+ss.adler32,
 vf.size,
 row_number() over value_rows as value_row_num,
 count(*) over value_rows as value_row_count

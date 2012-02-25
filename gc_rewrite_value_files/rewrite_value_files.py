@@ -170,11 +170,13 @@ def rewrite_value_files(options, connection, repository_path, ref_generator):
                 connection.rollback()
                 raise
             connection.commit()
-            _remove_old_value_files(repositiry_path, value_file_data.keys())
+            _remove_old_value_files(repository_path, value_file_data.keys())
 
             batch_size = 0
             refs = list()
             value_file_data = dict()
+            
+        batch_size += ref.value_file_size
 
         # get the value file data
         # TODO: we should only store the actual references from the files into 
@@ -201,6 +203,6 @@ def rewrite_value_files(options, connection, repository_path, ref_generator):
         except Exception:
             connection.rollback()
         connection.commit()
-        _remove_old_value_files(value_file_data.keys())
+        _remove_old_value_files(repository_path, value_file_data.keys())
 
 

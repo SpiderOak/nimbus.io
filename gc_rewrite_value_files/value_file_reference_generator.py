@@ -63,7 +63,7 @@ where
     /* reduce it down to value files that are potentially collectable */
     ( vf.size < (select max_agg_size from gc_param) or
       vf.size - ref_size > (select min_save_size from gc_param) or
-      vf.size - ref_size / vf.size::float > 
+      (vf.size - ref_size) / vf.size::float > 
         (select min_save_ratio from gc_param ) );
 
 /* this gives us a window over all the potentially collectable value files per

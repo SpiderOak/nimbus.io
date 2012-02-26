@@ -48,14 +48,25 @@ def unlink_unreachable_value_files(connection, repository_path):
     unreachable_value_file_ids = filesystem_value_file_ids \
                                - database_value_file_ids
 
+    total_value_file_size = 0
     for value_file_id in list(unreachable_value_file_ids):
         value_file_path = compute_value_file_path(repository_path, 
                                                   value_file_id)
-        log.info("unlinking unreachable value_file {0}".format(
-            value_file_path
+        value_file_size = os.path.getsize(value_file_path)
+        log.info("unlinking unreachable value_file {0} size = {1}".format(
+            value_file_path, value_file_size
         ))
+        total_value_file_size += value_file_size
         try:
             os.unlink(value_file_path)
         except Exception:
             log.exception(value_file_path)
+
+    log.info(
+        "found {0:,} unreachable value files; savings={1:,}".format(
+            len(unreachable_value_file_ids), total_value_file_size
+        )
+    )
+
+    return total_value_file_size
 

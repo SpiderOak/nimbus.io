@@ -74,7 +74,7 @@ class OutputValueFile(object):
         self._value_file_id = _get_next_value_file_id(connection)
         self._value_file_path = compute_value_file_path(
             repository_path, self._value_file_id)
-        self._expecgted_size = expected_size
+        self._expected_size = expected_size
         self._log.info("opening {0} expected size = {1}".format(
             self._value_file_path, self._expected_size)) 
         value_file_dir = os.path.dirname(self._value_file_path)

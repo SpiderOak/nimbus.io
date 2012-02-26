@@ -56,16 +56,26 @@ def main():
     return_code = 0
 
     try:
-        unlink_totally_unused_value_files(connection, _repository_path)
-        unlink_unreachable_value_files(connection, _repository_path)
+        total_unused_value_file_size = unlink_totally_unused_value_files(
+            connection, _repository_path)
+        unreachable_value_file_size = unlink_unreachable_value_files(
+            connection, _repository_path)
         ref_generator =  generate_value_file_references(options, connection)
-        rewrite_value_files(
+        savings = rewrite_value_files(
             options, connection, _repository_path, ref_generator)
     except Exception:
         log.exception("_garbage_collection")
         return_code = -2
     else:
         log.info("program terminates normally")
+
+        event_push_client.info(
+            "rewrite complete", 
+            "garbage_collector finished",
+            unused_value_file_bytes_reclaimed=total_unused_value_file_size,
+            unreachable_value_file_bytes_reclaimed=unreachable_value_file_size,
+            rewrite_value_file_savings=savings
+        )  
 
     connection.close()
 

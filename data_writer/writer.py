@@ -483,8 +483,15 @@ class Writer(object):
         self._log.info("cancel_active_archive %s %s" % (
             unified_id, segment_num
         ))
-        segment_entry = self._active_segments.pop(segment_key)
-        _cancel_segment_row(self._connection, segment_entry["segment-id"])
+        # 2012-02-27 dougfort -- there is a race condition where the web
+        # server sends out cancellations on an archive that has completed
+        # because it hasn't reveived the final message yet
+        try:
+            segment_entry = self._active_segments.pop(segment_key)
+        except KeyError:
+            pass
+        else:
+            _cancel_segment_row(self._connection, segment_entry["segment-id"])
 
     def purge_handoff_source(
         self, collection_id, unified_id, handoff_node_id

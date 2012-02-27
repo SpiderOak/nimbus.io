@@ -12,20 +12,22 @@ reading the full glossary.
 Tour of Database Schemas
 ------------------------
 
-The central PostgreSQL database stores customers, collections, data centers,
-storage clusters, and storage nodes.  A customer may have zero or more
+The architecture for Nimbus.io calls for a small central PostgreSQL database,
+and a PostgreSQL database on each storage node.  The central database is small
+enough to fit entirely in memory, and can be be scaled vertically.  Node
+databases contain information about data stored on that particular node.
+
+The central PostgreSQL database has tables for customers, collections, data
+centers, storage clusters, and storage nodes.  A customer may have zero or more
 collections.  A collection is assigned to a particular storage cluster on which
-its data resides (although virtual collections allow objects in a collection to
-span multiple real collections.)  A storage cluster is composed of exactly 10
-storage nodes acting as a team.  A storage cluster resides in a particular data
-center.
+its data resides (although virtual collections storage to span across multiple real
+collections.)  A storage cluster is composed of exactly 10 storage nodes acting
+as a team.  A storage cluster resides in a particular data center.
 
-Within each storage node, there's a local PostgreSQL database.  This has
-entries for value files, segments, segment sequences, and conjoined archives.
-Basically, all the meta for every object is stored in this database, but the
-binary blobs are stored in the file system in value files.  
-
-
+The parity stripes of actual binary values are stored in the file system in
+"value files" of up to 1 GB in size.  The database on each node contains
+pointers into these files file system, specifying where to find data for each
+object.  This includes handoffs and tombstones.
 
 Message and Component Based Architecture
 ----------------------------------------

@@ -112,7 +112,7 @@ def forwarder_coroutine(
             "message-type"      : "retrieve-key-next",
             "message-id"        : message_id,
             "segment-unified-id": segment_row.unified_id,
-            "sequence-num"      : sequence,
+            "segment-num"       : segment_row.segment_num,
         }
         reader_client.queue_message_for_send(message, data=None)
         reply, data = yield

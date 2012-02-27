@@ -13,7 +13,7 @@ with used_value_files as (
     select distinct value_file_id as id
     from nimbusio_node.segment_sequence
 )
-select id from nimbusio_node.value_file where 
+select id, size from nimbusio_node.value_file where 
     close_time is not null and
     not exists (
         select 1 from used_value_files uvf 
@@ -25,8 +25,17 @@ _delete_value_file_query = """
 """
 
 def _list_unused_value_file_ids(connection):
+    value_file_ids = list()
+    total_size = 0
+
     result = connection.fetch_all_rows(_unused_value_files_query, [])
-    return [value_file_id for (value_file_id, ) in result]
+
+    for (value_file_id, value_file_size, ) in result:
+        value_file_ids.append(value_file_id)
+        if value_file_size is not None:
+            total_size += value_file_size
+
+    return value_file_ids, total_size
 
 def _unlink_value_files(connection, repository_path, unused_value_file_ids):
     log = logging.getLogger("_unlink_value_files")
@@ -50,10 +59,12 @@ def unlink_totally_unused_value_files(connection, repository_path):
           since this action is outside of the database)
     """
     log = logging.getLogger("unlink_totally_unused_value_files")
-    unused_value_file_ids = _list_unused_value_file_ids(connection)
+    unused_value_file_ids, total_size = _list_unused_value_file_ids(connection)
     
     log.info(
-        "found {0} unused value files".format(len(unused_value_file_ids))
+        "found {0:,} unused value files total size={1:,}".format(
+            len(unused_value_file_ids), total_size
+        )
     )
 
     connection.execute("begin", [])
@@ -66,4 +77,6 @@ def unlink_totally_unused_value_files(connection, repository_path):
         raise
     else:
         connection.commit()
+
+    return total_size
 

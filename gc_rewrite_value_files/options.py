@@ -16,13 +16,13 @@ _max_sort_mem = int(
     os.environ.get("NIMBISIO_GC_MAX_SORT_MEM_GB", "3")
 )
 _max_value_file_size_to_agg = int(
-    os.environ.get("NIMBISIO_GC_MAX_VALUE_FILE_SIZE_TO_AGG_MB", "10")
+    os.environ.get("NIMBISIO_GC_MAX_VALUE_FILE_SIZE_TO_AGG_MB", "25")
 )
 _min_savings_size = int(
     os.environ.get("NMBUSIO_GC_MIN_SAVINGS_SIZE_MB", "10")
 )
 _min_savings_ratio = float(
-    os.environ.get("NIMBUSIO_GC_MIN_SAVINGS_RATIO", "0.03")
+    os.environ.get("NIMBUSIO_GC_MIN_SAVINGS_RATIO", "0.02")
 )
 
 def _parse_command_line():
@@ -57,7 +57,7 @@ def get_options():
     get constants from the environment, allowing override by the 
     command line
     """
-    log = logging.getLogger("get_optons")
+    log = logging.getLogger("get_options")
 
     options = _parse_command_line()
     log.info("max_node_offline_time = {0}".format(

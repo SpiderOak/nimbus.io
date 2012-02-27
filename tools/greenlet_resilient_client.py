@@ -7,7 +7,6 @@ to a resilient server
 """
 import logging
 import os
-import time
 import uuid
 
 from  gevent.greenlet import Greenlet
@@ -88,7 +87,8 @@ class GreenletResilientClient(Greenlet):
         server_address, 
         client_tag, 
         client_address,
-        deliverator
+        deliverator,
+        connect_messages=list()
     ):
         Greenlet.__init__(self)
 
@@ -105,6 +105,16 @@ class GreenletResilientClient(Greenlet):
         self._deliverator = deliverator
 
         self._send_queue = gevent.queue.Queue()
+
+        # prime the send queue with messages to be sent as soon
+        # as we connect
+        for connect_message in connect_messages:
+            if not "message-id" in connect_message:
+                connect_message["message-id"] = uuid.uuid1().hex
+            message = message_format(
+                ident=None, control=connect_message, body=None
+            )
+            self._send_queue.put(message)
 
         self._dealer_socket = None
         self.connected = False
@@ -126,6 +136,13 @@ class GreenletResilientClient(Greenlet):
         self._log.debug("join complete")
 
     def queue_message_for_send(self, message_control, data=None):
+        """
+        message control must be a dict 
+        If the caller includes a 'message-id' key we will use it,
+        otherwise, we will supply one.
+        return: a gevent queue (zero size Queue) the the reply will
+        be deliverd.
+        """
         if not self.connected:
             raise ResilientClientError(
                 "queue_message_for_send while not connected  %s" % (
@@ -146,6 +163,20 @@ class GreenletResilientClient(Greenlet):
         self._send_queue.put(message)
 
         return delivery_channel
+
+    def queue_message_for_broadcast(self, message_control, data=None):
+        """
+        queue a message for send, but do not create a delivery channel:
+        we are not expecting a reply
+        """
+        if not "message-id" in message_control:
+            message_control["message-id"] = uuid.uuid1().hex
+
+        message = message_format(
+            ident=None, control=message_control, body=data
+        )
+
+        self._send_queue.put(message)
 
     def _run(self):
         while True:

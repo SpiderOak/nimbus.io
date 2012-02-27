@@ -1,6 +1,8 @@
 {
    "low-delay"       : 1.0,
    "high-delay"      : 10.0,
+   "verify-before"   : true,
+   "verify-after"    : true,
    "distribution"    : {
       "create-bucket"           : 5,
       "create-versioned-bucket" : 5,

@@ -14,9 +14,9 @@ import zmq
 
 from tools.data_definitions import message_format
 
-_ack_timeout = 10.0
+_ack_timeout = 10.0 * 60.0
 _handshake_retry_interval = 60.0
-_max_idle_time = 10 * 60.0
+_max_idle_time = 30.0 * 60.0
 _polling_interval = 3.0
 
 _status_handshaking = 1

@@ -68,14 +68,15 @@ class OutputValueFile(object):
     """
     A value file for defragged output
     """
-    def __init__(self, connection, repository_path):
+    def __init__(self, connection, repository_path, expected_size=None):
         self._log = logging.getLogger("OutputValueFile")
         self._connection = connection
         self._value_file_id = _get_next_value_file_id(connection)
         self._value_file_path = compute_value_file_path(
-            repository_path, self._value_file_id
-        )
-        self._log.info("opening {0}".format(self._value_file_path)) 
+            repository_path, self._value_file_id)
+        self._expected_size = expected_size
+        self._log.info("opening {0} expected size = {1}".format(
+            self._value_file_path, self._expected_size)) 
         value_file_dir = os.path.dirname(self._value_file_path)
         if not os.path.exists(value_file_dir):
             os.makedirs(value_file_dir)
@@ -92,6 +93,10 @@ class OutputValueFile(object):
     @property
     def size(self):
         return self._size
+
+    @property
+    def expected_size(self):
+        return self._expected_size
 
     @property
     def value_file_id(self):

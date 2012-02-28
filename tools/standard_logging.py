@@ -7,11 +7,13 @@ common routines for logging
 import datetime
 import logging
 import logging.handlers
+import os
 
 _max_log_size = 16 * 1024 * 1024
 _max_log_backup_files = 1000
-
+_log_level_name = os.environ.get("NIMBUSIO_LOG_LEVEL", "INFO")
 _log_format_template = '%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
+
 
 def format_timestamp(timestamp):
     """return python float time.time() as a human readable string"""
@@ -19,7 +21,13 @@ def format_timestamp(timestamp):
 
 def initialize_logging(log_path):
     """initialize the log"""
-    log_level = logging.DEBUG
+    invalid_log_level = False
+    try:
+        log_level = logging._levelNames[_log_level_name]
+    except KeyError:
+        log_level = logging.DEBUG
+        invalid_log_level = True
+
     handler = logging.handlers.RotatingFileHandler(
         log_path,
         mode="a", 
@@ -32,4 +40,7 @@ def initialize_logging(log_path):
 
     logging.root.addHandler(handler)
     logging.root.setLevel(log_level)
+
+    if invalid_log_level:
+        logging.error("Invalid log level {0}".format(_log_level_name))
 

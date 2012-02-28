@@ -77,7 +77,7 @@ class RouterServer(object):
             )
 
     def _send_message(self, message):
-        self._log.info("sending message: %s" % (message.control, ))
+        self._log.debug("sending message: %s" % (message.control, ))
         self._router_socket.send(message.ident, zmq.SNDMORE)
 
         # don't send a zero size body 

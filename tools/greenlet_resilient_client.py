@@ -244,7 +244,7 @@ class GreenletResilientClient(Greenlet):
                     break
 
     def _send_message(self, message):
-        self._log.info("sending message: %s" % (message.control, ))
+        self._log.debug("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
 
         # don't send a zero size body 

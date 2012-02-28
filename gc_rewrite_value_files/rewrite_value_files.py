@@ -229,7 +229,7 @@ def rewrite_value_files(options, connection, repository_path, ref_generator):
         ))
 
     savings = total_batch_size - total_output_size
-    log.debug(
+    log.info(
         "total_batch_size={0:,} total_output_size={1:,} savings={2:,}".format(
             total_batch_size, total_output_size, savings
     ))

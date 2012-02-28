@@ -404,7 +404,10 @@ def _handle_archive_key_final(state, message, data):
 
 def _handle_archive_key_cancel(state, message, _data):
     log = logging.getLogger("_handle_archive_key_cancel")
-    log.info("%s %s" % (message["unified-id"], message["timestamp-repr"], ))
+    log.info("%s %s" % ( message["unified-id"], message["segment-num"],))
+    state["writer"].cancel_active_archive(
+        message["unified-id"], message["segment-num"],
+    )
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")

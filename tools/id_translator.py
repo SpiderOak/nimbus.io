@@ -162,10 +162,10 @@ def test(rounds=10000):
     "test translating IDs"
 
     key = os.urandom(_KEY_SIZE)
-    hmac_key = os.urandom(_KEY_SIZE)
     iv_key = os.urandom(_KEY_SIZE)
+    hmac_key = os.urandom(_KEY_SIZE)
 
-    translator = InternalIDTranslator(key, hmac_key, iv_key, 16)
+    translator = InternalIDTranslator(key, iv_key, hmac_key, 16)
 
     timestart = int(time.time() * 1000)
 

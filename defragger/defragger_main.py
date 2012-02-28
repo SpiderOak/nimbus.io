@@ -17,9 +17,9 @@ from tools.database_connection import get_node_local_connection
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 from tools.data_definitions import compute_value_file_path, \
         value_file_template
+from tools.output_value_file import OutputValueFile
 
 from defragger.input_value_file import InputValueFile
-from defragger.output_value_file import OutputValueFile
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_defragger_{1}.log".format(
@@ -89,12 +89,12 @@ def _identify_defrag_candidates(connection):
            defraggable_bytes += value_file_row.size
 
     if defraggable_bytes < _min_bytes_for_defrag_pass:
-        log.debug("too few defraggable bytes {0} in {1} value files".format(
+        log.info("too few defraggable bytes {0} in {1} value files".format(
             defraggable_bytes, len(candidates)
         ))
         return 0, []
 
-    log.debug("found {0} defraggable bytes in {1} value files".format(
+    log.info("found {0:,} defraggable bytes in {1:,} value files".format(
         defraggable_bytes, len(candidates)
     ))
     return defraggable_bytes, candidates
@@ -296,10 +296,12 @@ def _defrag_pass(connection, event_push_client):
             update nimbusio_node.segment_sequence
             set value_file_id = %s, value_file_offset = %s
             where collection_id = %s and segment_id = %s
+            and sequence_num = %s
         """, [output_value_file.value_file_id, 
               new_value_file_offset,
               reference.collection_id,
-              reference.segment_id])
+              reference.segment_id,
+              reference.sequence_num])
 
     # close (and remove) the old value files
     for input_value_file in input_value_files.values():
@@ -365,7 +367,7 @@ def main():
         else:
             connection.commit()
 
-        log.info("bytes defragged = {0}".format(bytes_defragged))
+        log.info("bytes defragged = {0:,}".format(bytes_defragged))
 
         # if we didn't do anything on this pass...
         if bytes_defragged == 0:

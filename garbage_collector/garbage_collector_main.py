@@ -5,15 +5,17 @@ garbage_collector_main.py
 import io
 import logging
 import os
-import signal
 import sys
-from threading import Event
 
 import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
-from tools.event_push_client import EventPushClient, unhandled_exception_topic
+from tools.event_push_client import EventPushClient
+from tools.data_definitions import segment_status_active, \
+        segment_status_cancelled, \
+        segment_status_final, \
+        segment_status_tombstone
 
 from garbage_collector.options import get_options
 from garbage_collector.versioned_collections import get_versioned_collections
@@ -26,55 +28,102 @@ _log_path = "{0}/nimbusio_garbage_collector_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 
-def _evaluate_versioned_partition(collectable_segment_ids, partition):
+def _evaluate_partition(
+    collectable_segment_ids, partition, versioned_collection
+):
     """
     return a list of segment_id's that are candidates for collection
 
+    Row Collection Decision Rules:
+
     * Tombstone rows are not collectable in this phase (but see below.)
-    * A row is collectable if a later tombstone exists where 
-      file_tombstone_unified_id is null
+    * status=Canceled rows are always collectable
+    * status=Active rows are never collectable
+    * A row is collectable if a later tombstone exists 
+      where file_tombstone_unified_id is null
     * A row is collectable if a specific matching tombstone exists 
       (where file_tombstone_unified_id = unified_id)
+    * If versioning is not enabled for the collection, 
+      a row is collectable if a later version exists
+
+    In the above, the word "later" means "a higher numbered unified_id"
     """
+    log = logging.getLogger("_evaluate_partition")
+    collectable_count = 0
+
+    # status=Active rows are never collectable
+    # Tombstone rows are not collectable in this phase
+    never_collectable = set([segment_status_active, segment_status_tombstone])
+
     # reverse the partition list to get the newest (highest unified_id) first
     partition.reverse()
 
     collect_the_rest = False
     collect_unified_ids = set()
+    latest_version_unified_id = None
+
+    log.debug("{0} {1} versioned={2}".format(
+        partition[0].collection_id, 
+        partition[0].key, 
+        versioned_collection,
+    ))
+
     for entry in partition:
+
+        log.debug("    {0} {1} {2} {3} {4}".format(
+            entry.status, 
+            entry.unified_id,
+            entry.file_tombstone_unified_id,
+            entry.key_row_number,
+            entry.key_row_count
+        ))
+
+        # A row is collectable if a later tombstone exists 
+        # where file_tombstone_unified_id is null
         if collect_the_rest:
-            if not entry.file_tombstone:
+            if not entry.status in never_collectable:
                 collectable_segment_ids.write("{0}\n".format(entry.segment_id))
+                collectable_count += 1
             continue
-        if entry.file_tombstone and entry.file_tombstone_unified_id is None:
+        if entry.status == segment_status_tombstone \
+        and entry.file_tombstone_unified_id is None:
             collect_the_rest = True
             continue
-        if entry.file_tombstone:
+
+        # A row is collectable if a specific matching tombstone exists 
+        # (where file_tombstone_unified_id = unified_id)
+        if entry.status == segment_status_tombstone:
             collect_unified_ids.add(entry.file_tombstone_unified_id)
             continue
         if entry.unified_id in collect_unified_ids:
             collectable_segment_ids.write("{0}\n".format(entry.segment_id))
+            collectable_count += 1
             continue
 
-def _evaluate_unversioned_partition(collectable_segment_ids, partition):
-    """
-    return a list of segment_id's that are candidates for collection
+        # status=Canceled rows are always collectable
+        if entry.status == segment_status_cancelled:
+            collectable_segment_ids.write("{0}\n".format(entry.segment_id))
+            continue
 
-    * If versioning is not enabled for the collection, 
-      a row is collectable if a later version exists
-    """
-    # reverse the partition list to get the newest (highest unified_id) first
-    partition.reverse()
+        # status=Active rows are never collectable
+        # Tombstone rows are not collectable in this phase
+        if entry.status in never_collectable:
+            continue
 
-    collect_the_rest = False
-    for entry in partition:
-        if collect_the_rest:
-            if not entry.file_tombstone:
+        # If versioning is not enabled for the collection, 
+        # a row is collectable if a later version exists
+        if not versioned_collection and entry.status == segment_status_final:
+            if latest_version_unified_id is None:
+                latest_version_unified_id = entry.unified_id
+                continue
+            # if we make it here, we could assume that we have
+            # an older version, but let's check anyway
+            if entry.unified_id < latest_version_unified_id:
                 collectable_segment_ids.write("{0}\n".format(entry.segment_id))
-            continue
-        # this must be the most recent entry, (i.e. highest unified_id)
-        # we want to collect every segment that comes before it 
-        collect_the_rest = True
+                collectable_count += 1
+                continue
+
+    return collectable_count
 
 def main():
     """
@@ -90,7 +139,7 @@ def main():
     try:
         connection = get_node_local_connection()
     except Exception as instance:
-        log.exception("Exception connecting to database")
+        log.exception("Exception connecting to database {0}".format(instance))
         return -1
 
     zmq_context =  zmq.Context()
@@ -102,15 +151,19 @@ def main():
 
     collectable_segment_ids = io.StringIO()
 
+    partition_count = 0
+    collectable_count = 0
+
     try:
         versioned_collections = get_versioned_collections()
         for partition in generate_candidate_partitions(connection):
-            if partition[0].collection_id in versioned_collections:
-                _evaluate_versioned_partition(collectable_segment_ids, 
-                                              partition)
-            else:
-                _evaluate_unversioned_partition(collectable_segment_ids, 
-                                                partition)
+            partition_count += 1
+            versioned_collection = \
+                    partition[0].collection_id in versioned_collections
+            count = _evaluate_partition(collectable_segment_ids, 
+                                        partition,
+                                        versioned_collection)
+            collectable_count += count
         archive_collectable_segment_rows(connection, 
                                          collectable_segment_ids,
                                          options.max_node_offline_time)
@@ -119,6 +172,11 @@ def main():
         log.exception("_garbage_collection")
         return_code = -2
     else:
+        log.info(
+            "found {0:,} candidates, collected {1:,} segments".format(
+                partition_count, collectable_count
+            )
+        )
         log.info("program terminates normally")
 
     connection.close()

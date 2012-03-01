@@ -103,6 +103,9 @@ _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
 _archive_retry_interval = 120
 _retrieve_retry_interval = 120
 
+def _fix_timestamp(timestamp):
+    return (None if timestamp is None else repr(timestamp))
+
 def _build_meta_dict(req_get):
     """
     create a dict of meta values, conveting the aws prefix to ours
@@ -254,7 +257,7 @@ class Application(object):
 
     def _list_collections(self, req, match_object):
         username = match_object.group("username")
-        self._log.debug("_list_collections %r" % (username, ))
+        self._log.info("_list_collections %r" % (username, ))
 
         authenticated = self._authenticator.authenticate(
             self._central_connection,
@@ -288,7 +291,7 @@ class Application(object):
         collection_name = match_object.group("collection_name")
         versioning = False
 
-        self._log.debug("_create_collection: %s name = %r" % (
+        self._log.info("_create_collection: %s name = %r" % (
             username,
             collection_name,
         ))
@@ -325,7 +328,7 @@ class Application(object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
 
-        self._log.debug("_delete_collection: %r %r" % (
+        self._log.info("_delete_collection: %r %r" % (
             username, collection_name, 
         ))
 
@@ -427,7 +430,7 @@ class Application(object):
                 kwargs["version_id_marker"]
             )
 
-        self._log.debug(
+        self._log.info(
             "_list_versions: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
@@ -457,7 +460,7 @@ class Application(object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
 
-        self._log.debug("_collection_space_usage: %r %r" % (
+        self._log.info("_collection_space_usage: %r %r" % (
             username, collection_name
         ))
 
@@ -527,19 +530,17 @@ class Application(object):
             key, 
             req.content_length
         )
-        self._log.debug(description)
+        self._log.info(description)
 
         meta_dict = _build_meta_dict(req.GET)
 
-        conjoined_identifier = None
+        conjoined_unified_id = None
         conjoined_part = 0
 
         if "conjoined_identifier" in req.GET:
-            value = req.GET["conjoined_identifier"]
-            value = urllib.unquote_plus(value)
-            value = value.decode("utf-8")
-            if len(value) > 0:
-                conjoined_identifier = long(value)
+            conjoined_unified_id = self._id_translator.internal_id(
+               req.GET["conjoined_identifier"]
+            )
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
@@ -564,7 +565,7 @@ class Application(object):
             unified_id,
             timestamp,
             meta_dict,
-            conjoined_identifier,
+            conjoined_unified_id,
             conjoined_part
         )
         segmenter = ZfecSegmenter(
@@ -692,7 +693,7 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
-        self._log.debug(
+        self._log.info(
             "_list_keys: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
@@ -765,7 +766,7 @@ class Application(object):
             key,
             version_id
         )
-        self._log.debug(description)
+        self._log.info(description)
 
         start_time = time.time()
         self._stats["retrieves"] += 1
@@ -934,7 +935,7 @@ class Application(object):
                 key,
                 unified_id_to_delete
             )
-        self._log.debug(description)
+        self._log.info(description)
         data_writers = _create_data_writers(
             self._event_push_client,
             self._data_writer_clients
@@ -1008,7 +1009,7 @@ class Application(object):
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
-        self._log.debug(
+        self._log.info(
             "head_key: collection = (%s) %r username = %r key = %r %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
@@ -1065,7 +1066,7 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
-        self._log.debug(
+        self._log.info(
             "list_conjoined: collection = (%s) %r username = %r %s" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
@@ -1073,14 +1074,32 @@ class Application(object):
             kwargs,
         ))
 
-        result = list_conjoined_archives(
+        truncated, conjoined_entries = list_conjoined_archives(
             self._node_local_connection,
             collection_entry.collection_id,
             **kwargs
         )
 
+        conjoined_list = list()
+        for entry in conjoined_entries:
+            row_dict = {
+                "conjoined_identifier" : \
+                    self._id_translator.public_id(entry.conjoined_unified_id),
+                "key" : entry.key,
+                "create_timestamp" : _fix_timestamp(entry.create_timestamp),
+                "abort_timestamp"  : _fix_timestamp(entry.abort_timestamp),
+                "complete_timestamp":_fix_timestamp(entry.complete_timestamp),
+                "delete_timestamp" : _fix_timestamp(entry.delete_timestamp),
+            }
+            conjoined_list.append(row_dict)
+
+        response_dict = {
+            "conjoined_list" : conjoined_list, 
+            "truncated" : truncated
+        }
+
         response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(result))
+        response.body_file.write(json.dumps(response_dict))
 
         return response
 
@@ -1110,7 +1129,7 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        self._log.info(
             "start_conjoined: collection = (%s) %r username = %r key = %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
@@ -1127,7 +1146,7 @@ class Application(object):
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
-        result = start_conjoined_archive(
+        start_conjoined_archive(
             data_writers,
             unified_id,
             collection_entry.collection_id,
@@ -1135,8 +1154,15 @@ class Application(object):
             timestamp
         )
 
+        conjoined_dict = {
+            "conjoined_identifier"      : \
+                    self._id_translator.public_id(unified_id),
+            "key"                       : key,
+            "create_timestamp"          : repr(timestamp)   
+        }
+
         response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(result))
+        response.body_file.write(json.dumps(conjoined_dict))
 
         return response
 
@@ -1167,13 +1193,15 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        unified_id = self._id_translator.internal_id(conjoined_identifier)
+
+        self._log.info(
             "finish_conjoined: collection = (%s) %r %r key = %r %s" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier
+            unified_id
         ))
 
         data_writers = _create_data_writers(
@@ -1188,7 +1216,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            conjoined_identifier,
+            unified_id,
             timestamp
         )
 
@@ -1221,13 +1249,15 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        unified_id = self._id_translator.internal_id(conjoined_identifier)
+
+        self._log.info(
             "abort_conjoined: collection = (%s) %r %r key = %r %s" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier
+            unified_id
         ))
 
         data_writers = _create_data_writers(
@@ -1242,7 +1272,7 @@ class Application(object):
             data_writers,
             collection_entry.collection_id,
             key,
-            conjoined_identifier,
+            unified_id,
             timestamp
         )
 
@@ -1275,11 +1305,13 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
-            "list_upload: collection = (%s) %r username = %r key = %r" % (
+        unified_id = self._id_translator.internal_id(conjoined_identifier)
+
+        self._log.info("list_upload: collection = (%s) %r %r key=%r %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
-            key
+            key,
+            unified_id
         ))
 

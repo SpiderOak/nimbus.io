@@ -59,6 +59,8 @@ def _insert_new_segment_row(
     unified_id,
     key, 
     timestamp, 
+    conjoined_unified_id,
+    conjoined_part,
     segment_num,
     source_node_id,
     handoff_node_id
@@ -74,6 +76,8 @@ def _insert_new_segment_row(
             unified_id,
             timestamp,
             segment_num,
+            conjoined_unified_id,
+            conjoined_part,
             source_node_id,
             handoff_node_id
         ) values (
@@ -83,17 +87,21 @@ def _insert_new_segment_row(
             %(unified_id)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
+            %(conjoined_unified_id)s,
+            %(conjoined_part)s,
             %(source_node_id)s,
             %(handoff_node_id)s
         ) returning id""", {
-            "collection_id"     : collection_id,
-            "key"               : key,
-            "status"            : segment_status_active,
-            "unified_id"        : unified_id,
-            "timestamp"         : timestamp,
-            "segment_num"       : segment_num,
-            "source_node_id"    : source_node_id,
-            "handoff_node_id"   : handoff_node_id,
+            "collection_id"         : collection_id,
+            "key"                   : key,
+            "status"                : segment_status_active,
+            "unified_id"            : unified_id,
+            "timestamp"             : timestamp,
+            "conjoined_unified_id"  : conjoined_unified_id,
+            "conjoined_part"        : conjoined_part,
+            "segment_num"           : segment_num,
+            "source_node_id"        : source_node_id,
+            "handoff_node_id"       : handoff_node_id,
         }
     )
 
@@ -308,6 +316,8 @@ class Writer(object):
         key, 
         unified_id,
         timestamp_repr, 
+        conjoined_unified_id,
+        conjoined_part,
         segment_num,
         source_node_id,
         handoff_node_id,
@@ -316,11 +326,13 @@ class Writer(object):
         Initiate storing a segment of data for a file
         """
         segment_key = (unified_id, segment_num, )
-        self._log.info("start_new_segment %s %s %s %s %s %s" % (
+        self._log.info("start_new_segment %s %s %s %s %s %s %s %s" % (
             collection_id, 
             key, 
             unified_id, 
             timestamp_repr, 
+            conjoined_unified_id,
+            conjoined_part,
             segment_num, 
             source_node_id,
         ))
@@ -335,6 +347,8 @@ class Writer(object):
                                                    unified_id,
                                                    key, 
                                                    timestamp, 
+                                                   conjoined_unified_id,
+                                                   conjoined_part,
                                                    segment_num,
                                                    source_node_id,
                                                    handoff_node_id),
@@ -544,7 +558,7 @@ class Writer(object):
             "collection_id"      : collection_id,
             "key"                : key,
             "unified_id"         : unified_id,
-            "completed_timestamp": timestamp
+            "complete_timestamp" : timestamp
         }
         _set_conjoined_complete_timestamp(self._connection, conjoined_dict)
 

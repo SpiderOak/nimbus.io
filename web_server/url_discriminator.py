@@ -96,11 +96,11 @@ _start_conjoined_re = re.compile(
 )
 
 _finish_conjoined_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)?action=finish\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)\?action=finish\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
 )
 
 _abort_conjoined_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)?action=abort\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
+    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/conjoined/(?P<key>\S+?)\?action=abort\&conjoined_identifier=(?P<conjoined_identifier>\S+)$"
 )
 
 _list_upload_in_conjoined_re = re.compile(

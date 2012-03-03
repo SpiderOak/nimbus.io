@@ -26,6 +26,7 @@ def _all_segment_rows_for_key(connection, collection_id, key):
 def _all_sequence_rows_for_segment(
     connection, 
     segment_unified_id, 
+    segment_conjoined_part,
     segment_num
 ):
     """
@@ -38,12 +39,14 @@ def _all_sequence_rows_for_segment(
         where segment_id = (
             select id from nimbusio_node.segment 
             where unified_id = %%s
+            and conjoined_part = %%s
             and segment_num = %%s
             and status = 'F'
         )
         order by sequence_num asc
     """ % (",".join(segment_sequence_template._fields), ), [
         segment_unified_id, 
+        segment_conjoined_part,
         segment_num, 
     ])
     return [segment_sequence_template._make(row) for row in result]
@@ -72,6 +75,7 @@ class Reader(object):
     def generate_all_sequence_rows(
         self, 
         segment_unified_id,
+        segment_conjoined_part,
         segment_num
     ):
         """
@@ -82,6 +86,7 @@ class Reader(object):
         sequence_rows = _all_sequence_rows_for_segment(
             self._connection, 
             segment_unified_id, 
+            segment_conjoined_part,
             segment_num
         )
 

@@ -102,6 +102,7 @@ class Retriever(object):
                     task = self._pending.spawn(
                         function, 
                         segment_row.unified_id,
+                        segment_row.conjoined_part,
                         segment_number
                     )
                     task.link(self._done_link)

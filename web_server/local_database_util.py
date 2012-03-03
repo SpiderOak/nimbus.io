@@ -60,7 +60,8 @@ def current_status_of_key(connection, collection_id, key, version_id):
 
         result = connection.fetch_all_rows("""
             select %s from nimbusio_node.segment 
-            where conjoined_unified_id = %%s 
+            where unified_id = %%s 
+            and handoff_node_id is null
             order by conjoined_part
         """ % (",".join(segment_row_template._fields), ), 
         [conjoined_row.unified_id, ])

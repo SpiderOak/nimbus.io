@@ -534,13 +534,15 @@ class Application(object):
 
         meta_dict = _build_meta_dict(req.GET)
 
-        conjoined_unified_id = None
+        unified_id = None
         conjoined_part = 0
 
         if "conjoined_identifier" in req.GET:
-            conjoined_unified_id = self._id_translator.internal_id(
+            unified_id = self._id_translator.internal_id(
                req.GET["conjoined_identifier"]
             )
+        else:
+            unified_id = self._unified_id_factory.next()
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
@@ -549,7 +551,6 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-        unified_id = self._unified_id_factory.next()
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -565,7 +566,6 @@ class Application(object):
             unified_id,
             timestamp,
             meta_dict,
-            conjoined_unified_id,
             conjoined_part
         )
         segmenter = ZfecSegmenter(
@@ -1084,7 +1084,7 @@ class Application(object):
         for entry in conjoined_entries:
             row_dict = {
                 "conjoined_identifier" : \
-                    self._id_translator.public_id(entry.conjoined_unified_id),
+                    self._id_translator.public_id(entry.unified_id),
                 "key" : entry.key,
                 "create_timestamp" : _fix_timestamp(entry.create_timestamp),
                 "abort_timestamp"  : _fix_timestamp(entry.abort_timestamp),

@@ -165,16 +165,17 @@ def _create_data_writers(event_push_client, clients):
     # segment numbers get defined in
     return [data_writers_dict[node_name] for node_name in _node_names]
 
-def _send_archive_cancel(unified_id, clients):
+def _send_archive_cancel(unified_id, conjoined_part, clients):
     # message sent to data writers telling them to cancel the archive
     for i, client in enumerate(clients):
         if not client.connected:
             continue
         cancel_message = {
-            "message-type"  : "archive-key-cancel",
-            "priority"      : create_priority(),
-            "unified-id"    : unified_id,
-            "segment-num"   : i+1,
+            "message-type"      : "archive-key-cancel",
+            "priority"          : create_priority(),
+            "unified-id"        : unified_id,
+            "conjoined-part"    : conjoined_part,
+            "segment-num"       : i+1,
         }
         client.queue_message_for_broadcast(cancel_message)
 
@@ -609,7 +610,9 @@ class Application(object):
             self._log.error("archive failed: %s %s" % (
                 description, instance, 
             ))
-            _send_archive_cancel(unified_id, self._data_writer_clients)
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
             # 2009-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
@@ -627,7 +630,9 @@ class Application(object):
             self._log.exception("archive failed: %s %s" % (
                 description, instance, 
             ))
-            _send_archive_cancel(unified_id, self._data_writer_clients)
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
             response = Response(status=500, content_type=None)
             self._stats["archives"] -= 1
             return response

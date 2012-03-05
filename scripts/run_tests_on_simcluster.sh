@@ -8,6 +8,24 @@
 # expects to be run from nimbus.io checkout, and expects motoboto to be checked
 # out in ../motobobo
 
+SCRIPTS_DIR="$(dirname $0)"
+CODEBASE="$(dirname $SCRIPTS_DIR)"
+CODEBASE="$(cd $CODEBASE ; pwd)"
+CODE_PARENT="$(dirname $CODEBASE)"
+MOTOBOTO_DIR="$CODE_PARENT/motoboto"
+
+if [ ! -d "$MOTOBOTO_DIR" ]; then
+    echo "Did not find motoboto source in $MOTOBOTO_DIR"
+    echo "You need to have source for the client libraries: lumberyard and motoboto"
+    echo "Do this:"
+    echo "  cd $(dirname $MOTOBOTO_DIR)"
+    echo "  git clone https://nimbus.io/dev/source/lumberyard.git/"
+    echo "  git clone https://nimbus.io/dev/source/motoboto.git/"
+    echo "  cd lumberyard ; sudo python setup.py install ; cd .."
+    echo "  cd motoboto ; sudo python setup.py install ; cd .."
+    exit 1
+fi
+
 set -x
 set -e
 
@@ -36,7 +54,6 @@ else
     echo "Using existing user $TEST_USERNAME"
 fi
 
-MOTOBOTO_DIR="${HOME}/motoboto"
 export PYTHONPATH="${PYTHONPATH}:${MOTOBOTO_DIR}"
 pushd "${MOTOBOTO_DIR}/tests"
 

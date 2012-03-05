@@ -2,7 +2,7 @@
 
 # simple script for spawning a new test simulated cluster
 
-export PATH="/usr/lib/postgresql/9.0/bin:/usr/loca/bin:$PATH"
+export PATH="/usr/lib/postgresql/9.1/bin:/usr/lib/postgresql/9.0/bin:/usr/loca/bin:$PATH"
 export SIM_DIR="/tmp/clustersim"
 export PYTHONPATH=$PWD
 export BASE_PORT=9000

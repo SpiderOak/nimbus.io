@@ -357,10 +357,10 @@ Recovery from Storage Node Failure
 Recovering from the total hardware loss of any storage node in a cluster is
 a simple two step process: 
 
-#. Replace the storage node with a new identically configured node 
+#. Replace the storage node with a new identically configured node
 
 #. The anti entropy process will automatically detect and repair the
-inconsistencies in the cluster, restoring the full replication level.
+   inconsistencies in the cluster, restoring the full replication level
 
 In practice, loss of the entire node is very rare.  Even loss of a single RAID6
 storage volume is rare, but with enough volumes it does happen occasionally.
@@ -372,17 +372,17 @@ level for lost data.
 The general procedure for failure from partial node loss is:
 
 #. Take the Nimbus.io services offline (this typically happens automatically
-with severe failure.)  The other nodes will continue to operate normally,
-creating hinted-handoffs for data destined for the offline node. 
+   with severe failure.)  The other nodes will continue to operate normally,
+   creating hinted-handoffs for data destined for the offline node. 
 
 #. Replace the failed component(s).  This may mean recreating and
-re-initializing one or more storage volumes. 
+   re-initializing one or more storage volumes. 
 
 #. If the node's local database was lost, restore the database from the most
-recent dump and then apply any archived log files to bring it close to current.
-Even database backup that is days or weeks old will reduce the amount of work
-anti entropy must do.  If the node local database cannot be restored at all,
-treat the situation as a total machine failure.
+   recent dump and then apply any archived log files to bring it close to current.
+   Even database backup that is days or weeks old will reduce the amount of work
+   anti entropy must do.  If the node local database cannot be restored at all,
+   treat the situation as a total machine failure.
 
 #. Bring the node's Nimbus.io services online, and allow anti entropy to begin. 
 

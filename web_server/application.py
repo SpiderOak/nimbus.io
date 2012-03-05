@@ -1024,16 +1024,20 @@ class Application(object):
         ))
 
         getter = StatGetter(self._node_local_connection)
-        segment_rows = getter.stat(
+        status_rows = getter.stat(
             collection_entry.collection_id, key, version_id
         )
-        if len(segment_rows) == 0 or \
-           segment_rows[0].status != segment_status_final:
+        if len(status_rows) == 0 or \
+           status_rows[0].seg_status != segment_status_final:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)
-        response.content_length = segment_rows[0].file_size 
-        response.content_md5 = b64encode(segment_rows[0].file_hash)
+        response.content_length = sum([r.seg_file_size for r in status_rows])
+
+        if status_rows[0].con_create_timestamp is None:
+            response.content_md5 = b64encode(status_rows[0].seg_file_hash)
+        else:
+            response.content_md5 = None
 
         return response
 

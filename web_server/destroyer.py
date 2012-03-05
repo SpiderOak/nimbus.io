@@ -15,7 +15,8 @@ from web_server.exceptions import (
     DestroyFailedError,
 )
 
-from web_server.local_database_util import current_status_of_key
+from web_server.local_database_util import current_status_of_key, \
+        current_status_of_version
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
@@ -66,17 +67,22 @@ class Destroyer(object):
             raise AlreadyInProgress()
 
         # TODO: find a non-blocking way to do this
-        _conjoined_row, segment_rows = current_status_of_key(
-            self._node_local_connection, 
-            self.collection_id, 
-            self.key,
-            self.unified_id_to_delete
-        )
+        if self.unified_id_to_delete is None:
+            status_rows = current_status_of_key(
+                self._node_local_connection, 
+                self.collection_id,
+                self.key
+            )
+        else:
+            status_rows = current_status_of_version(
+                self._node_local_connection, 
+                self.unified_id_to_delete
+            )
 
-        if len(segment_rows) == 0:
-            raise DestroyFailedError
+        if len(status_rows) == 0:
+            raise DestroyFailedError("no status rows found")
 
-        file_size = sum([row.file_size for row in segment_rows])
+        file_size = sum([row.seg_file_size for row in status_rows])
 
         for i, data_writer in enumerate(self.data_writers):
             segment_num = i + 1

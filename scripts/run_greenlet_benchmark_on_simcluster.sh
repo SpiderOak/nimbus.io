@@ -8,13 +8,40 @@
 # expects to be run from nimbus.io checkout, and expects motoboto to be checked
 # out in ../motobobo
 
+SCRIPTS_DIR="$(dirname $0)"
+CODEBASE="$(dirname $SCRIPTS_DIR)"
+CODEBASE="$(cd $CODEBASE ; pwd)"
+CODE_PARENT="$(dirname $CODEBASE)"
+MOTOBOTO_DIR="$CODE_PARENT/motoboto"
+MOTOBOTO_BENCH_DIR="$CODE_PARENT/motoboto_benchmark"
+
+if [ ! -d "$MOTOBOTO_DIR" ]; then
+    echo "Did not find motoboto source in $MOTOBOTO_DIR"
+    echo "You need to have source for the client libraries: lumberyard and motoboto"
+    echo "Do this:"
+    echo "  cd $CODE_PARENT"
+    echo "  git clone https://nimbus.io/dev/source/lumberyard.git/"
+    echo "  git clone https://nimbus.io/dev/source/motoboto.git/"
+    echo "  cd lumberyard ; sudo python setup.py install ; cd .."
+    echo "  cd motoboto ; sudo python setup.py install ; cd .."
+    exit 1
+fi
+
+if [ ! -d "$MOTOBOTO_BENCH_DIR" ]; then
+    echo "Did not find motoboto_benchmark source in $MOTOBOTO_BENCH_DIR"
+    echo "Do this:"
+    echo "  cd $CODE_PARENT"
+    echo "  git clone https://nimbus.io/dev/source/motoboto_benchmark.git/"
+    exit 1
+fi
+
 set -x
 set -e
 
 BASEDIR=$1
 
 if [ ! -d $BASEDIR ]; then
-    echo "basedir '$BASEDIR' does not exist"
+    echo "basedir of simulated cluster '$BASEDIR' does not exist"
     exit 1
 fi
 
@@ -38,8 +65,8 @@ done
 export NIMBUSIO_CONNECTION_TIMEOUT=360.0
 
 # run the benchmark
-python ../motoboto_benchmark/motoboto_benchmark_greenlet_main.py \
-    --test-script="$HOME/motoboto_big_test_script.json" \
+python $MOTOBOTO_BENCH_DIR/motoboto_benchmark_greenlet_main.py \
+    --test-script="$SCRIPTS_DIR/motoboto_big_test_script.json" \
     --user-identity-dir="$CLIENT_PATH" \
     --max-users=100 \
     --test-duration=3600

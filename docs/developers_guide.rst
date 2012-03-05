@@ -30,7 +30,7 @@ Command line tools
 
 If you have `lumberyard` and `motoboto` (the Python libraries for accessing
 Nimbus.io) installed, you can use a command line tool to list, delete, and
-archive data into your Nimbus.io Collections.
+archive data into a Nimbus.io :term:`Collection`.
 
 Here are some examples using the `nio_cmd` command line tool::
 
@@ -65,13 +65,13 @@ Here are some examples using the `nio_cmd` command line tool::
 Running Nimbus.io locally for Dev
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Production Nimbus.io storage clusters operate across at least 10 independent
-computers.  
+A production Nimbus.io :term:`storage cluster` operates across at least 10
+independent computers.
 
-For development and testing, you can simulate a full Nimbus.io cluster locally.
-Included is a cluster simulator script which can spawn and configure all the
-nodes for a full cluster on a single machine.  This is suitable for development
-work or inclusion in unit tests.  
+For development and testing, you can simulate a full Nimbus.io storage cluster
+locally.  Included is a cluster simulator script which can spawn and configure
+each :term:`storage node` for a full cluster on a single machine.  This is
+suitable for development work and inclusion in unit tests.  
 
 Clone the latest version of the source code::
 
@@ -81,8 +81,8 @@ Install all the needed libraries and other dependencies.  There are well
 commented shell scripts to guide you through this for some operating systems in
 the `scripts/install
 <https://nimbus.io/dev/trac/browser/Nimbus.IO/scripts/install>`_ folder within
-the source.  A very recent Linux distribution may provide everything you need
-as packages.
+the source.  Recent Linux distributions provide nearly everything you need as
+packages.
 
 In general, Nimbus.io depends on all of the following:
 
@@ -96,7 +96,7 @@ In general, Nimbus.io depends on all of the following:
 
 Once all of the dependencies are available, you can spawn a simulated test
 cluster.  This will create everything needed to run Nimbus.io, simulating 10
-nodes and a central database within a folder in your file system.  New
+nodes and a :term:`central database` within a folder in your file system.  New
 PostgreSQL instances will be initilized.  Configuration files for the overall
 Storage Cluster and each of the 10 Storage Nodes will be written.  
 
@@ -104,10 +104,10 @@ The simulator will give you a command prompt where you can start and stop the
 full cluster or specific nodes.
 
 The script below will spawn a new simulated cluster inside a local folder.  You
-will have 10 nodes, each listening on a local TCP port for REST API commands.
-The first of these will be on whatever the `--baseport` argument was (default
-`9000`).  If you get binding errors, try a different base port.  Read the
-source for details.
+will have 10 nodes, each running the :term:`Nimbus.io web server` listening on
+a local TCP port for REST API commands.  The first of these will be on whatever
+the `--baseport` argument was (default `9000`).  If you get binding errors, try
+a different base port.  Read the source for details.
 
 ::
     

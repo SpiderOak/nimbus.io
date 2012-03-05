@@ -108,7 +108,7 @@ Some of the deeper terms within the Nimbus.io code base are omitted.
         about the keys and values stored on the node (including Tombstones and
         Handoffs.)  Basically, the node database provides lookup information
         for the binary data that is actually stored in the file system, in
-        value files.
+        bulky value files.
 
     Key
         Within a collection, items are stored by keys.  These are Unicode

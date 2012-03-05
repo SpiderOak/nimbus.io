@@ -12,6 +12,7 @@ Contents:
    :maxdepth: 10
    :numbered:
 
+   self
    intro
    developers_guide
    administrators_guide

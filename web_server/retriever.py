@@ -70,7 +70,7 @@ class Retriever(object):
         if conjoined_row is None:
             is_available = segment_rows[0].status == segment_status_final
         else:
-            is_available = conjoined_row.delete_timestamp is not None
+            is_available = conjoined_row.delete_timestamp is None
 
         if not is_available:
             raise RetrieveFailedError("key is not available %s %s" % (

@@ -89,12 +89,12 @@ def _identify_defrag_candidates(connection):
            defraggable_bytes += value_file_row.size
 
     if defraggable_bytes < _min_bytes_for_defrag_pass:
-        log.debug("too few defraggable bytes {0} in {1} value files".format(
+        log.info("too few defraggable bytes {0} in {1} value files".format(
             defraggable_bytes, len(candidates)
         ))
         return 0, []
 
-    log.debug("found {0} defraggable bytes in {1} value files".format(
+    log.info("found {0:,} defraggable bytes in {1:,} value files".format(
         defraggable_bytes, len(candidates)
     ))
     return defraggable_bytes, candidates
@@ -367,7 +367,7 @@ def main():
         else:
             connection.commit()
 
-        log.info("bytes defragged = {0}".format(bytes_defragged))
+        log.info("bytes defragged = {0:,}".format(bytes_defragged))
 
         # if we didn't do anything on this pass...
         if bytes_defragged == 0:

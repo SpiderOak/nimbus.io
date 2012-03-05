@@ -30,7 +30,7 @@ class PUBServer(object):
         self._pub_socket.close()
 
     def send_message(self, message):
-        self._log.info("sending message: %s %s" % (
+        self._log.debug("sending message: %s %s" % (
             message["message-type"], message,  
         ))
         self._pub_socket.send(message["message-type"], zmq.SNDMORE)

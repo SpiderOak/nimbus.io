@@ -36,7 +36,7 @@ def _test_partition(partition):
     Consistency checks suggested by Alan 
     """
     assert [r.key_row_number for r in partition] == \
-        list(range(1, 1 + len(partition))
+        list(range(1, 1 + len(partition)))
     assert all([r.key_row_count == len(partition) for r in partition])
 
 def generate_candidate_partitions(connection):

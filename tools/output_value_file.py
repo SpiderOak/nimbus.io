@@ -75,7 +75,7 @@ class OutputValueFile(object):
         self._value_file_path = compute_value_file_path(
             repository_path, self._value_file_id)
         self._expected_size = expected_size
-        self._log.info("opening {0} expected size = {1}".format(
+        self._log.debug("opening {0} expected size = {1}".format(
             self._value_file_path, self._expected_size)) 
         value_file_dir = os.path.dirname(self._value_file_path)
         if not os.path.exists(value_file_dir):
@@ -122,7 +122,7 @@ class OutputValueFile(object):
 
     def close(self):
         """close the file and make it visible in the database"""
-        self._log.info("closing %s size=%s segment_sequence_count=%s" % (
+        self._log.debug("closing %s size=%s segment_sequence_count=%s" % (
             self._value_file_path, self._size, self._segment_sequence_count
         )) 
 

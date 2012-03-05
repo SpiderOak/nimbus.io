@@ -182,10 +182,10 @@ class ResilientServer(object):
 
     def _handle_resilient_server_handshake(self, message, _data):
         log = logging.getLogger("_handle_resilient_server_handshake")
-        log.info("%(client-tag)s %(client-address)s" % message)
+        log.debug("%(client-tag)s %(client-address)s" % message)
 
         if message["client-tag"] in self._active_clients:
-            log.warn("replacing existing client %(client-tag)s" % message) 
+            log.debug("replacing existing client %(client-tag)s" % message) 
             self._active_clients[message["client-tag"]].close()
 
         self._active_clients[message["client-tag"]] = PUSHClient(

@@ -597,7 +597,7 @@ Abort Conjoined Archive
 ++++++++++++++++++++++++
 Halt the conjoined archive and release all resources.
 
-.. http:delete:: /conjoined/<key>
+.. http:post:: /conjoined/<key>
 
     :query action=abort: abort a conjoined archive
     :query conjoined_identifier=<conjoined-identifier>: returned by start

@@ -120,11 +120,15 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
+    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
+
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-unified-id"],
+        conjoined_part,
         message["segment-num"],
         source_node_id,
         handoff_node_id
@@ -147,7 +151,6 @@ def _handle_archive_key_entire(state, message, data):
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
-    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
@@ -226,6 +229,8 @@ def _handle_archive_key_start(state, message, data):
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-unified-id"],
+        conjoined_part,
         message["segment-num"],
         source_node_id,
         handoff_node_id
@@ -492,7 +497,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["unified-id"],
+        message["conjoined-unified-id"],
         message["timestamp-repr"],
     ))
 
@@ -501,7 +506,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
     state["writer"].abort_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        message["unified-id"],
+        message["conjoined-unified-id"],
         timestamp
     )
 
@@ -519,7 +524,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["unified-id"],
+        message["conjoined-unified-id"],
         message["timestamp-repr"],
     ))
 
@@ -528,7 +533,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
     state["writer"].finish_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        message["unified-id"],
+        message["conjoined-unified-id"],
         timestamp
     )
 

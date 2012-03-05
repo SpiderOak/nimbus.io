@@ -5,6 +5,7 @@ conjoined_manager.py
 functions for conjoined archive data
 """
 import logging
+from collections import namedtuple
 
 from  gevent.greenlet import Greenlet
 import  gevent.pool
@@ -15,6 +16,14 @@ class ConjoinedError(Exception):
     pass
 
 _conjoined_timeout = 60.0 * 5.0
+_conjoined_list_entry = namedtuple("ConjoinedListEntry", [
+        "conjoined_unified_id",
+        "key",
+        "create_timestamp", 
+        "abort_timestamp",
+        "complete_timestamp",
+        "delete_timestamp", ]
+)
 
 class MessageGreenlet(Greenlet):
     """
@@ -37,38 +46,11 @@ def list_conjoined_archives(
     collection_id, 
     max_conjoined=1000, 
     key_marker="", 
-    conjoined_identifier_marker_str=""
+    conjoined_identifier_marker=0
 ):
     """
-    return a dict containing "conjoined_list", "truncated"
-    where conjoined_list is a list of dicts containing:
-
-    * conjoined_unified_id 
-    * key
-    * create_timestamp 
-    * abort_timestamp
-    * complete_timestamp 
-    * delete_timestamp
+    return a boolean for truncated and list of _conjoined_list_entry
     """
-    keys = [
-        "conjoined_identifier",
-        "key",
-        "create_timestamp", 
-        "abort_timestamp",
-        "complete_timestamp",
-        "delete_timestamp",
-    ]
-    timestamp_keys = set([
-        "create_timestamp", 
-        "abort_timestamp",
-        "complete_timestamp",
-        "delete_timestamp",
-    ])
-
-    try:
-        conjoined_identifier_marker = int(conjoined_identifier_marker_str)
-    except ValueError:
-        conjoined_identifier_marker = 0
 
     # ask for one more than max_conjoined so we can tell if we are truncated
     max_conjoined = int(max_conjoined)
@@ -79,7 +61,7 @@ def list_conjoined_archives(
         select unified_id, key, create_timestamp, abort_timestamp, 
         complete_timestamp, delete_timestamp from nimbusio_node.conjoined where
         collection_id = %s and key > %s and unified_id > %s
-        order by create_timestamp
+        order by unified_id
         limit %s
         """.strip(), [
             collection_id, 
@@ -89,17 +71,9 @@ def list_conjoined_archives(
         ]
     )
     truncated = len(result) == request_count
-    conjoined_list = list()
-    for row in result:
-        row_dict = dict()
-        for key, value in zip(keys, row):
-            if key in timestamp_keys and value is not None:
-                row_dict[key] = repr(value)
-            else:
-                row_dict[key] = value
-        conjoined_list.append(row_dict)
-
-    return {"conjoined_list" : conjoined_list, "truncated" : truncated}
+    conjoined_list = [_conjoined_list_entry._make(x) for x in result]
+    
+    return truncated, conjoined_list
 
 def start_conjoined_archive(
     data_writers, unified_id, collection_id, key, timestamp
@@ -121,14 +95,8 @@ def start_conjoined_archive(
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
-    return {
-        "conjoined_identifier"      : unified_id,
-        "key"                       : key,
-        "create_timestamp"          : repr(timestamp)   
-    }
-
 def abort_conjoined_archive(
-    data_writers, collection_id, key, conjoined_identifier, timestamp
+    data_writers, collection_id, key, conjoined_unified_id, timestamp
 ):
     """
     mark a conjoined archive as aborted
@@ -139,16 +107,18 @@ def abort_conjoined_archive(
         "message-type"              : "abort-conjoined-archive",
         "collection-id"             : collection_id,
         "key"                       : key,
-        "conjoined-unified-id"      : conjoined_identifier,
+        "conjoined-unified-id"      : conjoined_unified_id,
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join([str(collection_id), key, conjoined_identifier, ])
+    error_tag = ",".join(
+        [str(collection_id), key, str(conjoined_unified_id), ]
+    )
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
 def finish_conjoined_archive(
-    data_writers, collection_id, key, conjoined_identifier, timestamp
+    data_writers, collection_id, key, conjoined_unified_id, timestamp
 ):
     """
     finish a conjoined archive
@@ -159,11 +129,13 @@ def finish_conjoined_archive(
         "message-type"              : "finish-conjoined-archive",
         "collection-id"             : collection_id,
         "key"                       : key,
-        "conjoined-unified-id"      : conjoined_identifier,
+        "conjoined-unified-id"      : conjoined_unified_id,
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join([str(collection_id), key, conjoined_identifier, ])
+    error_tag = ",".join(
+        [str(collection_id), key, str(conjoined_unified_id), ]
+    )
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 

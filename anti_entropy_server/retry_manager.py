@@ -7,7 +7,7 @@ A time queue action to perioidcially retry consistency checks
 import logging
 import time
 
-_polling_interval = 15 * 50 * 60
+_polling_interval = 15.0 * 60.0
 
 class RetryManager(object):
     """A time queue action to periodically retry consistency checks"""
@@ -28,7 +28,7 @@ class RetryManager(object):
         current_time = time.time()
         next_retry_list = list()
         for retry_entry in self._state["retry-list"]:
-            if current_time >= retry_entry.retry_timestamp:
+            if current_time >= retry_entry.retry_time:
                 self._start_consistency_check(
                     self._state,
                     retry_entry.collection_id, 

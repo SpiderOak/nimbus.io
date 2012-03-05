@@ -301,13 +301,19 @@ Create the node's config script
 TODO explain how to create node config scripts based on the templates created
 by the cluster simulator.
 
+Place the config file on each storage node as `/etc/default/nimbus.io`.  (You
+can put it somewhere else if you like, but this is the location that all the
+sample run scripts look for it.)
+
 Setup Service Supervision And Run Scripts
 -----------------------------------------
 
-We use `runit <http://smarden.org/runit/>`_ for running Nimbus.io services with
-supervision, but any similar service management system can work.
+We enjoy `runit <http://smarden.org/runit/>`_ for running Nimbus.io services with
+supervision, but any similar service management system can work.  Service
+supervision handles automatically restarting services if they crash.  
 
-TODO add sample run scripts
+In the Nimbus.io source tree, there's an `etc/service` directory that contains
+sample run scripts for each of the services that need to run on a storage node.
 
 Connecting Nimbus.io clients to your own site
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -379,10 +385,13 @@ The general procedure for failure from partial node loss is:
    re-initializing one or more storage volumes. 
 
 #. If the node's local database was lost, restore the database from the most
-   recent dump and then apply any archived log files to bring it close to current.
-   Even database backup that is days or weeks old will reduce the amount of work
-   anti entropy must do.  If the node local database cannot be restored at all,
-   treat the situation as a total machine failure.
+   recent dump and then apply any archived log files to bring it close to
+   current.  Even if you are not doing regular database log archiving to
+   another Nimbus.io cluster as suggested above, a database backup that is days
+   or weeks old will reduce the amount of work anti entropy must do.  
+   
+   If the node local database cannot be restored at all, treat the situation as
+   a total machine failure.
 
 #. Bring the node's Nimbus.io services online, and allow anti entropy to begin. 
 

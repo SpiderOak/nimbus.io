@@ -70,7 +70,6 @@ def current_status_of_version(connection, version_id):
     """
     log = logging.getLogger("current_status_of_version")
     result = connection.fetch_all_rows(_version_query, [version_id, ])
-    log.info(str(list(result)))
     status_rows = [_status_row_template._make(raw_row) for raw_row in result]
 
     log.debug(str(status_rows))

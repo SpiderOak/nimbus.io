@@ -27,7 +27,6 @@ class Archiver(object):
         unified_id,
         timestamp, 
         meta_dict, 
-        conjoined_unified_id,
         conjoined_part
     ):
         self.log = logging.getLogger(
@@ -38,7 +37,6 @@ class Archiver(object):
         self._unified_id = unified_id
         self.timestamp = timestamp
         self._meta_dict = meta_dict
-        self._conjoined_unified_id = conjoined_unified_id
         self._conjoined_part = conjoined_part
         self.sequence_num = 0
         self._pending = gevent.pool.Group()
@@ -82,7 +80,6 @@ class Archiver(object):
                         self.key,
                         self._unified_id,
                         self.timestamp,
-                        self._conjoined_unified_id,
                         self._conjoined_part,
                         segment_num,
                         zfec_padding_size,
@@ -100,6 +97,7 @@ class Archiver(object):
                         self.key,
                         self._unified_id,
                         self.timestamp,
+                        self._conjoined_part,
                         segment_num,
                         zfec_padding_size,
                         self.sequence_num,
@@ -133,7 +131,6 @@ class Archiver(object):
                     self.key,
                     self._unified_id,
                     self.timestamp,
-                    self._conjoined_unified_id,
                     self._conjoined_part,
                     self._meta_dict,
                     segment_num,
@@ -153,6 +150,7 @@ class Archiver(object):
                     self.key,
                     self._unified_id,
                     self.timestamp,
+                    self._conjoined_part,
                     self._meta_dict,
                     segment_num,
                     zfec_padding_size,

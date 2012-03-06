@@ -17,7 +17,7 @@ class ConjoinedError(Exception):
 
 _conjoined_timeout = 60.0 * 5.0
 _conjoined_list_entry = namedtuple("ConjoinedListEntry", [
-        "conjoined_unified_id",
+        "unified_id",
         "key",
         "create_timestamp", 
         "abort_timestamp",
@@ -96,7 +96,7 @@ def start_conjoined_archive(
     _send_message_receive_reply(data_writers, message, error_tag)
 
 def abort_conjoined_archive(
-    data_writers, collection_id, key, conjoined_unified_id, timestamp
+    data_writers, collection_id, key, unified_id, timestamp
 ):
     """
     mark a conjoined archive as aborted
@@ -107,18 +107,18 @@ def abort_conjoined_archive(
         "message-type"              : "abort-conjoined-archive",
         "collection-id"             : collection_id,
         "key"                       : key,
-        "conjoined-unified-id"      : conjoined_unified_id,
+        "unified-id"                : unified_id,
         "timestamp-repr"            : repr(timestamp)
     }
 
     error_tag = ",".join(
-        [str(collection_id), key, str(conjoined_unified_id), ]
+        [str(collection_id), key, str(unified_id), ]
     )
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
 def finish_conjoined_archive(
-    data_writers, collection_id, key, conjoined_unified_id, timestamp
+    data_writers, collection_id, key, unified_id, timestamp
 ):
     """
     finish a conjoined archive
@@ -129,13 +129,11 @@ def finish_conjoined_archive(
         "message-type"              : "finish-conjoined-archive",
         "collection-id"             : collection_id,
         "key"                       : key,
-        "conjoined-unified-id"      : conjoined_unified_id,
+        "unified-id"                : unified_id,
         "timestamp-repr"            : repr(timestamp)
     }
 
-    error_tag = ",".join(
-        [str(collection_id), key, str(conjoined_unified_id), ]
-    )
+    error_tag = ",".join([str(collection_id), key, str(unified_id), ])
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 

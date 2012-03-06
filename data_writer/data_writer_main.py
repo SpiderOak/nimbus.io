@@ -32,7 +32,6 @@ from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
 from tools.data_definitions import parse_timestamp_repr, \
-        parse_conjoined_part, \
         nimbus_meta_prefix
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -120,15 +119,12 @@ def _handle_archive_key_entire(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
-
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
-        message["conjoined-unified-id"],
-        conjoined_part,
+        message["conjoined-part"],
         message["segment-num"],
         source_node_id,
         handoff_node_id
@@ -139,6 +135,7 @@ def _handle_archive_key_entire(state, message, data):
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-part"],
         message["segment-num"],
         message["segment-size"],
         message["zfec-padding-size"],
@@ -156,6 +153,7 @@ def _handle_archive_key_entire(state, message, data):
         message["collection-id"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-part"],
         message["segment-num"],
         message["file-size"],
         message["file-adler32"],
@@ -222,15 +220,12 @@ def _handle_archive_key_start(state, message, data):
     else:
         handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
 
-    conjoined_part = parse_conjoined_part(message.get("conjoined-part"))
-
     state["writer"].start_new_segment(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
-        message["conjoined-unified-id"],
-        conjoined_part,
+        message["conjoined-part"],
         message["segment-num"],
         source_node_id,
         handoff_node_id
@@ -241,6 +236,7 @@ def _handle_archive_key_start(state, message, data):
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-part"],
         message["segment-num"],
         message["segment-size"],
         message["zfec-padding-size"],
@@ -311,6 +307,7 @@ def _handle_archive_key_next(state, message, data):
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-part"],
         message["segment-num"],
         message["segment-size"],
         message["zfec-padding-size"],
@@ -381,6 +378,7 @@ def _handle_archive_key_final(state, message, data):
         message["key"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-part"],
         message["segment-num"],
         message["segment-size"],
         message["zfec-padding-size"],
@@ -394,6 +392,7 @@ def _handle_archive_key_final(state, message, data):
         message["collection-id"], 
         message["unified-id"],
         message["timestamp-repr"],
+        message["conjoined-part"],
         message["segment-num"],
         message["file-size"],
         message["file-adler32"],
@@ -411,7 +410,9 @@ def _handle_archive_key_cancel(state, message, _data):
     log = logging.getLogger("_handle_archive_key_cancel")
     log.info("%s %s" % ( message["unified-id"], message["segment-num"],))
     state["writer"].cancel_active_archive(
-        message["unified-id"], message["segment-num"],
+        message["unified-id"], 
+        message["conjoined-part"], 
+        message["segment-num"],
     )
 
 def _handle_destroy_key(state, message, _data):
@@ -497,7 +498,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoined-unified-id"],
+        message["unified-id"],
         message["timestamp-repr"],
     ))
 
@@ -506,7 +507,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
     state["writer"].abort_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        message["conjoined-unified-id"],
+        message["unified-id"],
         timestamp
     )
 
@@ -524,7 +525,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
     log.info("%r %r %s %s" % (
         message["collection-id"], 
         message["key"], 
-        message["conjoined-unified-id"],
+        message["unified-id"],
         message["timestamp-repr"],
     ))
 
@@ -533,7 +534,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
     state["writer"].finish_conjoined_archive(
         message["collection-id"], 
         message["key"], 
-        message["conjoined-unified-id"],
+        message["unified-id"],
         timestamp
     )
 

@@ -165,16 +165,17 @@ def _create_data_writers(event_push_client, clients):
     # segment numbers get defined in
     return [data_writers_dict[node_name] for node_name in _node_names]
 
-def _send_archive_cancel(unified_id, clients):
+def _send_archive_cancel(unified_id, conjoined_part, clients):
     # message sent to data writers telling them to cancel the archive
     for i, client in enumerate(clients):
         if not client.connected:
             continue
         cancel_message = {
-            "message-type"  : "archive-key-cancel",
-            "priority"      : create_priority(),
-            "unified-id"    : unified_id,
-            "segment-num"   : i+1,
+            "message-type"      : "archive-key-cancel",
+            "priority"          : create_priority(),
+            "unified-id"        : unified_id,
+            "conjoined-part"    : conjoined_part,
+            "segment-num"       : i+1,
         }
         client.queue_message_for_broadcast(cancel_message)
 
@@ -534,13 +535,15 @@ class Application(object):
 
         meta_dict = _build_meta_dict(req.GET)
 
-        conjoined_unified_id = None
+        unified_id = None
         conjoined_part = 0
 
         if "conjoined_identifier" in req.GET:
-            conjoined_unified_id = self._id_translator.internal_id(
+            unified_id = self._id_translator.internal_id(
                req.GET["conjoined_identifier"]
             )
+        else:
+            unified_id = self._unified_id_factory.next()
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
@@ -549,7 +552,6 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-        unified_id = self._unified_id_factory.next()
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -565,7 +567,6 @@ class Application(object):
             unified_id,
             timestamp,
             meta_dict,
-            conjoined_unified_id,
             conjoined_part
         )
         segmenter = ZfecSegmenter(
@@ -609,7 +610,9 @@ class Application(object):
             self._log.error("archive failed: %s %s" % (
                 description, instance, 
             ))
-            _send_archive_cancel(unified_id, self._data_writer_clients)
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
             # 2009-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
@@ -627,7 +630,9 @@ class Application(object):
             self._log.exception("archive failed: %s %s" % (
                 description, instance, 
             ))
-            _send_archive_cancel(unified_id, self._data_writer_clients)
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
             response = Response(status=500, content_type=None)
             self._stats["archives"] -= 1
             return response
@@ -1019,16 +1024,20 @@ class Application(object):
         ))
 
         getter = StatGetter(self._node_local_connection)
-        segment_rows = getter.stat(
+        status_rows = getter.stat(
             collection_entry.collection_id, key, version_id
         )
-        if len(segment_rows) == 0 or \
-           segment_rows[0].status != segment_status_final:
+        if len(status_rows) == 0 or \
+           status_rows[0].seg_status != segment_status_final:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)
-        response.content_length = segment_rows[0].file_size 
-        response.content_md5 = b64encode(segment_rows[0].file_hash)
+        response.content_length = sum([r.seg_file_size for r in status_rows])
+
+        if status_rows[0].con_create_timestamp is None:
+            response.content_md5 = b64encode(status_rows[0].seg_file_hash)
+        else:
+            response.content_md5 = None
 
         return response
 
@@ -1084,7 +1093,7 @@ class Application(object):
         for entry in conjoined_entries:
             row_dict = {
                 "conjoined_identifier" : \
-                    self._id_translator.public_id(entry.conjoined_unified_id),
+                    self._id_translator.public_id(entry.unified_id),
                 "key" : entry.key,
                 "create_timestamp" : _fix_timestamp(entry.create_timestamp),
                 "abort_timestamp"  : _fix_timestamp(entry.abort_timestamp),

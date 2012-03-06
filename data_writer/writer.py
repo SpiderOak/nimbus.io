@@ -59,7 +59,6 @@ def _insert_new_segment_row(
     unified_id,
     key, 
     timestamp, 
-    conjoined_unified_id,
     conjoined_part,
     segment_num,
     source_node_id,
@@ -76,7 +75,6 @@ def _insert_new_segment_row(
             unified_id,
             timestamp,
             segment_num,
-            conjoined_unified_id,
             conjoined_part,
             source_node_id,
             handoff_node_id
@@ -87,7 +85,6 @@ def _insert_new_segment_row(
             %(unified_id)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
-            %(conjoined_unified_id)s,
             %(conjoined_part)s,
             %(source_node_id)s,
             %(handoff_node_id)s
@@ -97,7 +94,6 @@ def _insert_new_segment_row(
             "status"                : segment_status_active,
             "unified_id"            : unified_id,
             "timestamp"             : timestamp,
-            "conjoined_unified_id"  : conjoined_unified_id,
             "conjoined_part"        : conjoined_part,
             "segment_num"           : segment_num,
             "source_node_id"        : source_node_id,
@@ -152,7 +148,7 @@ def _insert_segment_tombstone_row(
     collection_id, 
     key, 
     unified_id,
-    timestamp, 
+    timestamp,
     segment_num,
     unified_id_to_delete,
     source_node_id,
@@ -316,7 +312,6 @@ class Writer(object):
         key, 
         unified_id,
         timestamp_repr, 
-        conjoined_unified_id,
         conjoined_part,
         segment_num,
         source_node_id,
@@ -325,13 +320,12 @@ class Writer(object):
         """
         Initiate storing a segment of data for a file
         """
-        segment_key = (unified_id, segment_num, )
-        self._log.info("start_new_segment %s %s %s %s %s %s %s %s" % (
+        segment_key = (unified_id, conjoined_part, segment_num, )
+        self._log.info("start_new_segment %s %s %s %s %s %s %s" % (
             collection_id, 
             key, 
             unified_id, 
             timestamp_repr, 
-            conjoined_unified_id,
             conjoined_part,
             segment_num, 
             source_node_id,
@@ -347,7 +341,6 @@ class Writer(object):
                                                    unified_id,
                                                    key, 
                                                    timestamp, 
-                                                   conjoined_unified_id,
                                                    conjoined_part,
                                                    segment_num,
                                                    source_node_id,
@@ -360,6 +353,7 @@ class Writer(object):
         key, 
         unified_id,
         timestamp_repr, 
+        conjoined_part,
         segment_num, 
         segment_size,
         zfec_padding_size,
@@ -371,7 +365,7 @@ class Writer(object):
         """
         store one piece (sequence) of segment data
         """
-        segment_key = (unified_id, segment_num, )
+        segment_key = (unified_id, conjoined_part, segment_num, )
         self._log.info("store_sequence %s %s %s %s %s: %s (%s)" % (
             collection_id, 
             key, 
@@ -414,6 +408,7 @@ class Writer(object):
         collection_id,
         unified_id,
         timestamp_repr,
+        conjoined_part,
         segment_num,
         file_size,
         file_adler32,
@@ -423,7 +418,7 @@ class Writer(object):
         """
         finalize storing one segment of data for a file
         """
-        segment_key = (unified_id, segment_num, )
+        segment_key = (unified_id, conjoined_part, segment_num, )
         self._log.info("finish_new_segment %s %s" % (
             unified_id, 
             segment_num, 
@@ -488,12 +483,12 @@ class Writer(object):
         """
         _cancel_segment_rows(self._connection, source_node_id, timestamp)
 
-    def cancel_active_archive(self, unified_id, segment_num):
+    def cancel_active_archive(self, unified_id, conjoined_part, segment_num):
         """
         cancel an archive that is in progress, presumably due to failure
         at the web server
         """
-        segment_key = (unified_id, segment_num, )
+        segment_key = (unified_id, conjoined_part, segment_num, )
         self._log.info("cancel_active_archive %s %s" % (
             unified_id, segment_num
         ))

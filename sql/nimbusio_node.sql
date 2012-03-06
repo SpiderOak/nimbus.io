@@ -48,7 +48,6 @@ create table segment (
     unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2,
-    conjoined_unified_id int8, 
     conjoined_part int4 not null default 0,
     file_size int8 not null default 0,
     file_adler32 int4,

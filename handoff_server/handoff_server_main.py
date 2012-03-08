@@ -89,7 +89,6 @@ def _convert_dict_to_segment_row(segment_dict):
         unified_id=segment_dict["unified_id"],
         timestamp=segment_dict["timestamp"],
         segment_num=segment_dict["segment_num"],
-        conjoined_unified_id=segment_dict.get("conjoined_unified_id"),
         conjoined_part=segment_dict.get("conjoined_part"),
         file_size=segment_dict["file_size"],
         file_adler32=segment_dict["file_adler32"],

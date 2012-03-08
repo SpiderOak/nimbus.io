@@ -78,9 +78,6 @@ def parse_timestamp_repr(timestamp_repr):
 
     return timestamp
 
-def parse_conjoined_part(conjoined_part):
-    return (0 if conjoined_part is None else conjoined_part) 
-
 cluster_row_template = namedtuple("ClusterRow", [
     "id",
     "name",
@@ -127,7 +124,6 @@ segment_row_template = namedtuple(
         "unified_id",
         "timestamp",
         "segment_num",
-        "conjoined_unified_id",
         "conjoined_part",
         "file_size",
         "file_adler32",

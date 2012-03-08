@@ -14,7 +14,8 @@ import gevent.queue
 from tools.data_definitions import segment_status_final
 
 from web_server.exceptions import RetrieveFailedError
-from web_server.local_database_util import current_status_of_key
+from web_server.local_database_util import current_status_of_key, \
+    current_status_of_version
 
 _task_timeout = 60.0
 
@@ -54,37 +55,43 @@ class Retriever(object):
     def retrieve(self, timeout):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
-        conjoined_row, segment_rows = current_status_of_key(
-            self._node_local_connection,
-            self._collection_id, 
-            self._key,
-            self._version_id
-        )
+        if self._version_id is None:
+            status_rows = current_status_of_key(
+                self._node_local_connection,
+                self._collection_id, 
+                self._key,
+            )
+        else:
+            status_rows = current_status_of_version(
+                self._node_local_connection, self._version_id
+            )
 
-        if len(segment_rows) == 0:
+        if len(status_rows) == 0:
             raise RetrieveFailedError("key not found %s %s" % (
                 self._collection_id, self._key,
             ))
 
         is_available = False
-        if conjoined_row is None:
-            is_available = segment_rows[0].status == segment_status_final
+        if status_rows[0].con_create_timestamp is None:
+            is_available = status_rows[0].seg_status == segment_status_final
         else:
-            is_available = conjoined_row.delete_timestamp is None
+            is_available = status_rows[0].con_complete_timestamp is not None
 
         if not is_available:
             raise RetrieveFailedError("key is not available %s %s" % (
                 self._collection_id, self._key,
             ))
 
-        for segment_row in segment_rows:
+        for status_row in status_rows:
             # spawn retrieve_key start, then spawn retrieve key next
             # until we are done
             start = True
             while True:
                 self._sequence += 1
-                self._log.debug("retrieve: starting sequence %s part %s" % (
-                    self._sequence, segment_row.conjoined_part,
+                self._log.debug("retrieve: %s %s %s" % (
+                    self._sequence, 
+                    status_row.seg_unified_id, 
+                    status_row.seg_conjoined_part,
                 ))
                 # send a request to all node
                 for i, data_reader in enumerate(self._data_readers):
@@ -101,7 +108,8 @@ class Retriever(object):
                         function = data_reader.retrieve_key_next
                     task = self._pending.spawn(
                         function, 
-                        segment_row.unified_id,
+                        status_row.seg_unified_id,
+                        status_row.seg_conjoined_part,
                         segment_number
                     )
                     task.link(self._done_link)

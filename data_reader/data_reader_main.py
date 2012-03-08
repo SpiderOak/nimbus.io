@@ -66,6 +66,7 @@ def _handle_retrieve_key_start(state, message, _data):
         "client-tag"            : message["client-tag"],
         "message-id"            : message["message-id"],
         "segment-unified-id"    : message["segment-unified-id"],
+        "segment-conjoined-part": message["segment-conjoined-part"],
         "segment-num"           : message["segment-num"],
         "segment-size"          : None,
         "zfec-padding-size"     : None,
@@ -88,6 +89,7 @@ def _handle_retrieve_key_start(state, message, _data):
 
     sequence_generator = state["reader"].generate_all_sequence_rows(
         message["segment-unified-id"],
+        message["segment-conjoined-part"],
         message["segment-num"]
     )
 

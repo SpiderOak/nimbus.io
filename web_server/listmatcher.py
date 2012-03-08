@@ -12,7 +12,10 @@ from tools.data_definitions import segment_status_active, \
     segment_status_tombstone
 
 _keys_entry = namedtuple("KeysEntry", [
-    "key", "unified_id", "status", "timestamp",]
+    "key", 
+    "unified_id", 
+    "status", 
+    "timestamp",]
 )
                         
 _versions_entry = namedtuple("VersionsEntry", [
@@ -40,13 +43,16 @@ def list_keys(
     request_count = max_keys + 1
     result = connection.fetch_all_rows(
         """
-        select key, unified_id, status, timestamp
-        from nimbusio_node.segment
-        where collection_id = %s
-        and handoff_node_id is null
-        and key like %s
-        and key > %s
-        order by key asc, timestamp desc
+        select seg.key, seg.unified_id, seg.status, seg.timestamp
+        from nimbusio_node.conjoined con right join nimbusio_node.segment seg 
+        on con.unified_id = seg.unified_id
+        where (con.create_timestamp is null 
+            or con.complete_timestamp is not null)
+        and seg.collection_id = %s
+        and seg.handoff_node_id is null
+        and seg.key like %s
+        and seg.key > %s
+        order by seg.key asc, seg.timestamp desc
         limit %s
         """.strip(),
         [collection_id, "%s%%" % prefix, marker, request_count, ]
@@ -105,15 +111,18 @@ def list_versions(
 
     result = connection.fetch_all_rows(
         """
-        select key, unified_id, status, timestamp, 
-            file_tombstone_unified_id
-        from nimbusio_node.segment
-        where collection_id = %s
-        and handoff_node_id is null
-        and key like %s
-        and key > %s
-        and unified_id > %s
-        order by key asc, timestamp desc
+        select seg.key, seg.unified_id, seg.status, seg.timestamp, 
+            seg.file_tombstone_unified_id
+        from nimbusio_node.conjoined con right join nimbusio_node.segment seg
+        on con.unified_id = seg.unified_id
+        where (con.create_timestamp is null 
+            or con.complete_timestamp is not null)
+        and seg.collection_id = %s
+        and seg.handoff_node_id is null
+        and seg.key like %s
+        and seg.key > %s
+        and seg.unified_id > %s
+        order by seg.key asc, seg.timestamp desc
         limit %s
         """.strip(),
         [collection_id, 

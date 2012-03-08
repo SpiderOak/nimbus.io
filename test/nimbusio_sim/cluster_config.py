@@ -251,10 +251,59 @@ class ClusterConfig(object):
 
     def write_runit_scripts(self):
         """
+        this creates a multi level runsv setup for the simulator and all the nodes
+        the top level runsv is in basedir/service
+
+        that top level runsv doesn't run any simulated services itself, but
+        instead runs second runsvdir for each of the nodes.
         """
-        # TODO
-        pass 
-        
+        src_service_dir = os.path.join(self.src_path, "etc", "service")
+        services = os.listdir(src_service_dir)
+
+        # make dirs for the node service directories and the master service
+        service_dirs = [ "service.%02d" % (n + 1, ) for n in range(10) ]
+        for name in ["service"] + service_dirs:
+            path = os.path.join(self.basedir, name)
+            if not os.path.isdir(path):
+                os.makedirs(path)
+
+        # make all the sub-services
+        for name in service_dirs:
+            sub_service_dir = os.path.join(self.basedir, "service", name)
+            node_service_dir = os.path.join(self.basedir, name)
+            if not os.path.isdir(sub_service_dir):
+                os.makedirs(sub_service_dir)
+            sub_service_run_path = os.path.join(sub_service_dir, "run")
+            with open(sub_service_run_path, "w") as sub_service_script:
+                sub_service_script.write("#!/bin/bash\n\nexec runsvdir %s" % (
+                    node_service_dir, ))
+            os.chmod(sub_service_run_path, 0744)
+
+        # write all the run scripts for the services for each node
+        for node_dir, num in zip(service_dirs, range(1, self.nodecount + 1)):
+            node_config_path = os.path.join(self.config_dir, 
+                "node_%02d_config.sh" % (num, ))
+            node_svc_path = os.path.join(self.basedir, node_dir)
+            for svc in services:
+                svc_path = os.path.join(node_svc_path, svc)
+                src_path = os.path.join(self.basedir, 
+                    "etc", "service", name, "run")
+                dst_path = os.path.join(svc_path, "run")
+                with open(src_path, "r") as src_script:
+                    with open(dst_path, "w") as dst_script:
+                        for line in src_script:
+                            if line.startswith("NODE_CONFIG="):
+                                dst_script.write("NODE_CONFIG=\"%s\"\n" % 
+                                    ( node_config_path, ))
+                            else:
+                                dst_script.write(line)
+                os.chmod(dst_path, 0744)
+                            
+        # make all of the services off on startup by touching the 'down' files
+        for dirpath, dirs, files in os.walk(self.basedir): 
+            if not dirs and files == [ 'run' ]:
+                with open(os.path.join(dirpath, "down"), "w"):
+                    pass
 
     @property
     def log_path(self):

@@ -19,10 +19,11 @@ sudo apt-get -y install python-sphinx
 sudo apt-get -y install python-jinja2
 sudo apt-get -y install python-pygments
 sudo apt-get -y install python-dev
-sudo apt-get -y install python-psycopg2 python-webob
 sudo apt-get -y install python-zfec
 sudo apt-get -y install postgresql-9.1
 sudo apt-get -y install libevent-dev
+sudo apt-get -y install libpq-dev
+sudo apt-get -y install libc-ares-dev
 sudo apt-get -y build-dep zeromq
 
 # HTTP domain for sphinx to build documentation (not in apt)
@@ -58,7 +59,7 @@ sudo python setup.py install
 # install the rest of the stuff from PyPI
 cd $SRC_DIR
 sudo pip install --upgrade cython
-sudo pip install --upgrade gevent greenlet pyzmq
+sudo pip install --upgrade gevent greenlet pyzmq psycopg2 webob
 
 # have to manually install gevent_zeromq because the cython was generated with
 # a different version of some constants.

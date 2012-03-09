@@ -19,6 +19,12 @@ if [ "$CLEAN_EXISTING" ]; then
                  /usr/local/lib/python2.6/dist-packages/zmq*
 fi
 
+
+# these are new enough in the normal distribution
+sudo apt-get update
+sudo apt-get -y install libev3 libevent-dev m4 unifdef uuid-dev \
+	build-essential python-setuptools python-dev wget git-core libc-ares-dev
+
 # you need to add the new apt sources for either postgresql 9.0 or 9.1
 # these are provided as a PPA by the maintainer of postgresql.
 # details at https://launchpad.net/~pitti/+archive/postgresql
@@ -31,10 +37,6 @@ grep 'postgresql' /etc/apt/sources.list || {
 	sudo apt-get update
 }
 sudo apt-get install postgresql-9.1 libpq-dev
-
-# these are new enough in the normal distribution
-sudo apt-get -y install libev3 libevent-dev m4 unifdef uuid-dev \
-	build-essential python-setuptools python-dev wget git-core
 
 
 # build zeromq from source
@@ -50,8 +52,6 @@ sudo make install
 sudo ldconfig
 
 sudo easy_install -UZ pip
-
-
 
 if [ ! "$GEVENT_FROM_SRC" ]; then 
     sudo pip install --upgrade cython Mercurial greenlet gevent pyzmq psycopg2 webob

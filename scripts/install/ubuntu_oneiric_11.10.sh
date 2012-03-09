@@ -12,6 +12,7 @@ set -x
 
 
 # everything that's new enough in apt
+sudo apt-get update
 sudo apt-get -y install git wget
 sudo apt-get -y install python-pip python-setuptools
 sudo apt-get -y install mercurial

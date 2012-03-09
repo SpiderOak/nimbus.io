@@ -28,6 +28,8 @@ class Retriever(object):
         collection_id, 
         key, 
         version_id,
+        slice_offset,
+        slice_size,
         segments_needed
     ):
         self._log = logging.getLogger("Retriever")

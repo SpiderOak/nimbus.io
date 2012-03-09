@@ -757,6 +757,24 @@ class Application(object):
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
+        slice_offset = 0
+        if "slice_offset" in req.GET:
+            slice_offset_str = req.GET["slice_offset"]
+            try:
+                slice_offset = int(slice_offset_str)
+            except ValueError:
+                self._log.error("invalid slice_offset %r" % (slice_offset_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+
+        slice_size = None
+        if "slice_size" in req.GET:
+            slice_size_str = req.GET["slice_size"]
+            try:
+                slice_size = int(slice_size_str)
+            except ValueError:
+                self._log.error("invalid slice_size %r" % (slice_size_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+
         connected_data_readers = _connected_clients(self.data_readers)
 
         if len(connected_data_readers) < _min_connected_clients:
@@ -764,12 +782,14 @@ class Application(object):
                 len(connected_data_readers),
             ))
 
-        description = "retrieve: (%s)%r customer=%r key=%r version=%r" % (
+        description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
             collection_entry.collection_id,
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            version_id
+            version_id,
+            slice_offset,
+            slice_size
         )
         self._log.info(description)
 
@@ -782,6 +802,8 @@ class Application(object):
             collection_entry.collection_id,
             key,
             version_id,
+            slice_offset,
+            slice_size,
             _min_segments
         )
 

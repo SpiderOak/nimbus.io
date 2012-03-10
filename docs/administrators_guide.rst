@@ -190,7 +190,7 @@ Each storage node has a PostgreSQL database instance that is local to that
 node.  This is because filesystems are notoriously bad at storing large
 numbers of small files.  So many items are aggregated together and stored
 in a fewer number of larger files.  PostgreSQL keeps track of which data is
-where.  PostgreSQL should be configured for trust 
+where.
 
 Depending on the average size of keys stored within your cluster, there
 will either be greater pressure on the file system (for disk IO) or the
@@ -203,8 +203,8 @@ things like query caching.
 The recommended configuration is to run the PostgreSQL instance with its
 data files residing on a SSD.  Then configure PostgreSQL log shipping to
 archive database changes to one of the storage volumes, or send them via
-the REST API to a different Nimbus.io storage cluster, so that we can
-recover the majority of the database when the SSD dies (and let
+the `nio_cmd` tool and the REST API to a different Nimbus.io storage cluster,
+so that we can recover the majority of the database when the SSD dies (and let
 anti-entropy handle the remainder.)
 
 

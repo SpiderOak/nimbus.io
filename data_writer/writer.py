@@ -155,7 +155,9 @@ def _insert_segment_tombstone_row(
     handoff_node_id
 ):
     """
-    Insert one segment entry, with default row id
+    Insert one segment entry, with status set to (T)ombstone
+    Set delete_timestamp on all conjoined rows for this key
+    that are older than this tombstone
     """
     connection.execute("""
         insert into nimbusio_node.segment (
@@ -188,6 +190,24 @@ def _insert_segment_tombstone_row(
             "file_tombstone_unified_id" : unified_id_to_delete,
             "source_node_id"            : source_node_id,
             "handoff_node_id"           : handoff_node_id,
+        }
+    )
+    connection.execute("""
+        update nimbusio_node.conjoined 
+        set delete_timestamp = %(timestamp)s::timestamp
+        where collection_id = %(collection_id)s
+          and key = %(key)s
+          and (   (%(unified_id_to_delete)s is not null 
+                   and unified_id = %(unified_id_to_delete)s)
+               or (%(unified_id_to_delete)s is null
+                   and unified_id < %(unified_id)s)
+          )
+        """, {
+            "collection_id"             : collection_id,
+            "key"                       : key,
+            "unified_id"                : unified_id,
+            "timestamp"                 : timestamp,
+            "unified_id_to_delete"      : unified_id_to_delete,
         }
     )
     connection.commit()

@@ -268,6 +268,8 @@ def _purge_handoff_source(
     """
     remove handoff source from local database
     """
+    # XXX review this is going to be a slow query. any way to get key= in here
+    # and use the index?
     connection.execute("""
         delete from nimbusio_node.segment_sequence 
         where segment_id = (
@@ -360,7 +362,9 @@ class Writer(object):
         segment_md5_digest,
         segment_adler32,
         sequence_num, 
-        data
+        data,
+        fsync_task_id,
+        fsync_task_queue
     ):
         """
         store one piece (sequence) of segment data
@@ -380,7 +384,16 @@ class Writer(object):
         # if this write would put us over the max size,
         # start a new output value file
         if self._value_file.size + segment_size > _max_value_file_size:
-            self._value_file.close()
+            # so we want to be sure there are no fsyncs in progress
+            # for this file before we close it. but closing it also updates the
+            # database. So I guess we need to insert a task into the fsync
+            # thread queue that just notifies the main thread when there are no
+            # more fsyncs for this file number, so the main thread can dispatch
+            # a task to close the file.
+            fsync_task_queue.put(
+                # XXX: does a bound method hold the ref to the object, and keep
+                # it from getting GC'd? or does it only hold a weak reference? 
+                ('queue-when-all-fsyncs-complete', self._value_file.close, ))
             self._value_file = OutputValueFile(
                 self._connection, self._repository_path
             )
@@ -401,7 +414,15 @@ class Writer(object):
             collection_id, segment_entry["segment-id"], data
         )
 
+        # at this point we want to queue a task for the background
+        # thread 
+        fsync_queue.put(
+            ('fsync-fileno', fsync_task_id, self._value_file.fileno,))
+
+        # we work on the database while the background thread writes to disk
         _insert_segment_sequence_row(self._connection, segment_sequence_row)
+
+
 
     def finish_new_segment(
         self, 

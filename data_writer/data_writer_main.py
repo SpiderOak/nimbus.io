@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 import time
+import Queue
 
 import zmq
 
@@ -39,6 +40,7 @@ from web_server.central_database_util import get_cluster_row, \
 from data_writer.output_value_file import mark_value_files_as_closed
 from data_writer.writer import Writer
 from data_writer.stats_reporter import StatsReporter
+from data_write.fsync_task import fsync_task, FsyncNotifyWatcher
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_data_writer_%s.log" % (
@@ -130,6 +132,12 @@ def _handle_archive_key_entire(state, message, data):
         handoff_node_id
     )
 
+    state['fsync-task-id-counter'] += 1
+    fsync_task_id = state['fsync-task-id-counter'] 
+
+    # note that the background fsync task may complete before this call
+    # returns. this calls also inserts the segment sequence into the database
+    # after queuing the fsync, so there's a good chance.
     state["writer"].store_sequence(
         message["collection-id"], 
         message["key"], 
@@ -142,13 +150,29 @@ def _handle_archive_key_entire(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         sequence_num,
-        data
+        data,
+        fsync_task_id,
+        state['fsync-task-queue'],
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
+    # if we're already done, we don't need to wait on a notification
+    if fsync_task_id in state['fsync-task-complete']:
+        state['fsync-task-complete'].discard(fsync_task_id)
+        return [ (self._finish_segment, time.time(), message, reply, ) ]
+    else:
+        # we couldn't queue the complete task dispatch before this point,
+        # because we didn't want the dispatch to potentially happen before the
+        # .store_sequence() call above returns.
+        state['fsync-task-dispatch'][fsync_task_id] = (
+            _finish_segment, (state, message, reply, ), )
 
+def _finish_segment(state, message, reply):
+    """
+    mark the segment row in the database as finished and send the reply
+    """
     state["writer"].finish_new_segment(
         message["collection-id"], 
         message["unified-id"],
@@ -638,10 +662,36 @@ def _setup(_halt_event, state):
 
     state["event-push-client"].info("program-start", "data_writer starts")  
 
+    # infrastructure for background fsync thread
+    # an ID counter for mapping requests to actions to take when they are done
+    state["fsync-task-id-counter"] = 0
+    # set of IDs of tasks already done
+    state["fsync-task-complete"] = set()
+    # map of IDs of waiting task to tasks to queue when they complete
+    state['fsync-task-dispatch'] = dict()
+    # tasks going to the background thread
+    state['fsync-task-queue'] = Queue.Queue()
+    # complete notifications coming from the background thread
+    state['fsync-task-complete-queue'] = Queue.Queue()
+    # time queue task that monitors 
+    state['fsync-notify-watcher'] = FsyncNotifyWatcher(
+        _halt_event, 
+        state['fsync-task-complete-queue'], 
+        state["fsync-task-complete"],
+        state['fsync-task-dispatch'])
+    state['fsync-task'] = threading.Thread(
+        target=fsync_task,
+        name="fsync-task",
+        args=(state['fsync-task-queue'], 
+              state['fsync-task-complete-queue'], 
+              _halt_event))
+    
     return [
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["stats-reporter"].run, state["stats-reporter"].next_run(), ), 
+        (state['fsync-task'].run, time.time(), ),
+        (state['fsync-notify-watcher'].run, time.time(), ),
     ] 
 
 def _tear_down(_state):

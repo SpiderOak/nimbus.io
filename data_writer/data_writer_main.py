@@ -13,6 +13,7 @@ ACK back to to requestor includes size (from the database server)
 of any previous key this key supersedes (for space accounting.)
 """
 from base64 import b64decode
+from collections import defaultdict
 import hashlib
 import logging
 import os
@@ -39,6 +40,8 @@ from web_server.central_database_util import get_cluster_row, \
 from data_writer.output_value_file import mark_value_files_as_closed
 from data_writer.writer import Writer
 from data_writer.stats_reporter import StatsReporter
+from data_writer.sync_manager import SyncManager
+from data_writer.notifier import Notifier
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_data_writer_%s.log" % (
@@ -50,6 +53,18 @@ _data_writer_address = os.environ.get(
 )
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _sizeof_nimbus_meta_prefix = len(nimbus_meta_prefix)
+
+def _compute_state_key(message):
+    """
+    a tuple sufficient to uniquely identifiy an ongoing transaction
+    we need segment-num to distinguish handoffs
+    """
+    return  (
+        message["unified-id"],
+        message["conjoined-part"],
+        message["segment-num"],
+    )
+
 
 def _extract_meta(message):
     """
@@ -70,6 +85,9 @@ def _handle_archive_key_entire(state, message, data):
         message["timestamp-repr"],
         message["segment-num"]
     ))
+
+    state_key = _compute_state_key(message)
+
     sequence_num = 0
 
     reply = {
@@ -144,6 +162,9 @@ def _handle_archive_key_entire(state, message, data):
         sequence_num,
         data
     )
+    state["notification-dependencies"][state_key].add(
+        state["writer"].value_file_hash
+    )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
@@ -162,7 +183,9 @@ def _handle_archive_key_entire(state, message, data):
     )
 
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply)
+    # we don't send the reply until all value file dependencies have
+    # been synced
+    state["pending-replies"][state_key] = reply
 
 def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
@@ -172,6 +195,8 @@ def _handle_archive_key_start(state, message, data):
         message["timestamp-repr"],
         message["segment-num"]
     ))
+
+    state_key = _compute_state_key(message)
 
     reply = {
         "message-type"  : "archive-key-start-reply",
@@ -245,6 +270,9 @@ def _handle_archive_key_start(state, message, data):
         message["sequence-num"],
         data
     )
+    state["notification-dependencies"][state_key].add(
+        state["writer"].value_file_hash
+    )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
@@ -260,6 +288,8 @@ def _handle_archive_key_next(state, message, data):
         message["timestamp-repr"],
         message["segment-num"]
     ))
+
+    state_key = _compute_state_key(message)
 
     reply = {
         "message-type"  : "archive-key-next-reply",
@@ -316,6 +346,9 @@ def _handle_archive_key_next(state, message, data):
         message["sequence-num"],
         data
     )
+    state["notification-dependencies"][state_key].add(
+        state["writer"].value_file_hash
+    )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
@@ -331,6 +364,8 @@ def _handle_archive_key_final(state, message, data):
         message["timestamp-repr"],
         message["segment-num"]
     ))
+
+    state_key = _compute_state_key(message)
 
     reply = {
         "message-type"  : "archive-key-final-reply",
@@ -387,6 +422,9 @@ def _handle_archive_key_final(state, message, data):
         message["sequence-num"],
         data
     )
+    state["notification-dependencies"][state_key].add(
+        state["writer"].value_file_hash
+    )
 
     state["writer"].finish_new_segment(
         message["collection-id"], 
@@ -404,7 +442,9 @@ def _handle_archive_key_final(state, message, data):
     Statgrabber.accumulate('nimbusio_write_bytes', len(data))
 
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply)
+    # we don't send the reply until all value file dependencies have
+    # been synced
+    state["pending-replies"][state_key] = reply
 
 def _handle_archive_key_cancel(state, message, _data):
     log = logging.getLogger("_handle_archive_key_cancel")
@@ -587,6 +627,8 @@ def _create_state():
         "cluster-row"           : None,
         "node-rows"             : None,
         "node-id-dict"          : None,
+        "notification-dependencies" : defaultdict(set),
+        "pending-replies"       : dict(),
     }
 
 def _setup(_halt_event, state):
@@ -629,10 +671,14 @@ def _setup(_halt_event, state):
     # Ticket #1646 mark output value files as closed at startup
     mark_value_files_as_closed(state["database-connection"])
 
-    state["writer"] = Writer(
-        state["database-connection"],
-        _repository_path
-    )
+    state["writer"] = Writer( state["database-connection"], _repository_path,)
+
+    state["sync-manager"] = SyncManager(state["writer"])
+
+    state["notifier"] = Notifier(state["notification-dependencies"], 
+                                 state["pending-replies"],
+                                 state["writer"],
+                                 state["resilient-server"])
 
     state["stats-reporter"] = StatsReporter(state)
 
@@ -642,6 +688,8 @@ def _setup(_halt_event, state):
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["stats-reporter"].run, state["stats-reporter"].next_run(), ), 
+        (state["sync-manager"].run, state["sync-manager"].next_run(), ), 
+        (state["notifier"].run, state["notifier"].next_run(), ), 
     ] 
 
 def _tear_down(_state):
@@ -655,6 +703,10 @@ def _tear_down(_state):
 
     state["writer"].close()
     state["database-connection"].close()
+
+    if len(state["pending-replies"]) > 0:
+        log.warn("{0} pending replies lost in teardown".format(
+            len(state["pending-replies"])))
 
     log.debug("teardown complete")
 

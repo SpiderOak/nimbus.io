@@ -323,8 +323,30 @@ class Writer(object):
             self._connection, self._repository_path
         )
 
+    @property
+    def value_file_hash(self):
+        """
+        return the hash of the currently open value file
+        """
+        assert self._value_file is not None
+        return hash(self._value_file)
+
+    def sync_value_file(self):
+        """
+        sync the current value file
+        """
+        assert self._value_file is not None
+        self._value_file.sync()
+
+    @property
+    def value_file_is_synced(self):
+        assert self._value_file is not None
+        return self._value_file.is_synced 
+
     def close(self):
+        assert self._value_file is not None
         self._value_file.close()
+        self._value_file = None
 
     def start_new_segment(
         self, 

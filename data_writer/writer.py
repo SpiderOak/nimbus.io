@@ -10,10 +10,7 @@ import psycopg2
 
 from tools.data_definitions import segment_sequence_template, \
         parse_timestamp_repr, \
-        meta_row_template, \
         segment_status_active, \
-        segment_status_cancelled, \
-        segment_status_final, \
         segment_status_tombstone
 from data_writer.output_value_file import OutputValueFile
 
@@ -100,48 +97,6 @@ def _insert_new_segment_row(
             "handoff_node_id"       : handoff_node_id,
         }
     )
-
-def _finalize_segment_row(
-    connection, segment_id, file_size, file_adler32, file_hash, meta_rows
-):
-    """
-    Update segment row, set status to 'F'inal, include
-    associated meta rows
-    """
-    connection.execute("""
-        update nimbusio_node.segment 
-        set status = %(status)s,
-            file_size = %(file_size)s,
-            file_adler32 = %(file_adler32)s,
-            file_hash = %(file_hash)s
-        where id = %(segment_id)s
-    """, {
-        "segment_id"    : segment_id,
-        "status"        : segment_status_final,
-        "file_size"     : file_size,
-        "file_adler32"  : file_adler32,
-        "file_hash"     : psycopg2.Binary(file_hash),
-    })
-
-    for meta_row in meta_rows:
-        meta_row_dict = meta_row._asdict()
-        connection.execute("""
-            insert into nimbusio_node.meta (
-                collection_id,
-                segment_id,
-                meta_key,
-                meta_value,
-                timestamp
-            ) values (
-                %(collection_id)s,
-                %(segment_id)s,
-                %(meta_key)s,
-                %(meta_value)s,
-                %(timestamp)s::timestamp
-            )
-        """, meta_row_dict)            
-
-    connection.commit()
 
 def _insert_segment_tombstone_row(
     connection,
@@ -312,11 +267,14 @@ class Writer(object):
     """
     Manage writing segment values to disk
     """
-    def __init__(self, connection, repository_path):
+    def __init__(
+        self, connection, repository_path, active_segments, completions
+    ):
         self._log = logging.getLogger("Writer")
         self._connection = connection
         self._repository_path = repository_path
-        self._active_segments = dict()
+        self._active_segments = active_segments
+        self._completions = completions
 
         # open a new value file at startup
         self._value_file = OutputValueFile(
@@ -337,6 +295,10 @@ class Writer(object):
         """
         assert self._value_file is not None
         self._value_file.sync()
+        # at this point we can complwete all pending archives
+        for completion in self._completions:
+            completion.complete_archive()
+        self._completions[:] = []
 
     @property
     def value_file_is_synced(self):
@@ -445,50 +407,6 @@ class Writer(object):
 
         _insert_segment_sequence_row(self._connection, segment_sequence_row)
 
-    def finish_new_segment(
-        self, 
-        collection_id,
-        unified_id,
-        timestamp_repr,
-        conjoined_part,
-        segment_num,
-        file_size,
-        file_adler32,
-        file_hash,
-        meta_dict,
-    ): 
-        """
-        finalize storing one segment of data for a file
-        """
-        segment_key = (unified_id, conjoined_part, segment_num, )
-        self._log.info("finish_new_segment %s %s" % (
-            unified_id, 
-            segment_num, 
-        ))
-        segment_entry = self._active_segments.pop(segment_key)
-
-        timestamp = parse_timestamp_repr(timestamp_repr)
-
-        meta_rows = list()
-        for meta_key, meta_value in meta_dict.items():
-            meta_row = meta_row_template(
-                collection_id=collection_id,
-                segment_id=segment_entry["segment-id"],
-                meta_key=meta_key,
-                meta_value=meta_value,
-                timestamp=timestamp
-            )
-            meta_rows.append(meta_row)
-
-        _finalize_segment_row(
-            self._connection, 
-            segment_entry["segment-id"],
-            file_size, 
-            file_adler32, 
-            file_hash, 
-            meta_rows
-        )
-    
     def set_tombstone(
         self, 
         collection_id, 

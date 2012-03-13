@@ -1097,7 +1097,6 @@ class Application(object):
                 "create_timestamp" : _fix_timestamp(entry.create_timestamp),
                 "abort_timestamp"  : _fix_timestamp(entry.abort_timestamp),
                 "complete_timestamp":_fix_timestamp(entry.complete_timestamp),
-                "delete_timestamp" : _fix_timestamp(entry.delete_timestamp),
             }
             conjoined_list.append(row_dict)
 

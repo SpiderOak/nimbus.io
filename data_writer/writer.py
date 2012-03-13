@@ -307,6 +307,7 @@ class Writer(object):
 
     def close(self):
         assert self._value_file is not None
+        self.sync_value_file()
         self._value_file.close()
         self._value_file = None
 

@@ -647,7 +647,7 @@ def _tear_down(_state):
         log.warn("{0} PostSyncCompletion's lost in teardown".format(
             len(state["completions"])))
 
-    if len(state["segments"]) > 0:
+    if len(state["active-segments"]) > 0:
         log.warn("{0} active-segments at teardown".format(
             len(state["active-segments"])))
 

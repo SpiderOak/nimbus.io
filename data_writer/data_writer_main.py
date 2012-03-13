@@ -71,6 +71,11 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
@@ -169,6 +174,11 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
@@ -259,6 +269,11 @@ def _handle_archive_key_next(state, message, data):
         "error-message" : None,
     }
 
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
@@ -331,6 +346,11 @@ def _handle_archive_key_final(state, message, data):
         "result"        : None,
         "error-message" : None,
     }
+
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
 
     segment_data = "".join(data)
 

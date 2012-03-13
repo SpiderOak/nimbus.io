@@ -52,6 +52,11 @@ class DataReader(object):
             self._log.error("failed: %s" % (reply, ))
             return None
 
+        # we expect a list of blocks, but if the data is smaller than 
+        # block size, we get back a string
+        if type(data) != list:
+            data = [data, ]
+
         # Ticket #1307 danger of zfec bit rot
         # we must make sure we are handing zfec valid segments to reassemble
         segment_size = 0
@@ -97,6 +102,11 @@ class DataReader(object):
         if reply["result"] != "success":
             self._log.error("failed: %s" % (reply, ))
             return None
+
+        # we expect a list of blocks, but if the data is smaller than 
+        # block size, we get back a string
+        if type(data) != list:
+            data = [data, ]
 
         # Ticket #1307 danger of zfec bit rot
         # we must make sure we are handing zfec valid segments to reassemble

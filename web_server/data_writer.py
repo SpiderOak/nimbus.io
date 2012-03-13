@@ -15,6 +15,16 @@ from web_server.exceptions import (
     ArchiveFailedError,
     DestroyFailedError,
 )
+def _segment_properties(segment):
+    segment_size = 0
+    segment_adler32 = 0
+    segment_md5 = hashlib.md5()
+    for data_block in segment:
+        segment_size += len(data_block)
+        segment_adler32 = zlib.adler32(data_block)
+        segment_md5.update(data_block)
+
+    return segment_size, segment_adler32, segment_md5
 
 class DataWriter(object):
 
@@ -43,8 +53,8 @@ class DataWriter(object):
         segment,
         source_node_name,
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         message = {
             "message-type"              : "archive-key-entire",
@@ -55,10 +65,10 @@ class DataWriter(object):
             "timestamp-repr"            : repr(timestamp),
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
-            "segment-size"              : len(segment),
+            "segment-size"              : segment_size,
             "zfec-padding-size"         : zfec_padding_size,
             "segment-md5-digest"        : b64encode(segment_md5.digest()),
-            "segment-adler32"           : zlib.adler32(segment),
+            "segment-adler32"           : segment_adler32,
             "file-size"                 : file_size,
             "file-adler32"              : file_adler32,
             "file-hash"                 : b64encode(file_md5),
@@ -93,8 +103,8 @@ class DataWriter(object):
         segment,
         source_node_name
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         self._archive_priority = create_priority()
 
@@ -107,10 +117,10 @@ class DataWriter(object):
             "timestamp-repr"        : repr(timestamp),
             "conjoined-part"        : conjoined_part,
             "segment-num"           : segment_num,
-            "segment-size"          : len(segment),
+            "segment-size"          : segment_size,
             "zfec-padding-size"     : zfec_padding_size,
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
-            "segment-adler32"       : zlib.adler32(segment),
+            "segment-adler32"       : segment_adler32,
             "sequence-num"          : sequence_num,
             "source-node-name"      : source_node_name,
             "handoff-node-name"     : None,
@@ -141,8 +151,8 @@ class DataWriter(object):
         segment,
         source_node_name
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         message = {
             "message-type"          : "archive-key-next",
@@ -153,10 +163,10 @@ class DataWriter(object):
             "timestamp-repr"        : repr(timestamp),
             "conjoined-part"        : conjoined_part,
             "segment-num"           : segment_num,
-            "segment-size"          : len(segment),
+            "segment-size"          : segment_size,
             "zfec-padding-size"     : zfec_padding_size,
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
-            "segment-adler32"       : zlib.adler32(segment),
+            "segment-adler32"       : segment_adler32,
             "sequence-num"          : sequence_num,
             "source-node-name"      : source_node_name,
             "handoff-node-name"     : None,
@@ -190,8 +200,8 @@ class DataWriter(object):
         segment,
         source_node_name
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         message = {
             "message-type"              : "archive-key-final",
@@ -202,10 +212,10 @@ class DataWriter(object):
             "timestamp-repr"            : repr(timestamp),
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
-            "segment-size"              : len(segment),
+            "segment-size"              : segment_size,
             "zfec-padding-size"         : zfec_padding_size,
             "segment-md5-digest"        : b64encode(segment_md5.digest()),
-            "segment-adler32"           : zlib.adler32(segment),
+            "segment-adler32"           : segment_adler32,
             "sequence-num"              : sequence_num,
             "file-size"                 : file_size,
             "file-adler32"              : file_adler32,

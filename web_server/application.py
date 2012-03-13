@@ -34,7 +34,8 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import create_priority, \
+from tools.data_definitions import block_generator, \
+        create_priority, \
         create_timestamp, \
         nimbus_meta_prefix, \
         segment_status_final
@@ -569,10 +570,7 @@ class Application(object):
             meta_dict,
             conjoined_part
         )
-        segmenter = ZfecSegmenter(
-            _min_segments,
-            len(data_writers)
-        )
+        segmenter = ZfecSegmenter(_min_segments, len(data_writers))
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
@@ -592,7 +590,7 @@ class Application(object):
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
                 file_md5.update(slice_item)
                 file_size += len(slice_item)
-                segments = segmenter.encode(slice_item)
+                segments = segmenter.encode(block_generator(slice_item))
                 zfec_padding_size = segmenter.padding_size(slice_item)
             archiver.archive_final(
                 file_size,
@@ -812,11 +810,12 @@ class Application(object):
                         encoded_segment, zfec_padding_size = \
                                 segments[segment_number]
                         encoded_segments.append(encoded_segment)
-                    data = segmenter.decode(
+                    data_list = segmenter.decode(
                         encoded_segments,
                         segment_numbers,
                         zfec_padding_size
                     )
+                    data = "".join(data_list)
                     sent += len(data)
                     yield data
             except RetrieveFailedError, instance:

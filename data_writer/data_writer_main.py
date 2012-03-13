@@ -80,9 +80,11 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -98,7 +100,7 @@ def _handle_archive_key_entire(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -142,11 +144,11 @@ def _handle_archive_key_entire(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         sequence_num,
-        data
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
 
     state["writer"].finish_new_segment(
@@ -181,9 +183,11 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -199,7 +203,7 @@ def _handle_archive_key_start(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -243,11 +247,11 @@ def _handle_archive_key_start(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        data
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
@@ -269,9 +273,11 @@ def _handle_archive_key_next(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -287,7 +293,7 @@ def _handle_archive_key_next(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -314,11 +320,11 @@ def _handle_archive_key_next(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        data
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
@@ -340,9 +346,11 @@ def _handle_archive_key_final(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -358,7 +366,7 @@ def _handle_archive_key_final(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -385,7 +393,7 @@ def _handle_archive_key_final(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        data
+        segment_data
     )
 
     state["writer"].finish_new_segment(
@@ -401,7 +409,7 @@ def _handle_archive_key_final(state, message, data):
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)

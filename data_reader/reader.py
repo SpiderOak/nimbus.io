@@ -6,7 +6,8 @@ read segment data for collections
 """
 import logging
 
-from tools.data_definitions import segment_row_template, \
+from tools.data_definitions import encoded_block_generator, \
+        segment_row_template, \
         segment_sequence_template, \
         compute_value_file_path
 
@@ -103,7 +104,8 @@ class Reader(object):
                 )
             value_file = open_value_files[sequence_row.value_file_id]
             value_file.seek(sequence_row.value_file_offset)
-            yield sequence_row, value_file.read(sequence_row.size)
+            encoded_segment = value_file.read(sequence_row.size)
+            yield sequence_row, encoded_block_generator(encoded_segment)
 
         for value_file in open_value_files.values():            
             value_file.close()

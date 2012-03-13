@@ -23,6 +23,20 @@ block_size = 32 * 1024
 # the size of a zfec encoded block
 encoded_block_slice_size = block_size / 8
 
+def _slice_generator(data, slice_size):
+    start_pos = 0
+    end_pos = slice_size
+    while start_pos < len(data):
+        yield data[start_pos:end_pos]
+        start_pos = end_pos
+        end_pos += slice_size
+
+def block_generator(data):
+    return _slice_generator(data, block_size)
+
+def encoded_block_generator(data):
+    return _slice_generator(data, encoded_block_slice_size)
+
 # datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)
 _timestamp_repr_re = re.compile(r"""
 ^datetime.datetime\(

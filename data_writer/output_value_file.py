@@ -15,8 +15,6 @@ import psycopg2
 from tools.data_definitions import compute_value_file_path, \
         value_file_template
 
-_sync_strategy = os.environ.get("NIMBUS_IO_SYNC_STRATEGY", "NONE")
-
 def _insert_value_file_default_row(connection):
     # Ticket #1646: insert a row of defaults right at open
     value_file_id = connection.execute_and_return_id("""
@@ -32,8 +30,6 @@ def _open_value_file(value_file_path):
     if not os.path.exists(value_file_dir):
         os.makedirs(value_file_dir)
     flags = os.O_WRONLY | os.O_CREAT
-    if _sync_strategy == "O_SYNC":
-        flags |= os.O_SYNC
     return os.open(value_file_path, flags)
 
 def _update_value_file_row(connection, value_file_row):
@@ -84,6 +80,7 @@ class OutputValueFile(object):
         self._min_segment_id = None
         self._max_segment_id = None
         self._collection_ids = set()
+        self._synced = True # treat as synced until we write
 
     @property
     def value_file_id(self):
@@ -98,6 +95,8 @@ class OutputValueFile(object):
         write the data for one sequence
         """
         os.write(self._value_file_fd, data)
+        self._synced = False
+
         self._size += len(data)
         self._md5.update(data)
         self._segment_sequence_count += 1
@@ -111,8 +110,21 @@ class OutputValueFile(object):
             self._max_segment_id = max(self._max_segment_id, segment_id)
         self._collection_ids.add(collection_id)
 
+    def sync(self):
+        """
+        sync this file to disk (if neccessary)
+        """
+        if not self._synced:
+            os.fsync(self._value_file_fd)
+            self._synced = True
+
+    @property
+    def is_synced(self):
+        return self._synced
+
     def close(self):
         """close the file and make it visible in the database"""
+        self.sync()
         os.close(self._value_file_fd)
 
         if self._segment_sequence_count == 0:

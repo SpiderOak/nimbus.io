@@ -21,8 +21,7 @@ _conjoined_list_entry = namedtuple("ConjoinedListEntry", [
         "key",
         "create_timestamp", 
         "abort_timestamp",
-        "complete_timestamp",
-        "delete_timestamp", ]
+        "complete_timestamp",]
 )
 
 class MessageGreenlet(Greenlet):
@@ -59,8 +58,9 @@ def list_conjoined_archives(
         conjoined_identifier_marker = 0
     result = connection.fetch_all_rows("""
         select unified_id, key, create_timestamp, abort_timestamp, 
-        complete_timestamp, delete_timestamp from nimbusio_node.conjoined where
-        collection_id = %s and key > %s and unified_id > %s
+        complete_timestamp from nimbusio_node.conjoined 
+        where collection_id = %s and key > %s and unified_id > %s
+        and delete_timestamp is null
         order by unified_id
         limit %s
         """.strip(), [

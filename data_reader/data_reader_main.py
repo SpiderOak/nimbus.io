@@ -106,7 +106,7 @@ def _handle_retrieve_key_start(state, message, _data):
     log.debug("found %s sequence rows" % (sequence_row_count, ))
 
     try:
-        sequence_row, data_content = sequence_generator.next()
+        sequence_row, data_generator = sequence_generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -114,8 +114,12 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    encoded_block_list = list()
     segment_md5 = hashlib.md5()
-    segment_md5.update(data_content)
+    for encoded_block in data_generator:
+        encoded_block_list.append(encoded_block)
+        segment_md5.update(encoded_block)
+
     if segment_md5.digest() != str(sequence_row.hash):
         error_message = "md5 mismatch %s" % (state_key, )
         log.error(error_message)
@@ -126,7 +130,7 @@ def _handle_retrieve_key_start(state, message, _data):
         return
 
     Statgrabber.accumulate('nimbusio_read_requests', 1)
-    Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
+    Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
     state_entry = _retrieve_state_tuple(
         generator=sequence_generator,
@@ -148,7 +152,7 @@ def _handle_retrieve_key_start(state, message, _data):
     reply["segment-adler32"] = sequence_row.adler32
     reply["segment-md5-digest"] = b64encode(sequence_row.hash)
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, data=data_content)
+    state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
@@ -182,7 +186,7 @@ def _handle_retrieve_key_next(state, message, _data):
         return
 
     try:
-        sequence_row, data_content = state_entry.generator.next()
+        sequence_row, data_generator = state_entry.generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -190,8 +194,12 @@ def _handle_retrieve_key_next(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    encoded_block_list = list()
     segment_md5 = hashlib.md5()
-    segment_md5.update(data_content)
+    for encoded_block in data_generator:
+        encoded_block_list.append(encoded_block)
+        segment_md5.update(encoded_block)
+
     if segment_md5.digest() != str(sequence_row.hash):
         error_message = "md5 mismatch %s" % (state_key, )
         log.error(error_message)
@@ -202,7 +210,7 @@ def _handle_retrieve_key_next(state, message, _data):
         return
 
     Statgrabber.accumulate('nimbusio_read_requests', 1)
-    Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
+    Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
     sequence_read_count = state_entry.sequence_read_count + 1
 
@@ -220,7 +228,7 @@ def _handle_retrieve_key_next(state, message, _data):
     reply["segment-adler32"] = sequence_row.adler32
     reply["segment-md5-digest"] = b64encode(sequence_row.hash)
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, data=data_content)
+    state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_web_server_start(state, message, _data):
     log = logging.getLogger("_handle_web_server_start")

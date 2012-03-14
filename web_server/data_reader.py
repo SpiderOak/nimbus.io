@@ -52,16 +52,25 @@ class DataReader(object):
             self._log.error("failed: %s" % (reply, ))
             return None
 
+        # we expect a list of blocks, but if the data is smaller than 
+        # block size, we get back a string
+        if type(data) != list:
+            data = [data, ]
+
         # Ticket #1307 danger of zfec bit rot
         # we must make sure we are handing zfec valid segments to reassemble
+        segment_size = 0
+        segment_md5 = hashlib.md5()
+        for block in data:
+            segment_size += len(block)
+            segment_md5.update(block)
 
-        if len(data) != reply["segment-size"]:
+        if segment_size != reply["segment-size"]:
             self._log.error("failed: data size is %s expecting %s %s" % (
-                reply["segment-size"], len(data), reply
+                reply["segment-size"], segment_size, reply
             ))
             return None
 
-        segment_md5 = hashlib.md5(data)
         if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
             self._log.error("md5 digest mismatch %s" % (reply, ))
             return None
@@ -94,16 +103,25 @@ class DataReader(object):
             self._log.error("failed: %s" % (reply, ))
             return None
 
+        # we expect a list of blocks, but if the data is smaller than 
+        # block size, we get back a string
+        if type(data) != list:
+            data = [data, ]
+
         # Ticket #1307 danger of zfec bit rot
         # we must make sure we are handing zfec valid segments to reassemble
+        segment_size = 0
+        segment_md5 = hashlib.md5()
+        for block in data:
+            segment_size += len(block)
+            segment_md5.update(block)
 
-        if len(data) != reply["segment-size"]:
+        if segment_size != reply["segment-size"]:
             self._log.error("failed: data size is %s expecting %s %s" % (
-                reply["segment-size"], len(data), reply
+                reply["segment-size"], segment_size, reply
             ))
             return None
 
-        segment_md5 = hashlib.md5(data)
         if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
             self._log.error("md5 digest mismatch %s" % (reply, ))
             return None

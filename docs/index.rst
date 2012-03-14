@@ -3,18 +3,21 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to nimbus.io's documentation!
-=====================================
+Nimbus.io's Documentation
+=========================
 
 Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
+   self
    intro
    developers_guide
    administrators_guide
    internals
+   glossary
 
 Indices and tables
 ==================

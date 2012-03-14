@@ -8,7 +8,7 @@ some special modules to use gevent.
 The web server has a GreenletResilientClient for each data writer and for each
 data reader.
 
-The reslient clients use Deliverator to deliver their messages.
+The resilient clients use Deliverator to deliver their messages.
 """
 from gevent import monkey
 # you must use the latest gevent and have c-ares installed for this to work

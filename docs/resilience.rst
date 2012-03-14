@@ -1,10 +1,10 @@
 Resilience
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
 Nimbus.io server processes work together over a cluster of hosts. Servers send
 mesages to each other over `ZeroMQ Sockets <http://www.zeromq.org/>`_.
@@ -17,7 +17,9 @@ Specifically :ref:`resilient-client-label`
 connected to :ref:`resilient-server-label` 
 
 The basic idea is that clients do not blindly keep shoving messages into a
-zeromq socket's send buffer. 
+zeromq socket's send buffer.  ZeroMQ provides no way to know when a message has
+been delivered to the remote end -- messages queue in the local socket until
+they are delivered.
 
 We use two zeromq patterns to maintain a connection to a resilient server.
 
@@ -33,7 +35,7 @@ uniquely identifies the client to the server
 Each resilient client maintains its own DEALER_ socket **_dealer_socket**.
 
 At startup the client sends a *handshake* message to the server. The client
-is not considered connected until it gets an ack fro the handshake.
+is not considered connected until it gets an ack for the handshake.
 
 Normal workflow:
 

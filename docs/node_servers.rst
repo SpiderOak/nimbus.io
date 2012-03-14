@@ -1,10 +1,10 @@
 Standard Servers on Every Node
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
 These are common tools used by most nimbus.io processes
 

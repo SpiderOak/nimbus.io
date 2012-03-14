@@ -1,6 +1,8 @@
 #!/bin/bash
 
-# simple script to run the unit tests from motoboto against a running cluster sim.
+# simple script to run the benchmarks from motoboto against a running cluster
+# sim.
+
 # pass basedir of cluster sim as $1
 # finds config for cluster under basedir, adds test user to cluster, and runs
 # motoboto tests.

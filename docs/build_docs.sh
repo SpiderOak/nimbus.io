@@ -1,7 +1,10 @@
 #!/bin/bash
-CODEBASE="${HOME}/nimbus.io"
-export PYTHONPATH="${CODEBASE}"
 
+DOCS_DIR="$(dirname $0)"
+CODEBASE="$(dirname $DOCS_DIR)"
+CODEBASE="$(cd $CODEBASE ; pwd)"
+
+export PYTHONPATH="${CODEBASE}"
 export NIMBUSIO_NODE_NAME_SEQ=""
 export NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS=""
 export NIMBUSIO_NODE_NAME=""
@@ -21,5 +24,6 @@ export NIMBUSIO_HANDOFF_SERVER_ADDRESSES=""
 export NIMBUSIO_REPOSITORY_PATH=""
 
 pushd "${CODEBASE}/docs"
+make clean
 make html
 popd

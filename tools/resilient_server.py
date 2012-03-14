@@ -90,7 +90,7 @@ class ResilientServer(object):
 
     def pollster_callback(self, _active_socket, readable, writable):
         """
-        when our ROUTER socket becomes readable, read a message fromm it
+        when our ROUTER socket becomes readable, read a message from it
 
         we handle handshake and signoff messages from resilient clients
 

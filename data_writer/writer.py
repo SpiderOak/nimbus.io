@@ -296,15 +296,20 @@ class Writer(object):
         assert self._value_file is not None
         self._value_file.sync()
         # at this point we can complete all pending archives
+
         self._connection.execute("begin")
         try:
             for completion in self._completions:
-                completion.complete_archive()
+                completion.pre_commit_process()
         except Exception:
             self._log.exception("sync_value_file")
             self._connection.rollback()
             raise
         self._connection.commit()
+
+        for completion in self._completions:
+            completion.post_commit_process()
+
         self._completions[:] = []
 
     @property

@@ -89,10 +89,9 @@ class PostSyncCompletion(object):
         self._archive_message = archive_message
         self._reply_message = reply_message
 
-    def complete_archive(self):
+    def pre_commit_process(self):
         """
         finalize the segment row
-        send archive_key_file_reply message to the caller
         """
         self._finish_new_segment(
             self._archive_message["collection-id"], 
@@ -106,6 +105,10 @@ class PostSyncCompletion(object):
             _extract_meta(self._archive_message),
         )
 
+    def post_commit_process(self):
+        """
+        send archive_key_file_reply message to the caller
+        """
         self._resilient_server.send_reply(self._reply_message)
 
     def _finish_new_segment(

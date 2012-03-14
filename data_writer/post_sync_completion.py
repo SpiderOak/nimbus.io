@@ -67,7 +67,8 @@ def _finalize_segment_row(
             )
         """, meta_row_dict)            
 
-    connection.commit()
+    # 2012-03-14 dougfort -- assume all completions are run in a
+    # transaction wioht the caller handling the database commit
 
 class PostSyncCompletion(object):
     """

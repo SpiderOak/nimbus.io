@@ -19,6 +19,7 @@ import zmq
 
 import Statgrabber
 
+from tools.data_definitions import encoded_block_generator
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
 from tools.event_push_client import EventPushClient, exception_event
@@ -45,6 +46,8 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "generator",
     "sequence_row_count",
     "sequence_read_count",
+    "block_count",
+    "blocks_sent",
     "timeout",
 ])
 
@@ -90,10 +93,12 @@ def _handle_retrieve_key_start(state, message, _data):
     sequence_generator = state["reader"].generate_all_sequence_rows(
         message["segment-unified-id"],
         message["segment-conjoined-part"],
-        message["segment-num"]
+        message["segment-num"],
+        message["block-offset"]
     )
 
-    sequence_row_count = sequence_generator.next()
+    sequence_row_count, sequence_rows_skipped, offset_residue = \
+            sequence_generator.next()
 
     if sequence_row_count == 0:
         error_string = "no sequence rows found"
@@ -103,10 +108,12 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    log.debug("found %s sequence rows" % (sequence_row_count, ))
+    log.info("found={0} skipped={1} offset_residue={2}".format(
+        sequence_row_count, sequence_rows_skipped, offset_residue
+    ))
 
     try:
-        sequence_row, data_generator = sequence_generator.next()
+        sequence_row, segment_data = sequence_generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -114,12 +121,7 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    encoded_block_list = list()
-    segment_md5 = hashlib.md5()
-    for encoded_block in data_generator:
-        encoded_block_list.append(encoded_block)
-        segment_md5.update(encoded_block)
-
+    segment_md5 = hashlib.md5(segment_data)
     if segment_md5.digest() != str(sequence_row.hash):
         error_message = "md5 mismatch %s" % (state_key, )
         log.error(error_message)
@@ -129,6 +131,15 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    encoded_block_list = list(encoded_block_generator(segment_data))
+    assert len(encoded_block_list) > 0
+    encoded_block_list = encoded_block_list[offset_residue:]
+    assert len(encoded_block_list) > 0
+    if message["block-count"] is not None:
+        if len(encoded_block_list) > message["block-count"]:
+            encoded_block_list = encoded_block_list[:message["block-count"]]
+    assert len(encoded_block_list) > 0
+
     Statgrabber.accumulate('nimbusio_read_requests', 1)
     Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
@@ -136,11 +147,15 @@ def _handle_retrieve_key_start(state, message, _data):
         generator=sequence_generator,
         sequence_row_count=sequence_row_count,
         sequence_read_count=1,
+        block_count=message["block-count"],
+        blocks_sent=len(encoded_block_list), 
         timeout=time.time() + _retrieve_timeout
     )
 
     # save stuff we need to recall in state
-    if state_entry.sequence_read_count == state_entry.sequence_row_count:
+    if state_entry.sequence_read_count == state_entry.sequence_row_count \
+    or (state_entry.block_count is not None 
+        and state_entry.blocks_sent == state_entry.block_count):
         reply["completed"] = True
     else:
         reply["completed"] = False
@@ -186,7 +201,7 @@ def _handle_retrieve_key_next(state, message, _data):
         return
 
     try:
-        sequence_row, data_generator = state_entry.generator.next()
+        sequence_row, segment_data = state_entry.generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -194,12 +209,7 @@ def _handle_retrieve_key_next(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    encoded_block_list = list()
-    segment_md5 = hashlib.md5()
-    for encoded_block in data_generator:
-        encoded_block_list.append(encoded_block)
-        segment_md5.update(encoded_block)
-
+    segment_md5 = hashlib.md5(segment_data)
     if segment_md5.digest() != str(sequence_row.hash):
         error_message = "md5 mismatch %s" % (state_key, )
         log.error(error_message)
@@ -209,17 +219,28 @@ def _handle_retrieve_key_next(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    encoded_block_list = list(encoded_block_generator(segment_data))
+    blocks_sent = state_entry.blocks_sent + len(encoded_block_list)
+    if state_entry.block_count is not None and \
+       blocks_sent > state_entry.block_count:
+        block_delta = blocks_sent = state_entry.block_count
+        encoded_block_list = encoded_block_list[:-block_delta]
+        blocks_sent = state_entry.block_count
+
     Statgrabber.accumulate('nimbusio_read_requests', 1)
     Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
     sequence_read_count = state_entry.sequence_read_count + 1
 
-    if sequence_read_count == state_entry.sequence_row_count:
+    if sequence_read_count == state_entry.sequence_row_count or \
+       (state_entry.block_count is not None and \
+        state_entry.blocks_sent == state_entry.block_count):
         reply["completed"] = True
     else:
         reply["completed"] = False
         state["active-requests"][state_key] = state_entry._replace(
-            sequence_read_count=sequence_read_count
+            sequence_read_count=sequence_read_count,
+            blocks_sent=blocks_sent
         )
 
     reply["sequence-num"] = sequence_read_count

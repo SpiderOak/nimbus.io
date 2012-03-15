@@ -11,7 +11,7 @@ import gevent
 import gevent.pool
 import gevent.queue
 
-from tools.data_definitions import segment_status_final
+from tools.data_definitions import block_size, segment_status_final
 
 from web_server.exceptions import RetrieveFailedError
 from web_server.local_database_util import current_status_of_key, \
@@ -39,10 +39,26 @@ class Retriever(object):
         self._collection_id = collection_id
         self._key = key
         self._version_id = version_id
+        self._slice_offset = slice_offset
+        self._slice_size = slice_size
         self._segments_needed = segments_needed
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
         self._sequence = 0
+                
+        # the amount to chop off the front of the first block
+        self._offset_into_first_block = 0
+
+        # the amount to chop off the end of the last block
+        self._residue_from_last_block = 0
+
+    @property
+    def offset_into_first_block(self):
+        return self._offset_into_first_block
+
+    @property
+    def residue_from_last_block(self):
+        return self._residue_from_last_block
 
     def _done_link(self, task):
         if task.sequence != self._sequence:
@@ -84,7 +100,89 @@ class Retriever(object):
                 self._collection_id, self._key,
             ))
 
+        # 2012-03-14 dougfort -- note that we are dealing wiht two different
+        # types of 'size': 'raw' and 'zfec encoded'. 
+        #
+        # The caller requests slice_offset and slice_size in 'raw' size, 
+        # seg_file_size is also 'raw' size.
+        #
+        # But what we are going to request from each data_writer are 
+        # 'zfec encoded' blocks which are smaller than raw blocks
+        #
+        # And we have to be careful, because each conjoined part could end 
+        # with a short block
+
+        # the sum of the sizes of all conjoined files we have looked at
+        cumulative_file_size = 0
+
+        # the amount of the slice we have retrieved
+        cumulative_slice_size = 0
+
+        # the raw offset adjusted for conjoined files we have skipped
+        current_file_offset = None
+
+        # this is how many blocks we skip at the start of this file
+        # this applies to both raw blocks here and encoded blocks
+        # at the data writers
+        block_offset = None
+
+        # number of blocks to retrieve from the current file
+        # None means all blocks
+        # note that we have to compute this for the last file only
+        # but must allow for a possible short block at the end of each 
+        # preceding file
+        block_count = None
+
         for status_row in status_rows:
+            next_cumulative_file_size = \
+                    cumulative_file_size + status_row.seg_file_size
+            if next_cumulative_file_size < self._slice_offset:
+                cumulative_file_size = next_cumulative_file_size
+                continue
+
+            if current_file_offset is None:
+                current_file_offset = \
+                        self._slice_offset - cumulative_file_size
+                assert current_file_offset >= 0
+                
+                block_offset = current_file_offset / block_size
+                self._offset_into_first_block = \
+                        current_file_offset \
+                      - (block_offset * block_size)
+                self._log.info("offset_into_first_block={0}".format( 
+                    self._offset_into_first_block
+                ))
+
+            if self._slice_size is not None:
+                assert cumulative_slice_size < self._slice_size
+                next_slice_size = \
+                    cumulative_slice_size + status_row.seg_file_size
+                if next_slice_size > self._slice_size:
+                    current_file_slice_size = \
+                            self._slice_size - cumulative_slice_size
+                    block_count = current_file_slice_size / block_size
+                    if current_file_slice_size % block_size != 0:
+                        block_count += 1
+                    self._residue_from_last_block = \
+                            (block_count * block_size) \
+                          - current_file_slice_size
+
+                    self._log.info("residue_from_last_block={0}".format(
+                        self._residue_from_last_block
+                    ))
+                else:
+                    cumulative_slice_size = next_slice_size
+
+            self._log.info("cumulative_file_size={0}, "
+                           "cumulative_slice_size={1}, "
+                           "current_file_offset={2}, "
+                           "block_offset={3}, "
+                           "block_count={4}".format(cumulative_file_size,
+                                                    cumulative_slice_size,
+                                                    current_file_offset,
+                                                    block_offset,
+                                                    block_count))
+                        
             # spawn retrieve_key start, then spawn retrieve key next
             # until we are done
             start = True
@@ -105,15 +203,23 @@ class Retriever(object):
 
                     segment_number = i + 1
                     if start:
-                        function = data_reader.retrieve_key_start
+                        task = self._pending.spawn(
+                            data_reader.retrieve_key_start,
+                            status_row.seg_unified_id,
+                            status_row.seg_conjoined_part,
+                            segment_number,
+                            block_offset,
+                            block_count
+                        )
                     else:
-                        function = data_reader.retrieve_key_next
-                    task = self._pending.spawn(
-                        function, 
-                        status_row.seg_unified_id,
-                        status_row.seg_conjoined_part,
-                        segment_number
-                    )
+                        task = self._pending.spawn(
+                            data_reader.retrieve_key_next,
+                            status_row.seg_unified_id,
+                            status_row.seg_conjoined_part,
+                            segment_number,
+                            block_offset,
+                            block_count
+                        )
                     task.link(self._done_link)
                     task.segment_number = segment_number
                     task.data_reader = data_reader
@@ -129,8 +235,11 @@ class Retriever(object):
                 if completed:
                     break
 
-                if start:
-                    start = False
+                start = False
+                cumulative_file_size = next_cumulative_file_size
+                current_file_offset = 0
+                block_offset = 0
+                block_count = None
 
     def _process_node_replies(self, timeout):
         finished_task_count = 0

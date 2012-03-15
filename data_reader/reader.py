@@ -6,7 +6,7 @@ read segment data for collections
 """
 import logging
 
-from tools.data_definitions import encoded_block_generator, \
+from tools.data_definitions import encoded_block_slice_size, \
         segment_row_template, \
         segment_sequence_template, \
         compute_value_file_path
@@ -77,7 +77,8 @@ class Reader(object):
         self, 
         segment_unified_id,
         segment_conjoined_part,
-        segment_num
+        segment_num,
+        block_offset
     ):
         """
         a generator to return sequence data for a segment in order
@@ -91,10 +92,26 @@ class Reader(object):
             segment_num
         )
 
-        # first yield is count of sequences
-        yield len(sequence_rows)
+        block_count = 0
+        skip_count = 0
+        offset_residue = 0
 
         for sequence_row in sequence_rows:
+            blocks_in_sequence = sequence_row.size / encoded_block_slice_size
+            if sequence_row.size % encoded_block_slice_size != 0:
+                blocks_in_sequence += 1
+            block_count += blocks_in_sequence
+            if block_count < block_offset:
+                skip_count += 1
+                continue
+            if block_offset > 0: 
+                offset_residue = block_count - block_offset
+            break
+
+        # first yield is counts
+        yield len(sequence_rows)-skip_count, skip_count, offset_residue
+
+        for sequence_row in sequence_rows[skip_count:]:
             if not sequence_row.value_file_id in open_value_files:
                 open_value_files[sequence_row.value_file_id] = open(
                     compute_value_file_path(
@@ -105,7 +122,7 @@ class Reader(object):
             value_file = open_value_files[sequence_row.value_file_id]
             value_file.seek(sequence_row.value_file_offset)
             encoded_segment = value_file.read(sequence_row.size)
-            yield sequence_row, encoded_block_generator(encoded_segment)
+            yield sequence_row, encoded_segment
 
         for value_file in open_value_files.values():            
             value_file.close()

@@ -25,14 +25,19 @@ class DataReader(object):
     def node_name(self):
         return self._node_name
 
-    def retrieve_key_start(
-        self, segment_unified_id, segment_conjoined_part, segment_num
-    ):
+    def retrieve_key_start(self, 
+                           segment_unified_id, 
+                           segment_conjoined_part, 
+                           segment_num,
+                           block_offset,
+                           block_count):
         message = {
             "message-type"              : "retrieve-key-start",
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
+            "block-offset"              : block_offset,
+            "block-count"               : block_count,
         }
         try:
             delivery_channel = \
@@ -77,14 +82,19 @@ class DataReader(object):
 
         return data, reply["zfec-padding-size"], reply["completed"]
 
-    def retrieve_key_next(
-        self, segment_unified_id, segment_conjoined_part, segment_num
-    ):
+    def retrieve_key_next(self, 
+                          segment_unified_id, 
+                          segment_conjoined_part, 
+                          segment_num,
+                          block_offset,
+                          block_count):
         message = {
             "message-type"              : "retrieve-key-next",
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
+            "block-offset"              : block_offset,
+            "block-count"               : block_count,
         }
         try:
             delivery_channel = \

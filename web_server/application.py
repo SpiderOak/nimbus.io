@@ -837,9 +837,16 @@ class Application(object):
                         segment_numbers,
                         zfec_padding_size
                     )
-                    data = "".join(data_list)
-                    sent += len(data)
-                    yield data
+                    if sent == 0:
+                        data_list[0] = \
+                            data_list[0][retriever.offset_into_first_block:]
+                    if retriever.residue_from_last_block != 0:
+                        data_list[-1] = \
+                            data_list[0][:-retriever.residue_from_last_block]
+
+                    for data in data_list:
+                        yield data
+                        sent += len(data)
             except RetrieveFailedError, instance:
                 self._event_push_client.warn(
                     "retrieve-failed",

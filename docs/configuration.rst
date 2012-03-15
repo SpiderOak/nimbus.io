@@ -1,7 +1,6 @@
 Configuring nimbus.io
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10

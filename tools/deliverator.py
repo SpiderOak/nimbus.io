@@ -30,7 +30,7 @@ class Deliverator(object):
         it will push the message into the queue. The caller can block on the
         queue, waiting for the reply.
 
-        we can't use the zero size 'channel' queue because the web server moves 
+        We can't use the zero size 'channel' queue because the web server moves 
         on after 8 of 10 retrieves and nobody is waiting on the last two.
 
         So we use a size of one, and it is the caller's responsibility to clean

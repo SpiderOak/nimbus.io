@@ -30,11 +30,11 @@ class DataWriterHandoffClient(object):
 
     This class mimics a single GreenletResilientClient. 
     
-    When doing an archive, if the clients for a node is  disconnectd, 
+    When doing an archive, if the clients for a node is disconnected, 
     the web_server replaces it with a DataWriterHandoffClient which
-    backs up the archvie messages to two other nodes.
+    replicates the archive messages to two other nodes.
 
-    These backed up messages will ater be handed off to the destination node
+    These replicated messages will later be handed off to the destination node
     by the handoff server,
     """
     def __init__( self, dest_node_name, backup_clients):

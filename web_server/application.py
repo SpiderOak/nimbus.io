@@ -842,7 +842,7 @@ class Application(object):
                             data_list[0][retriever.offset_into_first_block:]
                     if retriever.residue_from_last_block != 0:
                         data_list[-1] = \
-                            data_list[0][:-retriever.residue_from_last_block]
+                            data_list[-1][:-retriever.residue_from_last_block]
 
                     for data in data_list:
                         yield data

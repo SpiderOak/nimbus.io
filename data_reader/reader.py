@@ -101,11 +101,17 @@ class Reader(object):
             if sequence_row.size % encoded_block_slice_size != 0:
                 blocks_in_sequence += 1
             block_count += blocks_in_sequence
+            self._log.info("block_count={0}, block_offset={1}".format(
+                block_count, block_offset
+            ))
             if block_count < block_offset:
                 skip_count += 1
                 continue
             if block_offset > 0: 
-                offset_residue = block_count - block_offset
+                if skip_count == 0:
+                    offset_residue = block_offset
+                else:
+                    offset_residue = block_count - block_offset
             break
 
         # first yield is counts

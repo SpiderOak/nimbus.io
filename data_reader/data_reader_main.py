@@ -14,6 +14,7 @@ import logging
 import os.path
 import sys
 import time
+import zlib
 
 import zmq
 
@@ -62,7 +63,10 @@ def _compute_state_key(message):
 def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
     state_key = _compute_state_key(message)
-    log.info(repr(state_key))
+    log.info("{0} block_offset={1}, block_count={2}".format(
+        repr(state_key),
+        message["block-offset"],
+        message["block-count"]))
 
     reply = {
         "message-type"          : "retrieve-key-reply",
@@ -132,12 +136,18 @@ def _handle_retrieve_key_start(state, message, _data):
         return
 
     encoded_block_list = list(encoded_block_generator(segment_data))
-    assert len(encoded_block_list) > 0
-    encoded_block_list = encoded_block_list[offset_residue:]
-    assert len(encoded_block_list) > 0
+
+    recompute = False
+
+    if offset_residue > 0:
+        encoded_block_list = encoded_block_list[offset_residue:]
+        recompute = True
+
     if message["block-count"] is not None:
         if len(encoded_block_list) > message["block-count"]:
             encoded_block_list = encoded_block_list[:message["block-count"]]
+            recompute = True
+
     assert len(encoded_block_list) > 0
 
     Statgrabber.accumulate('nimbusio_read_requests', 1)
@@ -161,18 +171,37 @@ def _handle_retrieve_key_start(state, message, _data):
         reply["completed"] = False
         state["active-requests"][state_key] = state_entry
 
+    segment_size = sequence_row.size
+    segment_adler32 = sequence_row.adler32
+    segment_md5_digest = sequence_row.hash
+
+    # if we chopped some blocks out of the data, we must recompute
+    # the check values
+    if recompute:
+        segment_size = 0
+        segment_adler32 = 0
+        segment_md5 = hashlib.md5()
+        for encoded_block in encoded_block_list:
+            segment_size += len(encoded_block)
+            segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
+            segment_md5.update(encoded_block)
+        segment_md5_digest = segment_md5.digest()
+
     reply["sequence-num"] = state_entry.sequence_read_count
-    reply["segment-size"] = sequence_row.size
+    reply["segment-size"] = segment_size
     reply["zfec-padding-size"] = sequence_row.zfec_padding_size
-    reply["segment-adler32"] = sequence_row.adler32
-    reply["segment-md5-digest"] = b64encode(sequence_row.hash)
+    reply["segment-adler32"] = segment_adler32
+    reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
     state_key = _compute_state_key(message)
-    log.info(str(state_key))
+    log.info("{0} block_offset={1}, block_count={2}".format(
+        repr(state_key),
+        message["block-offset"],
+        message["block-count"]))
 
     reply = {
         "message-type"          : "retrieve-key-reply",
@@ -221,11 +250,14 @@ def _handle_retrieve_key_next(state, message, _data):
 
     encoded_block_list = list(encoded_block_generator(segment_data))
     blocks_sent = state_entry.blocks_sent + len(encoded_block_list)
+
+    recompute = False
     if state_entry.block_count is not None and \
        blocks_sent > state_entry.block_count:
         block_delta = blocks_sent = state_entry.block_count
         encoded_block_list = encoded_block_list[:-block_delta]
         blocks_sent = state_entry.block_count
+        recompute = True
 
     Statgrabber.accumulate('nimbusio_read_requests', 1)
     Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
@@ -243,11 +275,28 @@ def _handle_retrieve_key_next(state, message, _data):
             blocks_sent=blocks_sent
         )
 
+    segment_size = sequence_row.size
+    segment_adler32 = sequence_row.adler32
+    segment_md5_digest = sequence_row.hash
+
+    # if we chopped some blocks out of the data, we must recompute
+    # the check values
+    if recompute:
+        segment_size = 0
+        segment_adler32 = 0
+        segment_md5 = hashlib.md5()
+        for encoded_block in encoded_block_list:
+            segment_size += len(encoded_block)
+            segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
+            segment_md5.update(encoded_block)
+        segment_md5_digest = segment_md5.digest()
+
+
     reply["sequence-num"] = sequence_read_count
-    reply["segment-size"] = sequence_row.size
+    reply["segment-size"] = segment_size
     reply["zfec-padding-size"] = sequence_row.zfec_padding_size
-    reply["segment-adler32"] = sequence_row.adler32
-    reply["segment-md5-digest"] = b64encode(sequence_row.hash)
+    reply["segment-adler32"] = segment_adler32
+    reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=encoded_block_list)
 

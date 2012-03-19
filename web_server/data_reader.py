@@ -72,7 +72,7 @@ class DataReader(object):
 
         if segment_size != reply["segment-size"]:
             self._log.error("failed: data size is %s expecting %s %s" % (
-                reply["segment-size"], segment_size, reply
+                segment_size, reply["segment-size"], reply
             ))
             return None
 

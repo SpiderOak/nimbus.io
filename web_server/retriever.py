@@ -52,6 +52,10 @@ class Retriever(object):
         # the amount to chop off the end of the last block
         self._residue_from_last_block = 0
 
+        # if we are looking for a specified slice, we can stop when
+        # we find the last block
+        self._last_block_in_slice_retrieved = False
+
     @property
     def offset_into_first_block(self):
         return self._offset_into_first_block
@@ -134,18 +138,29 @@ class Retriever(object):
         block_count = None
 
         for status_row in status_rows:
+                        
+            if self._last_block_in_slice_retrieved:
+                break
+
             next_cumulative_file_size = \
                     cumulative_file_size + status_row.seg_file_size
-            if next_cumulative_file_size < self._slice_offset:
+            self._log.info("next_cumulative_file_size={0}".format(
+                next_cumulative_file_size
+            ))
+            if next_cumulative_file_size <= self._slice_offset:
                 cumulative_file_size = next_cumulative_file_size
                 continue
 
             if current_file_offset is None:
                 current_file_offset = \
                         self._slice_offset - cumulative_file_size
+                self._log.info("current_file_offset={0}".format(
+                    current_file_offset
+                ))
                 assert current_file_offset >= 0
                 
                 block_offset = current_file_offset / block_size
+                self._log.info("block_offset={0}".format(block_offset))
                 self._offset_into_first_block = \
                         current_file_offset \
                       - (block_offset * block_size)
@@ -154,19 +169,34 @@ class Retriever(object):
                 ))
 
             if self._slice_size is not None:
+                self._log.info("cumulative_slice_size={0}".format(
+                    cumulative_slice_size
+                ))
                 assert cumulative_slice_size < self._slice_size
                 next_slice_size = \
-                    cumulative_slice_size + status_row.seg_file_size
-                if next_slice_size > self._slice_size:
+                    cumulative_slice_size + \
+                        (status_row.seg_file_size - current_file_offset)
+                self._log.info("next_slice_size={0}".format(
+                    next_slice_size
+                ))
+                if next_slice_size >= self._slice_size:
+                    self._last_block_in_slice_retrieved = True
                     current_file_slice_size = \
                             self._slice_size - cumulative_slice_size
                     block_count = current_file_slice_size / block_size
+                    self._log.info("current_file_slice_size={0}, block_count={1}".format(
+                        current_file_slice_size, block_count
+                    ))
                     if current_file_slice_size % block_size != 0:
                         block_count += 1
                     self._residue_from_last_block = \
-                            (block_count * block_size) \
-                          - current_file_slice_size
-
+                            (block_count * block_size) - \
+                            current_file_slice_size
+                    # if we only have a single block, don't take
+                    # too big of a chunk out of it
+                    if cumulative_slice_size == 0 and block_count == 1:
+                        self._residue_from_last_block -= \
+                        self._offset_into_first_block
                     self._log.info("residue_from_last_block={0}".format(
                         self._residue_from_last_block
                     ))
@@ -188,7 +218,7 @@ class Retriever(object):
             start = True
             while True:
                 self._sequence += 1
-                self._log.debug("retrieve: %s %s %s" % (
+                self._log.info("retrieve: %s %s %s" % (
                     self._sequence, 
                     status_row.seg_unified_id, 
                     status_row.seg_conjoined_part,
@@ -235,11 +265,13 @@ class Retriever(object):
                 if completed:
                     break
 
+
                 start = False
-                cumulative_file_size = next_cumulative_file_size
-                current_file_offset = 0
-                block_offset = 0
-                block_count = None
+
+            cumulative_file_size = next_cumulative_file_size
+            current_file_offset = 0
+            block_offset = 0
+            block_count = None
 
     def _process_node_replies(self, timeout):
         finished_task_count = 0

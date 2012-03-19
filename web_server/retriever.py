@@ -33,7 +33,13 @@ class Retriever(object):
         segments_needed
     ):
         self._log = logging.getLogger("Retriever")
-        self._log.info('collection_id=%d, key=%r' % (collection_id, key, ))
+        self._log.info("{0}, {1}, {2}, {3}, {4}".format(
+            collection_id, 
+            key, 
+            version_id,
+            slice_offset,
+            slice_size,
+        ))
         self._node_local_connection = node_local_connection
         self._data_readers = data_readers
         self._collection_id = collection_id
@@ -74,7 +80,7 @@ class Retriever(object):
         else:
             self._finished_tasks.put(task, block=True)
 
-    def retrieve(self, timeout):
+    def _generate_status_rows(self):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
         if self._version_id is None:
@@ -144,9 +150,6 @@ class Retriever(object):
 
             next_cumulative_file_size = \
                     cumulative_file_size + status_row.seg_file_size
-            self._log.info("next_cumulative_file_size={0}".format(
-                next_cumulative_file_size
-            ))
             if next_cumulative_file_size <= self._slice_offset:
                 cumulative_file_size = next_cumulative_file_size
                 continue
@@ -154,39 +157,23 @@ class Retriever(object):
             if current_file_offset is None:
                 current_file_offset = \
                         self._slice_offset - cumulative_file_size
-                self._log.info("current_file_offset={0}".format(
-                    current_file_offset
-                ))
                 assert current_file_offset >= 0
                 
                 block_offset = current_file_offset / block_size
-                self._log.info("block_offset={0}".format(block_offset))
                 self._offset_into_first_block = \
                         current_file_offset \
                       - (block_offset * block_size)
-                self._log.info("offset_into_first_block={0}".format( 
-                    self._offset_into_first_block
-                ))
 
             if self._slice_size is not None:
-                self._log.info("cumulative_slice_size={0}".format(
-                    cumulative_slice_size
-                ))
                 assert cumulative_slice_size < self._slice_size
                 next_slice_size = \
                     cumulative_slice_size + \
                         (status_row.seg_file_size - current_file_offset)
-                self._log.info("next_slice_size={0}".format(
-                    next_slice_size
-                ))
                 if next_slice_size >= self._slice_size:
                     self._last_block_in_slice_retrieved = True
                     current_file_slice_size = \
                             self._slice_size - cumulative_slice_size
                     block_count = current_file_slice_size / block_size
-                    self._log.info("current_file_slice_size={0}, block_count={1}".format(
-                        current_file_slice_size, block_count
-                    ))
                     if current_file_slice_size % block_size != 0:
                         block_count += 1
                     self._residue_from_last_block = \
@@ -197,13 +184,10 @@ class Retriever(object):
                     if cumulative_slice_size == 0 and block_count == 1:
                         self._residue_from_last_block -= \
                         self._offset_into_first_block
-                    self._log.info("residue_from_last_block={0}".format(
-                        self._residue_from_last_block
-                    ))
                 else:
                     cumulative_slice_size = next_slice_size
 
-            self._log.info("cumulative_file_size={0}, "
+            self._log.debug("cumulative_file_size={0}, "
                            "cumulative_slice_size={1}, "
                            "current_file_offset={2}, "
                            "block_offset={3}, "
@@ -212,13 +196,26 @@ class Retriever(object):
                                                     current_file_offset,
                                                     block_offset,
                                                     block_count))
-                        
+                    
+            yield status_row, block_offset, block_count
+
+            cumulative_file_size = next_cumulative_file_size
+            current_file_offset = 0
+            block_offset = 0
+            block_count = None
+
+    def retrieve(self, timeout):
+
+        for entry in self._generate_status_rows():
+
+            status_row, block_offset, block_count = entry
+
             # spawn retrieve_key start, then spawn retrieve key next
             # until we are done
             start = True
             while True:
                 self._sequence += 1
-                self._log.info("retrieve: %s %s %s" % (
+                self._log.debug("retrieve: %s %s %s" % (
                     self._sequence, 
                     status_row.seg_unified_id, 
                     status_row.seg_conjoined_part,
@@ -268,10 +265,6 @@ class Retriever(object):
 
                 start = False
 
-            cumulative_file_size = next_cumulative_file_size
-            current_file_offset = 0
-            block_offset = 0
-            block_count = None
 
     def _process_node_replies(self, timeout):
         finished_task_count = 0

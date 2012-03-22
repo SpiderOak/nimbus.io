@@ -52,7 +52,8 @@ from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
         RetrieveFailedError, \
         ArchiveFailedError, \
-        DestroyFailedError
+        DestroyFailedError, \
+        ConjoinedFailedError
 from web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
 from web_server.data_writer import DataWriter
@@ -611,7 +612,7 @@ class Application(object):
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
             )
-            # 2009-09-30 dougfort -- assume we have some node trouble
+            # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
             response.retry_after = _archive_retry_interval
@@ -1182,13 +1183,37 @@ class Application(object):
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
-        start_conjoined_archive(
-            data_writers,
-            unified_id,
-            collection_entry.collection_id,
-            key,
-            timestamp
-        )
+        try:
+            start_conjoined_archive(
+                data_writers,
+                unified_id,
+                collection_entry.collection_id,
+                key,
+                timestamp
+            )
+        except ConjoinedFailedError, instance:
+            self._event_push_client.error(
+                "start-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.error("start-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            # 2012-03-21 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
+        except Exception, instance:
+            self._event_push_client.error(
+                "start-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.exception("start-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            return response
 
         conjoined_dict = {
             "conjoined_identifier"      : \
@@ -1248,13 +1273,37 @@ class Application(object):
         ) 
         timestamp = create_timestamp()
 
-        finish_conjoined_archive(
-            data_writers,
-            collection_entry.collection_id,
-            key,
-            unified_id,
-            timestamp
-        )
+        try:
+            finish_conjoined_archive(
+                data_writers,
+                collection_entry.collection_id,
+                key,
+                unified_id,
+                timestamp
+            )
+        except ConjoinedFailedError, instance:
+            self._event_push_client.error(
+                "finish-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.error("finish-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            # 2012-03-21 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
+        except Exception, instance:
+            self._event_push_client.error(
+                "finish-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.exception("finish-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            return response
 
         return  Response()
 
@@ -1304,13 +1353,37 @@ class Application(object):
         ) 
         timestamp = create_timestamp()
 
-        abort_conjoined_archive(
-            data_writers,
-            collection_entry.collection_id,
-            key,
-            unified_id,
-            timestamp
-        )
+        try:
+            abort_conjoined_archive(
+                data_writers,
+                collection_entry.collection_id,
+                key,
+                unified_id,
+                timestamp
+            )
+        except ConjoinedFailedError, instance:
+            self._event_push_client.error(
+                "abort-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.error("abort-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            # 2012-03-21 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
+        except Exception, instance:
+            self._event_push_client.error(
+                "abort-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.exception("abort-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            return response
 
         return  Response()
 

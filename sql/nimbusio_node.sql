@@ -18,9 +18,14 @@ create table conjoined (
     complete_timestamp timestamp,
     delete_timestamp timestamp,
     combined_size int8,
-    combined_hash bytea
+    combined_hash bytea,
+    handoff_node_id int4
 );
-create unique index conjoined_unified_id_idx on nimbusio_node.conjoined ("unified_id");
+create unique index conjoined_unified_id_idx on nimbusio_node.conjoined 
+("unified_id", "handoff_node_id");
+/* a partial index just for handoffs, so it's easy to find these records when a
+ * node comes back online */
+create index conjoined_handoff_idx on nimbusio_node.conjoined("handoff_node_id") where handoff_node_id is not null;
 
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and

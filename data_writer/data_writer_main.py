@@ -487,11 +487,18 @@ def _handle_start_conjoined_archive(state, message, _data):
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
+    if "handoff-node-name" not in message or \
+       message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].start_conjoined_archive(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        timestamp
+        timestamp,
+        handoff_node_id
     )
 
     reply = {
@@ -514,11 +521,18 @@ def _handle_abort_conjoined_archive(state, message, _data):
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
+    if "handoff-node-name" not in message or \
+       message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].abort_conjoined_archive(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        timestamp
+        timestamp,
+        handoff_node_id
     )
 
     reply = {
@@ -541,11 +555,18 @@ def _handle_finish_conjoined_archive(state, message, _data):
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
+    if "handoff-node-name" not in message or \
+       message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].finish_conjoined_archive(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        timestamp
+        timestamp,
+        handoff_node_id
     )
 
     reply = {

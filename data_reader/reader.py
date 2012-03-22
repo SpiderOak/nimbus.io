@@ -20,6 +20,7 @@ def _all_segment_rows_for_key(connection, collection_id, key):
     result = connection.fetch_all_rows("""
         select %s from nimbusio_node.segment 
         where collection_id = %%s and key = %%s
+        and handoff_node_id is null
         order by timestamp desc, segment_num asc
     """ % (",".join(segment_row_template._fields), ), [collection_id, key, ])
     return [segment_row_template._make(row) for row in result]
@@ -42,6 +43,7 @@ def _all_sequence_rows_for_segment(
             where unified_id = %%s
             and conjoined_part = %%s
             and segment_num = %%s
+            and handoff_node_id is null
             and status = 'F'
         )
         order by sequence_num asc

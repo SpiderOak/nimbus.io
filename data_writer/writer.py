@@ -21,33 +21,56 @@ _max_value_file_size = int(os.environ.get(
 def _insert_conjoined_row(connection, conjoined_dict):
     connection.execute("""
         insert into nimbusio_node.conjoined (
-            collection_id, key, unified_id, create_timestamp
+            collection_id, key, unified_id, create_timestamp, handoff_node_id
         ) values (
             %(collection_id)s, 
             %(key)s, 
             %(unified_id)s, 
-            %(create_timestamp)s::timestamp
+            %(create_timestamp)s::timestamp,
+            %(handoff_node_id)s
         )""", conjoined_dict)                   
     connection.commit()
 
 def _set_conjoined_abort_timestamp(connection, conjoined_dict):
-    connection.execute("""
-        update nimbusio_node.conjoined 
-        set abort_timestamp = %(abort_timestamp)s::timestamp
-        where collection_id = %(collection_id)s
-        and key = %(key)s
-        and unified_id = %(unified_id)s
-        """, conjoined_dict)                   
+    if conjoined_dict["handoff_node_id"] is None:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set abort_timestamp = %(abort_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id is None
+            """, conjoined_dict)                   
+    else:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set abort_timestamp = %(abort_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id = %(handoff_node_id)s
+            """, conjoined_dict)                   
     connection.commit()
 
 def _set_conjoined_complete_timestamp(connection, conjoined_dict):
-    connection.execute("""
-        update nimbusio_node.conjoined 
-        set complete_timestamp = %(complete_timestamp)s::timestamp
-        where collection_id = %(collection_id)s
-        and key = %(key)s
-        and unified_id = %(unified_id)s
-        """, conjoined_dict)                   
+    if conjoined_dict["handoff_node_id"] is None:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set complete_timestamp = %(complete_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id is null
+            """, conjoined_dict) 
+    else:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set complete_timestamp = %(complete_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id = %(handoff_node_id)s
+            """, conjoined_dict) 
     connection.commit()
 
 def _insert_new_segment_row(
@@ -489,7 +512,7 @@ class Writer(object):
         )
 
     def start_conjoined_archive(
-        self, collection_id, key, unified_id, timestamp
+        self, collection_id, key, unified_id, timestamp, handoff_node_id
     ):
         """
         start a conjoined archive
@@ -498,12 +521,13 @@ class Writer(object):
             "collection_id"     : collection_id,
             "key"               : key,
             "unified_id"        : unified_id,
-            "create_timestamp"  : timestamp
+            "create_timestamp"  : timestamp,
+            "handoff_node_id"   : handoff_node_id,
         }
         _insert_conjoined_row(self._connection, conjoined_dict)
 
     def abort_conjoined_archive(
-        self, collection_id, key, unified_id, timestamp
+        self, collection_id, key, unified_id, timestamp, handoff_node_id
     ):
         """
         mark a conjoined archive as aborted
@@ -512,12 +536,13 @@ class Writer(object):
             "collection_id"     : collection_id,
             "key"               : key,
             "unified_id"        : unified_id,
-            "abort_timestamp"   : timestamp
+            "abort_timestamp"   : timestamp,
+            "handoff_node_id"   : handoff_node_id,
         }
         _set_conjoined_abort_timestamp(self._connection, conjoined_dict)
 
     def finish_conjoined_archive(
-        self, collection_id, key, unified_id, timestamp
+        self, collection_id, key, unified_id, timestamp, handoff_node_id,
     ):
         """
         mark a conjoined archive as finished
@@ -526,7 +551,8 @@ class Writer(object):
             "collection_id"      : collection_id,
             "key"                : key,
             "unified_id"         : unified_id,
-            "complete_timestamp" : timestamp
+            "complete_timestamp" : timestamp,
+            "handoff_node_id"    : handoff_node_id,
         }
         _set_conjoined_complete_timestamp(self._connection, conjoined_dict)
 

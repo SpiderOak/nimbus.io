@@ -60,7 +60,7 @@ def list_conjoined_archives(
         complete_timestamp from nimbusio_node.conjoined 
         where collection_id = %s and key > %s and unified_id > %s
         and delete_timestamp is null
-        and handoff_node_is is null
+        and handoff_node_id is null
         order by unified_id
         limit %s
         """.strip(), [

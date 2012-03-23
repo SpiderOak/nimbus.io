@@ -11,10 +11,6 @@ import zlib
 
 from tools.data_definitions import create_priority
 
-from web_server.exceptions import (
-    ArchiveFailedError,
-    DestroyFailedError,
-)
 def _segment_properties(segment):
     segment_size = 0
     segment_adler32 = 0
@@ -30,12 +26,17 @@ class DataWriter(object):
 
     def __init__(self, node_name, resilient_client):
         self._log = logging.getLogger("DataWriter-%s" % (node_name, ))
+        self._node_name = node_name
         self._resilient_client = resilient_client
         self._archive_priority = None
 
     @property
     def connected(self):
         return self._resilient_client.connected
+
+    @property
+    def node_name(self):
+        return self._node_name
 
     def archive_key_entire(
         self,
@@ -86,9 +87,7 @@ class DataWriter(object):
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def archive_key_start(
         self,
@@ -134,9 +133,7 @@ class DataWriter(object):
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def archive_key_next(
         self,
@@ -179,9 +176,7 @@ class DataWriter(object):
             'sequence = %(sequence-num)s' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def archive_key_final(
         self,
@@ -234,9 +229,6 @@ class DataWriter(object):
             '%(message-type)s: %(collection-id)s %(key)s' % message
         )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
 
     def destroy_key(
         self,
@@ -269,7 +261,5 @@ class DataWriter(object):
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise DestroyFailedError(reply["error-message"])
+        return reply
 

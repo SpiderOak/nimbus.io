@@ -44,7 +44,7 @@ class HandoffStarter(object):
             # run again later
             return [(self.run, time.time() + _delay_interval, )]
 
-        self._log.debug("%s pending handoffs" % (
+        self._log.info("%s pending handoffs" % (
             len(self._state["pending-handoffs"])
         ))
 

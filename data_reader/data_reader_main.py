@@ -112,7 +112,7 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    log.info("found={0} skipped={1} offset_residue={2}".format(
+    log.debug("found={0} skipped={1} offset_residue={2}".format(
         sequence_row_count, sequence_rows_skipped, offset_residue
     ))
 

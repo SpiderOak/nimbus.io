@@ -28,10 +28,13 @@ def forwarder_coroutine(
     # start retrieving from our reader
     message_id = uuid.uuid1().hex
     message = {
-        "message-type"      : "retrieve-key-start",
-        "message-id"        : message_id,
-        "segment-unified-id": segment_row.unified_id,
-        "segment-num"       : segment_row.segment_num,
+        "message-type"              : "retrieve-key-start",
+        "message-id"                : message_id,
+        "segment-unified-id"        : segment_row.unified_id,
+        "segment-conjoined-part"    : segment_row.conjoined_part,
+        "segment-num"               : segment_row.segment_num,
+        "block-offset"              : 0,
+        "block-count"               : None,
     }
 
     log.debug("sending retrieve-key-start %s %s" % (
@@ -107,10 +110,13 @@ def forwarder_coroutine(
 
         message_id = uuid.uuid1().hex
         message = {
-            "message-type"      : "retrieve-key-next",
-            "message-id"        : message_id,
-            "segment-unified-id": segment_row.unified_id,
-            "segment-num"       : segment_row.segment_num,
+            "message-type"              : "retrieve-key-next",
+            "message-id"                : message_id,
+            "segment-unified-id"        : segment_row.unified_id,
+            "segment-conjoined-part"    : segment_row.conjoined_part,
+            "segment-num"               : segment_row.segment_num,
+            "block-offset"              : 0,
+            "block-count"               : None,
         }
         reader_client.queue_message_for_send(message, data=None)
         reply, data = yield

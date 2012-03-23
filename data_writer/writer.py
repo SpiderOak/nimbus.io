@@ -261,7 +261,7 @@ def _get_segment_id(connection, collection_id, key, timestamp, segment_num):
     return segment_id
 
 def _purge_handoff_source(
-    connection, collection_id, unified_id, handoff_node_id
+    connection, unified_id, conjoined_part, handoff_node_id
 ):
     """
     remove handoff source from local database
@@ -270,20 +270,17 @@ def _purge_handoff_source(
         delete from nimbusio_node.segment_sequence 
         where segment_id = (
             select id from nimbusio_node.segment
-            where collection_id = %s 
-            and unified_id = %s
-            and handoff_node_id = %s
+            where unified_id = %(unified_id)s
+            and conjoined_part = %(conjoined_part)s
+            and handoff_node_id = %(handoff_node_id)s
         );
         delete from nimbusio_node.segment
-        where collection_id = %s 
-        and unified_id = %s
-        and handoff_node_id = %s;
-    """, [collection_id,
-          unified_id,
-          handoff_node_id,
-          collection_id,
-          unified_id,
-          handoff_node_id])
+        where unified_id = %(unified_id)s
+        and conjoined_part = %(conjoined_part)s
+        and handoff_node_id = %(handoff_node_id)s;
+        """, {"unified_id"         :  unified_id,
+              "conjoined_part"     : conjoined_part,
+              "handoff_node_id"    : handoff_node_id})
     connection.commit()
 
 class Writer(object):
@@ -499,17 +496,15 @@ class Writer(object):
             _cancel_segment_row(self._connection, segment_entry["segment-id"])
 
     def purge_handoff_source(
-        self, collection_id, unified_id, handoff_node_id
+        self, unified_id, conjoined_part, handoff_node_id
     ):
         """
         delete rows for a handoff source
         """
-        _purge_handoff_source(
-            self._connection, 
-            collection_id, 
-            unified_id, 
-            handoff_node_id
-        )
+        _purge_handoff_source(self._connection, 
+                              unified_id, 
+                              conjoined_part, 
+                              handoff_node_id)
 
     def start_conjoined_archive(
         self, collection_id, key, unified_id, timestamp, handoff_node_id

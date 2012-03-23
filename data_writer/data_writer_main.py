@@ -465,14 +465,14 @@ def _handle_destroy_key(state, message, _data):
 def _handle_purge_handoff_source(state, message, _data):
     log = logging.getLogger("_handle_purge_handoff_source")
     log.info("%s %s %s" % (
-        message["collection-id"], 
         message["unified-id"], 
+        message["conjoined-part"], 
         message["handoff-node-id"],
     ))
 
     state["writer"].purge_handoff_source(
-        message["collection-id"], 
         message["unified-id"],
+        message["conjoined-part"],
         message["handoff-node-id"]
     )
 

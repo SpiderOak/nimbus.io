@@ -188,7 +188,7 @@ def _handle_retrieve_key_reply(state, message, data):
     # to be handed off after we have purged it, because the message was 
     # in transit
     if message["result"] == "no-sequence-rows":
-        log.warn("no-sequence-rows, assuming already purged {0}".format(
+        log.debug("no-sequence-rows, assuming already purged {0}".format(
             message
         ))
         state["forwarder"] = None
@@ -248,8 +248,8 @@ def _handle_archive_reply(state, message, _data):
         message = {
             "message-type"      : "purge-handoff-source",
             "priority"          : create_priority(),
-            "collection-id"     : segment_row.collection_id,
             "unified-id"        : segment_row.unified_id,
+            "conjoined-part"    : segment_row.conjoined_part,
             "handoff-node-id"   : segment_row.handoff_node_id
         }
         for source_node_name in source_node_names:

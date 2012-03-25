@@ -184,6 +184,7 @@ conjoined_row_template = namedtuple(
         "delete_timestamp",
         "combined_size",
         "combined_hash",
+        "handoff_node_id",
     ]
 )
 

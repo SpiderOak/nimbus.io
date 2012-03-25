@@ -34,7 +34,7 @@ class PendingHandoffs(object):
                 incoming_segment_row, segment_row,
             )
             if source_node_name in source_node_names:
-                self._log.warn("duplicate: %s %s" % (
+                self._log.debug("duplicate: %s %s" % (
                     incoming_segment_row, source_node_name,
                 ))
             else:

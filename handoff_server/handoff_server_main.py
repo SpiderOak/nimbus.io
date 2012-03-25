@@ -3,7 +3,7 @@
 handoff_server_main.py
 
 """
-from collections import deque
+from collections import namedtuple, deque
 import logging
 import os
 import os.path
@@ -24,7 +24,10 @@ from tools import time_queue_driven_process
 from tools.database_connection import \
         get_node_local_connection, \
         get_central_connection
-from tools.data_definitions import segment_row_template, create_priority
+from tools.data_definitions import segment_row_template, \
+        conjoined_row_template, \
+        create_priority, \
+        parse_timestamp_repr
 
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -52,11 +55,38 @@ _handoff_server_pipeline_address = os.environ.get(
     "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS",
     "tcp://127.0.0.1:8700"
 )
-
+_conjoined_timestamps_template = namedtuple("ConjoinedTimestmaps", [
+    "create_timestamp", 
+    "abort_timestamp", 
+    "complete_timestamp",
+    "delete_timestamp"])
 _retrieve_timeout = 30 * 60.0
 
+def _retrieve_conjoined_handoffs_for_node(connection, node_id):
+    result = connection.fetch_all_rows("""
+        select %s from nimbusio_node.conjoined
+        where handoff_node_id = %%s
+        order by unified_id
+    """ % (",".join(conjoined_row_template._fields), ), [node_id, ])
 
-def _retrieve_handoffs_for_node(connection, node_id):
+    if result is None:
+        return None
+
+    conjoined_row_list = list()
+    for entry in result:
+        row = conjoined_row_template._make(entry)
+
+        # bytea columns come out of the database as buffer objects
+        if row.combined_hash is None: 
+            combined_hash = None
+        else: 
+            combined_hash = str(row.combined_hash)
+        row = row._replace(combined_hash=combined_hash)
+        conjoined_row_list.append(row)
+
+    return conjoined_row_list
+
+def _retrieve_segment_handoffs_for_node(connection, node_id):
     result = connection.fetch_all_rows("""
         select %s from nimbusio_node.segment 
         where handoff_node_id = %%s
@@ -98,9 +128,110 @@ def _convert_dict_to_segment_row(segment_dict):
         handoff_node_id=segment_dict["handoff_node_id"]
     )
 
+def _fetch_conjoined_timestamps(connection, unified_id):
+    raw_conjoined_timestamps = connection.fetch_one_row("""
+        select create_timestamp, abort_timestamp, complete_timestamp,
+        delete_timestamp from nimbusio_node.conjoined 
+        where unified_id = %s""", [unified_id, ])
+
+    if raw_conjoined_timestamps is None:
+        return None
+
+    return _conjoined_timestamps_template._make(raw_conjoined_timestamps)
+
+def _insert_conjoined_row(connection, conjoined_dict):
+    connection.execute("""
+        insert into nimbusio_node.conjoined
+        (collection_id, key, unified_id, create_timestamp, abort_timestamp,
+         complete_timestamp, delete_timestamp)
+        values (%(collection_id)s, %(key)s, %(unified_id)s, 
+               %(create_timestamp)s, %(abort_timestamp)s,
+               %(complete_timestamp)s, %(delete_timestamp)s)""", 
+        conjoined_dict)
+
+def _update_conjoined_row(connection, conjoined_timestamps, conjoined_dict):
+    """
+    We match the row we got from our database (conjoined_timestamps)
+    against the row that came from the remote node (conjoined_dict).
+
+    We assume a non None value overrides (is newer than) None
+    """
+    set_clauses = list()
+
+    if conjoined_dict["create_timestamp"] is not None:
+        if conjoined_timestamps.create_timestamp is None or \
+           conjoined_dict["create_timestamp"] > \
+           conjoined_timestamps.create_timestamp:
+            set_clauses.append("create_timestamp = %(create_timestamp)s")
+        
+    if conjoined_dict["abort_timestamp"] is not None:
+        if conjoined_timestamps.abort_timestamp is None or \
+           conjoined_dict["abort_timestamp"] > \
+           conjoined_timestamps.abort_timestamp:
+            set_clauses.append("abort_timestamp = %(abort_timestamp)s")
+        
+    if conjoined_dict["complete_timestamp"] is not None:
+        if conjoined_timestamps.complete_timestamp is None or \
+           conjoined_dict["complete_timestamp"] > \
+           conjoined_timestamps.complete_timestamp:
+            set_clauses.append("complete_timestamp = %(complete_timestamp)s")
+        
+    if conjoined_dict["delete_timestamp"] is not None:
+        if conjoined_timestamps.delete_timestamp is None or \
+           conjoined_dict["delete_timestamp"] > \
+           conjoined_timestamps.delete_timestamp:
+            set_clauses.append("delete_timestamp = %(delete_timestamp)s")
+        
+    if len(set_clauses) == 0:
+        return
+
+    command_list = ["update nimbusio_node.conjoined set"]
+    command_list.extend(set_clauses)
+    command_list.append(
+        "where unified_id = %(unified_id)s and handoff_node_id is null"
+    )
+    command = " ".join(command_list)
+    connection.execute(command, conjoined_dict)
+
+def _apply_conjoined_handoffs(connection, conjoined_dicts):
+    log = logging.getLogger("_apply_conjoined_handoffs")
+
+    handoff_node_id = None
+    unified_ids = set()
+
+    if len(conjoined_dicts) == 0:
+        return handoff_node_id, list(unified_ids)
+
+    # 2012-03-23 dougfort -- to begin with, let's just apply these 
+    # conjoined handoffs as they come in, that may be enough
+    
+    connection.execute("begin")
+    try:
+        for conjoined_dict in conjoined_dicts:
+            if handoff_node_id is None:
+                handoff_node_id = conjoined_dict["handoff_node_id"]
+            assert conjoined_dict["handoff_node_id"] == handoff_node_id
+            unified_ids.add(conjoined_dict["unified_id"])
+            conjoined_timestamps = \
+                    _fetch_conjoined_timestamps(connection,
+                                                conjoined_dict["unified_id"])
+            if conjoined_timestamps is None:
+                _insert_conjoined_row(connection, conjoined_dict)
+            else:
+                _update_conjoined_row(connection, 
+                                      conjoined_timestamps, 
+                                      conjoined_dict)
+    except Exception:
+        connection.rollback()
+        log.exception(str(conjoined_dict))
+        raise
+    connection.commit()
+
+    return handoff_node_id, list(unified_ids)
+
 def _handle_request_handoffs(state, message, _data):
     log = logging.getLogger("_handle_request_handoffs")
-    log.info("node %s %s" % (
+    log.debug("node %s %s" % (
         message["node-name"], 
         message["request-timestamp-repr"],
     ))
@@ -111,6 +242,7 @@ def _handle_request_handoffs(state, message, _data):
         "message-id"                : message["message-id"],
         "request-timestamp-repr"    : message["request-timestamp-repr"],
         "node-name"                 : _local_node_name,
+        "conjoined-count"           : None,
         "segment-count"             : None,
         "result"                    : None,
         "error-message"             : None,
@@ -118,7 +250,10 @@ def _handle_request_handoffs(state, message, _data):
 
     node_id = state["node-id-dict"][message["node-name"]]
     try:
-        rows = _retrieve_handoffs_for_node(
+        conjoined_rows = _retrieve_conjoined_handoffs_for_node(
+            state["database-connection"], node_id
+        )
+        segment_rows = _retrieve_segment_handoffs_for_node(
             state["database-connection"], node_id
         )
     except Exception, instance:
@@ -133,25 +268,34 @@ def _handle_request_handoffs(state, message, _data):
 
     reply["result"] = "success"
 
-    if rows is None:
-        reply["segment-count"] = 0
-        state["resilient-server"].send_reply(reply)
-        return
+    if conjoined_rows is None:
+        conjoined_rows = []
 
-    reply["segment-count"] = len(rows)
-    log.debug("found %s segments" % (reply["segment-count"], ))
+    if segment_rows is None:
+        segment_rows = []
 
+    reply["conjoined-count"] = len(conjoined_rows)
+    reply["segment-count"] = len(segment_rows)
+    log.debug("found %s conjoined, %s segments" % (
+        reply["conjoined-count"], reply["segment-count"], 
+    ))
+
+    data_dict = dict()
     # convert the rows from namedtuple through ordered_dict to regular dict
-    data_list = [dict(row._asdict().items()) for row in rows]
-    data = pickle.dumps(data_list)
+    data_dict["conjoined"] = \
+            [dict(row._asdict().items()) for row in conjoined_rows]
+    data_dict["segment"] = \
+            [dict(row._asdict().items()) for row in segment_rows]
+    data = pickle.dumps(data_dict)
         
     state["resilient-server"].send_reply(reply, data)
 
 def _handle_request_handoffs_reply(state, message, data):
     log = logging.getLogger("_handle_request_handoffs_reply")
-    log.info("node %s %s segment-count %s %s" % (
+    log.debug("node %s %s conjoined-count=%s segment-count=%s %s" % (
         message["node-name"], 
         message["result"], 
+        message["conjoined-count"], 
         message["segment-count"], 
         message["request-timestamp-repr"],
     ))
@@ -165,11 +309,11 @@ def _handle_request_handoffs_reply(state, message, data):
         return
 
     # the normal case
-    if message["segment-count"] == 0:
+    if message["conjoined-count"] == 0 and message["segment-count"] == 0:
         return
 
     try:
-        data_list = pickle.loads(data)
+        data_dict = pickle.loads(data)
     except Exception:
         log.exception("unable to load handoffs from %s" % (
             message["node-name"],
@@ -177,9 +321,30 @@ def _handle_request_handoffs_reply(state, message, data):
         return
 
     source_node_name = message["node-name"]
-    for entry in data_list:
+
+    segment_count  = 0
+    for entry in data_dict["segment"]:
         segment_row = _convert_dict_to_segment_row(entry)
         state["pending-handoffs"].push(segment_row, source_node_name)
+        segment_count += 1
+    if segment_count > 0:
+        log.info("pushed {0} handoff segments".format(segment_count))
+
+    handoff_node_id, unified_ids = \
+            _apply_conjoined_handoffs(state["database-connection"], 
+                                      data_dict["conjoined"])
+
+    if len(unified_ids) > 0:
+        # purge the handoff source(s)
+        message = {
+            "message-type"      : "purge-handoff-conjoined",
+            "priority"          : create_priority(),
+            "unified-ids"       : unified_ids,
+            "handoff-node-id"   : handoff_node_id
+        }
+        writer_client = state["writer-client-dict"][source_node_name]
+        writer_client.queue_message_for_send(message)
+        log.info("{0} conjoined handoffs".format(len(unified_ids)))
 
 def _handle_retrieve_key_reply(state, message, data):
     log = logging.getLogger("_handle_retrieve_key_reply")
@@ -246,7 +411,7 @@ def _handle_archive_reply(state, message, _data):
         
         # purge the handoff source(s)
         message = {
-            "message-type"      : "purge-handoff-source",
+            "message-type"      : "purge-handoff-segment",
             "priority"          : create_priority(),
             "unified-id"        : segment_row.unified_id,
             "conjoined-part"    : segment_row.conjoined_part,

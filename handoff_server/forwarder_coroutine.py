@@ -33,6 +33,7 @@ def forwarder_coroutine(
         "segment-unified-id"        : segment_row.unified_id,
         "segment-conjoined-part"    : segment_row.conjoined_part,
         "segment-num"               : segment_row.segment_num,
+        "handoff-node-id"           : segment_row.handoff_node_id,
         "block-offset"              : 0,
         "block-count"               : None,
     }
@@ -115,6 +116,7 @@ def forwarder_coroutine(
             "segment-unified-id"        : segment_row.unified_id,
             "segment-conjoined-part"    : segment_row.conjoined_part,
             "segment-num"               : segment_row.segment_num,
+            "handoff-node-id"           : segment_row.handoff_node_id,
             "block-offset"              : 0,
             "block-count"               : None,
         }

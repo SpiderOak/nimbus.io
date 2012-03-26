@@ -35,6 +35,7 @@ def _all_sequence_rows_for_segment(
      * unified_id
      * segment_num
     """
+    log = logging.getLogger("_all_sequence_rows_for_segment")
     result = connection.fetch_all_rows("""
         select %s from nimbusio_node.segment_sequence
         where segment_id = (
@@ -42,6 +43,7 @@ def _all_sequence_rows_for_segment(
             where unified_id = %%s
             and conjoined_part = %%s
             and segment_num = %%s
+            and handoff_node_id is null
             and status = 'F'
         )
         order by sequence_num asc
@@ -49,6 +51,37 @@ def _all_sequence_rows_for_segment(
         segment_unified_id, 
         segment_conjoined_part,
         segment_num, 
+    ])
+    return [segment_sequence_template._make(row) for row in result]
+
+def _all_sequence_rows_for_handoff_segment(
+    connection, 
+    segment_unified_id, 
+    segment_conjoined_part,
+    segment_num,
+    handoff_node_id
+):
+    """
+    retrieve all rows for a segment identified by 
+     * unified_id
+     * segment_num
+    """
+    result = connection.fetch_all_rows("""
+        select %s from nimbusio_node.segment_sequence
+        where segment_id = (
+            select id from nimbusio_node.segment 
+            where unified_id = %%s
+            and conjoined_part = %%s
+            and segment_num = %%s
+            and handoff_node_id = %%s
+            and status = 'F'
+        )
+        order by sequence_num asc
+    """ % (",".join(segment_sequence_template._fields), ), [
+        segment_unified_id, 
+        segment_conjoined_part,
+        segment_num, 
+        handoff_node_id,
     ])
     return [segment_sequence_template._make(row) for row in result]
 
@@ -78,6 +111,7 @@ class Reader(object):
         segment_unified_id,
         segment_conjoined_part,
         segment_num,
+        handoff_node_id,
         block_offset
     ):
         """
@@ -85,12 +119,21 @@ class Reader(object):
         """
         open_value_files = dict()
 
-        sequence_rows = _all_sequence_rows_for_segment(
-            self._connection, 
-            segment_unified_id, 
-            segment_conjoined_part,
-            segment_num
-        )
+        if handoff_node_id is None:
+            sequence_rows = _all_sequence_rows_for_segment(
+                self._connection, 
+                segment_unified_id, 
+                segment_conjoined_part,
+                segment_num
+            )
+        else:
+            sequence_rows = _all_sequence_rows_for_handoff_segment(
+                self._connection, 
+                segment_unified_id, 
+                segment_conjoined_part,
+                segment_num,
+                handoff_node_id
+            )
 
         block_count = 0
         skip_count = 0
@@ -101,7 +144,7 @@ class Reader(object):
             if sequence_row.size % encoded_block_slice_size != 0:
                 blocks_in_sequence += 1
             block_count += blocks_in_sequence
-            self._log.info("block_count={0}, block_offset={1}".format(
+            self._log.debug("block_count={0}, block_offset={1}".format(
                 block_count, block_offset
             ))
             if block_count < block_offset:

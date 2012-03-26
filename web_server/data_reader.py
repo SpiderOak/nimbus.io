@@ -36,6 +36,7 @@ class DataReader(object):
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
+            "handoff-node-id"           : None,
             "block-offset"              : block_offset,
             "block-count"               : block_count,
         }
@@ -93,6 +94,7 @@ class DataReader(object):
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
+            "handoff-node-id"           : None,
             "block-offset"              : block_offset,
             "block-count"               : block_count,
         }

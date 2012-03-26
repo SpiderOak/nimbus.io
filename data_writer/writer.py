@@ -207,16 +207,19 @@ def _cancel_segment_rows(connection, source_node_id, timestamp):
     """, [source_node_id, timestamp, ])
     connection.commit()
 
-def _cancel_segment_row(connection, segment_id):
+def _cancel_segment_row(connection, unified_id, conjoined_part, segment_num):
     """
     cancel a specific archive, presumably one in progress
     """
     connection.execute("""
         update nimbusio_node.segment
         set status = 'C'
-        where id = %s 
-        and status = 'A' 
-    """, [segment_id, ])
+        where unified_id = %(unified_id)s
+        and conjoined_part = %(conjoined_part)s
+        and segment_num = %(segment_num)s
+        """, {"unified_id"       : unified_id, 
+              "conjoined_part"   : conjoined_part,
+              "segment_num"      : segment_num})
     connection.commit()
 
 def _insert_segment_sequence_row(connection, segment_sequence_row):
@@ -495,18 +498,19 @@ class Writer(object):
         at the web server
         """
         segment_key = (unified_id, conjoined_part, segment_num, )
-        self._log.info("cancel_active_archive %s %s" % (
-            unified_id, segment_num
-        ))
+        self._log.info("cancel_active_archive %s" % (segment_key, ))
         # 2012-02-27 dougfort -- there is a race condition where the web
         # server sends out cancellations on an archive that has completed
         # because it hasn't reveived the final message yet
         try:
-            segment_entry = self._active_segments.pop(segment_key)
+            self._active_segments.pop(segment_key)
         except KeyError:
             pass
-        else:
-            _cancel_segment_row(self._connection, segment_entry["segment-id"])
+        
+        _cancel_segment_row(self._connection, 
+                            unified_id, 
+                            conjoined_part, 
+                            segment_num)
 
     def purge_handoff_conjoined( self, unified_ids, handoff_node_id):
         """

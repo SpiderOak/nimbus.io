@@ -58,13 +58,17 @@ def _compute_state_key(message):
     """
     return (message["client-tag"],
             message["segment-unified-id"], 
+            message["segment-conjoined-part"], 
             message["segment-num"], )
+
+def _str_state_key(state_key):
+    return "%s %s conjoined-part=%s segment-num=%s" % state_key
 
 def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
     state_key = _compute_state_key(message)
     log.info("{0} block_offset={1}, block_count={2}".format(
-        repr(state_key),
+        _str_state_key(state_key),
         message["block-offset"],
         message["block-count"]))
 
@@ -98,6 +102,7 @@ def _handle_retrieve_key_start(state, message, _data):
         message["segment-unified-id"],
         message["segment-conjoined-part"],
         message["segment-num"],
+        message["handoff-node-id"],
         message["block-offset"]
     )
 
@@ -127,7 +132,7 @@ def _handle_retrieve_key_start(state, message, _data):
 
     segment_md5 = hashlib.md5(segment_data)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch %s" % (state_key, )
+        error_message = "md5 mismatch %s" % (_str_state_key(state_key), )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"
@@ -199,7 +204,7 @@ def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
     state_key = _compute_state_key(message)
     log.info("{0} block_offset={1}, block_count={2}".format(
-        repr(state_key),
+        _str_state_key(state_key),
         message["block-offset"],
         message["block-count"]))
 
@@ -222,7 +227,7 @@ def _handle_retrieve_key_next(state, message, _data):
     try:
         state_entry = state["active-requests"].pop(state_key)
     except KeyError:
-        error_string = "unknown request %r" % (state_key, )
+        error_string = "unknown request %r" % (_str_state_key(state_key), )
         log.error(error_string)
         reply["result"] = "unknown-request"
         reply["error-message"] = error_string
@@ -240,7 +245,7 @@ def _handle_retrieve_key_next(state, message, _data):
 
     segment_md5 = hashlib.md5(segment_data)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch %s" % (state_key, )
+        error_message = "md5 mismatch %s" % (_str_state_key(state_key), )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"

@@ -474,6 +474,15 @@ def _handle_purge_handoff_conjoined(state, message, _data):
         message["handoff-node-id"]
     )
 
+    reply = {
+        "message-type"  : "purge-handoff-conjoined-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
 def _handle_purge_handoff_segment(state, message, _data):
     log = logging.getLogger("_handle_purge_handoff_segment")
     log.info("%s %s %s" % (
@@ -487,6 +496,18 @@ def _handle_purge_handoff_segment(state, message, _data):
         message["conjoined-part"],
         message["handoff-node-id"]
     )
+
+    reply = {
+        "message-type"  : "purge-handoff-segment-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "unified-id"    : message["unified-id"], 
+        "conjoined-part": message["conjoined-part"], 
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
 
 def _handle_start_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_start_conjoined_archive")
@@ -696,13 +717,17 @@ def _setup(_halt_event, state):
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
 
+    # 2012-03-27 dougfort -- we stop the data writer first because it is going
+    # to sync the value file and run the post_sync operations
+    log.debug("stopping data writer")
+    state["writer"].close()
+
     log.debug("stopping resilient server")
     state["resilient-server"].close()
     state["event-push-client"].close()
 
     state["zmq-context"].term()
 
-    state["writer"].close()
     state["database-connection"].close()
 
     if len(state["completions"]) > 0:

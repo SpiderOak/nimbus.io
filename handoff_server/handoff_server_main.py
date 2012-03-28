@@ -28,6 +28,7 @@ from tools.data_definitions import segment_row_template, \
         conjoined_row_template, \
         create_priority, \
         parse_timestamp_repr
+from tools.LRUCache import LRUCache
 
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
@@ -61,6 +62,7 @@ _conjoined_timestamps_template = namedtuple("ConjoinedTimestmaps", [
     "complete_timestamp",
     "delete_timestamp"])
 _retrieve_timeout = 30 * 60.0
+_already_seen_cache_size = 1024 ** 2
 
 def _retrieve_conjoined_handoffs_for_node(connection, node_id):
     result = connection.fetch_all_rows("""
@@ -323,10 +325,19 @@ def _handle_request_handoffs_reply(state, message, data):
     source_node_name = message["node-name"]
 
     segment_count  = 0
+    already_seen_count = 0
     for entry in data_dict["segment"]:
         segment_row = _convert_dict_to_segment_row(entry)
+        cache_key = (segment_row.id, source_node_name, )
+        if cache_key in state["already-seen-cache"]:
+            already_seen_count += 1
+            continue
+        state["already-seen-cache"]["cache_key"] = None
         state["pending-handoffs"].push(segment_row, source_node_name)
         segment_count += 1
+    if already_seen_count > 0:
+        log.info("ignored {0} handoff segments -= already seen".format(
+            already_seen_count))
     if segment_count > 0:
         log.info("pushed {0} handoff segments".format(segment_count))
 
@@ -421,8 +432,24 @@ def _handle_archive_reply(state, message, _data):
             writer_client = state["writer-client-dict"][source_node_name]
             writer_client.queue_message_for_send(message)
 
-def _handle_purge_key_reply(_state, message, _data):
-    log = logging.getLogger("_handle_purge_key_reply")
+def _handle_purge_handoff_conjoined_reply(_state, message, _data):
+    log = logging.getLogger("_handle_purge_handoff_conjoined_reply")
+
+    #TODO: we need to squawk about this somehow
+    if message["result"] == "success":
+        log.debug("purge-key successful")
+    else:
+        log.error("%s failed (%s) %s %s" % (
+            message["message-type"], 
+            message["result"], 
+            message["error-message"], 
+            message,
+        ))
+        # we don't give up here, because the handoff has succeeded 
+        # at this point we're just cleaning up
+
+def _handle_purge_handoff_segment_reply(_state, message, _data):
+    log = logging.getLogger("_handle_purge_handoff_segment_reply")
 
     #TODO: we need to squawk about this somehow
     if message["result"] == "success":
@@ -444,7 +471,8 @@ _dispatch_table = {
     "archive-key-start-reply"       : _handle_archive_reply,
     "archive-key-next-reply"        : _handle_archive_reply,
     "archive-key-final-reply"       : _handle_archive_reply,
-    "purge-key-reply"               : _handle_purge_key_reply,
+    "purge-handoff-conjoined-reply" : _handle_purge_handoff_conjoined_reply,
+    "purge-handoff-segment-reply"   : _handle_purge_handoff_segment_reply,
 }
 
 def _create_state():
@@ -467,6 +495,7 @@ def _create_state():
         "handoff-requestor"         : None,
         "pending-handoffs"          : PendingHandoffs(),
         "forwarder"                 : None,
+        "already-seen-cache"        : LRUCache(_already_seen_cache_size)
     }
 
 def _setup(_halt_event, state):

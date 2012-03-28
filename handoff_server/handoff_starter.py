@@ -63,11 +63,12 @@ class HandoffStarter(object):
         source_node_name = source_node_names[0]
         reader_client = self._state["reader-client-dict"][source_node_name]
 
-        description = "start handoff from %s to %s (%s) %r" % (
+        description = "start handoff from %s to %s (%s) %r part=%s" % (
             source_node_name,
             self._local_node_name,
             segment_row.collection_id,
-            segment_row.key
+            segment_row.key,
+            segment_row.conjoined_part
         )
         self._log.info(description)
 

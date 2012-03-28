@@ -23,9 +23,10 @@ class PendingHandoffs(object):
         """
         add the segment row, with its source
         """
-        if incoming_segment_row.unified_id in self._dict:
-            segment_row, source_node_names = \
-                    self._dict[incoming_segment_row.unified_id]
+        handoff_key = (incoming_segment_row.unified_id, 
+                       incoming_segment_row.conjoined_part, )
+        if handoff_key in self._dict:
+            segment_row, source_node_names = self._dict[handoff_key]
             assert incoming_segment_row.collection_id == \
                 segment_row.collection_id, (
                 incoming_segment_row, segment_row,
@@ -34,24 +35,25 @@ class PendingHandoffs(object):
                 incoming_segment_row, segment_row,
             )
             if source_node_name in source_node_names:
-                self._log.debug("duplicate: %s %s" % (
+                self._log.warn("duplicate: %s %s" % (
                     incoming_segment_row, source_node_name,
                 ))
             else:
                 source_node_names.append(source_node_name)
+                assert len(source_node_names) <= 2
         else:
-            heapq.heappush(self._list, incoming_segment_row.unified_id)
-            self._dict[incoming_segment_row.unified_id] = (
+            heapq.heappush(self._list, handoff_key)
+            self._dict[handoff_key] = (
                 incoming_segment_row, [source_node_name, ], 
             )            
 
     def pop(self):
         """
-        return a tuple of the oldest segment row wiht a list of its sources
+        return a tuple of the oldest segment row with a list of its sources
         raise IndexError if there is none
         """
-        unified_id = heapq.heappop(self._list)
-        return self._dict.pop(unified_id)
+        handoff_key = heapq.heappop(self._list)
+        return self._dict.pop(handoff_key)
 
     def __len__(self):
         return len(self._list)

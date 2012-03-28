@@ -229,6 +229,7 @@ class DataWriter(object):
             '%(message-type)s: %(collection-id)s %(key)s' % message
         )
         reply, _data = delivery_channel.get()
+        return reply
 
     def destroy_key(
         self,

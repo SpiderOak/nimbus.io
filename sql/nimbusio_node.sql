@@ -222,9 +222,10 @@ create table damaged_segment (
     unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2 not null,
-    conjoined_part int4 not null default 0
+    conjoined_part int4 not null default 0,
+    sequence_numbers int4[] not null
 );
 
-rollback;
-/*commit; */
+/* rollback; */
+commit;
 

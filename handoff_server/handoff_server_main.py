@@ -26,8 +26,7 @@ from tools.database_connection import \
         get_central_connection
 from tools.data_definitions import segment_row_template, \
         conjoined_row_template, \
-        create_priority, \
-        parse_timestamp_repr
+        create_priority
 from tools.LRUCache import LRUCache
 
 from web_server.central_database_util import get_cluster_row, \
@@ -432,6 +431,38 @@ def _handle_archive_reply(state, message, _data):
             writer_client = state["writer-client-dict"][source_node_name]
             writer_client.queue_message_for_send(message)
 
+def _handle_destroy_key_reply(state, message, _data):
+    log = logging.getLogger("_handle_destroy_key_reply")
+
+    #TODO: we need to squawk about this somehow
+    if message["result"] != "success":
+        error_message = "%s failed (%s) %s %s" % (
+            message["message-type"], 
+            message["result"], 
+            message["error-message"], 
+            message,
+        )
+        log.error(error_message)
+        raise HandoffError(error_message)
+
+    try:
+        source_node_names = state["active-deletes"].pop(message["unified-id"])
+    except KeyError:
+        log.error("unknown reply %s" % (message["unified-id"], ))
+        return
+
+    # purge the handoff source(s)
+    message = {
+        "message-type"      : "purge-handoff-segment",
+        "priority"          : create_priority(),
+        "unified-id"        : message["unified-id"],
+        "conjoined-part"    : 0,
+        "handoff-node-id"   : state["node-id-dict"][_local_node_name],
+    }
+    for source_node_name in source_node_names:
+        writer_client = state["writer-client-dict"][source_node_name]
+        writer_client.queue_message_for_send(message)
+
 def _handle_purge_handoff_conjoined_reply(_state, message, _data):
     log = logging.getLogger("_handle_purge_handoff_conjoined_reply")
 
@@ -471,6 +502,7 @@ _dispatch_table = {
     "archive-key-start-reply"       : _handle_archive_reply,
     "archive-key-next-reply"        : _handle_archive_reply,
     "archive-key-final-reply"       : _handle_archive_reply,
+    "destroy-key-reply"             : _handle_destroy_key_reply,
     "purge-handoff-conjoined-reply" : _handle_purge_handoff_conjoined_reply,
     "purge-handoff-segment-reply"   : _handle_purge_handoff_segment_reply,
 }
@@ -495,7 +527,8 @@ def _create_state():
         "handoff-requestor"         : None,
         "pending-handoffs"          : PendingHandoffs(),
         "forwarder"                 : None,
-        "already-seen-cache"        : LRUCache(_already_seen_cache_size)
+        "already-seen-cache"        : LRUCache(_already_seen_cache_size),
+        "active-deletes"            : dict(),
     }
 
 def _setup(_halt_event, state):

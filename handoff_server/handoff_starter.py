@@ -10,13 +10,17 @@ handoff-request
 import logging
 import os
 import time
- 
+
+from tools.data_definitions import segment_status_final, \
+        segment_status_tombstone, \
+        create_priority
+
 from handoff_server.forwarder_coroutine import forwarder_coroutine
 
 _handoff_starter_polling_interval = float(os.environ.get(
     "NIMBUSIO_HANDOFF_STARTER_POLLING_INTERVAL", str(60.0)
 ))
-_delay_interval = 5.0
+_delay_interval = 1.0
 
 class HandoffStarter(object):
     """
@@ -35,7 +39,7 @@ class HandoffStarter(object):
 
     def run(self, halt_event):
         """
-        start a forwarder coroutine for a segment
+        start a handoff for a segment
         """
         if halt_event.is_set():
             return
@@ -56,6 +60,23 @@ class HandoffStarter(object):
             # run again, after the polling interval
             return [(self.run, self.next_run(), )]
 
+        if segment_row.status == segment_status_final:
+            self._start_forwarder_coroutine(segment_row, source_node_names)
+            return [(self.run, time.time() + _delay_interval, )]
+
+        if segment_row.status == segment_status_tombstone:
+            self._send_delete_message(segment_row, source_node_names)
+            return [(self.run, time.time(), )]
+
+        self._log.error("unknown status '%s' (%s) %s part=%s" % (
+            segment_row.status,
+            segment_row.collection_id,
+            segment_row.key,
+            segment_row.conjoined_part
+        ))
+        return [(self.run, time.time(), )]
+
+    def _start_forwarder_coroutine(self, segment_row, source_node_names):
         # we pick the first source name, because it's easy, and because,
         # since that source responded to us first, it might have better 
         # response
@@ -90,5 +111,25 @@ class HandoffStarter(object):
         )
         self._state["forwarder"].next()
 
-        # run again, after a slight delay
-        return [(self.run, time.time() + _delay_interval, )]
+    def _send_delete_message(self, segment_row, source_node_names):
+        source_node_name = source_node_names[0]
+        message = {
+            "message-type"          : "destroy-key",
+            "priority"              : create_priority(),
+            "collection-id"         : segment_row.collection_id,
+            "key"                   : segment_row.key,
+            "unified-id-to-delete"  : segment_row.file_tombstone_unified_id,
+            "unified-id"            : segment_row.unified_id,
+            "timestamp-repr"        : repr(segment_row.timestamp),
+            "segment-num"           : segment_row.segment_num,
+            "source-node-name"      : source_node_name,
+            "handoff-node-name"     : None,
+        }
+        writer_client = \
+                self._state["writer-client-dict"][self._local_node_name]
+
+        writer_client.queue_message_for_send(message, data=None)
+
+        self._state["active-deletes"][segment_row.unified_id] = \
+                source_node_names
+

@@ -453,10 +453,13 @@ def _handle_destroy_key(state, message, _data):
         handoff_node_id
     )
 
+    # 2012-03-28 dougfort -- we have to send back enough information
+    # for the handoff server to purge the segment
     reply = {
         "message-type"  : "destroy-key-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
+        "unified-id"    : message["unified-id"],
         "result"        : "success",
         "error-message" : None,
     }

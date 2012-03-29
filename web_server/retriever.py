@@ -11,7 +11,9 @@ import gevent
 import gevent.pool
 import gevent.queue
 
-from tools.data_definitions import block_size, segment_status_final
+from tools.data_definitions import block_size, \
+        segment_status_final, \
+        segment_status_cancelled
 
 from web_server.exceptions import RetrieveFailedError
 from web_server.local_database_util import current_status_of_key, \
@@ -144,6 +146,9 @@ class Retriever(object):
         block_count = None
 
         for status_row in status_rows:
+
+            if status_row.seg_status == segment_status_cancelled:
+                continue
                         
             if self._last_block_in_slice_retrieved:
                 break

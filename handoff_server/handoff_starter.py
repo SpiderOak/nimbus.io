@@ -48,9 +48,11 @@ class HandoffStarter(object):
             # run again later
             return [(self.run, time.time() + _delay_interval, )]
 
-        self._log.info("%s pending handoffs" % (
-            len(self._state["pending-handoffs"])
-        ))
+            
+        if len(self._state["pending-handoffs"]) > 0:
+            self._log.info("%s pending handoffs" % (
+                len(self._state["pending-handoffs"])
+            ))
 
         try:
             segment_row, source_node_names = \

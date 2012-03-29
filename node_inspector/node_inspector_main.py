@@ -11,7 +11,7 @@ import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
-from tools.event_push_client import EventPushClient
+from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_node_inspector_{1}.log".format(
@@ -31,6 +31,11 @@ def main():
         connection = get_node_local_connection()
     except Exception as instance:
         log.exception("Exception connecting to database {0}".format(instance))
+        event_push_client.exception(
+            unhandled_exception_topic,
+            str(instance),
+            exctype=instance.__class__.__name__
+        )
         return -1
 
     zmq_context =  zmq.Context()
@@ -38,15 +43,13 @@ def main():
     event_push_client = EventPushClient(zmq_context, "node_inspector")
     event_push_client.info("program-start", "node_inspector starts")  
 
-    return_code = 0
-
-
     connection.close()
 
     event_push_client.close()
     zmq_context.term()
 
-    return return_code
+    log.info("program terminates normally")
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

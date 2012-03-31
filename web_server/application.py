@@ -34,7 +34,8 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import block_generator, \
+from tools.data_definitions import incoming_slice_size, \
+        block_generator, \
         create_priority, \
         create_timestamp, \
         nimbus_meta_prefix, \
@@ -94,7 +95,6 @@ _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
-_slice_size = int(os.environ.get("NIMBUS_IO_SLICE_SIZE", str(1024 * 1024)))
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
@@ -582,7 +582,7 @@ class Application(object):
             # when any given slice is the last slice, so it works an iteration
             # behind, but sometimes sends an empty final slice.
             for slice_item in DataSlicer(req.body_file,
-                                    _slice_size,
+                                    incoming_slice_size,
                                     req.content_length):
                 if segments:
                     archiver.archive_slice(

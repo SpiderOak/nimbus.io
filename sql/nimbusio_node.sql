@@ -213,7 +213,7 @@ create table meta (
 create index meta_collection_id_segment_idx on nimbusio_node.meta(
     "collection_id", "segment_id");
 
-/* A table listing segment errors fround by node inspector
+/* A table listing segment errors found by node inspector
    status 'M' is missing sequence, 'D' is defective sequences */
 create table damaged_segment (
     collection_id int4 not null,

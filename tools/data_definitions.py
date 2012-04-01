@@ -6,7 +6,7 @@ common data definitions
 """
 
 from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 import os.path
 import re
@@ -102,6 +102,16 @@ def parse_timestamp_repr(timestamp_repr):
     )
 
     return timestamp
+
+def parse_timedelta_str(interval_str):
+    """
+    crudely parse a string into keyword arguments for timedelta
+    """
+    kwargs = dict()
+    for arg in interval_str.split(","):
+        for name, value in arg.split("="):
+            kwargs[name.strip()] = int(value)
+    return timedelta(**kwargs)
 
 cluster_row_template = namedtuple("ClusterRow", [
     "id",

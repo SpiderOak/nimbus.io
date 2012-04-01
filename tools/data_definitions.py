@@ -109,8 +109,8 @@ def parse_timedelta_str(interval_str):
     """
     kwargs = dict()
     for arg in interval_str.split(","):
-        for name, value in arg.split("="):
-            kwargs[name.strip()] = int(value)
+        [name, value, ] = arg.split("=")
+        kwargs[name.strip()] = int(value)
     return timedelta(**kwargs)
 
 cluster_row_template = namedtuple("ClusterRow", [

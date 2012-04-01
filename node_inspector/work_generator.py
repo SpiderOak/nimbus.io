@@ -17,9 +17,10 @@ _entry_template = namedtuple("WorkEntry", [
     "sequence_size", 
     "zfec_padding_size",
     "value_file_id", 
-    "close_time", 
+    "value_file_close_time", 
     "value_file_size", 
     "value_file_hash",
+    "value_file_last_integrity_check_time",
 ])
 
 _work_query = """
@@ -28,7 +29,7 @@ seg.timestamp, seg.segment_num, seg.file_size,
 sq.sequence_num, sq.value_file_offset, sq.size as sequence_size, 
 sq.zfec_padding_size,
 vf.id as value_file_id, vf.close_time, vf.size as value_file_size, 
-vf.hash as value_file_hash
+vf.hash as value_file_hash, vf.last_integrity_check_time
 from nimbusio_node.segment seg 
 left join nimbusio_node.segment_sequence sq  on (sq.segment_id = seg.id)
 left join nimbusio_node.value_file vf on (sq.value_file_id = vf.id)

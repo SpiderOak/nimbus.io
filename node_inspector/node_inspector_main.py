@@ -4,6 +4,7 @@ garbage_collector_main.py
 """
 from datetime import datetime
 import errno
+import hashlib
 import io
 import logging
 import os

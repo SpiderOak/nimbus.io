@@ -30,6 +30,9 @@ class DatabaseConnection(object):
             host=database_host, 
             port=database_port
         )
+        cursor = self._connection.cursor()
+        cursor.execute("set time zone 'UTC'")
+        cursor.close()
         
     def fetch_one_row(self, query, *args):
         """run a query and return the contents of one row"""

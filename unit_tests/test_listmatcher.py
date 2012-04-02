@@ -6,13 +6,14 @@ test the web server's listmatch module
 """
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 try:
     import unittest2 as unittest
 except ImportError:
     import unittest
 
 from tools.database_connection import get_node_local_connection
+from tools.data_definition import create_timestamp
 from web_server.listmatcher import listmatch 
 
 _node_name = "multi-node-01"
@@ -203,7 +204,7 @@ class TestListMatcher(unittest.TestCase):
         test finding the most recent of multiple rows when it is a tombstone
         """
         test_key = u"test_key"
-        data_time = datetime.now()
+        data_time = create_timestamp()
         tombstone_time = data_time + timedelta(hours=1)
         self._connection.execute("begin")
         self._connection.execute(_insert_test_row_with_timestamp_and_tombstone, 

@@ -4,7 +4,7 @@ test_space_accounting_server.py
 
 test space accounting
 """
-from datetime import datetime, timedelta
+from datetime import timedelta
 import logging
 import os
 import os.path
@@ -15,6 +15,7 @@ import unittest
 import uuid
 
 from tools.standard_logging import initialize_logging
+from tools.data_definitions import create_timestamp
 
 from space_accounting_server.space_accounting_database import \
     SpaceAccountingDatabase
@@ -38,7 +39,7 @@ def _detail_generator(
     total_bytes_added, total_bytes_removed, total_bytes_retrieved
 ):
 
-    current_time = datetime.now()
+    current_time = create_timestamp()
 
     for i in xrange(1000):
         message = {

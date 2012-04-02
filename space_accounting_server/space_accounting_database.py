@@ -81,13 +81,13 @@ class SpaceAccountingDatabase(object):
         self._connection.execute(command)
 
 if __name__ == "__main__":
-    import datetime
+    from tools.data_definitions import create_timestamp
     print
     print "testing"
     space_accounting_database = SpaceAccountingDatabase()
     space_accounting_database.store_collection_stats(
         1001, 
-        datetime.datetime.now(),
+        create_timestamp(),
         1,
         0, 
         1

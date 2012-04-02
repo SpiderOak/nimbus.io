@@ -2,7 +2,6 @@
 """
 garbage_collector_main.py
 """
-from datetime import datetime
 import errno
 import hashlib
 import io
@@ -19,6 +18,7 @@ from tools.data_definitions import incoming_slice_size, \
         zfec_slice_size, \
         compute_value_file_path, \
         parse_timedelta_str, \
+        create_timestamp, \
         damaged_segment_defective_sequence, \
         damaged_segment_missing_sequence
 
@@ -134,7 +134,7 @@ def _value_file_status(connection, entry):
             entry.value_file_size, stat_result.st_size, batch_key))
         return _value_file_questionable
     
-    current_time = datetime.utcnow()
+    current_time = create_timestamp()
     value_file_row_age = current_time - entry.value_file_close_time
     if entry.value_file_last_integrity_check_time is not None:
         value_file_row_age = \
@@ -153,7 +153,7 @@ def _value_file_status(connection, entry):
 
     _update_value_file_last_integrity_check_time(connection,
                                                  entry.value_file_id,
-                                                 datetime.utcnow())
+                                                 create_timestamp())
 
     if md5_sum.digest() != entry.value_file_hash:
         log.error("md5 mismatch {0} {1}".format(batch_key,

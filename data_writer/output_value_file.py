@@ -4,7 +4,6 @@ output_value_file.py
 
 manage a single value file, while it is being written
 """
-from datetime import datetime
 import hashlib
 import logging
 import os
@@ -13,7 +12,8 @@ import os.path
 import psycopg2
 
 from tools.data_definitions import compute_value_file_path, \
-        value_file_template
+        value_file_template, \
+        create_timestamp
 
 def _insert_value_file_default_row(connection):
     # Ticket #1646: insert a row of defaults right at open
@@ -73,7 +73,7 @@ class OutputValueFile(object):
         )
         self._log.info("opening %s" % (self._value_file_path, )) 
         self._value_file_fd = _open_value_file(self._value_file_path)
-        self._creation_time = datetime.now()
+        self._creation_time = create_timestamp()
         self._size = 0L
         self._md5 = hashlib.md5()
         self._segment_sequence_count = 0
@@ -141,7 +141,7 @@ class OutputValueFile(object):
         value_file_row = value_file_template(
             id=self._value_file_id,
             creation_time=self._creation_time,
-            close_time=datetime.now(),
+            close_time=create_timestamp(),
             size=self._size,
             hash=psycopg2.Binary(self._md5.digest()),
             segment_sequence_count=self._segment_sequence_count,

@@ -40,7 +40,7 @@ WHERE nimbusio_central.audit_result.id = %s;
 _ineligible_query = """
 SELECT collection_id FROM nimbusio_central.audit_result
 WHERE COALESCE(state, 'audit-successful') != 'audit-successful'
-OR COALESCE(audit_finished, now()) > %s::timestamp;
+OR COALESCE(audit_finished, %s::timestamp) > %s::timestamp;
 """.strip()
 
 _clear_command = """
@@ -111,7 +111,7 @@ class AuditResultDatabase(object):
     def ineligible_collection_ids(self, cutoff_timestamp):
         """return a list of collection_ids that are NOT eligible for audit"""
         result = self._connection.fetch_all_rows(
-            _ineligible_query, [cutoff_timestamp, ]
+            _ineligible_query, [cutoff_timestamp, cutoff_timestamp, ]
         )
         return [collection_id for (collection_id, ) in result]
 

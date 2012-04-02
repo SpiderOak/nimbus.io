@@ -154,12 +154,21 @@ def _value_file_status(connection, entry):
                                                  entry.value_file_id,
                                                  datetime.utcnow())
 
-    if md5_sum.digest() != entry.value_file_last_integrity_check_time:
+    if md5_sum.digest() != entry.value_file_hash:
         log.error("md5 mismatch {0} {1}".format(batch_key,
                                                 value_file_path))
         return _value_file_questionable
 
     return _value_file_valid
+
+def _verify_entry_against_value_file(entry):
+    value_file_path = compute_value_file_path(_repository_path, 
+                                              entry.value_file_id)
+    md5_sum = hashlib.md5()
+    with open(value_file_path, "rb") as input_file:
+        input_file.seek(entry.value_file_offset)
+        md5_sum.update(input_file.read(entry.value_file_size))
+    return md5_sum.digest() == entry.sequence_hash
 
 def _process_work_batch(connection, known_value_files, batch):
     log = logging.getLogger("_process_work_batch")

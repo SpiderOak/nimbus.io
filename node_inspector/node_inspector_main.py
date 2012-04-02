@@ -89,6 +89,7 @@ def _update_value_file_last_integrity_check_time(connection,
         update nimbusio_node.value_file
         set last_integrity_check_time = %s
         where id = %s""", [timestamp, value_file_id, ])
+    connection.commit()
 
 def _value_file_status(connection, entry):
     log = logging.getLogger("_value_file_status")
@@ -147,17 +148,20 @@ def _value_file_status(connection, entry):
     # MAX_TIME_BETWEEN_VALUE_FILE_INTEGRITY_CHECK, then read the whole file, 
     # and calculate the md5. If it matches, consider the whole file good as 
     # above. Update last_integrity_check_time regardless.
-    md5_sum = hashlib.md5()
-    with open(value_file_path, "rb") as input_file:
-        md5_sum.update(input_file.read())
-
     _update_value_file_last_integrity_check_time(connection,
                                                  entry.value_file_id,
                                                  create_timestamp())
 
-    if md5_sum.digest() != entry.value_file_hash:
-        log.error("md5 mismatch {0} {1}".format(batch_key,
-                                                value_file_path))
+    md5_sum = hashlib.md5()
+    with open(value_file_path, "rb") as input_file:
+        md5_sum.update(input_file.read())
+
+    if md5_sum.digest() != bytes(entry.value_file_hash):
+        log.error(
+            "md5 mismatch {0} {1} {2} {3}".format(md5_sum.digest(),
+                                                  bytes(entry.value_file_hash),
+                                                  batch_key,
+                                                  value_file_path))
         return _value_file_questionable
 
     return _value_file_valid
@@ -169,7 +173,7 @@ def _verify_entry_against_value_file(entry):
     with open(value_file_path, "rb") as input_file:
         input_file.seek(entry.value_file_offset)
         md5_sum.update(input_file.read(entry.value_file_size))
-    return md5_sum.digest() == entry.sequence_hash
+    return md5_sum.digest() == bytes(entry.sequence_hash)
 
 def _process_work_batch(connection, known_value_files, batch):
     log = logging.getLogger("_process_work_batch")

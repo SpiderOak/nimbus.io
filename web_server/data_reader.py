@@ -25,14 +25,20 @@ class DataReader(object):
     def node_name(self):
         return self._node_name
 
-    def retrieve_key_start(
-        self, segment_unified_id, segment_conjoined_part, segment_num
-    ):
+    def retrieve_key_start(self, 
+                           segment_unified_id, 
+                           segment_conjoined_part, 
+                           segment_num,
+                           block_offset,
+                           block_count):
         message = {
             "message-type"              : "retrieve-key-start",
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
+            "handoff-node-id"           : None,
+            "block-offset"              : block_offset,
+            "block-count"               : block_count,
         }
         try:
             delivery_channel = \
@@ -52,30 +58,45 @@ class DataReader(object):
             self._log.error("failed: %s" % (reply, ))
             return None
 
+        # we expect a list of blocks, but if the data is smaller than 
+        # block size, we get back a string
+        if type(data) != list:
+            data = [data, ]
+
         # Ticket #1307 danger of zfec bit rot
         # we must make sure we are handing zfec valid segments to reassemble
+        segment_size = 0
+        segment_md5 = hashlib.md5()
+        for block in data:
+            segment_size += len(block)
+            segment_md5.update(block)
 
-        if len(data) != reply["segment-size"]:
+        if segment_size != reply["segment-size"]:
             self._log.error("failed: data size is %s expecting %s %s" % (
-                reply["segment-size"], len(data), reply
+                segment_size, reply["segment-size"], reply
             ))
             return None
 
-        segment_md5 = hashlib.md5(data)
         if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
             self._log.error("md5 digest mismatch %s" % (reply, ))
             return None
 
         return data, reply["zfec-padding-size"], reply["completed"]
 
-    def retrieve_key_next(
-        self, segment_unified_id, segment_conjoined_part, segment_num
-    ):
+    def retrieve_key_next(self, 
+                          segment_unified_id, 
+                          segment_conjoined_part, 
+                          segment_num,
+                          block_offset,
+                          block_count):
         message = {
             "message-type"              : "retrieve-key-next",
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
+            "handoff-node-id"           : None,
+            "block-offset"              : block_offset,
+            "block-count"               : block_count,
         }
         try:
             delivery_channel = \
@@ -94,16 +115,25 @@ class DataReader(object):
             self._log.error("failed: %s" % (reply, ))
             return None
 
+        # we expect a list of blocks, but if the data is smaller than 
+        # block size, we get back a string
+        if type(data) != list:
+            data = [data, ]
+
         # Ticket #1307 danger of zfec bit rot
         # we must make sure we are handing zfec valid segments to reassemble
+        segment_size = 0
+        segment_md5 = hashlib.md5()
+        for block in data:
+            segment_size += len(block)
+            segment_md5.update(block)
 
-        if len(data) != reply["segment-size"]:
+        if segment_size != reply["segment-size"]:
             self._log.error("failed: data size is %s expecting %s %s" % (
-                reply["segment-size"], len(data), reply
+                reply["segment-size"], segment_size, reply
             ))
             return None
 
-        segment_md5 = hashlib.md5(data)
         if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
             self._log.error("md5 digest mismatch %s" % (reply, ))
             return None

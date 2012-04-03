@@ -9,7 +9,7 @@ try:
 except ImportError:
     import unittest
 
-from tools.data_definitions import encoded_block_slice_size
+from tools.data_definitions import block_generator
 from web_server.zfec_segmenter import ZfecSegmenter
 
 _min_segments = 8
@@ -31,7 +31,7 @@ class TestZfecSegmenter(unittest.TestCase):
         segmenter = ZfecSegmenter(_min_segments, _num_segments)
 
         padding_size = segmenter.padding_size(test_data)
-        encoded_segments = segmenter.encode(test_data)
+        encoded_segments = segmenter.encode(block_generator(test_data))
 
         segment_numbers = range(1, _num_segments+1)
 
@@ -42,7 +42,8 @@ class TestZfecSegmenter(unittest.TestCase):
             test_segments, test_segment_numbers, padding_size
         )
 
-        self.assertTrue(decoded_segments == test_data, len(decoded_segments))
+        decoded_data = "".join(decoded_segments)
+        self.assertTrue(decoded_data == test_data, len(decoded_data))
 
     def test_padded_segment(self):
         """test a segment that needs padding"""
@@ -51,7 +52,7 @@ class TestZfecSegmenter(unittest.TestCase):
         segmenter = ZfecSegmenter(_min_segments, _num_segments)
 
         padding_size = segmenter.padding_size(test_data)
-        encoded_segments = segmenter.encode(test_data)
+        encoded_segments = segmenter.encode(block_generator(test_data))
         
         segment_numbers = range(1, _num_segments+1)
 
@@ -62,7 +63,8 @@ class TestZfecSegmenter(unittest.TestCase):
             test_segments, test_segment_numbers, padding_size
         )
 
-        self.assertTrue(decoded_segments == test_data, len(decoded_segments))
+        decoded_data = "".join(decoded_segments)
+        self.assertTrue(decoded_data == test_data, len(decoded_data))
 
 if __name__ == "__main__":
     unittest.main()

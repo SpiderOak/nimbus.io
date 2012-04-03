@@ -6,7 +6,8 @@ common data definitions
 """
 
 from collections import namedtuple
-from datetime import datetime
+from datetime import datetime, timedelta
+import os
 import os.path
 import re
 import time
@@ -17,11 +18,35 @@ message_format = namedtuple("Message", "ident control body")
 def random_string(size):
     return os.urandom(size)
 
+# the size we slice incoming data to send to the data_writers
+incoming_slice_size = int(
+    os.environ.get("NIMBUS_IO_SLICE_SIZE", str(10 * 1024 * 1024)))
+
 # the size of data used for zfec encoding of a segment
 block_size = 32 * 1024
 
+# the zfec algorithm takes a string of length L and encodes it 
+# in M segments of which any K can be decoded to reproduce L
+# In our case M = 10 (10 nodes) K = 8
+def zfec_slice_size(data_size):
+    return data_size // 8
+
 # the size of a zfec encoded block
-encoded_block_slice_size = block_size / 8
+encoded_block_slice_size = zfec_slice_size(block_size)
+
+def _slice_generator(data, slice_size):
+    start_pos = 0
+    end_pos = slice_size
+    while start_pos < len(data):
+        yield data[start_pos:end_pos]
+        start_pos = end_pos
+        end_pos += slice_size
+
+def block_generator(data):
+    return _slice_generator(data, block_size)
+
+def encoded_block_generator(data):
+    return _slice_generator(data, encoded_block_slice_size)
 
 # datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)
 _timestamp_repr_re = re.compile(r"""
@@ -77,6 +102,16 @@ def parse_timestamp_repr(timestamp_repr):
     )
 
     return timestamp
+
+def parse_timedelta_str(interval_str):
+    """
+    crudely parse a string into keyword arguments for timedelta
+    """
+    kwargs = dict()
+    for arg in interval_str.split(","):
+        [name, value, ] = arg.split("=")
+        kwargs[name.strip()] = int(value)
+    return timedelta(**kwargs)
 
 cluster_row_template = namedtuple("ClusterRow", [
     "id",
@@ -170,6 +205,10 @@ conjoined_row_template = namedtuple(
         "delete_timestamp",
         "combined_size",
         "combined_hash",
+        "handoff_node_id",
     ]
 )
+
+damaged_segment_defective_sequence = "D"
+damaged_segment_missing_sequence = "M"
 

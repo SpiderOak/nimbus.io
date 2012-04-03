@@ -39,6 +39,8 @@ from web_server.central_database_util import get_cluster_row, \
 from data_writer.output_value_file import mark_value_files_as_closed
 from data_writer.writer import Writer
 from data_writer.stats_reporter import StatsReporter
+from data_writer.sync_manager import SyncManager
+from data_writer.post_sync_completion import PostSyncCompletion
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_data_writer_%s.log" % (
@@ -49,18 +51,6 @@ _data_writer_address = os.environ.get(
     "tcp://127.0.0.1:8100"
 )
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
-_sizeof_nimbus_meta_prefix = len(nimbus_meta_prefix)
-
-def _extract_meta(message):
-    """
-    build a dict of meta data, with our meta prefix stripped off
-    """
-    meta_dict = dict()
-    for key in message:
-        if key.startswith(nimbus_meta_prefix):
-            converted_key = key[_sizeof_nimbus_meta_prefix:]
-            meta_dict[converted_key] = message[key]
-    return meta_dict
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
@@ -70,6 +60,7 @@ def _handle_archive_key_entire(state, message, data):
         message["timestamp-repr"],
         message["segment-num"]
     ))
+
     sequence_num = 0
 
     reply = {
@@ -80,9 +71,16 @@ def _handle_archive_key_entire(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -98,7 +96,7 @@ def _handle_archive_key_entire(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -142,27 +140,22 @@ def _handle_archive_key_entire(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         sequence_num,
-        data
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
-
-
-    state["writer"].finish_new_segment(
-        message["collection-id"], 
-        message["unified-id"],
-        message["timestamp-repr"],
-        message["conjoined-part"],
-        message["segment-num"],
-        message["file-size"],
-        message["file-adler32"],
-        b64decode(message["file-hash"]),
-        _extract_meta(message),
-    )
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply)
+    # we don't send the reply until all value file dependencies have
+    # been synced
+    state["completions"].append(
+        PostSyncCompletion(state["database-connection"],
+                           state["resilient-server"],
+                           state["active-segments"],
+                           message,
+                           reply)
+    )
 
 def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
@@ -181,9 +174,16 @@ def _handle_archive_key_start(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -199,7 +199,7 @@ def _handle_archive_key_start(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -243,11 +243,11 @@ def _handle_archive_key_start(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        data
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
@@ -269,9 +269,16 @@ def _handle_archive_key_next(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -287,7 +294,7 @@ def _handle_archive_key_next(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -314,11 +321,11 @@ def _handle_archive_key_next(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        data
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply)
@@ -340,9 +347,16 @@ def _handle_archive_key_final(state, message, data):
         "error-message" : None,
     }
 
-    if len(data) != message["segment-size"]:
+    # we expect a list of blocks, but if the data is smaller than 
+    # block size, we get back a string
+    if type(data) != list:
+        data = [data, ]
+
+    segment_data = "".join(data)
+
+    if len(segment_data) != message["segment-size"]:
         error_message = "size mismatch (%s != %s) %s %s %s %s" % (
-            len(data),
+            len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
@@ -358,7 +372,7 @@ def _handle_archive_key_final(state, message, data):
 
     expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
     segment_md5 = hashlib.md5()
-    segment_md5.update(data)
+    segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
         error_message = "md5 mismatch %s %s %s %s" % (
             message["collection-id"], 
@@ -385,26 +399,22 @@ def _handle_archive_key_final(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        data
-    )
-
-    state["writer"].finish_new_segment(
-        message["collection-id"], 
-        message["unified-id"],
-        message["timestamp-repr"],
-        message["conjoined-part"],
-        message["segment-num"],
-        message["file-size"],
-        message["file-adler32"],
-        b64decode(message["file-hash"]),
-        _extract_meta(message),
+        segment_data
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
-    Statgrabber.accumulate('nimbusio_write_bytes', len(data))
+    Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply)
+    # we don't send the reply until all value file dependencies have
+    # been synced
+    state["completions"].append(
+        PostSyncCompletion(state["database-connection"],
+                           state["resilient-server"],
+                           state["active-segments"],
+                           message,
+                           reply)
+    )
 
 def _handle_archive_key_cancel(state, message, _data):
     log = logging.getLogger("_handle_archive_key_cancel")
@@ -443,8 +453,32 @@ def _handle_destroy_key(state, message, _data):
         handoff_node_id
     )
 
+    # 2012-03-28 dougfort -- we have to send back enough information
+    # for the handoff server to purge the segment
     reply = {
         "message-type"  : "destroy-key-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "unified-id"    : message["unified-id"],
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
+def _handle_purge_handoff_conjoined(state, message, _data):
+    log = logging.getLogger("_handle_purge_handoff_conjoined")
+    log.info("%s %s" % (
+        message["unified-ids"], 
+        message["handoff-node-id"],
+    ))
+
+    state["writer"].purge_handoff_conjoined(
+        message["unified-ids"],
+        message["handoff-node-id"]
+    )
+
+    reply = {
+        "message-type"  : "purge-handoff-conjoined-reply",
         "client-tag"    : message["client-tag"],
         "message-id"    : message["message-id"],
         "result"        : "success",
@@ -452,19 +486,31 @@ def _handle_destroy_key(state, message, _data):
     }
     state["resilient-server"].send_reply(reply)
 
-def _handle_purge_handoff_source(state, message, _data):
-    log = logging.getLogger("_handle_purge_handoff_source")
+def _handle_purge_handoff_segment(state, message, _data):
+    log = logging.getLogger("_handle_purge_handoff_segment")
     log.info("%s %s %s" % (
-        message["collection-id"], 
         message["unified-id"], 
+        message["conjoined-part"], 
         message["handoff-node-id"],
     ))
 
-    state["writer"].purge_handoff_source(
-        message["collection-id"], 
+    state["writer"].purge_handoff_segment(
         message["unified-id"],
+        message["conjoined-part"],
         message["handoff-node-id"]
     )
+
+    reply = {
+        "message-type"  : "purge-handoff-segment-reply",
+        "client-tag"    : message["client-tag"],
+        "message-id"    : message["message-id"],
+        "unified-id"    : message["unified-id"], 
+        "conjoined-part": message["conjoined-part"], 
+        "result"        : "success",
+        "error-message" : None,
+    }
+    state["resilient-server"].send_reply(reply)
+
 
 def _handle_start_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_start_conjoined_archive")
@@ -477,11 +523,18 @@ def _handle_start_conjoined_archive(state, message, _data):
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
+    if "handoff-node-name" not in message or \
+       message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].start_conjoined_archive(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        timestamp
+        timestamp,
+        handoff_node_id
     )
 
     reply = {
@@ -504,11 +557,18 @@ def _handle_abort_conjoined_archive(state, message, _data):
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
+    if "handoff-node-name" not in message or \
+       message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].abort_conjoined_archive(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        timestamp
+        timestamp,
+        handoff_node_id
     )
 
     reply = {
@@ -531,11 +591,18 @@ def _handle_finish_conjoined_archive(state, message, _data):
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
+    if "handoff-node-name" not in message or \
+       message["handoff-node-name"] is None:
+        handoff_node_id = None
+    else:
+        handoff_node_id = state["node-id-dict"][message["handoff-node-name"]]
+
     state["writer"].finish_conjoined_archive(
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        timestamp
+        timestamp,
+        handoff_node_id
     )
 
     reply = {
@@ -566,7 +633,8 @@ _dispatch_table = {
     "archive-key-final"         : _handle_archive_key_final,
     "archive-key-cancel"        : _handle_archive_key_cancel,
     "destroy-key"               : _handle_destroy_key,
-    "purge-handoff-source"      : _handle_purge_handoff_source,
+    "purge-handoff-conjoined"   : _handle_purge_handoff_conjoined,
+    "purge-handoff-segment"     : _handle_purge_handoff_segment,
     "start-conjoined-archive"   : _handle_start_conjoined_archive,
     "abort-conjoined-archive"   : _handle_abort_conjoined_archive,
     "finish-conjoined-archive"  : _handle_finish_conjoined_archive,
@@ -587,6 +655,8 @@ def _create_state():
         "cluster-row"           : None,
         "node-rows"             : None,
         "node-id-dict"          : None,
+        "active-segments"       : dict(),
+        "completions"           : list(),
     }
 
 def _setup(_halt_event, state):
@@ -629,10 +699,12 @@ def _setup(_halt_event, state):
     # Ticket #1646 mark output value files as closed at startup
     mark_value_files_as_closed(state["database-connection"])
 
-    state["writer"] = Writer(
-        state["database-connection"],
-        _repository_path
-    )
+    state["writer"] = Writer(state["database-connection"], 
+                             _repository_path,
+                             state["active-segments"],
+                             state["completions"])
+
+    state["sync-manager"] = SyncManager(state["writer"])
 
     state["stats-reporter"] = StatsReporter(state)
 
@@ -642,10 +714,16 @@ def _setup(_halt_event, state):
         (state["pollster"].run, time.time(), ), 
         (state["queue-dispatcher"].run, time.time(), ), 
         (state["stats-reporter"].run, state["stats-reporter"].next_run(), ), 
+        (state["sync-manager"].run, state["sync-manager"].next_run(), ), 
     ] 
 
 def _tear_down(_state):
     log = logging.getLogger("_tear_down")
+
+    # 2012-03-27 dougfort -- we stop the data writer first because it is going
+    # to sync the value file and run the post_sync operations
+    log.debug("stopping data writer")
+    state["writer"].close()
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
@@ -653,8 +731,15 @@ def _tear_down(_state):
 
     state["zmq-context"].term()
 
-    state["writer"].close()
     state["database-connection"].close()
+
+    if len(state["completions"]) > 0:
+        log.warn("{0} PostSyncCompletion's lost in teardown".format(
+            len(state["completions"])))
+
+    if len(state["active-segments"]) > 0:
+        log.warn("{0} active-segments at teardown".format(
+            len(state["active-segments"])))
 
     log.debug("teardown complete")
 

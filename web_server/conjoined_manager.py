@@ -11,9 +11,8 @@ from  gevent.greenlet import Greenlet
 import  gevent.pool
 
 from tools.data_definitions import create_priority
+from web_server.exceptions import ConjoinedFailedError
 
-class ConjoinedError(Exception):
-    pass
 
 _conjoined_timeout = 60.0 * 5.0
 _conjoined_list_entry = namedtuple("ConjoinedListEntry", [
@@ -61,6 +60,7 @@ def list_conjoined_archives(
         complete_timestamp from nimbusio_node.conjoined 
         where collection_id = %s and key > %s and unified_id > %s
         and delete_timestamp is null
+        and handoff_node_id is null
         order by unified_id
         limit %s
         """.strip(), [
@@ -159,18 +159,19 @@ def _send_message_receive_reply(data_writers, message, error_tag):
     for sender in sender_list:
         if not sender.ready():
             log.error("incomplete")
-            raise ConjoinedError("%s incomplete" % (error_tag, ))
+            raise ConjoinedFailedError("%s incomplete" % (error_tag, ))
 
         if not sender.successful():
             try:
                 sender.get()
             except Exception, instance:
                 log.exception("")
-                raise ConjoinedError("%s %s" % (error_tag, instance, ))
+                raise ConjoinedFailedError("%s %s" % (error_tag, instance, ))
 
         reply = sender.get()
 
         if reply["result"] != "success":
             log.error("%s" % (reply, ))
-            raise ConjoinedError("%s %s" % (error_tag, reply["error-message"]))
+            raise ConjoinedFailedError("%s %s" % (
+                error_tag, reply["error-message"]))
 

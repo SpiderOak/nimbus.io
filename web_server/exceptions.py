@@ -34,3 +34,6 @@ class DatabaseServerDownError(Exception):
 class SpaceAccountingServerDownError(Exception):
     pass
 
+class ConjoinedFailedError(Exception):
+    pass
+

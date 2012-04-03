@@ -14,11 +14,13 @@ import logging
 import os.path
 import sys
 import time
+import zlib
 
 import zmq
 
 import Statgrabber
 
+from tools.data_definitions import encoded_block_generator
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
 from tools.event_push_client import EventPushClient, exception_event
@@ -45,6 +47,8 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "generator",
     "sequence_row_count",
     "sequence_read_count",
+    "block_count",
+    "blocks_sent",
     "timeout",
 ])
 
@@ -54,12 +58,19 @@ def _compute_state_key(message):
     """
     return (message["client-tag"],
             message["segment-unified-id"], 
+            message["segment-conjoined-part"], 
             message["segment-num"], )
+
+def _str_state_key(state_key):
+    return "%s %s conjoined-part=%s segment-num=%s" % state_key
 
 def _handle_retrieve_key_start(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_start")
     state_key = _compute_state_key(message)
-    log.info(repr(state_key))
+    log.info("{0} block_offset={1}, block_count={2}".format(
+        _str_state_key(state_key),
+        message["block-offset"],
+        message["block-count"]))
 
     reply = {
         "message-type"          : "retrieve-key-reply",
@@ -90,10 +101,13 @@ def _handle_retrieve_key_start(state, message, _data):
     sequence_generator = state["reader"].generate_all_sequence_rows(
         message["segment-unified-id"],
         message["segment-conjoined-part"],
-        message["segment-num"]
+        message["segment-num"],
+        message["handoff-node-id"],
+        message["block-offset"]
     )
 
-    sequence_row_count = sequence_generator.next()
+    sequence_row_count, sequence_rows_skipped, offset_residue = \
+            sequence_generator.next()
 
     if sequence_row_count == 0:
         error_string = "no sequence rows found"
@@ -103,10 +117,12 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    log.debug("found %s sequence rows" % (sequence_row_count, ))
+    log.debug("found={0} skipped={1} offset_residue={2}".format(
+        sequence_row_count, sequence_rows_skipped, offset_residue
+    ))
 
     try:
-        sequence_row, data_content = sequence_generator.next()
+        sequence_row, segment_data = sequence_generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -114,10 +130,9 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    segment_md5 = hashlib.md5()
-    segment_md5.update(data_content)
+    segment_md5 = hashlib.md5(segment_data)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch %s" % (state_key, )
+        error_message = "md5 mismatch %s" % (_str_state_key(state_key), )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"
@@ -125,35 +140,73 @@ def _handle_retrieve_key_start(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    encoded_block_list = list(encoded_block_generator(segment_data))
+
+    recompute = False
+
+    if offset_residue > 0:
+        encoded_block_list = encoded_block_list[offset_residue:]
+        recompute = True
+
+    if message["block-count"] is not None:
+        if len(encoded_block_list) > message["block-count"]:
+            encoded_block_list = encoded_block_list[:message["block-count"]]
+            recompute = True
+
+    assert len(encoded_block_list) > 0
+
     Statgrabber.accumulate('nimbusio_read_requests', 1)
-    Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
+    Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
     state_entry = _retrieve_state_tuple(
         generator=sequence_generator,
         sequence_row_count=sequence_row_count,
         sequence_read_count=1,
+        block_count=message["block-count"],
+        blocks_sent=len(encoded_block_list), 
         timeout=time.time() + _retrieve_timeout
     )
 
     # save stuff we need to recall in state
-    if state_entry.sequence_read_count == state_entry.sequence_row_count:
+    if state_entry.sequence_read_count == state_entry.sequence_row_count \
+    or (state_entry.block_count is not None 
+        and state_entry.blocks_sent == state_entry.block_count):
         reply["completed"] = True
     else:
         reply["completed"] = False
         state["active-requests"][state_key] = state_entry
 
+    segment_size = sequence_row.size
+    segment_adler32 = sequence_row.adler32
+    segment_md5_digest = sequence_row.hash
+
+    # if we chopped some blocks out of the data, we must recompute
+    # the check values
+    if recompute:
+        segment_size = 0
+        segment_adler32 = 0
+        segment_md5 = hashlib.md5()
+        for encoded_block in encoded_block_list:
+            segment_size += len(encoded_block)
+            segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
+            segment_md5.update(encoded_block)
+        segment_md5_digest = segment_md5.digest()
+
     reply["sequence-num"] = state_entry.sequence_read_count
-    reply["segment-size"] = sequence_row.size
+    reply["segment-size"] = segment_size
     reply["zfec-padding-size"] = sequence_row.zfec_padding_size
-    reply["segment-adler32"] = sequence_row.adler32
-    reply["segment-md5-digest"] = b64encode(sequence_row.hash)
+    reply["segment-adler32"] = segment_adler32
+    reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, data=data_content)
+    state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
     state_key = _compute_state_key(message)
-    log.info(str(state_key))
+    log.info("{0} block_offset={1}, block_count={2}".format(
+        _str_state_key(state_key),
+        message["block-offset"],
+        message["block-count"]))
 
     reply = {
         "message-type"          : "retrieve-key-reply",
@@ -174,7 +227,7 @@ def _handle_retrieve_key_next(state, message, _data):
     try:
         state_entry = state["active-requests"].pop(state_key)
     except KeyError:
-        error_string = "unknown request %r" % (state_key, )
+        error_string = "unknown request %r" % (_str_state_key(state_key), )
         log.error(error_string)
         reply["result"] = "unknown-request"
         reply["error-message"] = error_string
@@ -182,7 +235,7 @@ def _handle_retrieve_key_next(state, message, _data):
         return
 
     try:
-        sequence_row, data_content = state_entry.generator.next()
+        sequence_row, segment_data = state_entry.generator.next()
     except Exception, instance:
         log.exception("retrieving")
         reply["result"] = "exception"
@@ -190,10 +243,9 @@ def _handle_retrieve_key_next(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
-    segment_md5 = hashlib.md5()
-    segment_md5.update(data_content)
+    segment_md5 = hashlib.md5(segment_data)
     if segment_md5.digest() != str(sequence_row.hash):
-        error_message = "md5 mismatch %s" % (state_key, )
+        error_message = "md5 mismatch %s" % (_str_state_key(state_key), )
         log.error(error_message)
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"
@@ -201,26 +253,57 @@ def _handle_retrieve_key_next(state, message, _data):
         state["resilient-server"].send_reply(reply)
         return
 
+    encoded_block_list = list(encoded_block_generator(segment_data))
+    blocks_sent = state_entry.blocks_sent + len(encoded_block_list)
+
+    recompute = False
+    if state_entry.block_count is not None and \
+       blocks_sent > state_entry.block_count:
+        block_delta = blocks_sent = state_entry.block_count
+        encoded_block_list = encoded_block_list[:-block_delta]
+        blocks_sent = state_entry.block_count
+        recompute = True
+
     Statgrabber.accumulate('nimbusio_read_requests', 1)
-    Statgrabber.accumulate('nimbusio_read_bytes', len(data_content))
+    Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
     sequence_read_count = state_entry.sequence_read_count + 1
 
-    if sequence_read_count == state_entry.sequence_row_count:
+    if sequence_read_count == state_entry.sequence_row_count or \
+       (state_entry.block_count is not None and \
+        state_entry.blocks_sent == state_entry.block_count):
         reply["completed"] = True
     else:
         reply["completed"] = False
         state["active-requests"][state_key] = state_entry._replace(
-            sequence_read_count=sequence_read_count
+            sequence_read_count=sequence_read_count,
+            blocks_sent=blocks_sent
         )
 
+    segment_size = sequence_row.size
+    segment_adler32 = sequence_row.adler32
+    segment_md5_digest = sequence_row.hash
+
+    # if we chopped some blocks out of the data, we must recompute
+    # the check values
+    if recompute:
+        segment_size = 0
+        segment_adler32 = 0
+        segment_md5 = hashlib.md5()
+        for encoded_block in encoded_block_list:
+            segment_size += len(encoded_block)
+            segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
+            segment_md5.update(encoded_block)
+        segment_md5_digest = segment_md5.digest()
+
+
     reply["sequence-num"] = sequence_read_count
-    reply["segment-size"] = sequence_row.size
+    reply["segment-size"] = segment_size
     reply["zfec-padding-size"] = sequence_row.zfec_padding_size
-    reply["segment-adler32"] = sequence_row.adler32
-    reply["segment-md5-digest"] = b64encode(sequence_row.hash)
+    reply["segment-adler32"] = segment_adler32
+    reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, data=data_content)
+    state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_web_server_start(state, message, _data):
     log = logging.getLogger("_handle_web_server_start")

@@ -78,10 +78,16 @@ class PULLServer(object):
                 return None
             raise
 
-        if self._pull_socket.rcvmore:
-            body = self._pull_socket.recv()
-        else:
+        body = []
+        while self._pull_socket.rcvmore:
+            body.append(self._pull_socket.recv())
+
+        # 2011-04-06 dougfort -- if someone is expecting a list and we only get
+        # one segment, they are going to have to deal with it.
+        if len(body) == 0:
             body = None
+        elif len(body) == 1:
+            body = body[0]
 
         return message_format(ident=None, control=control, body=body)
 

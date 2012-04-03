@@ -8,6 +8,7 @@ import datetime
 import logging
 import time
 
+from tools.data_definitions import create_timestamp
 from space_accounting_server.space_accounting_database import \
         SpaceAccountingDatabase
 from space_accounting_server.util import floor_hour
@@ -21,7 +22,7 @@ class StateCleaner(object):
     @classmethod
     def next_run(cls):
         log = logging.getLogger("StateCleaner")
-        current_time = datetime.datetime.now()
+        current_time = create_timestamp()
         next_time = datetime.datetime(
             year = current_time.year,
             month = current_time.month,
@@ -41,7 +42,7 @@ class StateCleaner(object):
             return
                 
         # we want to dump everything for the previous hour
-        current_time = datetime.datetime.now()
+        current_time = create_timestamp()
         current_hour = floor_hour(current_time)
         prev_hour = current_hour -  datetime.timedelta(hours=1)
 

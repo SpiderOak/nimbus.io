@@ -26,6 +26,8 @@ _key_query = """
     from nimbusio_node.conjoined con right outer join nimbusio_node.segment seg 
     on con.unified_id = seg.unified_id 
     where seg.collection_id = %s and seg.key=%s 
+    and seg.handoff_node_id is null
+    and con.handoff_node_id is null
     order by seg.unified_id desc, seg.conjoined_part asc;
 """
 
@@ -36,6 +38,8 @@ _version_query = """
     from nimbusio_node.conjoined con right outer join nimbusio_node.segment seg 
     on con.unified_id = seg.unified_id 
     where seg.unified_id = %s 
+    and seg.handoff_node_id is null
+    and con.handoff_node_id is null
     order by seg.conjoined_part asc;
 """
 

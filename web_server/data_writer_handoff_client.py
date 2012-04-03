@@ -61,7 +61,7 @@ class DataWriterHandoffClient(object):
         # hand off the message, 
         if "handoff-node-name" in message:
             assert message["handoff-node-name"] is None, message
-            message["handoff-node-name"] = self._dest_node_name
+        message["handoff-node-name"] = self._dest_node_name
 
         data_writer_greenlets = [
             # queue a copy of the message, so each gets a different message-id

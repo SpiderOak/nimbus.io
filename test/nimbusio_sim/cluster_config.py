@@ -49,6 +49,7 @@ class ClusterConfig(object):
             event_aggregator_pub =      2 + (11 * args.nodecount) + args.baseport, 
             space_accounting =          3 + (11 * args.nodecount) + args.baseport,
             space_accounting_pipeline = 4 + (11 * args.nodecount) + args.baseport, 
+            cluster_inspector_pipeline= 5 + (11 * args.nodecount) + args.baseport, 
         )
 
     def __getstate__(self):
@@ -114,6 +115,10 @@ class ClusterConfig(object):
                 self.dbhost, ),
             ( "NIMBUSIO_CENTRAL_DATABASE_PORT",       
                 str(self.central_db_port), ),
+            ( "NIMBUSIO_NODE_DATABASE_HOSTS", 
+                " ".join([self.dbhost for _ in range(len(self.node_names))]),),
+            ( "NIMBUSIO_NODE_DATABASE_PORTS", 
+                " ".join([str(port) for port in self.node_db_ports]), ),
             ( "NIMBUSIO_HANDOFF_SERVER_ADDRESSES", 
                 " ".join(self.handoff_server_addresses), ),
             ( "NIMBUSIO_DATA_READER_ADDRESSES", 

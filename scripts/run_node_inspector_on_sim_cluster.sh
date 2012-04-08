@@ -22,5 +22,5 @@ source node_01_config.sh
 popd
 
 # run unit tests with identity file
-$PYTHON "${HOME}/nimbus.io/node_inspector/node_inspector_main.py"
+$PYTHON "${HOME}/nimbus.io/anti_entropy/node_inspector/node_inspector_main.py"
 

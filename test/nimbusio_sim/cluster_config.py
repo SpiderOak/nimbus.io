@@ -119,6 +119,8 @@ class ClusterConfig(object):
                 " ".join([self.dbhost for _ in range(len(self.node_names))]),),
             ( "NIMBUSIO_NODE_DATABASE_PORTS", 
                 " ".join([str(port) for port in self.node_db_ports]), ),
+            ( "NIMBUSIO_NODE_USER_PASSWORDS", 
+                " ".join(self.node_db_pws), ),
             ( "NIMBUSIO_HANDOFF_SERVER_ADDRESSES", 
                 " ".join(self.handoff_server_addresses), ),
             ( "NIMBUSIO_DATA_READER_ADDRESSES", 

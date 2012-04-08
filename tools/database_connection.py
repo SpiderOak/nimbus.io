@@ -115,13 +115,11 @@ def get_central_connection():
     )
     return connection
 
-def get_node_local_connection():
-    node_name = os.environ["NIMBUSIO_NODE_NAME"]
+def get_node_connection(
+    node_name, database_password, database_host, database_port
+):
     database_name = ".".join([node_database_name_prefix, node_name, ])
     database_user = ".".join([node_database_user_prefix, node_name, ])
-    database_password = os.environ['NIMBUSIO_NODE_USER_PASSWORD']
-    database_host = os.environ.get("NIMBUSIO_NODE_DATABASE_HOST", "localhost")
-    database_port = int(os.environ.get("NIMBUSIO_NODE_DATABASE_PORT", "5432"))
     connection = DatabaseConnection(
         database_name=database_name,
         database_user=database_user,
@@ -130,4 +128,15 @@ def get_node_local_connection():
         database_port=database_port
     )
     return connection
+
+def get_node_local_connection():
+    node_name = os.environ["NIMBUSIO_NODE_NAME"]
+    database_password = os.environ['NIMBUSIO_NODE_USER_PASSWORD']
+    database_host = os.environ.get("NIMBUSIO_NODE_DATABASE_HOST", "localhost")
+    database_port = int(os.environ.get("NIMBUSIO_NODE_DATABASE_PORT", "5432"))
+
+    return get_node_connection(node_name, 
+                               database_password, 
+                               database_host, 
+                               database_port)
 

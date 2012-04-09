@@ -5,12 +5,18 @@ segment_puller_subprocess.py
 a subprocess runby cluster_inspector to pull segment data from individual
 node databases
 """
+import gzip
 import logging
 import os
+import os.path
 import sys
 
 from tools.standard_logging import initialize_logging 
 from tools.database_connection import get_node_connection
+
+from anti_entropy.cluster_inspector.sized_pickle import store_sized_pickle
+from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
+        compute_damaged_segment_file_path
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
@@ -21,8 +27,10 @@ _node_database_ports = \
 _node_database_passwords = \
     os.environ["NIMBUSIO_NODE_USER_PASSWORDS"].split() 
 
-def _pull_segment_data(connection, work_dir):
-    pass
+def _pull_segment_data(connection, work_dir, node_name):
+    segment_file_path = compute_segment_file_path(work_dir, node_name)
+    with gzip.GzipFile(filename=segment_file_path, mode="wb") as segment_file:
+        store_sized_pickle({"name" : "pork"}, segment_file)
 
 def main():
     """
@@ -40,7 +48,8 @@ def main():
     initialize_logging(log_path)
     log = logging.getLogger("main")
 
-    log.info("program starts")
+    log.info("program starts: work_dir={0}, index={1}, {2}".format(
+        work_dir, index, node_name))
 
     try:
         connection = get_node_connection(node_name,
@@ -52,7 +61,7 @@ def main():
         return -1
 
     try:
-        _pull_segment_data(connection, work_dir)
+        _pull_segment_data(connection, work_dir, node_name)
     except Exception as instance:
         log.exception("_pull_segment_data failed {0}".format(instance))
         return -2

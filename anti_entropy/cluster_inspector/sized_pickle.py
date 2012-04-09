@@ -9,20 +9,20 @@ representing an integer size
 import pickle
 import struct
 
-_pickle_length_format_ = "!I"
-_pickle_length_size = struct.calcsize(_pick_length_format)
+_pickle_length_format = "!I"
+_pickle_length_size = struct.calcsize(_pickle_length_format)
 
 def store_sized_pickle(data, file_object):
     """
     store a sized pickle in the file object
     """
     pickled_data = pickle.dumps(data)
+    file_object.write(struct.pack(_pickle_length_format, len(pickled_data)))
     file_object.write(pickled_data)
-    file_object.write(struct.pack, _pickle_length_format, len(pickled_data))
 
 def retrieve_sized_pickle(file_object):
     length_str = file_object.read(_pickle_length_size)
-    pickle_length = struct.unpack(_pickle_length_format, length_str)
+    (pickle_length, ) = struct.unpack(_pickle_length_format, length_str)
     pickled_data = file_object.read(pickle_length)
     return pickle.loads(pickled_data)
 

@@ -4,6 +4,7 @@ cluster_inspector_maibn.py
 
 pull segment and damaged_segment rows from node local databases
 """
+import gzip
 import logging
 import os
 import os.path
@@ -18,6 +19,10 @@ import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
+
+from anti_entropy.cluster_inspector.sized_pickle import retrieve_sized_pickle
+from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
+        compute_damaged_segment_file_path
 
 class ClusterInspectorError(Exception):
     pass
@@ -128,6 +133,14 @@ def _terminate_pullers(pullers):
         process.terminate()
         process.wait()
 
+def _audit_segments():
+    log = logging.getLogger("_audit_segments")
+    for node_name in _node_names:
+        path = compute_segment_file_path(_work_dir, node_name)
+        with gzip.GzipFile(filename=path, mode="rb") as input_file:
+            data = retrieve_sized_pickle(input_file)
+        log.info("{0} {1}".format(node_name, data))
+
 def main():
     """
     main entry point
@@ -171,6 +184,8 @@ def main():
             log.info("halt_event set (2): exiting")
             _terminate_pullers(pullers)
             return -2
+
+        _audit_segments()
 
     except KeyboardInterrupt:
         halt_event.set()

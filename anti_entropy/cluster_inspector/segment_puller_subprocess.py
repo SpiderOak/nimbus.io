@@ -13,6 +13,7 @@ import sys
 
 from tools.standard_logging import initialize_logging 
 from tools.database_connection import get_node_connection
+from tools.data_definitions import segment_row_template
 
 from anti_entropy.cluster_inspector.sized_pickle import store_sized_pickle
 from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
@@ -28,9 +29,26 @@ _node_database_passwords = \
     os.environ["NIMBUSIO_NODE_USER_PASSWORDS"].split() 
 
 def _pull_segment_data(connection, work_dir, node_name):
+    log = logging.getLogger("_pull_segment_data")
+    result_generator = connection.generate_all_rows("""
+        select {0} from nimbusio_node.segment 
+        order by unified_id, conjoined_part
+    """.format(",".join(segment_row_template._fields), []))
+
+    segment_row_count = 0
+
     segment_file_path = compute_segment_file_path(work_dir, node_name)
-    with gzip.GzipFile(filename=segment_file_path, mode="wb") as segment_file:
-        store_sized_pickle({"name" : "pork"}, segment_file)
+    segment_file = gzip.GzipFile(filename=segment_file_path, mode="wb")
+    for result in result_generator:
+        segment_row = segment_row_template._make(result)
+        if segment_row.file_hash is not None:
+            segment_row = segment_row._replace(
+                file_hash=bytes(segment_row.file_hash))
+        store_sized_pickle(segment_row._asdict(), segment_file)
+        segment_row_count += 1 
+    segment_file.close()
+
+    log.info("stored {0} segment rows".format(segment_row_count))
 
 def main():
     """

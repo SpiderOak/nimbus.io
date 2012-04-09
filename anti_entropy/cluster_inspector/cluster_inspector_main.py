@@ -20,9 +20,7 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
-from anti_entropy.cluster_inspector.sized_pickle import retrieve_sized_pickle
-from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
-        compute_damaged_segment_file_path
+from anti_entropy.cluster_inspector.work_generator import generate_work
 
 class ClusterInspectorError(Exception):
     pass
@@ -135,12 +133,14 @@ def _terminate_pullers(pullers):
 
 def _audit_segments():
     log = logging.getLogger("_audit_segments")
-    for node_name in _node_names:
-        path = compute_segment_file_path(_work_dir, node_name)
-        with gzip.GzipFile(filename=path, mode="rb") as input_file:
-            data = retrieve_sized_pickle(input_file)
-        log.info("{0} {1}".format(node_name, data))
-
+    for work_data in generate_work(_work_dir):
+        count = 0
+        for entry in work_data.values():
+            if entry is not None:
+                count += 1
+        log.info("{0} {1} count = {2}".format(list(work_data.values())[0].unified_id,
+                                              list(work_data.values())[0].conjoined_part,
+                                              count))
 def main():
     """
     main entry point

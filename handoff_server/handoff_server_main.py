@@ -111,24 +111,6 @@ def _retrieve_segment_handoffs_for_node(connection, node_id):
 
     return segment_row_list
 
-def _convert_dict_to_segment_row(segment_dict):
-    return segment_row_template(
-        id=segment_dict["id"],
-        collection_id=segment_dict["collection_id"],
-        key=segment_dict["key"],
-        status=segment_dict["status"],
-        unified_id=segment_dict["unified_id"],
-        timestamp=segment_dict["timestamp"],
-        segment_num=segment_dict["segment_num"],
-        conjoined_part=segment_dict.get("conjoined_part"),
-        file_size=segment_dict["file_size"],
-        file_adler32=segment_dict["file_adler32"],
-        file_hash=segment_dict["file_hash"],
-        file_tombstone_unified_id=segment_dict["file_tombstone_unified_id"],
-        source_node_id=segment_dict["source_node_id"],
-        handoff_node_id=segment_dict["handoff_node_id"]
-    )
-
 def _fetch_conjoined_timestamps(connection, unified_id):
     raw_conjoined_timestamps = connection.fetch_one_row("""
         select create_timestamp, abort_timestamp, complete_timestamp,
@@ -326,7 +308,7 @@ def _handle_request_handoffs_reply(state, message, data):
     segment_count  = 0
     already_seen_count = 0
     for entry in data_dict["segment"]:
-        segment_row = _convert_dict_to_segment_row(entry)
+        segment_row = segment_row_template(**entry)
         cache_key = (segment_row.id, source_node_name, )
         if cache_key in state["already-seen-cache"]:
             already_seen_count += 1

@@ -32,7 +32,7 @@ def _pull_segment_data(connection, work_dir, node_name):
     log = logging.getLogger("_pull_segment_data")
     result_generator = connection.generate_all_rows("""
         select {0} from nimbusio_node.segment 
-        order by unified_id, conjoined_part
+        order by unified_id, conjoined_part, handoff_node_id nulls last
     """.format(",".join(segment_row_template._fields), []))
 
     segment_row_count = 0
@@ -49,6 +49,24 @@ def _pull_segment_data(connection, work_dir, node_name):
     segment_file.close()
 
     log.info("stored {0} segment rows".format(segment_row_count))
+
+def _pull_damaged_segment_data(connection, work_dir, node_name):
+    log = logging.getLogger("_pull_damaged_segment_data")
+    result_generator = connection.generate_all_rows("""
+        select distinct unified_id, conjoined_part 
+        from nimbusio_node.damaged_segment """, [])
+
+    result_set = set(result_generator)
+
+    damaged_segment_file_path = \
+            compute_damaged_segment_file_path(work_dir, node_name)
+    damaged_segment_file = \
+            gzip.GzipFile(filename=damaged_segment_file_path, mode="wb")
+    store_sized_pickle(result_set, damaged_segment_file)
+    damaged_segment_file.close()
+
+    log.info("stored set of {0} damaged segment entries".format(
+        len(result_set)))
 
 def main():
     """
@@ -80,6 +98,7 @@ def main():
 
     try:
         _pull_segment_data(connection, work_dir, node_name)
+        _pull_damaged_segment_data(connection, work_dir, node_name)
     except Exception as instance:
         log.exception("_pull_segment_data failed {0}".format(instance))
         return -2

@@ -21,7 +21,7 @@ from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
         compute_damaged_segment_file_path
 
 def _row_key(row):
-    return (row.unified_id, row.conjoined_part, )
+    return (row["unified_id"], row["conjoined_part"], )
 
 def _load_damaged_set(work_dir, node_name):
     path = compute_damaged_segment_file_path(work_dir, node_name)
@@ -49,15 +49,14 @@ class NodeRowGenerator(object):
         self.handoff_rows = list()
         while self._segment_file is not None:
             try:
-                data = retrieve_sized_pickle(self._segment_file)
+                segment_row = retrieve_sized_pickle(self._segment_file)
             except EOFError:
                 self._segment_file.close()
                 self._segment_file = None
                 self.segment_row = None
                 break
 
-            segment_row = segment_row_template(**data)
-            if segment_row.handoff_node_id is not None:
+            if segment_row["handoff_node_id"] is not None:
                 self.handoff_rows.append(segment_row)
                 continue
 
@@ -127,7 +126,7 @@ def generate_work(work_dir):
         for node_name in _node_names:
             node_data = {"segment-row"  : None,
                          "is-damaged"   : False}
-            audit_data[node_name] = node_data
+            audit_data["segment-data"][node_name] = node_data
 
             row_generator = row_generators[node_name]
 
@@ -145,7 +144,7 @@ def generate_work(work_dir):
         # for it, we substitute the handoff row. 
         # These substitutions can be recognized by handoff_node_id not None
         for node_name in _node_names:
-            node_data = audit_data[node_name]
+            node_data = audit_data["segment-data"][node_name]
             if node_data["segment-row"] is None:
                 node_id = node_id_dict[node_name]
                 for row_generator in row_generators.values():

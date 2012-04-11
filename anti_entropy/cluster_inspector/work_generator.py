@@ -10,11 +10,13 @@ import logging
 
 from tools.data_definitions import segment_row_template
 from tools.database_connection import get_central_connection
+from tools.sized_pickle import retrieve_sized_pickle
 
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
-from anti_entropy.cluster_inspector.sized_pickle import retrieve_sized_pickle
+from anti_entropy.anti_entropy_util import anti_entropy_pre_audit
+
 from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
         compute_damaged_segment_file_path
 
@@ -60,9 +62,11 @@ class NodeRowGenerator(object):
                 continue
 
             self.segment_row = segment_row
-            segment_row_key = row_key(segment_row)
-            for handoff_row in self._handoff_rows:
+            segment_row_key = _row_key(segment_row)
+            for handoff_row in self.handoff_rows:
                 assert _row_key(handoff_row) == segment_row_key
+
+            break
 
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 
@@ -84,7 +88,7 @@ def generate_work(work_dir):
         "segment-data" (dict keyed by node_name)
             <node-name-1> (dict)
                 "segment-row" : (dict)
-                "is-damafged" : Boolean
+                "is-damaged" : Boolean
             
     """
     log = logging.getLogger("generate_work")
@@ -117,7 +121,7 @@ def generate_work(work_dir):
             raise StopIteration()
         
         # build an audit data structure
-        audit_data = {"segment-status"  : "pre-audit",
+        audit_data = {"segment-status"  : anti_entropy_pre_audit,
                       "segment-data"    : dict()}
 
         for node_name in _node_names:

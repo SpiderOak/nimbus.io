@@ -22,6 +22,9 @@ def store_sized_pickle(data, file_object):
 
 def retrieve_sized_pickle(file_object):
     length_str = file_object.read(_pickle_length_size)
+    if len(length_str) == 0:
+        raise EOFError()
+    assert len(length_str) == _pickle_length_size, str(len(length_str))
     (pickle_length, ) = struct.unpack(_pickle_length_format, length_str)
     assert pickle_length > 0
     pickled_data = file_object.read(pickle_length)

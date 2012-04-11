@@ -14,8 +14,8 @@ import sys
 from tools.standard_logging import initialize_logging 
 from tools.database_connection import get_node_connection
 from tools.data_definitions import segment_row_template
+from tools.sized_pickle import store_sized_pickle
 
-from anti_entropy.cluster_inspector.sized_pickle import store_sized_pickle
 from anti_entropy.cluster_inspector.util import compute_segment_file_path, \
         compute_damaged_segment_file_path
 

@@ -141,7 +141,9 @@ def _database_inconsistancy(segment_data):
             assert entry["segment-row"] is not None
             result_set.add(entry["segment-row"][key])
         if len(result_set) != 1:
-            log.debug("{0} {1} {2}".format(_row_key(entry), key, result_set))
+            log.debug("{0} {1} {2}".format(_first_row_key(segment_data), 
+                                           key, 
+                                           result_set))
             return True
 
     return False

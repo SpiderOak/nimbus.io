@@ -21,6 +21,7 @@ pushd "${BASEDIR}/config"
 source node_01_config.sh
 popd
 
+export NIMBUSIO_LOG_LEVEL="DEBUG"
 export NIMBUSIO_MIN_ANTI_ENTROPY_AGE="hours=1"
 
 # run unit tests with identity file

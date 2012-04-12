@@ -9,6 +9,9 @@ import os
 import subprocess
 import sys
 
+class SegmentPullerError(Exception):
+    pass
+
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 _environment_list = ["PYTHONPATH",
                     "NIMBUSIO_LOG_DIR",
@@ -95,7 +98,7 @@ def _poll_pullers(pullers):
         error_message = "subprocess {0} failed {1} {2}".format(
             node_name, process.returncode, error)
         log.error(error_message)
-        raise ClusterInspectorError(error_message)
+        raise SegmentPullerError(error_message)
 
     return complete_count
 

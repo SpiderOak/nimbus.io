@@ -32,6 +32,7 @@ def _pull_segment_data(connection, work_dir, node_name):
     log = logging.getLogger("_pull_segment_data")
     result_generator = connection.generate_all_rows("""
         select {0} from nimbusio_node.segment 
+        where status <> 'C'
         order by unified_id, conjoined_part, handoff_node_id nulls last
     """.format(",".join(segment_row_template._fields), []))
 

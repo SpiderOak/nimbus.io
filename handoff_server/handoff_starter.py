@@ -124,7 +124,8 @@ class HandoffStarter(object):
             "unified-id"            : segment_row.unified_id,
             "timestamp-repr"        : repr(segment_row.timestamp),
             "segment-num"           : segment_row.segment_num,
-            "source-node-name"      : source_node_name,
+            "source-node-name"      : \
+                self._state["node-name-dict"][segment_row.source_node_id],
             "handoff-node-name"     : None,
         }
         writer_client = \

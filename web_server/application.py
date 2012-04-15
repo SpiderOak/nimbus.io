@@ -104,6 +104,7 @@ _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
 _archive_retry_interval = 120
 _retrieve_retry_interval = 120
+_content_type_json = "application/json"
 
 def _fix_timestamp(timestamp):
     return (None if timestamp is None else repr(timestamp))
@@ -284,7 +285,7 @@ class Application(object):
         # json won't dump datetime
         json_collections = [(n, v, t.isoformat()) for (n, v, t) in collections]
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(json_collections))
 
         return response
@@ -455,7 +456,7 @@ class Application(object):
                         key_entry["version_identifier"]
                     )
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(result_dict))
         return response
 
@@ -487,7 +488,9 @@ class Application(object):
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
 
-        return Response(json.dumps(usage))
+        response = Response(content_type=_content_type_json)
+        response.body_file.write(json.dumps(usage))
+        return response
 
     def _archive_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -657,9 +660,8 @@ class Application(object):
             "version_identifier" : self._id_translator.public_id(unified_id),
         }
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(response_dict))
-
         return response
 
     def _list_keys(self, req, match_object):
@@ -719,7 +721,7 @@ class Application(object):
                         key_entry["version_identifier"]
                     )
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(result_dict))
         return response
 
@@ -921,11 +923,9 @@ class Application(object):
         if meta_dict is None:
             raise exc.HTTPNotFound(req.url)
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(meta_dict))
-
         return response
-
 
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -1135,9 +1135,8 @@ class Application(object):
             "truncated" : truncated
         }
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(response_dict))
-
         return response
 
     def _start_conjoined(self, req, match_object):
@@ -1222,9 +1221,8 @@ class Application(object):
             "create_timestamp"          : repr(timestamp)   
         }
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(conjoined_dict))
-
         return response
 
     def _finish_conjoined(self, req, match_object):

@@ -283,7 +283,9 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         # json won't dump datetime
-        json_collections = [(n, v, t.isoformat()) for (n, v, t) in collections]
+        json_collections = [
+            {"name" : n, "versioning" : v, "creation-time" : t.isoformat()} \
+            for (n, v, t) in collections]
 
         response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(json_collections))

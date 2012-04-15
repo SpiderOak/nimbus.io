@@ -311,7 +311,7 @@ class Application(object):
             raise exc.HTTPUnauthorized()
 
         try:
-            create_collection(
+            creation_time = create_collection(
                 self._central_connection, 
                 username,
                 collection_name,
@@ -328,7 +328,16 @@ class Application(object):
         else:
             self._central_connection.commit()
 
-        return Response('OK')
+        # this is the same format returned by list_collection
+        collection_dict = {
+            "name" : collection_name,
+            "versioning" : versioning,
+            "creation-time" : creation_time.isoformat()} 
+
+        # 2012-04-15 dougfort Ticket #12 - return 201 'created'
+        response = Response(status=201, content_type=_content_type_json)
+        response.body_file.write(json.dumps(collection_dict))
+        return response
 
     def _delete_collection(self, req, match_object):
         username = match_object.group("username")

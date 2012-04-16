@@ -16,6 +16,8 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
+from anti_entropy.cluster_repair.node_data_reader import generate_node_data
+
 class ClusterRepairError(Exception):
     pass
 
@@ -46,13 +48,12 @@ def main():
     event_push_client = EventPushClient(zmq_context, "cluster_repair")
     event_push_client.info("program-start", "cluster_repair starts")  
 
-
     try:
-        pass
+        for result_dict in generate_node_data(halt_event):
+            pass
 
     except KeyboardInterrupt:
         halt_event.set()
-        connection.rollback()
     except Exception as instance:
         log.exception(str(instance))
         event_push_client.exception(

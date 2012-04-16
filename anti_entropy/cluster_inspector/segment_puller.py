@@ -9,6 +9,8 @@ import os
 import subprocess
 import sys
 
+from anti_entropy.anti_entropy_util import identify_program_dir
+
 class SegmentPullerError(Exception):
     pass
 
@@ -23,17 +25,6 @@ _environment_list = ["PYTHONPATH",
                     "NIMBUSIO_NODE_NAME", ]
 _polling_interval = 1.0
 
-def _identify_program_dir(target_dir):
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_dir)
-        if os.path.isdir(test_path):
-            return test_path
-
-    raise ValueError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_dir, python_path, )
-    )
-
 def _start_pullers(halt_event, work_dir):
     """
     start puller subprocesses
@@ -44,7 +35,7 @@ def _start_pullers(halt_event, work_dir):
     environment = dict(
         [(key, os.environ[key], ) for key in _environment_list])
 
-    anti_entropy_dir = _identify_program_dir("anti_entropy")
+    anti_entropy_dir = identify_program_dir("anti_entropy")
     puller_path = os.path.join(anti_entropy_dir,
                                "cluster_inspector",
                                "segment_puller_subprocess.py")

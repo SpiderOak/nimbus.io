@@ -34,21 +34,27 @@ class SqlAuthenticator(object):
     def authenticate(self, connection, username, req):
         try:
             auth_type, auth_string = req.authorization
-        except TypeError:
+        except Exception, instance:
+            self._log.error("invalid req.authorization {0} {1}".format(
+                instance, req.authorization))
             return False
 
         if auth_type != 'NIMBUS.IO':
-            self._log.debug("unknown auth_type %r" % (auth_type, ))
+            self._log.error("unknown auth_type %r" % (auth_type, ))
             return False
 
         try:
             key_id, signature = auth_string.split(':', 1)
-        except TypeError:
+        except Exception, instance:
+            self._log.error("invalid auth_string {0} {1}".format(
+                instance, auth_string))
             return False
 
         try:
             key_id = int(key_id)
-        except (TypeError, ValueError):
+        except Exception, instance:
+            self._log.error("invalid key_id {0} {1}".format(
+                instance, key_id))
             return False
     
         customer_key = None
@@ -66,26 +72,35 @@ class SqlAuthenticator(object):
             # no cached key, or cache has expired
             customer_key = get_customer_key(connection, username, key_id)
             if customer_key is None:
-                self._log.debug("unknown user %r" % (username, ))
+                self._log.error("unknown user %r" % (username, ))
                 return False
 
         try:
             string_to_sign = _string_to_sign(username, req)
-        except KeyError:
+        except Exception, instance:
+            self._log.error("_string_to_sign failed {0} {1} {2}".format(
+                instance, username, req))
             return False
 
         try:
             timestamp = int(req.headers['x-nimbus-io-timestamp'])
-        except (TypeError, ValueError):
+        except Exception, instance:
+            self._log.error("invalid x-nimbus-io-timestamp {0} {1}".format(
+                instance, req.headers))
             return False
 
         # The timestamp must agree within 10 minutes of that on the server
-        if abs(time.time() - timestamp) > 600:
+        time_delta = abs(time.time() - timestamp)
+        if time_delta > 600:
+            self._log.error("timestamp out of range {0} {1}".format(
+                timestamp, time_delta))
             return False
 
         try:
             signature = a2b_hex(signature)
-        except (TypeError, ValueError):
+        except Exception, instance:
+            self._log.error("a2b_hex(signature) failed {0} {1}".format(
+                timestamp, instance))
             return False
 
         expected = hmac.new(
@@ -93,7 +108,7 @@ class SqlAuthenticator(object):
         ).digest()
 
         if not sec_str_eq(signature, expected):
-            self._log.debug("signature comparison failed %r %r" % (
+            self._log.error("signature comparison failed %r %r" % (
                 username, string_to_sign
             ))
             return False

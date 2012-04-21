@@ -22,7 +22,8 @@ _read_buffer_size = int(
 
 _environment_list = ["PYTHONPATH",
                     "NIMBUSIO_LOG_DIR",
-                    "NIMBUSIO_NODE_NAME", ]
+                    "NIMBUSIO_NODE_NAME", 
+                    "NIMBUSIO_REPOSITORY_PATH", ]
 
 from anti_entropy.anti_entropy_util import identify_program_dir
 
@@ -39,17 +40,18 @@ def generate_node_data(halt_event):
         for node_name in _node_names:
             process = subprocesses[node_name]
 
-            process.poll()
-
-            if process.returncode is not None and process.returncode != 0:
-                error_message = "subprocess {0} failed {1} {2}".format(
-                    node_name, process.returncode, error)
-                log.error(error_message)
-                raise NodeDataReaderError(error_message)
-
             try:
                 entry = retrieve_sized_pickle(process.stdout)
             except EOFError:
+                process.wait()
+                process.poll()
+
+                if process.returncode != 0:
+                    error_message = "subprocess {0} failed {1}".format(
+                        node_name, process.returncode)
+                    log.error(error_message)
+                    raise NodeDataReaderError(error_message)
+
                 log.info("EOF node {0}".format(node_name))
                 eof = True
                 break

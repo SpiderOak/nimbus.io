@@ -18,7 +18,7 @@ PYTHON="${HOME}/python_env/nimbus.io.0.0.1/bin/python3"
 
 # pull in environment settings from the simulated cluster 
 pushd "${BASEDIR}/config"
-source node_01_config.sh
+source node_05_config.sh
 popd
 
 # run unit tests with identity file

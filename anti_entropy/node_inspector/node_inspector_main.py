@@ -22,7 +22,8 @@ from tools.data_definitions import incoming_slice_size, \
         damaged_segment_defective_sequence, \
         damaged_segment_missing_sequence
 
-from node_inspector.work_generator import make_batch_key, generate_work
+from anti_entropy.node_inspector.work_generator import \
+        make_batch_key, generate_work
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_node_inspector_{1}.log".format(

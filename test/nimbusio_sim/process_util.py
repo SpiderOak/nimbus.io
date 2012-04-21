@@ -121,33 +121,6 @@ def start_data_reader(node_name, environment, profile):
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_anti_entropy_server(node_name, environment, profile):
-    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"anti_entropy_server")
-    server_path = os.path.join(
-        server_dir, "anti_entropy_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    if profile:
-        profile_path = os.path.join(
-            environment["NIMBUSIO_PROFILE_DIR"],
-            "anti_entropy_server_%s.pstats" % (node_name, )
-        )
-        args[1:1] = [
-            "-m",
-            "cProfile",
-            "-o",
-            profile_path
-        ]
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
 def start_space_accounting_server(node_name, environment):
     log = logging.getLogger("_start_space_accounting_server%s" % (node_name, ))
     server_dir = identify_program_dir(u"space_accounting_server")

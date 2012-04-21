@@ -68,21 +68,6 @@ create table space_accounting(
    bytes_retrieved int8 not null default 0
 );
 
-create sequence audit_result_id_sequence;
-create table audit_result(
-   id int4 primary key default nextval('nimbusio_central.audit_result_id_sequence'),
-   collection_id int4 not null references nimbusio_central.collection(id),
-   state text,
-   audit_scheduled timestamp default now(),
-   audit_started timestamp,
-   audit_finished timestamp,
-   reconstruct_scheduled timestamp,
-   reconstruct_started timestamp,
-   reconstruct_finished timestamp
-);
-
-create index audit_result_collection_id on nimbusio_central.audit_result (collection_id);
-
 /* rollback; */
 commit;
 

@@ -145,46 +145,6 @@ def start_data_reader(
     log.info("starting %s %s" % (args, environment, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_anti_entropy_server(
-    cluster_name,
-    node_names,
-    node_name, 
-    anti_entropy_server_addresses,
-    pipeline_address,
-    event_publisher_pull_address, 
-    environment = None,
-):
-    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"anti_entropy_server")
-    server_path = os.path.join(
-        server_dir, "anti_entropy_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    if environment is None:
-        environment = {
-            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
-            "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
-            "NIMBUSIO_NODE_NAME_SEQ"     : \
-                " ".join(node_names),
-            "NIMBUSIO_NODE_NAME"         : node_name,
-            "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
-                " ".join(anti_entropy_server_addresses),
-            "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
-            "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
-            "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
-            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
-                event_publisher_pull_address,
-        }        
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
 def start_space_accounting_server(
     node_name, 
     address, 

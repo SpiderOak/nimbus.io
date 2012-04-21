@@ -21,7 +21,6 @@ from test.nimbusio_sim.process_util import start_web_server, \
         start_data_reader, \
         start_space_accounting_server, \
         start_handoff_server, \
-        start_anti_entropy_server, \
         start_event_publisher, \
         start_performance_packager, \
         start_stats_subscriber, \
@@ -113,12 +112,6 @@ class NodeSim(object):
         )
 
         self._processes["handoff_server"] = start_handoff_server(
-            self.node_name,
-            self.env,
-            self._cluster_config.profile
-        )
-
-        self._processes["anti_entropy_server"] = start_anti_entropy_server(
             self.node_name,
             self.env,
             self._cluster_config.profile

@@ -23,6 +23,7 @@ import Statgrabber
 from tools.data_definitions import encoded_block_generator
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.rep_server import REPServer
 from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
@@ -33,13 +34,12 @@ from data_reader.state_cleaner import StateCleaner
 from data_reader.stats_reporter import StatsReporter
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_log_path = u"%s/nimbusio_data_reader_%s.log" % (
-    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
+_log_path = "{0}/nimbusio_data_reader_{1}.log".format(
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name
 )
-_data_reader_address = os.environ.get(
-    "NIMBUSIO_DATA_READER_ADDRESS",
-    "tcp://127.0.0.1:8200"
-)
+_data_reader_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
+_data_reader_anti_entropy_address = \
+        os.environ["NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESS"]
 _retrieve_timeout = 30 * 60.0
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
@@ -322,6 +322,7 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "anti-entropy-server"   : None,
         "event-push-client"     : None,
         "stats-reporter"        : None,
         "state-cleaner"         : None,
@@ -342,13 +343,22 @@ def _setup(_halt_event, state):
         "data_reader"
     )
 
-    log.info("binding resilient-server to %s" % (_data_reader_address, ))
+    log.info("binding resilient-server to {0}".format(_data_reader_address))
     state["resilient-server"] = ResilientServer(
         state["zmq-context"],
         _data_reader_address,
         state["receive-queue"]
     )
     state["resilient-server"].register(state["pollster"])
+
+    log.info("binding anti-entropy-server to {0}".format(
+        _data_reader_anti_entropy_address))
+    state["anti-entropy-server"] = REPServer(
+        state["zmq-context"],
+        _data_reader_anti_entropy_address,
+        state["receive-queue"]
+    )
+    state["anti-entropy-server"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -381,6 +391,7 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
+    state["anti-entropy-server"].close()
     state["event-push-client"].close()
 
     state["zmq-context"].term()

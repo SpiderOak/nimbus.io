@@ -35,9 +35,9 @@ class ClusterConfig(object):
         self.base_ports = dict(
             web_server =                args.baseport, 
             writer =                    1 * args.nodecount + args.baseport,
-            reader =                    2 * args.nodecount + args.baseport,
-            anti_entropy =              3 * args.nodecount + args.baseport, 
-            anti_entropy_pipeline =     4 * args.nodecount + args.baseport, 
+            writer_anti_entropy =       2 * args.nodecount + args.baseport,
+            reader =                    3 * args.nodecount + args.baseport,
+            reader_anti_entropy =       4 * args.nodecount + args.baseport, 
             handoff =                   5 * args.nodecount + args.baseport, 
             handoff_pipeline =          6 * args.nodecount + args.baseport,
             event_publisher_pub  =      7 * args.nodecount + args.baseport,
@@ -107,8 +107,6 @@ class ClusterConfig(object):
                 self.clustername, ),
             ( "NIMBUSIO_NODE_NAME_SEQ",
                 " ".join(self.node_names), ),
-            ( "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES",
-                " ".join(self.anti_entropy_addresses), ),
             ( "NIMBUSIO_CENTRAL_USER_PASSWORD",       
                 self.central_db_user, ),
             ( "NIMBUSIO_CENTRAL_DATABASE_HOST",
@@ -125,8 +123,12 @@ class ClusterConfig(object):
                 " ".join(self.handoff_server_addresses), ),
             ( "NIMBUSIO_DATA_READER_ADDRESSES", 
                 " ".join(self.data_reader_addresses), ),
+            ( "NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESSES", 
+                " ".join(self.data_reader_anti_entropy_addresses), ),
             ( "NIMBUSIO_DATA_WRITER_ADDRESSES", 
                 " ".join(self.data_writer_addresses), ),
+            ( "NIMBUSIO_DATA_WRITER_ANTI_ENTROPY_ADDRESSES", 
+                " ".join(self.data_writer_anti_entropy_addresses), ),
             ( "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES",
                 " ".join(self.event_publisher_pub_addresses), ),
         ]
@@ -158,12 +160,14 @@ class ClusterConfig(object):
                 self.web_server_pipeline_addresses[node_index], ),
            ( "NIMBUSIO_DATA_READER_ADDRESS", 
                 self.data_reader_addresses[node_index], ),
+           ( "NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESS", 
+                self.data_reader_anti_entropy_addresses[node_index], ),
            ( "NIMBUSIO_DATA_WRITER_ADDRESS",    
                 self.data_writer_addresses[node_index], ),
+           ( "NIMBUSIO_DATA_WRITER_ANTI_ENTROPY_ADDRESS",    
+                self.data_writer_anti_entropy_addresses[node_index], ),
            ( "NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS", 
                 self.handoff_server_pipeline_addresses[node_index], ),
-           ( "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS",
-                self.anti_entropy_pipeline_addresses[node_index], ),
            ( "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS",
                 self.event_publisher_pull_addresses[node_index], ),
            ( "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESS",
@@ -383,16 +387,16 @@ class ClusterConfig(object):
         return self._node_service_addresses('writer')
 
     @property
+    def data_writer_anti_entropy_addresses(self):
+        return self._node_service_addresses('writer_anti_entropy')
+
+    @property
     def data_reader_addresses(self):
         return self._node_service_addresses('reader')
 
     @property
-    def anti_entropy_addresses(self):
-        return self._node_service_addresses('anti_entropy')
-
-    @property
-    def anti_entropy_pipeline_addresses(self):
-        return self._node_service_addresses('anti_entropy_pipeline')
+    def data_reader_anti_entropy_addresses(self):
+        return self._node_service_addresses('reader_anti_entropy')
 
     @property
     def handoff_server_addresses(self):

@@ -40,19 +40,19 @@ def _start_pullers(halt_event, work_dir):
                                "cluster_inspector",
                                "segment_puller_subprocess.py")
 
-    for index in range(len(_node_names)):
+    for index, node_name in enumerate(_node_names):
 
         if halt_event.is_set():
             log.info("halt_event set: exiting")
             return pullers
 
-        log.info("starting subprocess {0}".format(_node_names[index]))
+        log.info("starting subprocess {0}".format(node_name))
         args = [sys.executable, puller_path, work_dir, str(index) ]
         process = subprocess.Popen(args, 
                                    stderr=subprocess.PIPE, 
                                    env=environment)
         assert process is not None
-        pullers[_node_names[index]] = process
+        pullers[node_name] = process
 
     return pullers
 

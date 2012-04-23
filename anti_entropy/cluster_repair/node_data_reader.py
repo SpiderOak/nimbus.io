@@ -23,6 +23,8 @@ _read_buffer_size = int(
 _environment_list = ["PYTHONPATH",
                     "NIMBUSIO_LOG_DIR",
                     "NIMBUSIO_NODE_NAME", 
+                    "NIMBUSIO_NODE_NAME_SEQ", 
+                    "NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESSES",
                     "NIMBUSIO_REPOSITORY_PATH", ]
 
 from anti_entropy.anti_entropy_util import identify_program_dir
@@ -86,14 +88,14 @@ def _start_subprocesses(halt_event):
                                "cluster_repair",
                                "node_data_reader_subprocess.py")
 
-    for node_name in _node_names:
+    for index, node_name in enumerate(_node_names):
 
         if halt_event.is_set():
             log.info("halt_event set: exiting")
             return subprocesses
 
         log.info("starting subprocess {0}".format(node_name))
-        args = [sys.executable, subprocess_path, node_name ]
+        args = [sys.executable, subprocess_path, str(index) ]
         process = subprocess.Popen(args, 
                                    bufsize=_read_buffer_size,
                                    stdout=subprocess.PIPE, 

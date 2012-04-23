@@ -25,6 +25,7 @@ import Statgrabber
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.rep_server import REPServer
 from tools.event_push_client import EventPushClient, exception_event
 from tools.priority_queue import PriorityQueue
 from tools.deque_dispatcher import DequeDispatcher
@@ -43,13 +44,12 @@ from data_writer.sync_manager import SyncManager
 from data_writer.post_sync_completion import PostSyncCompletion
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_log_path = u"%s/nimbusio_data_writer_%s.log" % (
+_log_path = "{0}/nimbusio_data_writer_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
-_data_writer_address = os.environ.get(
-    "NIMBUSIO_DATA_WRITER_ADDRESS",
-    "tcp://127.0.0.1:8100"
-)
+_data_writer_address = os.environ["NIMBUSIO_DATA_WRITER_ADDRESS"]
+_data_writer_anti_entropy_address = \
+        os.environ["NIMBUSIO_DATA_WRITER_ANTI_ENTROPY_ADDRESS"]
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _handle_archive_key_entire(state, message, data):
@@ -646,6 +646,7 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "anti-entropy-server"   : None,
         "event-push-client"     : None,
         "stats-reporter"        : None,
         "receive-queue"         : PriorityQueue(),
@@ -676,6 +677,15 @@ def _setup(_halt_event, state):
         state["receive-queue"]
     )
     state["resilient-server"].register(state["pollster"])
+
+    log.info("binding anti-entropy-server to {0}".format(
+        _data_writer_anti_entropy_address))
+    state["anti-entropy-server"] = REPServer(
+        state["zmq-context"],
+        _data_writer_anti_entropy_address,
+        state["receive-queue"]
+    )
+    state["anti-entropy-server"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -727,6 +737,7 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
+    state["anti-entropy-server"].close()
     state["event-push-client"].close()
 
     state["zmq-context"].term()

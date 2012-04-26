@@ -27,13 +27,10 @@ class REPServer(object):
         self._log.debug("binding")
         self._rep_socket.bind(address)
 
-        self._pending_message = None
         self._receive_queue = receive_queue
 
     def register(self, pollster):
-        pollster.register_read_or_write(
-            self._rep_socket, self._pollster_callback
-        )
+        pollster.register_read(self._rep_socket, self._pollster_callback)
 
     def unregister(self, pollster):
         pollster.unregister(self._rep_socket)
@@ -41,29 +38,25 @@ class REPServer(object):
     def close(self):
         self._rep_socket.close()
 
-    def queue_message_for_send(self, message_control, data=None):
-        self._send_queue.append(
-            message_format(ident=None, control=message_control, body=data)
-        )
+    def send_reply(self, message_control, data=None):
+        message = message_format(ident=None, 
+                                 control=message_control, 
+                                 body=data)
+        self._send_message(message)
 
     def _pollster_callback(self, _active_socket, readable, writable):
         """
         this socket wants a rigid request-reply sequence,
         a read must always be followed by a write
         """
-        if self._pending_message is not None:
-            if writable:
-                self._send_message(self._pendng_message)
-                self._pending_message = None
-            return
+        assert readable
 
-        if readable:
-            message = self._receive_message()      
-            # if we get None, that means the socket would have blocked
-            # go back and wait for more
-            if message is None:
-                return
-            self._receive_queue.append((message.control, message.body, ))
+        message = self._receive_message()      
+        # if we get None, that means the socket would have blocked
+        # go back and wait for more
+        if message is None:
+            return
+        self._receive_queue.append((message.control, message.body, ))
                 
     def _send_message(self, message):
         self._log.debug("sending message: {0}".format(message.control))

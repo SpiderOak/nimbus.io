@@ -50,6 +50,7 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "block_count",
     "blocks_sent",
     "timeout",
+    "reply_socket",
 ])
 
 def _compute_state_key(message):
@@ -158,13 +159,19 @@ def _handle_retrieve_key_start(state, message, _data):
     Statgrabber.accumulate('nimbusio_read_requests', 1)
     Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
+    if "anti-entropy" in message:
+        reply_socket = state["anti-entropy-server"]
+    else:
+        reply_socket = state["resilient-server"]
+
     state_entry = _retrieve_state_tuple(
         generator=sequence_generator,
         sequence_row_count=sequence_row_count,
         sequence_read_count=1,
         block_count=message["block-count"],
         blocks_sent=len(encoded_block_list), 
-        timeout=time.time() + _retrieve_timeout
+        timeout=time.time() + _retrieve_timeout,
+        reply_socket=reply_socket
     )
 
     # save stuff we need to recall in state
@@ -198,7 +205,7 @@ def _handle_retrieve_key_start(state, message, _data):
     reply["segment-adler32"] = segment_adler32
     reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, data=encoded_block_list)
+    state_entry.reply_socket.send_reply(reply, data=encoded_block_list)
 
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
@@ -229,9 +236,6 @@ def _handle_retrieve_key_next(state, message, _data):
     except KeyError:
         error_string = "unknown request %r" % (_str_state_key(state_key), )
         log.error(error_string)
-        reply["result"] = "unknown-request"
-        reply["error-message"] = error_string
-        state["resilient-server"].send_reply(reply)
         return
 
     try:
@@ -240,7 +244,7 @@ def _handle_retrieve_key_next(state, message, _data):
         log.exception("retrieving")
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
-        state["resilient-server"].send_reply(reply)
+        state_entry.reply_socket.send_reply(reply)
         return
 
     segment_md5 = hashlib.md5(segment_data)
@@ -250,7 +254,7 @@ def _handle_retrieve_key_next(state, message, _data):
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
-        state["resilient-server"].send_reply(reply)
+        state_entry.reply_socket.send_reply(reply)
         return
 
     encoded_block_list = list(encoded_block_generator(segment_data))
@@ -303,9 +307,9 @@ def _handle_retrieve_key_next(state, message, _data):
     reply["segment-adler32"] = segment_adler32
     reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
-    state["resilient-server"].send_reply(reply, data=encoded_block_list)
+    state_entry.reply_socket.send_reply(reply, data=encoded_block_list)
 
-def _handle_web_server_start(state, message, _data):
+def _handle_web_server_start(_state, message, _data):
     log = logging.getLogger("_handle_web_server_start")
     log.info("%s %s %s" % (message["unified-id"], 
                            message["timestamp-repr"],

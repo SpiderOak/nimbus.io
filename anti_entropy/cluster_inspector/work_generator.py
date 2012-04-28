@@ -51,6 +51,7 @@ class NodeRowGenerator(object):
 
     @property
     def segment_is_damaged(self):
+        # XXX review: as mentioned elsewhere, this maybe too big for memory.
         return self.segment_row is not None and \
                 _row_key(self.segment_row) in self._damaged_set
 
@@ -154,6 +155,12 @@ def generate_work(work_dir):
         # if we have a missing segment_row and some row generator has a handoff
         # for it, we substitute the handoff row. 
         # These substitutions can be recognized by handoff_node_id not None
+
+        # XXX review: I'm not sure we should do this at this step.
+        # we may have multiple handoffs. they may not be in consistest states.
+        # they maybe damaged, etc. In any case, I think it's the wrong place.
+        # We're supposed to just be generating batched work here, not making
+        # decisions.
         for node_name in _node_names:
             node_data = audit_data["segment-data"][node_name]
             if node_data["segment-row"] is None:

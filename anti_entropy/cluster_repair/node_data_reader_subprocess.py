@@ -68,6 +68,26 @@ def _handle_damaged_records(req_socket, segment_row, result):
             log.error(reply["error-message"])
             result["status"] = "error"
             store_sized_pickle(result, sys.stdout.buffer)
+            # XXX review: just because we had an error reading one particular
+            # segment sequence, doesn't mean all the sequences will fail.  
+
+            # A large object could have its data split over multiple value files.
+            # Some might be present, others might fail.  Disk or file system
+            # corruption can mean that reads at one offset in the same value
+            # file might fail, but other offsets succeed.
+            
+            # We should know how many sequences there should be, and try to
+            # retrieve all of them, or only give up when we receive a type of
+            # error response that indicates that no reads of any more segments
+            # could be successful.
+
+            # I tried to show this in the spec with the sample results from the
+            # node data reader. Record 4 has an error reading the 2nd segment
+            # sequence, but the data reader provides the next two segments.
+
+            # So this function needs to explicitly know how many segment
+            # sequences there should be and try to get all of them, not just go
+            # until it gets an error.
             return
 
         if reply["completed"] and sequence == 0:
@@ -123,6 +143,13 @@ def _process_repair_entries(source_node_name, req_socket):
         segment_row = segment_data["segment-row"]
 
         record_number += 1
+        # XXX review: where's the "action" key?
+        #     and I guess we're using a key called "status" instead of a key
+        #     called "result" which is what the spec says.  I guess it's
+        #     confusing to have a key of result inside a dict called result.  I
+        #     don't really care about which name is used but I'd prefer we were
+        #     consistent, and also change the spec if we're changing the
+        #     structure.
         result = {"record_number"   : record_number,
                   "status"          : None,	 
                   "unified_id"      : segment_row["unified_id"],	 
@@ -131,6 +158,8 @@ def _process_repair_entries(source_node_name, req_socket):
                   "sequence_num"    : None,
                   "data"            : None,}
 
+        # XXX review: as mentioned elsewhere, we need to be determining damage
+        # on a per segment-sequeence basis, not for the segment as a whole.
         if segment_data["is-damaged"]:
             log.debug("is-damaged {0} {1} {2}".format(
                 segment_row["unified_id"],	 
@@ -141,6 +170,30 @@ def _process_repair_entries(source_node_name, req_socket):
             continue
 
         segment_status = audit_data["segment-status"]
+
+        # XXX review: this construct could catch KeyErrors raised by the
+        # dispatch function and log them as Unknown segment status.  Maybe just
+        # explicitly check the dispatch table to avoid this possibility?
+
+        # Actually, I'm not sure if a dispatch table is the right thing here
+        # anyway.  There's basically only one choice.  Either we need to
+        # provide the data from this node (action=read), or we don't
+        # (action=skip).  Not much point in a dispatch table of one entry.
+
+        # The spec says we yield AT LEAST one entry FOR EACH record number in
+        # the input file.  Yield an entry with action=skip if we decide data
+        # from our node isn't needed.  Otherwise we yield one or more entries
+        # with action=read.
+
+        # Why does the spec say to yield results with action=skip at all,
+        # instead of just omitting them entirely, and thus also being able to
+        # omit the 'action' key also?  Because explicit is better than implicit
+        # I guess.
+
+        # so maybe we need a function here like
+        # node_data_needed_for_repair() that determines if we do read
+        # or skip.
+
         try:
             _dispatch_table[segment_status](req_socket, segment_row, result)
         except KeyError:

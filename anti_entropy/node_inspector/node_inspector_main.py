@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # -*- coding: utf-8 -*-
 """
 garbage_collector_main.py
@@ -101,7 +103,7 @@ def _value_file_status(connection, entry):
     # Always do a stat on the value file. 
     try:
         stat_result = os.stat(value_file_path)
-    except Exception as instance:
+    except OSError as instance:
         # If the value file is missing, consider all of the segment_sequences 
         # to be missing, and handle it as such.
         if instance.errno == errno.ENOENT:
@@ -149,12 +151,28 @@ def _value_file_status(connection, entry):
     # MAX_TIME_BETWEEN_VALUE_FILE_INTEGRITY_CHECK, then read the whole file, 
     # and calculate the md5. If it matches, consider the whole file good as 
     # above. Update last_integrity_check_time regardless.
+
+    # XXX review: we're only supposed to do this after we've also read the file
+    # and inserted any damage. not before. otherwise it's a race condition --
+    # we may crash before finishing checking the file, and then the file
+    # doesn't get checked, but it's marked as checked.
     _update_value_file_last_integrity_check_time(connection,
                                                  entry.value_file_id,
                                                  create_timestamp())
 
     md5_sum = hashlib.md5()
+
+    # XXX review: while reading the file, we need to catch OSError and IOError.
+    # It maybe that the file system is corrupted on disk, and open or reads
+    # will fail in interesting ways.  We need to catch those and return
+    # _value_file_questionable
+
     with open(value_file_path, "rb") as input_file:
+        # XXX review FIXME.  Don't take this shortcut.  File could be very
+        # large.
+        # Maybe we should consider making Pandora.Util a public module so we
+        # can use all of those handy utility functions here instead of reinvent
+        # them.
         md5_sum.update(input_file.read())
 
     if md5_sum.digest() != bytes(entry.value_file_hash):
@@ -170,6 +188,9 @@ def _value_file_status(connection, entry):
 def _verify_entry_against_value_file(entry):
     value_file_path = compute_value_file_path(_repository_path, 
                                               entry.value_file_id)
+
+    # XXX review: as above, while reading the file, we need to catch OSError
+    # and IOError. Treat as if it's corrupted if we can't complete the read.
     md5_sum = hashlib.md5()
     with open(value_file_path, "rb") as input_file:
         input_file.seek(entry.value_file_offset)
@@ -193,6 +214,10 @@ def _process_work_batch(connection, known_value_files, batch):
     if batch[0].file_size % incoming_slice_size != 0:
         expected_slice_count += 1
 
+    # XXX review: really.. sequence numbers start at 0? OK.  I thought there
+    # was something about sequences stored as just one segment-sequence had
+    # only the sequence number 0, but otherwise they are 1... N.  But maybe I'm
+    # confusing with the old SpiderOak cluster chunk number.
     expected_sequence_numbers = set(range(0, expected_slice_count))
     actual_sequence_numbers = set([entry.sequence_num for entry in batch])
     missing_sequence_numbers.extend(
@@ -299,6 +324,10 @@ def main():
             exctype=instance.__class__.__name__
         )
         return -1
+
+    # XXX review: I don't see  the database being opened in auto
+    # commit mode, and I don't see a commit of the transaction...
+    # oh, we're doing them on most modifications. hrm.
 
     connection.close()
 

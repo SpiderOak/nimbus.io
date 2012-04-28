@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # -*- coding: utf-8 -*-
 """
 cluster_inspector_maibn.py
@@ -19,7 +21,7 @@ from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 from anti_entropy.cluster_inspector.segment_puller import \
-        pull_segments_from_nodes
+        pull_segments_from_nodes 
 from anti_entropy.cluster_inspector.segment_auditor import audit_segments
 
 class ClusterInspectorError(Exception):
@@ -70,9 +72,11 @@ def main():
 
         audit_segments(halt_event, _work_dir)
 
+
     except KeyboardInterrupt:
         halt_event.set()
         connection.rollback()
+    # XXX review: should we catch segment_puller.SegmentPullerError separately?
     except Exception as instance:
         log.exception(str(instance))
         event_push_client.exception(

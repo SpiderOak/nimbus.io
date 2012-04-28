@@ -53,6 +53,14 @@ def _pull_segment_data(connection, work_dir, node_name):
 
 def _pull_damaged_segment_data(connection, work_dir, node_name):
     log = logging.getLogger("_pull_damaged_segment_data")
+    # XXX review: this could be a very large set. why not just have it as
+    # records in sorted order so it can be coiterated like the other streams,
+    # instead of having to rely on being able to hold all these IDs in memory?
+
+    # XXX review: and why are we discarding (via select distinct) the info
+    # about which sequences within a segment are damaged? We're only looking at
+    # whole damaged segments?  So we can't just repair the one sequence in the
+    # segment that is damaged, but we have to repari the whole segment?
     result_generator = connection.generate_all_rows("""
         select distinct unified_id, conjoined_part 
         from nimbusio_node.damaged_segment """, [])

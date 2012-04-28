@@ -4,6 +4,38 @@ cluster_repair_main.py
 
 repair defective node data
 """
+
+# XXX review: this process actually has the structure not of the program
+# cluster repair, but of the program described as "Node Data Reader" in the
+# spec, in the section about the process hierarhy.  It's job is to read across
+# the streams from the 10 reader subprocesses, and merge them into batches, one
+# per segment and sequence, and write those batches to stdout.
+
+# I.e. it is a subprocess of the repair process -- the other subprocess being
+# Node Data Writer.
+
+# the top level cluster repair process has only these two subprocesses.  It
+# does not manage the 20 node reader ard writer subprocesses directly.
+
+# Suggest we "git mv " this program to be named node_data_reader_main and
+# refactor accordingly (i.e. change name of logs, event notifications
+# published, exceptions, etc.)
+
+# Atually, how about something like this for a directory structure: (directory
+# structure follows process hierarchy structure) AND we split off meta repair
+# into its own program.
+
+# anti_entropy/
+# anti_entropy/node_inspector/
+# anti_entropy/cluster_inspector/
+# anti_entropy/cluster_repair/
+# anti_entropy/cluster_repair/cluster_repair_meta_main.py 
+# anti_entropy/cluster_repair/cluster_repair_data_main.py
+# anti_entropy/cluster_repair/data_reader/data_reader_main.py
+# anti_entropy/cluster_repair/data_reader/data_reader_subprocess.py
+# anti_entropy/cluster_repair/data_writer/data_writer_main.py
+# anti_entropy/cluster_repair/data_writer/data_writer_subprocess.py
+
 import logging
 import os
 import os.path
@@ -50,6 +82,8 @@ def main():
 
     try:
         for result_dict in generate_node_data(halt_event):
+            # XXX review: all you have to do here is write these batches to
+            # stdout. processing them isn't this program's job.  
             pass
 
     except KeyboardInterrupt:

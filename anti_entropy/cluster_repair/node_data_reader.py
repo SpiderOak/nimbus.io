@@ -39,8 +39,8 @@ class NodeSubProcess(object):
            self._entry["sequence_num"] == sequence_num:
             return True
 
-        assert self._entry["sequence_num"] == sequence_num-1, \
-            (self._entry["sequence_num"], sequence_num-1, )
+        assert self._entry["sequence_num"] == sequence_num - 1, \
+            (self._entry["sequence_num"], sequence_num - 1, )
 
         if not self._get_next_entry():
             return False
@@ -60,7 +60,26 @@ class NodeSubProcess(object):
         if self._entry is not None:
             if self._entry["record_number"] == record_number:
                 return True
-            assert self._entry["record_number"] == record_number-1
+            # XXX review: I'm glad to see these aserts. They are hints that
+            # make reviewing and understanding the code much easier by
+            # explicitly stating the expected state.
+            
+            # In this case, this assert implies that advance_to_record_number
+            # will ALWAYS be called once per record number. I.e. it will never
+            # be called with the intent of advancing several records to reach
+            # the desired record number.  I suppose that's how it's called
+            # anyway, so it probably doesn't matter.  But the name
+            # "advance_to_record_number" sort of implies it might be called to
+            # advance an arbitrary number of records forward in the stream.
+            assert self._entry["record_number"] == record_number - 1
+
+        # XXX review: how does this get us to the next record number, if there
+        # are perhaps several sequences still to be yielded for the current
+        # record number?  Don't we need to loop or recurse until we get the
+        # first entry for the desired record number?  
+        
+        # maybe this implies that we will always be called in a certain order.
+        # if so, we should at least add some assertions to enforce that.
 
         return self._get_next_entry()
 
@@ -109,6 +128,19 @@ _environment_list = ["PYTHONPATH",
 from anti_entropy.anti_entropy_util import identify_program_dir
 
 def _advance_to_record_number(node_subprocesses, current_record_number):
+
+    # XXX review: using all these advance_* functions is so complicated.  It's
+    # very hard to convince myself there aren't subtle errors in them.
+
+    # why can't we just have all the streams output results in a loosly
+    # consistent format (tuples with at least the first few terms consistent as
+    # needed for sorting) and then use heapq.merge to iterate over all of them
+    # in sorted order and yield batches?  We could probably eliminate much of
+    # this detailed logic.  
+
+    # If there's a good reason we need our own logic for this, I'll review all
+    # these functions in detail. For now I'm just reading quickly.
+
     log = logging.getLogger("_advance_to_record_number")
     log.debug("advancing to {0}".format(current_record_number))
     current_sequence_num = None
@@ -161,10 +193,37 @@ def generate_node_data(halt_event):
     log = logging.getLogger("generate_node_data")
     node_subprocesses = _start_subprocesses(halt_event)
 
-    # advance all subprocesses to prime he pump
+    # advance all subprocesses to prime the pump
     current_record_number = 1 
     current_sequence_num = \
         _advance_to_record_number(node_subprocesses, current_record_number)
+
+    # XXX review: as above, it seems much of this logic could be substituted
+    # for heapq.merge. No "advance" functions anywhere. then it's just this:
+
+    #    undefined = object() # disambiguate from None
+    #    batch, last_record_num, last_sequence_num = \
+    #        list(), undefined, undefined
+    #
+    #    for record in heapq.merge(*node_reader_generators):
+    #
+    #        batch.append(record)
+    #
+    #        if last_record_num is undefined:
+    #            last_record_num = record.record_number
+    #        if last_sequence_num is undefined:
+    #            last_sequence_num = record.sequence_num
+    #
+    #        if (
+    #            record.record_number != last_record_num or
+    #            record.sequence_num != last_sequence_num
+    #        ):
+    #            yield batch
+    #            batch, last_record_num, last_sequence_num = \
+    #                list(), undefined, undefined
+
+    # then the main process gets one batch of data per segment and sequence_num
+    
 
     while current_sequence_num is not None and not halt_event.is_set():
         

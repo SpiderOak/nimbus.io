@@ -23,7 +23,8 @@ fi
 # these are new enough in the normal distribution
 sudo apt-get update
 sudo apt-get -y install libev3 libevent-dev m4 unifdef uuid-dev \
-	build-essential python-setuptools python-dev wget git-core libc-ares-dev
+	build-essential python-setuptools python-dev python-crypto wget git-core \
+    libc-ares-dev
 
 # you need to add the new apt sources for either postgresql 9.0 or 9.1
 # these are provided as a PPA by the maintainer of postgresql.
@@ -34,6 +35,7 @@ sudo apt-get -y install libev3 libevent-dev m4 unifdef uuid-dev \
 grep 'postgresql' /etc/apt/sources.list || {
 	sudo bash -c 'echo "deb http://ppa.launchpad.net/pitti/postgresql/ubuntu lucid main" >> /etc/apt/sources.list'
 	sudo bash -c 'echo "deb-src http://ppa.launchpad.net/pitti/postgresql/ubuntu lucid main" >> /etc/apt/sources.list'
+    sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 8683D8A2
 	sudo apt-get update
 }
 sudo apt-get install postgresql-9.1 libpq-dev

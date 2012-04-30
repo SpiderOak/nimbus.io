@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-garbage_collector_main.py
+node_inspector_main.py
 """
 import errno
 import hashlib
@@ -34,6 +34,7 @@ _max_value_file_time_str = \
         os.environ.get("NIMBUSIO_MAX_TIME_BETWEEN_VALUE_FILE_INTEGRITY_CHECK",
                        "weeks=1")
 _max_value_file_time = None
+_read_buffer_size = 1024 ** 2
 
 # If the value file is missing, 
 # consider all of the segment_sequences to be missing
@@ -101,7 +102,7 @@ def _value_file_status(connection, entry):
     # Always do a stat on the value file. 
     try:
         stat_result = os.stat(value_file_path)
-    except Exception as instance:
+    except OSError as instance:
         # If the value file is missing, consider all of the segment_sequences 
         # to be missing, and handle it as such.
         if instance.errno == errno.ENOENT:
@@ -145,35 +146,61 @@ def _value_file_status(connection, entry):
     if value_file_row_age < _max_value_file_time:
         return _value_file_valid
 
+    value_file_result = _value_file_valid
+
     # If the value matches all the previous criteria EXCEPT the 
     # MAX_TIME_BETWEEN_VALUE_FILE_INTEGRITY_CHECK, then read the whole file, 
     # and calculate the md5. If it matches, consider the whole file good as 
     # above. Update last_integrity_check_time regardless.
-    _update_value_file_last_integrity_check_time(connection,
-                                                 entry.value_file_id,
-                                                 create_timestamp())
 
     md5_sum = hashlib.md5()
     with open(value_file_path, "rb") as input_file:
-        md5_sum.update(input_file.read())
+        while True:
+            try:
+                data = input_file.read(buffer_size)
+            except (OSError, IOError) as instance:
+                log.error("Error reading {0} {1}".format(value_file_path, 
+                                                         instance))
+                value_file_result =  _value_file_questionable
+                break
+            if len(data) == 0:
+                break
+            md5_sum.update(data)
 
-    if md5_sum.digest() != bytes(entry.value_file_hash):
+    if value_file_result == _value_file_value and \
+       md5_sum.digest() != bytes(entry.value_file_hash):
         log.error(
             "md5 mismatch {0} {1} {2} {3}".format(md5_sum.digest(),
                                                   bytes(entry.value_file_hash),
                                                   batch_key,
                                                   value_file_path))
-        return _value_file_questionable
+        value_file_result =  _value_file_questionable
 
-    return _value_file_valid
+
+    # we're only supposed to do this after we've also read the file
+    # and inserted any damage. not before. otherwise it's a race condition --
+    # we may crash before finishing checking the file, and then the file
+    # doesn't get checked, but it's marked as checked.
+    _update_value_file_last_integrity_check_time(connection,
+                                                 entry.value_file_id,
+                                                 create_timestamp())
+
+    return value_file_result
 
 def _verify_entry_against_value_file(entry):
+    log = logging.getLogger("_verify_entry_against_vaue_file")
     value_file_path = compute_value_file_path(_repository_path, 
                                               entry.value_file_id)
     md5_sum = hashlib.md5()
     with open(value_file_path, "rb") as input_file:
-        input_file.seek(entry.value_file_offset)
-        md5_sum.update(input_file.read(entry.value_file_size))
+        try:
+            input_file.seek(entry.value_file_offset)
+            md5_sum.update(input_file.read(entry.value_file_size))
+        except (OSError, IOError) as instance:
+            log.error("Error seek/reading {0} {1}".format(value_file_path, 
+                                                          instance))
+            return False
+
     return md5_sum.digest() == bytes(entry.sequence_hash)
 
 def _process_work_batch(connection, known_value_files, batch):

@@ -154,18 +154,17 @@ def _value_file_status(connection, entry):
     # above. Update last_integrity_check_time regardless.
 
     md5_sum = hashlib.md5()
-    with open(value_file_path, "rb") as input_file:
-        while True:
-            try:
+    try:
+        with open(value_file_path, "rb") as input_file:
+            while True:
                 data = input_file.read(buffer_size)
-            except (OSError, IOError) as instance:
-                log.error("Error reading {0} {1}".format(value_file_path, 
-                                                         instance))
-                value_file_result =  _value_file_questionable
-                break
-            if len(data) == 0:
-                break
-            md5_sum.update(data)
+                if len(data) == 0:
+                    break
+                md5_sum.update(data)
+    except (OSError, IOError) as instance:
+        log.error("Error reading {0} {1}".format(value_file_path, 
+                                                 instance))
+        value_file_result =  _value_file_questionable
 
     if value_file_result == _value_file_value and \
        md5_sum.digest() != bytes(entry.value_file_hash):
@@ -192,14 +191,14 @@ def _verify_entry_against_value_file(entry):
     value_file_path = compute_value_file_path(_repository_path, 
                                               entry.value_file_id)
     md5_sum = hashlib.md5()
-    with open(value_file_path, "rb") as input_file:
-        try:
+    try:
+        with open(value_file_path, "rb") as input_file:
             input_file.seek(entry.value_file_offset)
             md5_sum.update(input_file.read(entry.value_file_size))
-        except (OSError, IOError) as instance:
-            log.error("Error seek/reading {0} {1}".format(value_file_path, 
-                                                          instance))
-            return False
+    except (OSError, IOError) as instance:
+        log.error("Error seek/reading {0} {1}".format(value_file_path, 
+                                                      instance))
+        return False
 
     return md5_sum.digest() == bytes(entry.sequence_hash)
 

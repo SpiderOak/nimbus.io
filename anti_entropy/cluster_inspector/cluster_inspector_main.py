@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-cluster_inspector_maibn.py
+cluster_inspector_main.py
 
 pull segment and damaged_segment rows from node local databases
 """

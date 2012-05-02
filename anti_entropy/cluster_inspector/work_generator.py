@@ -32,11 +32,6 @@ def _row_key_check(segment_data):
             row_key_set.add(_row_key(entry["segment-row"]))
     assert len(row_key_set) == 1, str(row_key_set)
 
-def _load_damaged_set(work_dir, node_name):
-    path = compute_damaged_segment_file_path(work_dir, node_name)
-    with gzip.GzipFile(filename=path, mode="rb") as input_file:
-        return retrieve_sized_pickle(input_file)
-
 class NodeRowGenerator(object):
     """
     generate segment row information for one node
@@ -44,7 +39,8 @@ class NodeRowGenerator(object):
     def __init__(self, work_dir, node_name):
         path = compute_segment_file_path(work_dir, node_name)
         self._segment_file = gzip.GzipFile(filename=path, mode="rb")
-        self._damaged_set = _load_damaged_set(work_dir, node_name)
+        path = compute_damaged_segment_file_path(work_dir, node_name)
+        self._damaged_file = gzip.GzipFile(filename=path, mode="rb")
         self.segment_row = None
         self.handoff_rows = list()
         self.advance()

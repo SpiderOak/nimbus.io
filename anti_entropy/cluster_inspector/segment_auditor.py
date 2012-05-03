@@ -32,20 +32,10 @@ _min_segment_age = os.environ.get("NIMBUSIO_MIN_ANTI_ENTROPY_AGE", "days=1")
 def _row_key(row):
     return (row["unified_id"], row["conjoined_part"], )
 
-def _first_row_key(segment_data):
-    return _row_key(list(segment_data.values())[0]["segment-row"])
-
-def _row_key_check(segment_data):
-    row_key_set = set()
-    for entry in segment_data.values():
-        if entry["segment-row"] is not None:
-            row_key_set.add(_row_key(entry["segment-row"]))
-    assert len(row_key_set) == 1, str(row_key_set)
-
 def _data_too_recent(segment_data, newest_allowable_timestamp):
-    for entry in segment_data.values():
-        if entry["segment-row"] is not None and \
-           entry["segment-row"]["timestamp"] > newest_allowable_timestamp:
+    for entry in segment_data:
+        if entry is not None and \
+           entry["timestamp"] > newest_allowable_timestamp:
             return True
     return False
 
@@ -64,8 +54,8 @@ def _missing_replicas(segment_data, newest_allowable_timestamp):
 
     segment_count = 0
     none_count = 0
-    for entry in segment_data.values():
-        if entry["segment-row"] is None:
+    for entry in segment_data:
+        if entry is None:
             none_count += 1
         else:
             segment_count += 1
@@ -84,9 +74,9 @@ def _missing_tombstones(segment_data, newest_allowable_timestamp):
         return False
 
     tombstone_count = 0
-    for entry in segment_data.values():
-        assert entry["segment-row"] is not None
-        if entry["segment-row"]["status"] == segment_status_tombstone:
+    for entry in segment_data:
+        assert entry is not None
+        if entry["status"] == segment_status_tombstone:
             tombstone_count += 1
 
     return (tombstone_count > 0) and (tombstone_count < 10)
@@ -103,9 +93,9 @@ def _incomplete_finalization(segment_data, newest_allowable_timestamp):
         return False
 
     final_count = 0
-    for entry in segment_data.values():
-        assert entry["segment-row"] is not None
-        if entry["segment-row"]["status"] == segment_status_final:
+    for entry in segment_data:
+        assert entry is not None
+        if entry["status"] == segment_status_final:
             final_count += 1
 
     return (final_count > 0) and (final_count < 10)
@@ -115,14 +105,14 @@ def _damaged_records(segment_data):
     return True if:
     1. one or more node has entries in the damaged_segment table.
     """
-    for entry in segment_data.values():
-        assert entry["segment-row"] is not None
-        if entry["is-damaged"]:
+    for entry in segment_data:
+        assert entry is not None
+        if len(entry["damaged_sequence_numbers"]) > 0:
             return True
 
     return False
 
-def _database_inconsistancy(segment_data):
+def _database_inconsistancy(row_key, segment_data):
     """
     return True if
     1. for the columns "timestamp", "file_size", "file_adler32", "file_hash", 
@@ -137,13 +127,11 @@ def _database_inconsistancy(segment_data):
 
     for key in test_keys:
         result_set = set()
-        for entry in segment_data.values():
-            assert entry["segment-row"] is not None
-            result_set.add(entry["segment-row"][key])
+        for entry in segment_data:
+            assert entry is not None
+            result_set.add(entry[key])
         if len(result_set) != 1:
-            log.debug("{0} {1} {2}".format(_first_row_key(segment_data), 
-                                           key, 
-                                           result_set))
+            log.debug("{0} {1} {2}".format(row_key, key, result_set))
             return True
 
     return False
@@ -178,60 +166,56 @@ def audit_segments(halt_event, work_dir):
     log.info("newest allowable timestamp = {0}".format(
         newest_allowable_timestamp.isoformat()))
 
-    for audit_data in generate_work(work_dir):
+    for row_key, segment_status, segment_data in generate_work(work_dir):
         if halt_event.is_set():
             log.info("halt_event is set: exiting")
             return
 
-        assert audit_data["segment-status"] == anti_entropy_pre_audit
-        _row_key_check(audit_data["segment-data"])
+        assert segment_status == anti_entropy_pre_audit
 
         counts["total"] += 1
         
         # missing replicas needs to run first, because the other tests
         # assume there are no missing replicas
-        if _missing_replicas(audit_data["segment-data"], 
-                             newest_allowable_timestamp):
-            log.debug("missing_replicas {0}".format(
-                _first_row_key(audit_data["segment-data"])))
+        if _missing_replicas(segment_data, newest_allowable_timestamp):
+            log.debug("missing_replicas {0}".format(row_key))
             counts[anti_entropy_missing_replicas] += 1
-            audit_data["segment-status"] = anti_entropy_missing_replicas
-            store_sized_pickle(audit_data, data_repair_file)
+            store_sized_pickle(
+                (row_key, anti_entropy_missing_replicas, segment_data, ), 
+                data_repair_file)
             continue
         
         # _missing_tombstones needs to run ahead of _incomplete_finalization
-        if _missing_tombstones(audit_data["segment-data"],
-                               newest_allowable_timestamp):
-            log.debug("missing_tombstones {0}".format(
-                _first_row_key(audit_data["segment-data"])))
+        if _missing_tombstones(segment_data, newest_allowable_timestamp):
+            log.debug("missing_tombstones {0}".format(row_key))
             counts[anti_entropy_missing_tombstones] += 1
-            audit_data["segment-status"] = anti_entropy_missing_tombstones
-            store_sized_pickle(audit_data, meta_repair_file)
+            store_sized_pickle(
+                (row_key, anti_entropy_missing_tombstones, segment_data, ), 
+                meta_repair_file)
             continue
 
-        if _incomplete_finalization(audit_data["segment-data"],
-                                    newest_allowable_timestamp):
-            log.debug("incomplete_finalization {0}".format(
-                _first_row_key(audit_data["segment-data"])))
+        if _incomplete_finalization(segment_data, newest_allowable_timestamp):
+            log.debug("incomplete_finalization {0}".format(row_key))
             counts[anti_entropy_incomplete_finalization] += 1
-            audit_data["segment-status"] = anti_entropy_incomplete_finalization
-            store_sized_pickle(audit_data, data_repair_file)
+            store_sized_pickle(
+                (row_key, anti_entropy_incomplete_finalization, segment_data,), 
+                data_repair_file)
             continue
 
-        if _damaged_records(audit_data["segment-data"]):
-            log.debug("damaged_records {0}".format(
-                _first_row_key(audit_data["segment-data"])))
+        if _damaged_records(segment_data):
+            log.debug("damaged_records {0}".format(row_key))
             counts[anti_entropy_damaged_records] += 1
-            audit_data["segment-status"] = anti_entropy_damaged_records
-            store_sized_pickle(audit_data, data_repair_file)
+            store_sized_pickle(
+                (row_key, anti_entropy_damaged_records, segment_data,), 
+                data_repair_file)
             continue
 
-        if _database_inconsistancy(audit_data["segment-data"]):
-            log.debug("database_inconsistancy {0}".format(
-                _first_row_key(audit_data["segment-data"])))
+        if _database_inconsistancy(row_key, segment_data):
+            log.debug("database_inconsistancy {0}".format(row_key))
             counts[anti_entropy_database_inconsistancy] += 1
-            audit_data["segment-status"] = anti_entropy_database_inconsistancy
-            store_sized_pickle(audit_data, data_repair_file)
+            store_sized_pickle(
+                (row_key, anti_entropy_database_inconsistency, segment_data,), 
+                data_repair_file)
             continue
 
     meta_repair_file.close()

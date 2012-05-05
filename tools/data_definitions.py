@@ -22,6 +22,15 @@ def random_string(size):
 incoming_slice_size = int(
     os.environ.get("NIMBUS_IO_SLICE_SIZE", str(10 * 1024 * 1024)))
 
+# we divide incoming files into N slices, 
+# each one gets a segment_sequence row
+# so we expect this batch to have N entries,
+def compute_expected_slice_count(file_size):
+    expected_slice_count = file_size // incoming_slice_size
+    if file_size % incoming_slice_size != 0:
+        expected_slice_count += 1
+    return expected_slice_count
+
 # the size of data used for zfec encoding of a segment
 block_size = 32 * 1024
 

@@ -14,7 +14,7 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
-from tools.data_definitions import incoming_slice_size, \
+from tools.data_definitions import compute_expected_slice_count, \
         zfec_slice_size, \
         compute_value_file_path, \
         parse_timedelta_str, \
@@ -212,13 +212,7 @@ def _process_work_batch(connection, known_value_files, batch):
     missing_sequence_numbers = list()
     defective_sequence_numbers = list()
 
-    # we divide incoming files into N slices, 
-    # each one gets a segment_sequence row
-    # so we expect this batch to have N entries,
-    expected_slice_count = batch[0].file_size // incoming_slice_size
-    if batch[0].file_size % incoming_slice_size != 0:
-        expected_slice_count += 1
-
+    expected_slice_count = compute_expected_slice_count(batch[0].file_size)
     expected_sequence_numbers = set(range(0, expected_slice_count))
     actual_sequence_numbers = set([entry.sequence_num for entry in batch])
     missing_sequence_numbers.extend(

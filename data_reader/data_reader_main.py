@@ -50,7 +50,6 @@ _retrieve_state_tuple = namedtuple("RetrieveState", [
     "block_count",
     "blocks_sent",
     "timeout",
-    "reply_socket",
 ])
 
 def _compute_state_key(message):
@@ -159,11 +158,6 @@ def _handle_retrieve_key_start(state, message, _data):
     Statgrabber.accumulate('nimbusio_read_requests', 1)
     Statgrabber.accumulate('nimbusio_read_bytes', sequence_row.size)
 
-    if "anti-entropy" in message:
-        reply_socket = state["anti-entropy-server"]
-    else:
-        reply_socket = state["resilient-server"]
-
     state_entry = _retrieve_state_tuple(
         generator=sequence_generator,
         sequence_row_count=sequence_row_count,
@@ -171,7 +165,6 @@ def _handle_retrieve_key_start(state, message, _data):
         block_count=message["block-count"],
         blocks_sent=len(encoded_block_list), 
         timeout=time.time() + _retrieve_timeout,
-        reply_socket=reply_socket
     )
 
     # save stuff we need to recall in state
@@ -205,7 +198,7 @@ def _handle_retrieve_key_start(state, message, _data):
     reply["segment-adler32"] = segment_adler32
     reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
-    state_entry.reply_socket.send_reply(reply, data=encoded_block_list)
+    state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_retrieve_key_next(state, message, _data):
     log = logging.getLogger("_handle_retrieve_key_next")
@@ -244,7 +237,7 @@ def _handle_retrieve_key_next(state, message, _data):
         log.exception("retrieving")
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
-        state_entry.reply_socket.send_reply(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     segment_md5 = hashlib.md5(segment_data)
@@ -254,7 +247,7 @@ def _handle_retrieve_key_next(state, message, _data):
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
-        state_entry.reply_socket.send_reply(reply)
+        state["resilient-server"].send_reply(reply)
         return
 
     encoded_block_list = list(encoded_block_generator(segment_data))
@@ -307,7 +300,52 @@ def _handle_retrieve_key_next(state, message, _data):
     reply["segment-adler32"] = segment_adler32
     reply["segment-md5-digest"] = b64encode(segment_md5_digest)
     reply["result"] = "success"
-    state_entry.reply_socket.send_reply(reply, data=encoded_block_list)
+    state["resilient-server"].send_reply(reply, data=encoded_block_list)
+
+def _handle_retrieve_segment_sequence(state, message, _data):
+    log = logging.getLogger("_handle_retrieve_segment_sequence")
+    state_key = _compute_state_key(message)
+    log.info("{0} sequence_num={1}".format(_str_state_key(state_key),
+                                           message["sequence-num"]))
+    reply = {
+        "message-type"          : "retrieve-segment-sequence-reply",
+        "client-tag"            : message["client-tag"],
+        "message-id"            : message["message-id"],
+        "segment-unified-id"    : message["segment-unified-id"],
+        "segment-conjoined-part": message["segment-conjoined-part"],
+        "segment-num"           : message["segment-num"],
+        "sequence_num"          : message["sequence-num"],
+        "zfec-padding-size"     : None,
+        "result"                : None,
+        "error-message"         : None,
+    }
+
+    try:
+        sequence_row, segment_data = state["reader"].retrieve_one_sequence(
+            message["segment-unified-id"],
+            message["segment-conjoined-part"],
+            message["segment-num"],
+            message["sequence-num"])
+    except Exception, instance:
+        log.exception("retrieving")
+        reply["result"] = "exception"
+        reply["error-message"] = str(instance)
+        state["resilient-server"].send_reply(reply)
+        return
+
+    segment_md5 = hashlib.md5(segment_data)
+    if segment_md5.digest() != str(sequence_row.hash):
+        error_message = "md5 mismatch %s" % (_str_state_key(state_key), )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["resilient-server"].send_reply(reply)
+        return
+
+    encoded_block_list = list(encoded_block_generator(segment_data))
+    reply["result"] = "success"
+    state["anti-entropy-server"].send_reply(reply, data=encoded_block_list)
 
 def _handle_web_server_start(_state, message, _data):
     log = logging.getLogger("_handle_web_server_start")
@@ -316,9 +354,10 @@ def _handle_web_server_start(_state, message, _data):
                            message["source-node-name"]))
 
 _dispatch_table = {
-    "retrieve-key-start"    : _handle_retrieve_key_start,
-    "retrieve-key-next"     : _handle_retrieve_key_next,
-    "web-server-start"      : _handle_web_server_start,
+    "retrieve-key-start"        : _handle_retrieve_key_start,
+    "retrieve-key-next"         : _handle_retrieve_key_next,
+    "retrieve-segment-sequence" : _handle_retrieve_segment_sequence, 
+    "web-server-start"          : _handle_web_server_start,
 }
 
 def _create_state():

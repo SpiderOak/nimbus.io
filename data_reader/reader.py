@@ -11,6 +11,9 @@ from tools.data_definitions import encoded_block_slice_size, \
         segment_sequence_template, \
         compute_value_file_path
 
+class ReaderError(Exception):
+    pass
+
 def _all_segment_rows_for_key(connection, collection_id, key):
     """
     retrieve all rows for collection-id and key
@@ -23,6 +26,44 @@ def _all_segment_rows_for_key(connection, collection_id, key):
         order by timestamp desc, segment_num asc
     """ % (",".join(segment_row_template._fields), ), [collection_id, key, ])
     return [segment_row_template._make(row) for row in result]
+
+def _sequence_row(
+    connection, 
+    segment_unified_id, 
+    segment_conjoined_part,
+    segment_num,
+    sequence_num
+):
+    """
+    retrieve row for a segment sequence identified by 
+     * unified_id
+     * conjoined_part
+     * segment_num
+     * sequence_num
+    """
+    log = logging.getLogger("_all_sequence_rows_for_segment")
+    result = connection.fetch_one_row("""
+        select %s from nimbusio_node.segment_sequence
+        where segment_id = (
+            select id from nimbusio_node.segment 
+            where unified_id = %%s
+            and conjoined_part = %%s
+            and segment_num = %%s
+            and handoff_node_id is null
+            and status = 'F'
+        )
+        and sequence_num = %%s
+    """ % (",".join(segment_sequence_template._fields), ), [
+        segment_unified_id, 
+        segment_conjoined_part,
+        segment_num, 
+        sequence_num,
+    ])
+
+    if result is None:
+        return None
+
+    return segment_sequence_template._make(result)
 
 def _all_sequence_rows_for_segment(
     connection, 
@@ -105,6 +146,41 @@ class Reader(object):
         and handoffs (segment_num)
         """
         return _all_segment_rows_for_key(self._connection, collection_id, key)
+
+    def retrieve_one_sequence(
+        self, 
+        segment_unified_id,
+        segment_conjoined_part,
+        segment_num,
+        sequence_num
+    ):
+        """
+        fetch data for one sequence
+        """
+        sequence_row = _sequence_row(
+            self._connection, 
+            segment_unified_id, 
+            segment_conjoined_part,
+            segment_num,
+            sequence_num
+        )
+
+        if sequence_row is None:
+            error_message = "No sequence {0} {1} {2} {3}".format(
+                segment_unified_id, 
+                segment_conjoined_part,
+                segment_num,
+                sequence_num)
+            self._log.error(error_message)
+            raise ReaderError(error_message)
+
+        value_file_path = compute_value_file_path(self._repository_path, 
+                                                  sequence_row.value_file_id) 
+        with open(value_file_path, "r") as value_file:
+            value_file.seek(sequence_row.value_file_offset)
+            encoded_segment = value_file.read(sequence_row.size)
+
+        return sequence_row, encoded_segment
    
     def generate_all_sequence_rows(
         self, 

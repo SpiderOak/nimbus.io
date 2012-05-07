@@ -14,9 +14,13 @@ import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
+from tools.data_definitions import compute_expected_slice_count
  
 from anti_entropy.anti_entropy_util import compute_data_repair_file_path, \
         anti_entropy_damaged_records
+
+class ClusterRepairError(Exception):
+    pass
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _client_tag = "anti-entropy-repair-%s" % (_local_node_name, )
@@ -24,86 +28,49 @@ _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 _data_reader_anti_entropy_addresses = \
         os.environ["NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESSES"].split()
 
-def _get_data_from_data_reader(message, req_socket):
+def _get_sequence_from_data_reader(req_socket, segment_row, sequence_num):
+    log = logging.getLogger("_get_sequence_from_data_reader")
+    message_id = uuid.uuid1().hex
+    message = {
+        "message-type"              : "retrieve-segment-sequence",
+        "client-tag"                : _client_tag,
+        "message-id"                : message_id,
+        "segment-unified-id"        : segment_row["unified_id"],
+        "segment-conjoined-part"    : segment_row["conjoined_part"],
+        "segment-num"               : segment_row["segment_num"],
+        "sequence-num"              : sequence_num, }
+
+    log.debug("sending retrieve-segment-sequence {0} {1} {2} {3}".format(
+        segment_row["unified_id"], 
+        segment_row["conjoined_part"],
+        segment_row["segment_num"],
+        sequence_num,
+    ))
+
     req_socket.send_json(message)
 
-    control = req_socket.recv_json()
+    reply = req_socket.recv_json()
     body = []
     while req_socket.rcvmore:
         body.append(req_socket.recv())
 
-    return control, body
+    if reply["result"] != "success":
+        error_message = "retrieve-segment-sequence failed {0}".format(
+            reply["error-message"])
+        raise ClusterRepairError(error_message)
 
-def _handle_damaged_records(req_socket, segment_row, result):
-    log = logging.getLogger("_handle_damaged_records")
-    log.info("record #{0}".format(result["record_number"]))
+    return body
 
-    message_id = uuid.uuid1().hex
-    message = {
-        "message-type"              : "retrieve-key-start",
-        "message-id"                : message_id,
-        "client-tag"                : _client_tag,
-        "anti-entropy"              : True,
-        "segment-unified-id"        : segment_row["unified_id"],
-        "segment-conjoined-part"    : segment_row["conjoined_part"],
-        "segment-num"               : segment_row["segment_num"],
-        "handoff-node-id"           : segment_row["handoff_node_id"],
-        "block-offset"              : 0,
-        "block-count"               : None,
-    }
+def _compute_part_label(sequence_num, expected_slice_count):
+    if sequence_num == 0:
+        if expected_slice_count == 1:
+            return "entire"
+        return "start"
+    if sequence_num == expected_slice_count-1:
+        return "finish"
+    return "next"
 
-    log.debug("sending retrieve-key-start {0} {1} {2}".format(
-        segment_row["unified_id"], 
-        segment_row["conjoined_part"],
-        segment_row["segment_num"]
-    ))
-
-    sequence = 0
-
-    while True:
-        reply, data_list = _get_data_from_data_reader(message, req_socket)
-
-        assert reply["message-type"] == "retrieve-key-reply", reply
-        if reply["result"] != "success":
-            log.error(reply["error-message"])
-            result["status"] = "error"
-            store_sized_pickle(result, sys.stdout.buffer)
-            return
-
-        if reply["completed"] and sequence == 0:
-            result["sequence_num"] = 0
-        else:
-            result["sequence_num"] = sequence + 1
-
-        result["status"] = "valid"
-        result["data"] = data_list
-        store_sized_pickle(result, sys.stdout.buffer)
-
-        if reply["completed"]:
-            break
-
-        sequence += 1
-
-        message_id = uuid.uuid1().hex
-        message = {
-            "message-type"              : "retrieve-key-next",
-            "message-id"                : message_id,
-            "client-tag"                : _client_tag,
-            "anti-entropy"              : True,
-            "segment-unified-id"        : segment_row["unified_id"],
-            "segment-conjoined-part"    : segment_row["conjoined_part"],
-            "segment-num"               : segment_row["segment_num"],
-            "handoff-node-id"           : segment_row["handoff_node_id"],
-            "block-offset"              : 0,
-            "block-count"               : None,
-        }
-
-
-_dispatch_table = {
-    anti_entropy_damaged_records : _handle_damaged_records,
-}
-
-def _process_repair_entries(source_node_name, req_socket):
+def _process_repair_entries(index, source_node_name, req_socket):
     log = logging.getLogger("_process_repair_entries")
 
     repair_file_path = compute_data_repair_file_path()
@@ -113,41 +80,60 @@ def _process_repair_entries(source_node_name, req_socket):
     record_number = 0
     while True:
         try:
-            audit_data = retrieve_sized_pickle(repair_file)
+            row_key, segment_status, segment_data = \
+                    retrieve_sized_pickle(repair_file)
         except EOFError:
             log.debug("EOF at record number {0}".format(record_number))
             repair_file.close()
             return record_number
 
-        segment_data = audit_data["segment-data"][source_node_name]
-        segment_row = segment_data["segment-row"]
+        damaged_sequence_numbers = list()
+        for segment_row in segment_data:
+            damaged_sequence_numbers.extend(
+                segment_row["damaged_sequence_numbers"])
+
+        segment_row = segment_data[index]
 
         record_number += 1
         result = {"record_number"   : record_number,
-                  "status"          : None,	 
-                  "unified_id"      : segment_row["unified_id"],	 
-                  "conjoined_part"  : segment_row["conjoined_part"],
-                  "segment_num"     : segment_row["segment_num"],
-                  "sequence_num"    : None,
+                  "action"          : None,	 
+                  "part"            : None,	 
+                  "result"          : None,
                   "data"            : None,}
 
-        if segment_data["is-damaged"]:
-            log.debug("is-damaged {0} {1} {2}".format(
-                segment_row["unified_id"],	 
-                segment_row["conjoined_part"],
-                segment_row["segment_num"]))
-            result["status"] = "damaged"
-            store_sized_pickle(result, sys.stdout.buffer)
-            continue
+        expected_slice_count = \
+            compute_expected_slice_count(segment_row["file_size"])
 
-        segment_status = audit_data["segment-status"]
-        try:
-            _dispatch_table[segment_status](req_socket, segment_row, result)
-        except KeyError:
-            log.error("record #{0}: Unknown segment status {1}".format(
-                result["record-number"], segment_status))
-            result["status"] = "error"
-            store_sized_pickle(result, sys.stdout.buffer)
+        for sequence_num in range(0, expected_slice_count):
+            result["data"] = None
+            if sequence_num in damaged_sequence_numbers:
+                log.debug("{0} damaged sequence {1}".format(row_key,
+                                                            sequence_num))
+                result["action"] = "read"
+                result["part"] = _compute_part_label(sequence_num, 
+                                                     expected_slice_count)
+                try:
+                    data = _get_sequence_from_data_reader(req_socket, 
+                                                          segment_row, 
+                                                          sequence_num)
+                except Exception as  instance:
+                    log.exception("record #{0} sequence {1} {2}".format(
+                        record_number, sequence_num, instance))
+                    result["result"] = "error"
+                else:
+                    result["result"] = "success"
+                    result["data"] = data
+            else:
+                result["action"] = "skip"
+                result["result"] = None
+
+            unified_id, conjoined_part = row_key
+            sequence_key = (unified_id, conjoined_part, sequence_num)
+            log.debug("storing {0} {1}".format(sequence_key,
+                                               result["action"]))
+            #store_sized_pickle((sequence_key, segment_status, result, ), 
+            store_sized_pickle((sequence_key, segment_status, ), 
+                               sys.stdout.buffer)
 
 def main():
     """
@@ -177,7 +163,8 @@ def main():
     return_value = 0
 
     try:
-        audit_records_processed = _process_repair_entries(source_node_name, 
+        audit_records_processed = _process_repair_entries(index, 
+                                                          source_node_name, 
                                                           req_socket)
     except Exception as instance:
         log.exception(instance)
@@ -193,3 +180,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+

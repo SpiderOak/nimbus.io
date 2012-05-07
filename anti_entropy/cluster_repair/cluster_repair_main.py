@@ -8,6 +8,7 @@ import logging
 import os
 import os.path
 import signal
+import subprocess
 import sys
 from threading import Event
 
@@ -15,8 +16,9 @@ import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
+from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
 
-from anti_entropy.cluster_repair.node_data_reader import generate_node_data
+from anti_entropy.anti_entropy_util import identify_program_dir
 
 class ClusterRepairError(Exception):
     pass
@@ -25,10 +27,50 @@ _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_cluster_repair_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
 
+_read_buffer_size = int(
+    os.environ.get("NIMBUSIO_ANTI_ENTROPY_READ_BUFFER_SIZE", 
+                   str(10 * 1024 ** 2)))
+
+_environment_list = ["PYTHONPATH",
+                    "NIMBUSIO_LOG_DIR",
+                    "NIMBUSIO_LOG_LEVEL",
+                    "NIMBUSIO_NODE_NAME", 
+                    "NIMBUSIO_NODE_NAME_SEQ", 
+                    "NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESSES",
+                    "NIMBUSIO_REPOSITORY_PATH", ]
+
 def _create_signal_handler(halt_event):
     def cb_handler(*_):
         halt_event.set()
     return cb_handler
+
+def _start_read_subprocess():
+    environment = dict(
+        [(key, os.environ[key], ) for key in _environment_list])
+
+    anti_entropy_dir = identify_program_dir("anti_entropy")
+    subprocess_path = os.path.join(anti_entropy_dir,
+                               "cluster_repair",
+                               "node_data_reader.py")
+
+    args = [sys.executable, subprocess_path, ]
+    process = subprocess.Popen(args, 
+                               bufsize=_read_buffer_size,
+                               stdout=subprocess.PIPE, 
+                               env=environment)
+    assert process is not None
+    return process
+
+def _repair_cluster(halt_event, read_subprocess, write_subprocess):
+    log = logging.getLogger("_repair_cluster")
+    while not halt_event.is_set():
+        try:
+            data = retrieve_sized_pickle(read_subprocess.stdout)
+        except EOFError:
+            log.info("EOFError on input; assuming process complete")
+            break
+        else:
+            log.debug("got data")
 
 def main():
     """
@@ -48,10 +90,11 @@ def main():
     event_push_client = EventPushClient(zmq_context, "cluster_repair")
     event_push_client.info("program-start", "cluster_repair starts")  
 
-    try:
-        for result_dict in generate_node_data(halt_event):
-            pass
+    read_subprocess = _start_read_subprocess()
+    write_subprocess = None
 
+    try:
+        _repair_cluster(halt_event, read_subprocess, write_subprocess)
     except KeyboardInterrupt:
         halt_event.set()
     except Exception as instance:

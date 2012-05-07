@@ -5,94 +5,25 @@ node_data_reader.py
 manage 10 subprocesses to read data from nodes
 """
 import errno
+import heapq
+import itertools
 import logging
+import operator
 import os 
+import signal
 import subprocess
 import sys
+from threading import Event
 
-from tools.sized_pickle import retrieve_sized_pickle
+from tools.standard_logging import initialize_logging
+from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
 
 class NodeDataReaderError(Exception):
     pass
 
-class NodeSubProcess(object):
-    def __init__(self, node_name, process):
-        self._log = logging.getLogger("NodeSubProcess({0})".format(node_name))
-        self._node_name = node_name
-        self._process = process
-        self._entry = None
-        self._eof = False
-
-    def __getattr__(self, name):
-        return self._entry[name]
-
-    def advance_to_sequence_num(self, current_record_number, sequence_num):
-        self._log.debug("advance_to_sequence_num {0}".format(sequence_num))
-        if self._eof:
-            return False
-
-        assert  self._entry is not None
-        if self._entry["record_number"] != current_record_number:
-            return False
-
-        if self._entry["sequence_num"] is None or \
-           self._entry["sequence_num"] == sequence_num:
-            return True
-
-        assert self._entry["sequence_num"] == sequence_num-1, \
-            (self._entry["sequence_num"], sequence_num-1, )
-
-        if not self._get_next_entry():
-            return False
-
-        if self._entry["record_number"] != current_record_number:
-            return False
-        
-        assert self._entry["sequence_num"] == sequence_num, \
-            (self._entry["sequence_num"], sequence_num, )
-        return True
-
-    def advance_to_record_number(self, record_number):
-        self._log.debug("advance_to_record_number {0}".format(record_number))
-        if self._eof:
-            return False
-
-        if self._entry is not None:
-            if self._entry["record_number"] == record_number:
-                return True
-            assert self._entry["record_number"] == record_number-1
-
-        return self._get_next_entry()
-
-    def close(self):
-        try:
-            self._process.terminate()
-            self._process.wait()
-        except OSError as instance:
-            if instance.errno == errno.ESRCH:
-                pass
-            raise
-
-    def _get_next_entry(self):
-        try:
-            self._entry = retrieve_sized_pickle(self._process.stdout)
-        except EOFError:
-            self._process.wait()
-            self._process.poll()
-
-            if self._process.returncode != 0:
-                error_message = "subprocess {0} failed {1}".format(
-                    self._node_name, self._process.returncode)
-                self._log.error(error_message)
-                raise NodeDataReaderError(error_message)
-
-            self._log.info("EOF")
-            self._eof = True
-            self._entry = None
-            return False
-
-        return True
-
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_log_path = "{0}/nimbusio_cluster_repair_data_reader_{1}.log".format(
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 _read_buffer_size = int(
     os.environ.get("NIMBUSIO_ANTI_ENTROPY_READ_BUFFER_SIZE", 
@@ -108,115 +39,37 @@ _environment_list = ["PYTHONPATH",
 
 from anti_entropy.anti_entropy_util import identify_program_dir
 
-def _advance_to_record_number(node_subprocesses, current_record_number):
-    log = logging.getLogger("_advance_to_record_number")
-    log.debug("advancing to {0}".format(current_record_number))
-    current_sequence_num = None
-    advanced_count = 0
+def _create_signal_handler(halt_event):
+    def cb_handler(*_):
+        halt_event.set()
+    return cb_handler
 
-    for node_subprocess in node_subprocesses:
-        advanced = \
-            node_subprocess.advance_to_record_number(current_record_number)
-        if advanced:
-            advanced_count += 1
-            assert node_subprocess.record_number == current_record_number, \
-                ( node_subprocess.record_number, current_record_number, )
+def _node_generator(halt_event, node_name, node_subprocess):
+    log = logging.getLogger(node_name)
+    while not halt_event.is_set():
+        try:
+            yield retrieve_sized_pickle(node_subprocess.stdout)
+        except EOFError:
+            log.info("EOFError, assuming processing complete")
+            break
 
-            if current_sequence_num is None:
-                if node_subprocess.sequence_num is not None:
-                    current_sequence_num = node_subprocess.sequence_num
-
-            assert node_subprocess.sequence_num is None or \
-                node_subprocess.sequence_num == current_sequence_num, \
-                    (node_subprocess.sequence_num, current_sequence_num, )
-
-    if advanced_count == 0:
-        return None
-
-    return current_sequence_num
-
-def _advance_to_sequence_num(node_subprocesses, 
-                             current_record_number, 
-                             current_sequence_num):
-    log = logging.getLogger("_advance_to_sequence_num")
-    log.debug("advancing to {0}".format(current_sequence_num))
-    advanced_count = 0
-    for node_subprocess in node_subprocesses:
-        advanced = \
-            node_subprocess.advance_to_sequence_num(current_record_number, 
-                                                    current_sequence_num)
-        if advanced:
-            if node_subprocess.sequence_num is not None:
-                advanced_count += 1
-
-                assert node_subprocess.sequence_num == current_sequence_num, \
-                    (node_subprocess.sequence_num, current_sequence_num, )
-
-    return advanced_count > 0
-
-def generate_node_data(halt_event):
-    """
-    collate data from subprocesses pulling from nodes
-    """
-    log = logging.getLogger("generate_node_data")
-    node_subprocesses = _start_subprocesses(halt_event)
-
-    # advance all subprocesses to prime he pump
-    current_record_number = 1 
-    current_sequence_num = \
-        _advance_to_record_number(node_subprocesses, current_record_number)
-
-    while current_sequence_num is not None and not halt_event.is_set():
-        
-        result = {"record-number"   : current_record_number,
-                  "status"          : list(),	 
-                  "unified-id"      : node_subprocesses[0].unified_id,	 
-                  "conjoined-part"  : node_subprocesses[0].conjoined_part,
-                  "segment-num"     : list(),
-                  "sequence-num"    : current_sequence_num,
-                  "data"            : list(),}
-
-        for node_subprocess in node_subprocesses:
-            result["status"].append(node_subprocess.status)
-            result["segment-num"].append(node_subprocess.segment_num)
-            result["data"].append(node_subprocess.data)
-
-        log.debug("{0} {1} {2} {3} {4} {5}".format(
-            result["record-number"],
-            result["status"],	 
-            result["unified-id"],
-            result["conjoined-part"],
-            result["segment-num"],
-            result["sequence-num"]))
-
-        yield result
-
-        if current_sequence_num is None or current_sequence_num == 0:
-            current_sequence_num = None
-        else:
-            current_sequence_num += 1
-            advanced = \
-                _advance_to_sequence_num(node_subprocesses, 
-                                         current_record_number,
-                                         current_sequence_num)
-            if not advanced:
-                current_sequence_num = None
-
-        if current_sequence_num is None:
-            current_record_number += 1
-            current_sequence_num = \
-                _advance_to_record_number(node_subprocesses, 
-                                          current_record_number)
-
-    for node_subprocess in node_subprocesses:
-        node_subprocess.close()
+    returncode = node_subprocess.poll()
+    if returncode is None:
+        log.warn("subprocess still running")
+        node_subprocess.terminate()
+    log.debug("waiting for subprocess to terminate")
+    returncode = node_subprocess.wait()
+    if returncode == 0:
+        log.debug("subprocess terminated normally")
+    else:
+        log.warn("subprocess returned {0}".format(returncode))
 
 def _start_subprocesses(halt_event):
     """
     start subprocesses
     """
     log = logging.getLogger("start_subprocesses")
-    subprocesses = list()
+    node_generators = list()
 
     environment = dict(
         [(key, os.environ[key], ) for key in _environment_list])
@@ -230,7 +83,7 @@ def _start_subprocesses(halt_event):
 
         if halt_event.is_set():
             log.info("halt_event set: exiting")
-            return subprocesses
+            return node_generators
 
         log.info("starting subprocess {0}".format(node_name))
         args = [sys.executable, subprocess_path, str(index) ]
@@ -239,7 +92,45 @@ def _start_subprocesses(halt_event):
                                    stdout=subprocess.PIPE, 
                                    env=environment)
         assert process is not None
-        subprocesses.append(NodeSubProcess(node_name, process))
+        node_generators.append(_node_generator(halt_event, node_name, process))
 
-    return subprocesses
+    return node_generators
+
+def _manage_subprocesses(halt_event, merge_manager):
+    log = logging.getLogger("_manage_subprocesses")
+    while not halt_event.is_set():
+        group_object = itertools.groupby(merge_manager, operator.itemgetter(0))
+        for key, node_data_group in group_object:
+            log.debug("found group {0}".format(key))
+            store_sized_pickle(list(node_data_group), sys.stdout.buffer)
+
+def main():
+    """
+    main entry point
+
+    return 0 for success (exit code)
+    """
+    return_value = 0
+
+    initialize_logging(_log_path)
+    log = logging.getLogger("main")
+    log.info("program starts")
+
+    halt_event = Event()
+    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+
+    node_generators = _start_subprocesses(halt_event)
+    merge_manager = heapq.merge(*node_generators)
+
+    try:
+        _manage_subprocesses(halt_event, merge_manager)
+    except Exception as instance:
+        log.exception(instance)
+        return_value = 1
+
+    return return_value
+
+if __name__ == "__main__":
+    sys.exit(main())
+
 

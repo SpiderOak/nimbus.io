@@ -330,7 +330,7 @@ def _handle_retrieve_segment_sequence(state, message, _data):
         log.exception("retrieving")
         reply["result"] = "exception"
         reply["error-message"] = str(instance)
-        state["resilient-server"].send_reply(reply)
+        state["anti-entropy-server"].send_reply(reply)
         return
 
     segment_md5 = hashlib.md5(segment_data)
@@ -340,7 +340,7 @@ def _handle_retrieve_segment_sequence(state, message, _data):
         state["event-push-client"].error("md5-mismatch", error_message)  
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
-        state["resilient-server"].send_reply(reply)
+        state["anti-entropy-server"].send_reply(reply)
         return
 
     encoded_block_list = list(encoded_block_generator(segment_data))

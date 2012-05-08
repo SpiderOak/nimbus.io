@@ -10,7 +10,7 @@ except ImportError:
     import unittest
 
 from tools.data_definitions import block_generator
-from web_server.zfec_segmenter import ZfecSegmenter
+from tools.zfec_segmenter import ZfecSegmenter
 
 _min_segments = 8
 _num_segments = 10

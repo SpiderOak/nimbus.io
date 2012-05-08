@@ -22,6 +22,24 @@ def _run_tests(req_socket):
     success_count = 0
     failure_count = 0
 
+    test_data_size = 1024
+    test_data = os.urandom(test_data_size)
+
+    message = {"message-type" : "zfec-encode", }
+    req_socket.send_json(message, zmq.SNDMORE)
+    req_socket.send(test_data)
+
+    reply = req_socket.recv_json()
+    reply_data = list()
+    while req_socket.rcvmore:
+        reply_data.append(req_socket.recv())
+
+    if reply["result"] == "success":
+        success_count += 1
+    else:
+        log.error("test failed {0}".format(reply["error-message"]))
+        failure_count += 1
+
     return success_count, failure_count
 
 def main():

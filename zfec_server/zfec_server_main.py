@@ -40,8 +40,43 @@ def _bind_rep_socket(zeromq_context):
 
     return rep_socket
 
+_dispatch_table = {
+}
+
 def _process_one_request(rep_socket):
-    pass
+    log = logging.getLogger("_process_one_request")
+    request = rep_socket.recv_json()
+    request_data = list()
+    while rep_socket.rcvmore:
+        request_data.append(rep_socket.recv())
+
+    reply_data = []
+    if request["message-type"] in _dispatch_table:
+        function = _dispatch_table[request["message-type"]]
+        try:
+            reply, reply_data = function(request, request_data)
+        except Exception, instance:
+            log.exception(request)
+            reply = request.copy()
+            reply["message-type"] = \
+                    "-".join([request["message-type"], "reply"])
+            reply["result"] = "exception"
+            reply["error-message"] = str(instance)
+    else:
+        log.error("unknown message type '{0}'".format(request["message-type"]))
+        reply = request.copy()
+        reply["message-type"] = \
+                "-".join([request["message-type"], "reply"])
+        reply["result"] = "unknown-message-type"
+        reply["error-message"] = "Unknown message-type"
+
+    if len(reply_data) > 0:
+        rep_socket.send_json(reply, zmq.SNDMORE)
+        for segment in reply_data[:-1]:
+            rep_socket.send(segment, zmq.SNDMORE)
+        rep_socket.send(reply_data[-1])
+    else:
+        rep_socket.send_json(reply)
 
 def main():
     """
@@ -77,7 +112,7 @@ def main():
         log.info("program teminates normally")
     finally:
         rep_socket.close()
-        zmq_context.term()
+        zeromq_context.term()
 
     return return_value
 

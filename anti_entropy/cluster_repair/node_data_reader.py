@@ -96,13 +96,20 @@ def _start_subprocesses(halt_event):
 
     return node_generators
 
+def _group_key_function(node_data):
+    sequence_key = node_data[0]
+    unified_id, conjoined_part, sequence_num, _segment_num = sequence_key
+    return (unified_id, conjoined_part, sequence_num, )
+
 def _manage_subprocesses(halt_event, merge_manager):
     log = logging.getLogger("_manage_subprocesses")
-    while not halt_event.is_set():
-        group_object = itertools.groupby(merge_manager, operator.itemgetter(0))
-        for key, node_data_group in group_object:
-            log.debug("found group {0}".format(key))
-            store_sized_pickle(list(node_data_group), sys.stdout.buffer)
+    group_object = itertools.groupby(merge_manager, _group_key_function)
+    for key, node_data_group in group_object:
+        if  halt_event.is_set():
+            log.warn("halt_event set, exiting")
+            break
+        log.debug("found group {0}".format(key))
+        store_sized_pickle(list(node_data_group), sys.stdout.buffer)
 
 def main():
     """

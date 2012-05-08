@@ -128,11 +128,13 @@ def _process_repair_entries(index, source_node_name, req_socket):
                 result["result"] = None
 
             unified_id, conjoined_part = row_key
-            sequence_key = (unified_id, conjoined_part, sequence_num)
+            sequence_key = (unified_id, 
+                            conjoined_part, 
+                            sequence_num, 
+                            segment_row["segment_num"])
             log.debug("storing {0} {1}".format(sequence_key,
                                                result["action"]))
-            #store_sized_pickle((sequence_key, segment_status, result, ), 
-            store_sized_pickle((sequence_key, segment_status, ), 
+            store_sized_pickle((sequence_key, segment_status, result, ), 
                                sys.stdout.buffer)
 
 def main():

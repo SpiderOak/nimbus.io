@@ -180,6 +180,15 @@ def _value_file_status(connection, entry):
     # and inserted any damage. not before. otherwise it's a race condition --
     # we may crash before finishing checking the file, and then the file
     # doesn't get checked, but it's marked as checked.
+
+    # XXX review: this doesn't do what the review comment above says it
+    # must do.  if we have _value_file_questionable, have we inserted any
+    # damage yet? no, we aren't.  then we shouldn't be committing a transaction
+    # that updates the check time.  you can either update the database now
+    # withou committing the transaction, and wait until you've also checked the
+    # sequences and inserted any damage found, and commit the transaction then.
+    # OR you can delay updating the database at all until we're done checking
+    # all the sequences associated with this value file.
     _update_value_file_last_integrity_check_time(connection,
                                                  entry.value_file_id,
                                                  create_timestamp())

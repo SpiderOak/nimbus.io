@@ -32,6 +32,11 @@ def _start_pullers(halt_event, work_dir):
     log = logging.getLogger("start_pullers")
     pullers = dict()
 
+    # XXX review: why bother limiting the environment of the subprocess to
+    # these specific terms? Is there any harm in letting it use the default of
+    # inheriting the full ENV?  It's just a maintenance frustration because
+    # every time we add an ENV that influences how a Nimbus library works or
+    # something, we'll have to remember to update this list.
     environment = dict(
         [(key, os.environ[key], ) for key in _environment_list])
 

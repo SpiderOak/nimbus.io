@@ -305,11 +305,10 @@ def main():
 
     known_value_files = dict()
 
+    connection.execute("begin")
     try:
         for batch in generate_work(connection):
-            connection.execute("begin")
             _process_work_batch(connection, known_value_files, batch)
-            connection.commit()
     except Exception as instance:
         connection.rollback()
         exctype, value = sys.exc_info()[:2]
@@ -321,6 +320,8 @@ def main():
             exctype=instance.__class__.__name__
         )
         return -1
+    else:
+        connection.commit()
     finally:
         connection.close()
         event_push_client.close()

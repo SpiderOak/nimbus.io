@@ -82,7 +82,6 @@ def _store_damaged_segment(connection, entry, status, sequence_numbers):
           "conjoined_part"  : entry.conjoined_part,
           "sequence_numbers": sequence_numbers,
     })
-    connection.commit()
 
 def _update_value_file_last_integrity_check_time(connection, 
                                                  value_file_id,
@@ -91,7 +90,6 @@ def _update_value_file_last_integrity_check_time(connection,
         update nimbusio_node.value_file
         set last_integrity_check_time = %s
         where id = %s""", [timestamp, value_file_id, ])
-    connection.commit()
 
 def _value_file_status(connection, entry):
     log = logging.getLogger("_value_file_status")
@@ -181,14 +179,6 @@ def _value_file_status(connection, entry):
     # we may crash before finishing checking the file, and then the file
     # doesn't get checked, but it's marked as checked.
 
-    # XXX review: this doesn't do what the review comment above says it
-    # must do.  if we have _value_file_questionable, have we inserted any
-    # damage yet? no, we aren't.  then we shouldn't be committing a transaction
-    # that updates the check time.  you can either update the database now
-    # withou committing the transaction, and wait until you've also checked the
-    # sequences and inserted any damage found, and commit the transaction then.
-    # OR you can delay updating the database at all until we're done checking
-    # all the sequences associated with this value file.
     _update_value_file_last_integrity_check_time(connection,
                                                  entry.value_file_id,
                                                  create_timestamp())
@@ -317,8 +307,11 @@ def main():
 
     try:
         for batch in generate_work(connection):
+            connection.execute("begin")
             _process_work_batch(connection, known_value_files, batch)
+            connection.commit()
     except Exception as instance:
+        connection.rollback()
         exctype, value = sys.exc_info()[:2]
         log.exception("Exception processing batch {0} {1}".format(
             batch, instance))
@@ -328,11 +321,10 @@ def main():
             exctype=instance.__class__.__name__
         )
         return -1
-
-    connection.close()
-
-    event_push_client.close()
-    zmq_context.term()
+    finally:
+        connection.close()
+        event_push_client.close()
+        zmq_context.term()
 
     log.info("program terminates normally")
     return 0

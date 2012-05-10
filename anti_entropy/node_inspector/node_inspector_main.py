@@ -4,7 +4,6 @@ node_inspector_main.py
 """
 import errno
 import hashlib
-import io
 import logging
 import os
 import sys
@@ -15,7 +14,6 @@ from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 from tools.data_definitions import compute_expected_slice_count, \
-        zfec_slice_size, \
         compute_value_file_path, \
         parse_timedelta_str, \
         create_timestamp, \
@@ -155,7 +153,7 @@ def _value_file_status(connection, entry):
     try:
         with open(value_file_path, "rb") as input_file:
             while True:
-                data = input_file.read(buffer_size)
+                data = input_file.read(_read_buffer_size)
                 if len(data) == 0:
                     break
                 md5_sum.update(data)
@@ -164,7 +162,7 @@ def _value_file_status(connection, entry):
                                                  instance))
         value_file_result =  _value_file_questionable
 
-    if value_file_result == _value_file_value and \
+    if value_file_result == _value_file_valid and \
        md5_sum.digest() != bytes(entry.value_file_hash):
         log.error(
             "md5 mismatch {0} {1} {2} {3}".format(md5_sum.digest(),
@@ -286,10 +284,14 @@ def main():
     log.info("program starts; max_value_file_time = {0}".format(
         _max_value_file_time))
 
+    zmq_context =  zmq.Context()
+
+    event_push_client = EventPushClient(zmq_context, "node_inspector")
+    event_push_client.info("program-start", "node_inspector starts")  
+
     try:
         connection = get_node_local_connection()
     except Exception as instance:
-        exctype, value = sys.exc_info()[:2]
         log.exception("Exception connecting to database {0}".format(instance))
         event_push_client.exception(
             unhandled_exception_topic,
@@ -297,11 +299,6 @@ def main():
             exctype=instance.__class__.__name__
         )
         return -1
-
-    zmq_context =  zmq.Context()
-
-    event_push_client = EventPushClient(zmq_context, "node_inspector")
-    event_push_client.info("program-start", "node_inspector starts")  
 
     known_value_files = dict()
 
@@ -311,7 +308,6 @@ def main():
             _process_work_batch(connection, known_value_files, batch)
     except Exception as instance:
         connection.rollback()
-        exctype, value = sys.exc_info()[:2]
         log.exception("Exception processing batch {0} {1}".format(
             batch, instance))
         event_push_client.exception(

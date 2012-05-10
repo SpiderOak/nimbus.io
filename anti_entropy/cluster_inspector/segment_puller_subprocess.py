@@ -55,6 +55,10 @@ def _pull_segment_data(connection, work_dir, node_name):
         if segment_row.handoff_node_id is not None:
             handoff_rows.append(segment_row._asdict())
             continue
+        # XXX review: this loop arrangement will blow up in the edge case that
+        # a node has one or more handoffs for a particular (unified_id,
+        # conjoined_part,) but but doesn't actually have a local segment for
+        # it.  Which I think would be unlikely, but of course it is possible.
         for handoff_row in handoff_rows:
             assert handoff_row["unified_id"] == segment_row.unified_id
             assert handoff_row["conjoined_part"] == segment_row.conjoined_part
@@ -85,6 +89,17 @@ def _pull_damaged_segment_data(connection, work_dir, node_name):
     unified_id = None
     conjoined_part = None
     sequence_numbers = list()
+
+    # XXX review: I had a really hard time reading this loop.  I finally
+    # decided it's OK, but I probably spent 25 minutes on it.
+    # every one of these "batch things together" loops is a little
+    # different but has the same goal. maybe we should consider having a single
+    # library function that does it in a standardized way?  Hey, actually, that
+    # exists in the standard library. we should just use itertools.groupby with
+    # a key function.  Let's consider refactoring all of our batch things
+    # together loops to just use that.
+    # http://docs.python.org/py3k/library/itertools.html#itertools.groupby
+
     for result in result_generator:
         damaged_segment_row = _damaged_segment_template._make(result)
         if unified_id is None:

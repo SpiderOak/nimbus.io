@@ -15,14 +15,6 @@ class SegmentPullerError(Exception):
     pass
 
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
-_environment_list = ["PYTHONPATH",
-                    "NIMBUSIO_LOG_DIR",
-                    "NIMBUSIO_REPOSITORY_PATH",
-                    "NIMBUSIO_NODE_NAME_SEQ",
-                    "NIMBUSIO_NODE_DATABASE_HOSTS",
-                    "NIMBUSIO_NODE_DATABASE_PORTS",
-                    "NIMBUSIO_NODE_USER_PASSWORDS", 
-                    "NIMBUSIO_NODE_NAME", ]
 _polling_interval = 1.0
 
 def _start_pullers(halt_event, work_dir):
@@ -31,14 +23,6 @@ def _start_pullers(halt_event, work_dir):
     """
     log = logging.getLogger("start_pullers")
     pullers = dict()
-
-    # XXX review: why bother limiting the environment of the subprocess to
-    # these specific terms? Is there any harm in letting it use the default of
-    # inheriting the full ENV?  It's just a maintenance frustration because
-    # every time we add an ENV that influences how a Nimbus library works or
-    # something, we'll have to remember to update this list.
-    environment = dict(
-        [(key, os.environ[key], ) for key in _environment_list])
 
     anti_entropy_dir = identify_program_dir("anti_entropy")
     puller_path = os.path.join(anti_entropy_dir,
@@ -53,9 +37,7 @@ def _start_pullers(halt_event, work_dir):
 
         log.info("starting subprocess {0}".format(node_name))
         args = [sys.executable, puller_path, work_dir, str(index) ]
-        process = subprocess.Popen(args, 
-                                   stderr=subprocess.PIPE, 
-                                   env=environment)
+        process = subprocess.Popen(args, stderr=subprocess.PIPE)
         assert process is not None
         pullers[node_name] = process
 

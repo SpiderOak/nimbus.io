@@ -29,14 +29,6 @@ _read_buffer_size = int(
     os.environ.get("NIMBUSIO_ANTI_ENTROPY_READ_BUFFER_SIZE", 
                    str(10 * 1024 ** 2)))
 
-_environment_list = ["PYTHONPATH",
-                    "NIMBUSIO_LOG_DIR",
-                    "NIMBUSIO_LOG_LEVEL",
-                    "NIMBUSIO_NODE_NAME", 
-                    "NIMBUSIO_NODE_NAME_SEQ", 
-                    "NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESSES",
-                    "NIMBUSIO_REPOSITORY_PATH", ]
-
 from anti_entropy.anti_entropy_util import identify_program_dir
 
 def _create_signal_handler(halt_event):
@@ -71,9 +63,6 @@ def _start_subprocesses(halt_event):
     log = logging.getLogger("start_subprocesses")
     node_generators = list()
 
-    environment = dict(
-        [(key, os.environ[key], ) for key in _environment_list])
-
     anti_entropy_dir = identify_program_dir("anti_entropy")
     subprocess_path = os.path.join(anti_entropy_dir,
                                "cluster_repair",
@@ -89,8 +78,7 @@ def _start_subprocesses(halt_event):
         args = [sys.executable, subprocess_path, str(index) ]
         process = subprocess.Popen(args, 
                                    bufsize=_read_buffer_size,
-                                   stdout=subprocess.PIPE, 
-                                   env=environment)
+                                   stdout=subprocess.PIPE)
         assert process is not None
         node_generators.append(_node_generator(halt_event, node_name, process))
 

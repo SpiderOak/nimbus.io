@@ -49,6 +49,18 @@ def _start_read_subprocess():
     assert process is not None
     return process
 
+def _start_write_subprocess():
+    anti_entropy_dir = identify_program_dir("anti_entropy")
+    subprocess_path = os.path.join(anti_entropy_dir,
+                               "cluster_repair",
+                               "node_data_writer.py")
+
+    args = [sys.executable, subprocess_path, ]
+    process = subprocess.Popen(args, 
+                               stdin=subprocess.PIPE)
+    assert process is not None
+    return process
+
 def _repair_cluster(halt_event, read_subprocess, write_subprocess):
     log = logging.getLogger("_repair_cluster")
     while not halt_event.is_set():
@@ -79,7 +91,7 @@ def main():
     event_push_client.info("program-start", "cluster_repair starts")  
 
     read_subprocess = _start_read_subprocess()
-    write_subprocess = None
+    write_subprocess = _start_write_subprocess()
 
     try:
         _repair_cluster(halt_event, read_subprocess, write_subprocess)
@@ -93,9 +105,11 @@ def main():
             exctype=instance.__class__.__name__
         )
         return -3
-
-    event_push_client.close()
-    zmq_context.term()
+    finally:
+        read_subprocess.terminate()
+        write_subprocess.terminate()
+        event_push_client.close()
+        zmq_context.term()
 
     log.info("program terminates normally")
     return 0

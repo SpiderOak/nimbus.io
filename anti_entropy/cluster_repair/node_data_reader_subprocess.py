@@ -16,8 +16,7 @@ from tools.standard_logging import initialize_logging
 from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
 from tools.data_definitions import compute_expected_slice_count
  
-from anti_entropy.anti_entropy_util import compute_data_repair_file_path, \
-        anti_entropy_damaged_records
+from anti_entropy.anti_entropy_util import compute_data_repair_file_path
 
 class ClusterRepairError(Exception):
     pass
@@ -98,6 +97,7 @@ def _process_repair_entries(index, source_node_name, req_socket):
         result = {"record_number"   : record_number,
                   "action"          : None,	 
                   "part"            : None,	 
+                  "source_node_name": source_node_name,
                   "result"          : None,
                   "data"            : None,}
 

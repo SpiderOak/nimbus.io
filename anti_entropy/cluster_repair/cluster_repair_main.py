@@ -61,16 +61,46 @@ def _start_write_subprocess():
     assert process is not None
     return process
 
+def _repair_one_sequence(group_dict, write_subprocess):
+    log = logging.getLogger("_repair_one_sequence")
+
+    # all the data_reader subprocesses should agree on the action
+    action_set = set([n["action"] for n in group_dict["node_data"]])
+    if len(action_set) != 1:
+        error_message = \
+                "ambiguous action {0}: unified_id={0}, " \
+                "conjoined_part={1}, sequence_num={2}, " \
+                "segment_status={3}".format(action_set,
+                                            group_dict["unified_id"], 
+                                            group_dict["conjoined_part"],
+                                            group_dict["sequence_num"],
+                                            group_dict["segment_status"])
+        log.error(error_message)
+        raise ClusterRepairError(error_message)
+
+    action = list(action_set)[0]
+
+    log.debug(
+        "action={0} unified_id={1}, conjoined_part={2}, sequence_num={3}, " \
+        "segment_status={4}".format(action,
+                                    group_dict["unified_id"], 
+                                    group_dict["conjoined_part"],
+                                    group_dict["sequence_num"],
+                                    group_dict["segment_status"]))
+
+    if action == "skip":
+        return
+
 def _repair_cluster(halt_event, read_subprocess, write_subprocess):
     log = logging.getLogger("_repair_cluster")
     while not halt_event.is_set():
         try:
-            data = retrieve_sized_pickle(read_subprocess.stdout)
+            group_dict = retrieve_sized_pickle(read_subprocess.stdout)
         except EOFError:
             log.info("EOFError on input; assuming process complete")
             break
         else:
-            log.debug("got data")
+            _repair_one_sequence(group_dict, write_subprocess)
 
 def main():
     """

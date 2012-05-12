@@ -4,11 +4,9 @@ node_data_reader.py
 
 manage 10 subprocesses to read data from nodes
 """
-import errno
 import heapq
 import itertools
 import logging
-import operator
 import os 
 import signal
 import subprocess
@@ -92,12 +90,31 @@ def _group_key_function(node_data):
 def _manage_subprocesses(halt_event, merge_manager):
     log = logging.getLogger("_manage_subprocesses")
     group_object = itertools.groupby(merge_manager, _group_key_function)
-    for key, node_data_group in group_object:
+    for (unified_id, conjoined_part, sequence_num), node_group in group_object:
+        group_dict = {
+            "unified_id"        : unified_id,
+            "conjoined_part"    : conjoined_part,
+            "sequence_num"      : sequence_num,
+            "segment_status"    : None,
+            "node_data"         : list()
+        }
         if  halt_event.is_set():
             log.warn("halt_event set, exiting")
             break
-        log.debug("found group {0}".format(key))
-        store_sized_pickle(list(node_data_group), sys.stdout.buffer)
+        for (_sequence_key, segment_status, node_data, ) in node_group:
+            if group_dict["segment_status"] is None:
+                group_dict["segment_status"] = segment_status
+            assert segment_status == group_dict["segment_status"]
+            group_dict["node_data"].append(node_data)
+    
+        log.debug("group: unified_id={0}, conjoined_part={1}, "
+                  "sequence_num={2}, segment_status={3}".format(
+            group_dict["unified_id"], 
+            group_dict["conjoined_part"],
+            group_dict["sequence_num"],
+            group_dict["segment_status"]))
+
+        store_sized_pickle(group_dict, sys.stdout.buffer)
 
 def main():
     """

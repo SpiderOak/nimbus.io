@@ -247,6 +247,7 @@ class Reader(object):
             value_file = open_value_files[sequence_row.value_file_id]
             value_file.seek(sequence_row.value_file_offset)
             encoded_segment = value_file.read(sequence_row.size)
+            assert len(encoded_segment) == sequence_row.size
             yield sequence_row, encoded_segment
 
         for value_file in open_value_files.values():            

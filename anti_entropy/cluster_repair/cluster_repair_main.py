@@ -17,6 +17,11 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
+from tools.data_definitions import min_node_count, block_generator, \
+        zfec_padding_size, \
+        encoded_block_generator, \
+        compute_expected_slice_count, \
+        encoded_block_slice_size
 
 from anti_entropy.anti_entropy_util import identify_program_dir
 
@@ -30,6 +35,7 @@ _log_path = "{0}/nimbusio_cluster_repair_{1}.log".format(
 _read_buffer_size = int(
     os.environ.get("NIMBUSIO_ANTI_ENTROPY_READ_BUFFER_SIZE", 
                    str(10 * 1024 ** 2)))
+_zfec_server_address = os.environ["NIMBUSIO_ZFEC_SERVER_ADDRESS"]
 
 def _create_signal_handler(halt_event):
     def cb_handler(*_):
@@ -61,7 +67,85 @@ def _start_write_subprocess():
     assert process is not None
     return process
 
-def _repair_one_sequence(group_dict, write_subprocess):
+def _rebuild_sequence(zfec_server_req_socket, group_dict, write_subprocess):
+    log = logging.getLogger("_rebuild_sequence")
+    defective_nodes = list()
+    good_segment_nums = list()
+    block_generators = list()
+    data_size_set = set()
+    zfec_padding_size_set = set()
+    for node_entry in group_dict["node_data"]:
+        if node_entry["result"] == "success":
+            assert node_entry["data"] is not None
+            data_size_set.add(len(node_entry["data"]))
+            zfec_padding_size_set.add(node_entry["zfec_padding_size"])
+            block_generators = encoded_block_generator(node_entry["data"])
+            good_segment_nums.append(node_entry["segment_num"])
+        else:
+            defective_nodes.append(node_entry)
+
+    # if we don't have any defective nodes, something is wrong
+    if len(defective_nodes) == 0:
+        log.error("no defective nodes found")
+        return
+
+    # if we don't have enough good nodes to rebuild the sequence,
+    # we can't do anything
+    if len(block_generators) < min_node_count:
+        log.error("too few nodes ({0}) to rebuild sequence".format(
+            len(block_generators)))
+        return
+
+    # if the data blocks aren't all the same size, something is badly wrong
+    if len(data_size_set) != 1:
+        log.error("inconsistent size of data blocks {0}".format(data_size_set))
+        return
+    data_size = data_size_set.pop()
+
+    # if zfec_padding aren't all the same size, something is badly wrong
+    if len(zfec_padding_size_set) != 1:
+        log.error("inconsistent padding of data blocks {0}".format(
+            zfec_padding_size_set))
+        return
+    final_zfec_padding_size = zfec_padding_size_set.pop()
+
+    expected_slice_count = \
+            compute_expected_slice_count(data_size, 
+                                         slice_size=encoded_block_slice_size)
+
+    slice_count = 0
+    decoded_blocks = list()
+    for encoded_blocks in zip(block_generators[:min_node_count]):
+        slice_count += 1
+        if slice_count == expected_slice_count:
+            padding_size = final_zfec_padding_size
+        else:
+            padding_size = 0
+
+        request = {"message-type"    : "zfec-decode", 
+                   "segment-numbers" : good_segment_nums[:min_node_count],
+                   "padding-size"    : padding_size}
+
+        log.debug("sending zfec-decode {0}".format(slice_count))
+        zfec_server_req_socket.send_json(request, zmq.SNDMORE)
+
+        for data_segment in encoded_blocks[:-1]:
+            zfec_server_req_socket.send(data_segment, zmq.SNDMORE)
+        zfec_server_req_socket.send(encoded_blocks[-1])
+
+        log.debug("waiting reply")
+        reply = zfec_server_req_socket.recv_json()
+        
+        reply_data = list()
+        while zfec_server_req_socket.rcvmore:
+            reply_data.append(zfec_server_req_socket.recv())
+
+        assert reply["result"] == "success"
+        assert len(reply_data) == 1
+
+        decoded_blocks.append(reply_data[0])
+
+def _repair_one_sequence(zfec_server_req_socket, group_dict, write_subprocess):
     log = logging.getLogger("_repair_one_sequence")
 
     # all the data_reader subprocesses should agree on the action
@@ -91,7 +175,15 @@ def _repair_one_sequence(group_dict, write_subprocess):
     if action == "skip":
         return
 
-def _repair_cluster(halt_event, read_subprocess, write_subprocess):
+    if action == "read":
+        _rebuild_sequence(zfec_server_req_socket, group_dict, write_subprocess)
+
+    log.error("Unknown action '{0}'".format(action))
+
+def _repair_cluster(halt_event, 
+                    zfec_server_req_socket, 
+                    read_subprocess, 
+                    write_subprocess):
     log = logging.getLogger("_repair_cluster")
     while not halt_event.is_set():
         try:
@@ -99,8 +191,9 @@ def _repair_cluster(halt_event, read_subprocess, write_subprocess):
         except EOFError:
             log.info("EOFError on input; assuming process complete")
             break
-        else:
-            _repair_one_sequence(group_dict, write_subprocess)
+        _repair_one_sequence(zfec_server_req_socket, 
+                             group_dict, 
+                             write_subprocess)
 
 def main():
     """
@@ -120,11 +213,19 @@ def main():
     event_push_client = EventPushClient(zmq_context, "cluster_repair")
     event_push_client.info("program-start", "cluster_repair starts")  
 
+    zfec_server_req_socket = zmq_context.socket(zmq.REQ)
+    zfec_server_req_socket.setsockopt(zmq.LINGER, 1000)
+    log.info("connecting req socket to {0}".format(_zfec_server_address))
+    zfec_server_req_socket.connect(_zfec_server_address)
+
     read_subprocess = _start_read_subprocess()
     write_subprocess = _start_write_subprocess()
 
     try:
-        _repair_cluster(halt_event, read_subprocess, write_subprocess)
+        _repair_cluster(halt_event, 
+                        zfec_server_req_socket, 
+                        read_subprocess, 
+                        write_subprocess)
     except KeyboardInterrupt:
         halt_event.set()
     except Exception as instance:
@@ -139,6 +240,7 @@ def main():
         read_subprocess.terminate()
         write_subprocess.terminate()
         event_push_client.close()
+        zfec_server_req_socket.close()
         zmq_context.term()
 
     log.info("program terminates normally")

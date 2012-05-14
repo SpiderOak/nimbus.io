@@ -58,7 +58,7 @@ def _get_sequence_from_data_reader(req_socket, segment_row, sequence_num):
             reply["error-message"])
         raise ClusterRepairError(error_message)
 
-    return body
+    return reply["zfec-padding-size"], body
 
 def _compute_part_label(sequence_num, expected_slice_count):
     if sequence_num == 0:
@@ -94,12 +94,14 @@ def _process_repair_entries(index, source_node_name, req_socket):
         segment_row = segment_data[index]
 
         record_number += 1
-        result = {"record_number"   : record_number,
-                  "action"          : None,	 
-                  "part"            : None,	 
-                  "source_node_name": source_node_name,
-                  "result"          : None,
-                  "data"            : None,}
+        result = {"record_number"       : record_number,
+                  "action"              : None,	 
+                  "part"                : None,	 
+                  "zfec_padding_size"   : None,
+                  "source_node_name"    : source_node_name,
+                  "segment_num"         : segment_row["segment_num"],
+                  "result"              : None,
+                  "data"                : None,}
 
         expected_slice_count = \
             compute_expected_slice_count(segment_row["file_size"])
@@ -113,9 +115,10 @@ def _process_repair_entries(index, source_node_name, req_socket):
                 result["part"] = _compute_part_label(sequence_num, 
                                                      expected_slice_count)
                 try:
-                    data = _get_sequence_from_data_reader(req_socket, 
-                                                          segment_row, 
-                                                          sequence_num)
+                    result["zfec_padding_size"], data = \
+                            _get_sequence_from_data_reader(req_socket, 
+                                                           segment_row, 
+                                                           sequence_num)
                 except Exception as  instance:
                     log.exception("record #{0} sequence {1} {2}".format(
                         record_number, sequence_num, instance))

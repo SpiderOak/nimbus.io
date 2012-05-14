@@ -22,26 +22,29 @@ def random_string(size):
 incoming_slice_size = int(
     os.environ.get("NIMBUS_IO_SLICE_SIZE", str(10 * 1024 * 1024)))
 
-# we divide incoming files into N slices, 
-# each one gets a segment_sequence row
-# so we expect this batch to have N entries,
-def compute_expected_slice_count(file_size):
-    expected_slice_count = file_size // incoming_slice_size
-    if file_size % incoming_slice_size != 0:
-        expected_slice_count += 1
-    return expected_slice_count
-
 # the size of data used for zfec encoding of a segment
 block_size = 32 * 1024
+
+# minimum number of nodes in a functioning cluster
+min_node_count = 8
 
 # the zfec algorithm takes a string of length L and encodes it 
 # in M segments of which any K can be decoded to reproduce L
 # In our case M = 10 (10 nodes) K = 8
 def zfec_slice_size(data_size):
-    return data_size // 8
+    return data_size // min_node_count
 
 # the size of a zfec encoded block
 encoded_block_slice_size = zfec_slice_size(block_size)
+
+# we divide incoming files into N slices, 
+# each one gets a segment_sequence row
+# so we expect this batch to have N entries,
+def compute_expected_slice_count(file_size, slice_size=incoming_slice_size):
+    expected_slice_count = file_size // slice_size
+    if file_size % slice_size != 0:
+        expected_slice_count += 1
+    return expected_slice_count
 
 def _slice_generator(data, slice_size):
     start_pos = 0
@@ -56,6 +59,10 @@ def block_generator(data):
 
 def encoded_block_generator(data):
     return _slice_generator(data, encoded_block_slice_size)
+
+def zfec_padding_size(data):
+    modulus = len(data) % min_node_count
+    return (0 if modulus == 0 else min_node_count - modulus)
 
 # datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)
 _timestamp_repr_re = re.compile(r"""

@@ -71,15 +71,15 @@ def _rebuild_sequence(zfec_server_req_socket, group_dict, write_subprocess):
     log = logging.getLogger("_rebuild_sequence")
     defective_nodes = list()
     good_segment_nums = list()
-    block_generators = list()
-    data_size_set = set()
+    block_lists = list()
+    block_list_length_set = set()
     zfec_padding_size_set = set()
     for node_entry in group_dict["node_data"]:
         if node_entry["result"] == "success":
             assert node_entry["data"] is not None
-            data_size_set.add(len(node_entry["data"]))
+            block_list_length_set.add(len(node_entry["data"]))
             zfec_padding_size_set.add(node_entry["zfec_padding_size"])
-            block_generators = encoded_block_generator(node_entry["data"])
+            block_lists.append(node_entry["data"])
             good_segment_nums.append(node_entry["segment_num"])
         else:
             defective_nodes.append(node_entry)
@@ -91,16 +91,17 @@ def _rebuild_sequence(zfec_server_req_socket, group_dict, write_subprocess):
 
     # if we don't have enough good nodes to rebuild the sequence,
     # we can't do anything
-    if len(block_generators) < min_node_count:
+    if len(block_lists) < min_node_count:
         log.error("too few nodes ({0}) to rebuild sequence".format(
-            len(block_generators)))
+            len(block_lists)))
         return
 
-    # if the data blocks aren't all the same size, something is badly wrong
-    if len(data_size_set) != 1:
-        log.error("inconsistent size of data blocks {0}".format(data_size_set))
+    # if the block lists aren't all the same size, something is badly wrong
+    if len(block_list_length_set) != 1:
+        log.error("inconsistent size of blocks lists {0}".format(
+            block_list_length_set))
         return
-    data_size = data_size_set.pop()
+    block_list_length = block_list_length_set.pop()
 
     # if zfec_padding aren't all the same size, something is badly wrong
     if len(zfec_padding_size_set) != 1:
@@ -109,21 +110,20 @@ def _rebuild_sequence(zfec_server_req_socket, group_dict, write_subprocess):
         return
     final_zfec_padding_size = zfec_padding_size_set.pop()
 
-    expected_slice_count = \
-            compute_expected_slice_count(data_size, 
-                                         slice_size=encoded_block_slice_size)
+    block_lists = block_lists[:min_node_count]
+    good_segment_nums = good_segment_nums[:min_node_count]
 
     slice_count = 0
     decoded_blocks = list()
-    for encoded_blocks in zip(block_generators[:min_node_count]):
+    for encoded_blocks in zip(*block_lists):
         slice_count += 1
-        if slice_count == expected_slice_count:
+        if slice_count == block_list_length:
             padding_size = final_zfec_padding_size
         else:
             padding_size = 0
 
         request = {"message-type"    : "zfec-decode", 
-                   "segment-numbers" : good_segment_nums[:min_node_count],
+                   "segment-numbers" : good_segment_nums,
                    "padding-size"    : padding_size}
 
         log.debug("sending zfec-decode {0}".format(slice_count))
@@ -177,6 +177,7 @@ def _repair_one_sequence(zfec_server_req_socket, group_dict, write_subprocess):
 
     if action == "read":
         _rebuild_sequence(zfec_server_req_socket, group_dict, write_subprocess)
+        return
 
     log.error("Unknown action '{0}'".format(action))
 

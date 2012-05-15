@@ -22,6 +22,7 @@ source node_01_config.sh
 popd
 
 export NIMBUSIO_LOG_LEVEL="DEBUG"
+export NIMBUSIO_ZFEC_SERVER_ADDRESS="ipc:///${BASEDIR}sockets/${NIMBUSIO_NODE_NAME}.zfec_server.socket"
 
 # run unit tests with identity file
 $PYTHON "${HOME}/nimbus.io/anti_entropy/cluster_repair/cluster_repair_main.py"

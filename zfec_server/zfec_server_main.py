@@ -51,7 +51,7 @@ def _padding_size(data):
     modulus = len(data) % _min_segments
     return (0 if modulus == 0 else _min_segments - modulus)
 
-def _handle_zfec_encode(request, request_data):
+def _handle_zfec_encode(_request, request_data):
     log = logging.getLogger("_handle_zfec_encode")
     log.debug("encode {0} bytes".format(len(request_data[0])))
     encoder = Encoder(_min_segments, _num_segments)
@@ -79,9 +79,33 @@ def _handle_zfec_decode(request, request_data):
     log.debug("decode to {0} bytes".format(len(decoded_block)))
     return reply, [decoded_block, ]
 
+def _handle_zfec_rebuild_encoded_shares(request, request_data):
+    log = logging.getLogger("_handle_zfec_rebuild_encoded_shares")
+
+    # first decode the good segments into the original data
+    decoder = Decoder(_min_segments, _num_segments)
+    zfec_segment_numbers = [n-1 for n in request["segment-numbers"]]
+    decoded_block = decoder.decode(request_data, 
+                                   zfec_segment_numbers,
+                                   request["padding-size"])
+
+    # now re-encode the block to get the missing segments
+    encoder = Encoder(_min_segments, _num_segments)
+    result_list = encoder.encode(decoded_block)
+
+    reply = {
+        "message-type"              : "zfec-rebuild-encoded-shares-reply",
+        "rebuilt-segment-numbers"   : request["needed-segment-numbers"],
+        "result"                    : "success",
+        "error-message"             : ""
+    }
+    log.debug("rebuilt {0}".format(reply["rebuilt-segment-numbers"]))
+    return reply, [result_list[n-1] for n in request["needed-segment-numbers"]]
+
 _dispatch_table = {
-    "zfec-encode" : _handle_zfec_encode,
-    "zfec-decode" : _handle_zfec_decode,
+    "zfec-encode"                   : _handle_zfec_encode,
+    "zfec-decode"                   : _handle_zfec_decode,
+    "zfec-rebuild-encoded-shares"   : _handle_zfec_rebuild_encoded_shares,
 }
 
 def _process_one_request(rep_socket):
@@ -159,7 +183,7 @@ def main():
             return 0
         log.exception("error processing request")
         return_value = 1
-    except Exception as instance:
+    except Exception:
         log.exception("error processing request")
         return_value = 1
     else:

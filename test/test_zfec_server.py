@@ -9,7 +9,6 @@ import logging
 import os
 import random
 import sys
-import uuid
 
 import zmq
 
@@ -69,6 +68,26 @@ def _run_test(req_socket, segment_size):
     if decoded_data != test_data:
         log.error("decoded data does not match test data")
         return False
+    
+    for padding_size, encoded_block in encoded_blocks:
+        good_segment_numbers = random.sample(segment_numbers, _min_segments)
+        bad_segment_numbers = \
+                list(set(segment_numbers) - set(good_segment_numbers))
+        request = {"message-type"           : "zfec-rebuild-encoded-shares",
+                   "segment-numbers"        : good_segment_numbers,
+                   "needed-segment-numbers" : bad_segment_numbers,
+                   "padding-size"           : padding_size}
+        good_segments = [encoded_block[n-1] for n in good_segment_numbers]
+        reply, reply_data = _contact_server(req_socket, request, good_segments)
+        if reply["result"] != "success":
+            log.error("{0} failed {1}".format(request, reply))
+            return False
+
+        zip_object = zip(reply["rebuilt-segment-numbers"], reply_data)
+        for segment_num, rebuilt_segment in zip_object:
+            if rebuilt_segment != encoded_block[segment_num-1]:
+                log.error("{0} failed rebuilt block mismatch".format(request))
+                return False
 
     return True
 

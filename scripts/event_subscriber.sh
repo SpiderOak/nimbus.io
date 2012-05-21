@@ -1,5 +1,5 @@
 #!/bin/bash
-TEST_DIR="$1"
+TEST_DIR="$2"
 export NIMBUSIO="${HOME}/git/nimbus.io"
 export PYTHONPATH="${NIMBUSIO}"
 export NIMBUSIO_LOG_DIR="${TEST_DIR}/logs"

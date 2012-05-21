@@ -69,7 +69,7 @@ done
 export NIMBUSIO_CONNECTION_TIMEOUT=360.0
 
 # run the benchmark
-"${PYTHON} $MOTOBOTO_BENCH_DIR/motoboto_benchmark_greenlet_main.py \
+${PYTHON} $MOTOBOTO_BENCH_DIR/motoboto_benchmark_greenlet_main.py \
     --test-script="$SCRIPTS_DIR/motoboto_big_test_script.json" \
     --user-identity-dir="$CLIENT_PATH" \
     --max-users=100 \

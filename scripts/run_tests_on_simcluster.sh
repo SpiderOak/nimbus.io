@@ -48,7 +48,7 @@ source $BASEDIR/config/client_config.sh
 # create our test user and save the identify file
 if [ ! -e $MOTOBOTO_IDENTITY ]; then
     echo "Creating new user $TEST_USERNAME"
-    python customer/customer_main.py --create-customer \
+    python2.7 customer/customer_main.py --create-customer \
         --username=$TEST_USERNAME > $MOTOBOTO_IDENTITY
 else
     echo "Using existing user $TEST_USERNAME"
@@ -58,7 +58,7 @@ export PYTHONPATH="${PYTHONPATH}:${MOTOBOTO_DIR}"
 pushd "${MOTOBOTO_DIR}/tests"
 
 # run unit tests with identity file
-python "test_all.py"
+python2.7 "test_all.py"
 
 popd
 

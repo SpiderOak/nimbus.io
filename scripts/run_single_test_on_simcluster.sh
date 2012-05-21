@@ -39,5 +39,7 @@ fi
 MOTOBOTO_DIR="${HOME}/motoboto"
 export PYTHONPATH="${PYTHONPATH}:${MOTOBOTO_DIR}"
 
+PYTHON="python2.7"
+
 # run unit tests with identity file
-python "${MOTOBOTO_DIR}/tests/${2}"
+${PYTHON} "${MOTOBOTO_DIR}/tests/${2}"

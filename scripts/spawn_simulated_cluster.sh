@@ -14,7 +14,7 @@ if [ -d $SIM_DIR ]; then
 fi
 PYTHON="python2.7"
 
-python test/nimbusio_sim/nimbusio_sim_main.py \
+$PYTHON test/nimbusio_sim/nimbusio_sim_main.py \
     --basedir $SIM_DIR --baseport $BASE_PORT \
     --logprune --start --singledb --create 
 # --systemdb

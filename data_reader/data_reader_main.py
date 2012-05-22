@@ -24,6 +24,7 @@ from tools.data_definitions import encoded_block_generator
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
 from tools.rep_server import REPServer
+from tools.sub_client import SUBClient
 from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
@@ -40,6 +41,8 @@ _log_path = "{0}/nimbusio_data_reader_{1}.log".format(
 _data_reader_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
 _data_reader_anti_entropy_address = \
         os.environ["NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESS"]
+_event_aggregator_pub_address = \
+        os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _retrieve_timeout = 30 * 60.0
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
@@ -349,9 +352,9 @@ def _handle_retrieve_segment_sequence(state, message, _data):
 
 def _handle_web_server_start(_state, message, _data):
     log = logging.getLogger("_handle_web_server_start")
-    log.info("%s %s %s" % (message["unified-id"], 
-                           message["timestamp-repr"],
-                           message["source-node-name"]))
+    log.info("{0} {1} {2}".format(message["unified_id"], 
+                                  message["timestamp_repr"],
+                                  message["source_node_name"]))
 
 _dispatch_table = {
     "retrieve-key-start"        : _handle_retrieve_key_start,
@@ -366,6 +369,7 @@ def _create_state():
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
         "anti-entropy-server"   : None,
+        "sub-client"            : None,
         "event-push-client"     : None,
         "stats-reporter"        : None,
         "state-cleaner"         : None,
@@ -403,6 +407,19 @@ def _setup(_halt_event, state):
     )
     state["anti-entropy-server"].register(state["pollster"])
 
+    topics = ["web-server-start", "segment-sequence-retrieved", ]
+    log.info("connecting sub-client to {0} subscribing to {1}".format(
+        _event_aggregator_pub_address,
+        topics))
+    state["sub-client"] = SUBClient(
+        state["zmq-context"],
+        _event_aggregator_pub_address,
+        topics,
+        state["receive-queue"],
+        queue_action="prepend"
+    )
+    state["sub-client"].register(state["pollster"])
+
     state["queue-dispatcher"] = DequeDispatcher(
         state,
         state["receive-queue"],
@@ -435,10 +452,7 @@ def _tear_down(_state):
     log.debug("stopping resilient server")
     state["resilient-server"].close()
     state["anti-entropy-server"].close()
-    state["event-push-client"].close()
-
-    state["zmq-context"].term()
-
+    state["
     state["reader"].close()
     state["database-connection"].close()
 

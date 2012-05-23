@@ -26,6 +26,7 @@ class DataReader(object):
         return self._node_name
 
     def retrieve_key_start(self, 
+                           task_unified_id,
                            segment_unified_id, 
                            segment_conjoined_part, 
                            segment_num,
@@ -33,6 +34,7 @@ class DataReader(object):
                            block_count):
         message = {
             "message-type"              : "retrieve-key-start",
+            "task_unified_id"           : task_unified_id,
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
@@ -84,6 +86,7 @@ class DataReader(object):
         return data, reply["zfec-padding-size"], reply["completed"]
 
     def retrieve_key_next(self, 
+                          task_unified_id,
                           segment_unified_id, 
                           segment_conjoined_part, 
                           segment_num,
@@ -91,6 +94,7 @@ class DataReader(object):
                           block_count):
         message = {
             "message-type"              : "retrieve-key-next",
+            "task_unified_id"           : task_unified_id,
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,

@@ -809,7 +809,9 @@ class Application(object):
         self._stats["retrieves"] += 1
 
         retriever = Retriever(
+            self._event_push_client,
             self._node_local_connection,
+            self._unified_id_factory,
             self.data_readers,
             collection_entry.collection_id,
             key,

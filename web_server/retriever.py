@@ -25,7 +25,9 @@ class Retriever(object):
     """Retrieves data from data readers."""
     def __init__(
         self, 
+        event_push_client,
         node_local_connection,
+        unified_id_factory,
         data_readers, 
         collection_id, 
         key, 
@@ -42,7 +44,9 @@ class Retriever(object):
             slice_offset,
             slice_size,
         ))
+        self._event_push_client = event_push_client
         self._node_local_connection = node_local_connection
+        self._unified_id_factory = unified_id_factory
         self._data_readers = data_readers
         self._collection_id = collection_id
         self._key = key
@@ -219,11 +223,13 @@ class Retriever(object):
             # until we are done
             start = True
             while True:
+                task_unified_id = self._unified_id_factory.next()
                 self._sequence += 1
-                self._log.debug("retrieve: %s %s %s" % (
+                self._log.debug("retrieve: {0} {1} {2} {3}".format(
                     self._sequence, 
                     status_row.seg_unified_id, 
                     status_row.seg_conjoined_part,
+                    task_unified_id
                 ))
                 # send a request to all node
                 for i, data_reader in enumerate(self._data_readers):
@@ -237,6 +243,7 @@ class Retriever(object):
                     if start:
                         task = self._pending.spawn(
                             data_reader.retrieve_key_start,
+                            task_unified_id,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,
@@ -246,6 +253,7 @@ class Retriever(object):
                     else:
                         task = self._pending.spawn(
                             data_reader.retrieve_key_next,
+                            task_unified_id,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,
@@ -259,9 +267,16 @@ class Retriever(object):
 
                 # wait for, and process, replies from the nodes
                 result_dict, completed = self._process_node_replies(timeout)
-                self._log.debug("retrieve: completed sequence %s" % (
-                    self._sequence,
+                self._log.debug("retrieve: completed sequence {0} {1}".format(
+                    self._sequence, task_unified_id
                 ))
+                self._event_push_client.info(
+                    "segment-sequence-retrieved",
+                    "{0} {1} {2}".format(self._sequence, 
+                                         status_row.seg_unified_id,
+                                         status_row.seg_conjoined_part),
+                    task_unified_id=task_unified_id
+                )
 
                 yield result_dict
                 if completed:

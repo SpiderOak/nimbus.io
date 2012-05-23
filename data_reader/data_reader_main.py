@@ -29,6 +29,7 @@ from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection
+from tools.LRUCache import LRUCache
 
 from data_reader.reader import Reader
 from data_reader.state_cleaner import StateCleaner
@@ -45,6 +46,7 @@ _event_aggregator_pub_address = \
         os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _retrieve_timeout = 30 * 60.0
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_max_task_unified_id_cache_size = 100
 
 _retrieve_state_tuple = namedtuple("RetrieveState", [ 
     "generator",
@@ -227,6 +229,16 @@ def _handle_retrieve_key_next(state, message, _data):
         "error-message"         : None,
     }
 
+    if message["task_unified_id"] in state["task_unified_id_cache"]:
+        reply_message = "ignoring request: task completed {0}".format(
+            message["task_unified_id"])
+        log.info(reply_message)
+        reply["result"] = "ignored"
+        reply["error-message"] = reply_message
+        state["resilient-server"].send_reply(reply)
+        del state["task_unified_id_cache"][message["task_unified_id"]]
+        return
+
     try:
         state_entry = state["active-requests"].pop(state_key)
     except KeyError:
@@ -323,6 +335,16 @@ def _handle_retrieve_segment_sequence(state, message, _data):
         "error-message"         : None,
     }
 
+    if message["task_unified_id"] in state["task_unified_id_cache"]:
+        reply_message = "ignoring request: task completed {0}".format(
+            message["task_unified_id"])
+        log.info(reply_message)
+        reply["result"] = "ignored"
+        reply["error-message"] = reply_message
+        state["resilient-server"].send_reply(reply)
+        del state["task_unified_id_cache"][message["task_unified_id"]]
+        return
+
     try:
         sequence_row, segment_data = state["reader"].retrieve_one_sequence(
             message["segment-unified-id"],
@@ -356,11 +378,17 @@ def _handle_web_server_start(_state, message, _data):
                                   message["timestamp_repr"],
                                   message["source_node_name"]))
 
+def _handle_segment_sequence_retrieved(state, message, _data):
+    log = logging.getLogger("_handle_segment_sequence_retrieved")
+    log.info("{0}".format(message["task_unified_id"]))
+    state["task-unified-id-cache"][message["task_unified_id"]] = None
+
 _dispatch_table = {
     "retrieve-key-start"        : _handle_retrieve_key_start,
     "retrieve-key-next"         : _handle_retrieve_key_next,
     "retrieve-segment-sequence" : _handle_retrieve_segment_sequence, 
     "web-server-start"          : _handle_web_server_start,
+    "segment-sequence-retrieved": _handle_segment_sequence_retrieved,
 }
 
 def _create_state():
@@ -378,6 +406,7 @@ def _create_state():
         "active-requests"       : dict(),
         "database-connection"   : None,
         "reader"                : None,
+        "task-unified-id-cache" : LRUCache(_max_task_unified_id_cache_size),
     }
 
 def _setup(_halt_event, state):
@@ -452,7 +481,7 @@ def _tear_down(_state):
     log.debug("stopping resilient server")
     state["resilient-server"].close()
     state["anti-entropy-server"].close()
-    state["
+    state["sub-client"].close()
     state["reader"].close()
     state["database-connection"].close()
 

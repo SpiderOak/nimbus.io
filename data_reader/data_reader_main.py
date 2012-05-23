@@ -229,14 +229,14 @@ def _handle_retrieve_key_next(state, message, _data):
         "error-message"         : None,
     }
 
-    if message["task_unified_id"] in state["task_unified_id_cache"]:
+    if message["task_unified_id"] in state["task-unified-id-cache"]:
         reply_message = "ignoring request: task completed {0}".format(
             message["task_unified_id"])
         log.info(reply_message)
         reply["result"] = "ignored"
         reply["error-message"] = reply_message
         state["resilient-server"].send_reply(reply)
-        del state["task_unified_id_cache"][message["task_unified_id"]]
+        del state["task-unified-id-cache"][message["task_unified_id"]]
         return
 
     try:
@@ -335,14 +335,14 @@ def _handle_retrieve_segment_sequence(state, message, _data):
         "error-message"         : None,
     }
 
-    if message["task_unified_id"] in state["task_unified_id_cache"]:
+    if message["task_unified_id"] in state["task-unified-id-cache"]:
         reply_message = "ignoring request: task completed {0}".format(
             message["task_unified_id"])
         log.info(reply_message)
         reply["result"] = "ignored"
         reply["error-message"] = reply_message
         state["resilient-server"].send_reply(reply)
-        del state["task_unified_id_cache"][message["task_unified_id"]]
+        del state["task-unified-id-cache"][message["task_unified_id"]]
         return
 
     try:

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- CODING: Utf-8 -*-
 """
 data_reader_main.py
 
@@ -452,7 +452,7 @@ def _tear_down(_state):
     log.debug("stopping resilient server")
     state["resilient-server"].close()
     state["anti-entropy-server"].close()
-    state["
+    state["sub-client"].close()
     state["reader"].close()
     state["database-connection"].close()
 

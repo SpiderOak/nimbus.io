@@ -146,6 +146,7 @@ node_row_template = namedtuple("NodeRow", [
 
 value_file_template = namedtuple("ValueFile", [
     "id",
+    "space_id",
     "creation_time",
     "close_time",
     "size",

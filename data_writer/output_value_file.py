@@ -64,15 +64,14 @@ def mark_value_files_as_closed(connection):
     connection.commit()
 
 class OutputValueFile(object):
-    def __init__(self, connection, repository_path):
-        # XXX temporary expedient until we implement file spaces
-        self._space_id = -1
+    def __init__(self, connection, space_id, repository_path):
+        self._space_id = space_id
         self._value_file_id =  _insert_value_file_default_row(connection,
-                                                             self._space_id)
+                                                              space_id)
         self._log = logging.getLogger("VF%08d" % (self._value_file_id, ))
         self._connection = connection
         self._value_file_path = compute_value_file_path(
-             repository_path, self._value_file_id
+             repository_path, space_id, self._value_file_id
         )
         self._log.info("opening %s" % (self._value_file_path, )) 
         self._value_file_fd = _open_value_file(self._value_file_path)
@@ -143,6 +142,7 @@ class OutputValueFile(object):
         )) 
         value_file_row = value_file_template(
             id=self._value_file_id,
+            space_id=self._space_id,
             creation_time=self._creation_time,
             close_time=create_timestamp(),
             size=self._size,

@@ -77,23 +77,35 @@ def _all_sequence_rows_for_segment(
      * segment_num
     """
     log = logging.getLogger("_all_sequence_rows_for_segment")
+    fields = ",".join(
+        ["seq.{0}".format(f) for f in segment_sequence_template._fields])
+    fields = ",".join([fields, "val.space_id"])
     result = connection.fetch_all_rows("""
-        select %s from nimbusio_node.segment_sequence
-        where segment_id = (
+        select {0} 
+        from nimbusio_node.segment_sequence seq 
+        inner join nimbusio_node.value_file val
+        on seq.value_file_id = val.id
+        where seq.segment_id = (
             select id from nimbusio_node.segment 
-            where unified_id = %%s
-            and conjoined_part = %%s
-            and segment_num = %%s
+            where unified_id = %s
+            and conjoined_part = %s
+            and segment_num = %s
             and handoff_node_id is null
             and status = 'F'
         )
-        order by sequence_num asc
-    """ % (",".join(segment_sequence_template._fields), ), [
+        order by seq.sequence_num asc
+    """.format(fields), [
         segment_unified_id, 
         segment_conjoined_part,
         segment_num, 
     ])
-    return [segment_sequence_template._make(row) for row in result]
+    result_list = list()
+    for row in result:
+        row_list = list(row)
+        entry = segment_sequence_template._make(row_list[:-1]), row_list[-1]
+        result_list.append(entry)
+
+    return result_list
 
 def _all_sequence_rows_for_handoff_segment(
     connection, 
@@ -175,6 +187,7 @@ class Reader(object):
             raise ReaderError(error_message)
 
         value_file_path = compute_value_file_path(self._repository_path, 
+                                                  sequence_row.space_id,
                                                   sequence_row.value_file_id) 
         with open(value_file_path, "r") as value_file:
             value_file.seek(sequence_row.value_file_offset)
@@ -215,7 +228,7 @@ class Reader(object):
         skip_count = 0
         offset_residue = 0
 
-        for sequence_row in sequence_rows:
+        for sequence_row, space_id in sequence_rows:
             blocks_in_sequence = sequence_row.size / encoded_block_slice_size
             if sequence_row.size % encoded_block_slice_size != 0:
                 blocks_in_sequence += 1
@@ -236,12 +249,12 @@ class Reader(object):
         # first yield is counts
         yield len(sequence_rows)-skip_count, skip_count, offset_residue
 
-        for sequence_row in sequence_rows[skip_count:]:
+        for sequence_row, space_id in sequence_rows[skip_count:]:
             if not sequence_row.value_file_id in open_value_files:
                 open_value_files[sequence_row.value_file_id] = open(
-                    compute_value_file_path(
-                        self._repository_path, sequence_row.value_file_id
-                    ), 
+                    compute_value_file_path(self._repository_path, 
+                                            space_id, 
+                                            sequence_row.value_file_id), 
                     "r"
                 )
             value_file = open_value_files[sequence_row.value_file_id]

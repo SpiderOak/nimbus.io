@@ -68,12 +68,17 @@ class OutputValueFile(object):
     """
     A value file for defragged output
     """
-    def __init__(self, connection, repository_path, expected_size=None):
+    def __init__(self, 
+                 connection, 
+                 space_id, 
+                 repository_path, 
+                 expected_size=None):
         self._log = logging.getLogger("OutputValueFile")
         self._connection = connection
+        self._space_id = space_id
         self._value_file_id = _get_next_value_file_id(connection)
         self._value_file_path = compute_value_file_path(
-            repository_path, self._value_file_id)
+            repository_path, space_id, self._value_file_id)
         self._expected_size = expected_size
         self._log.debug("opening {0} expected size = {1}".format(
             self._value_file_path, self._expected_size)) 

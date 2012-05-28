@@ -65,6 +65,12 @@ def _sequence_row(
 
     return segment_sequence_template._make(result)
 
+def _define_seq_val_fields():
+    fields = ",".join(
+        ["seq.{0}".format(f) for f in segment_sequence_template._fields])
+    fields = ",".join([fields, "val.space_id"])
+    return fields
+
 def _all_sequence_rows_for_segment(
     connection, 
     segment_unified_id, 
@@ -77,9 +83,7 @@ def _all_sequence_rows_for_segment(
      * segment_num
     """
     log = logging.getLogger("_all_sequence_rows_for_segment")
-    fields = ",".join(
-        ["seq.{0}".format(f) for f in segment_sequence_template._fields])
-    fields = ",".join([fields, "val.space_id"])
+    fields = _define_seq_val_fields()
     result = connection.fetch_all_rows("""
         select {0} 
         from nimbusio_node.segment_sequence seq 
@@ -119,24 +123,34 @@ def _all_sequence_rows_for_handoff_segment(
      * unified_id
      * segment_num
     """
+    fields = _define_seq_val_fields()
     result = connection.fetch_all_rows("""
-        select %s from nimbusio_node.segment_sequence
-        where segment_id = (
+        select {0} 
+        from nimbusio_node.segment_sequence seq 
+        inner join nimbusio_node.value_file val
+        on seq.value_file_id = val.id
+        where seq.segment_id = (
             select id from nimbusio_node.segment 
-            where unified_id = %%s
-            and conjoined_part = %%s
-            and segment_num = %%s
-            and handoff_node_id = %%s
+            where unified_id = %s
+            and conjoined_part = %s
+            and segment_num = %s
+            and handoff_node_id = %s
             and status = 'F'
         )
-        order by sequence_num asc
-    """ % (",".join(segment_sequence_template._fields), ), [
+        order by seq.sequence_num asc
+    """.format(fields), [
         segment_unified_id, 
         segment_conjoined_part,
         segment_num, 
         handoff_node_id,
     ])
-    return [segment_sequence_template._make(row) for row in result]
+    result_list = list()
+    for row in result:
+        row_list = list(row)
+        entry = segment_sequence_template._make(row_list[:-1]), row_list[-1]
+        result_list.append(entry)
+
+    return result_list
 
 class Reader(object):
     """

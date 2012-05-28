@@ -101,12 +101,9 @@ class NodeSim(object):
 
     def start(self):
 
-        try:
-            if self._createnew:
-                self._create_file_spaces()
-        except Exception:
-            self._log.exception("_create_file_spaces")
-            raise
+        if self._createnew:
+            self._create_file_spaces()
+            self._createnew = False
             
         self._log.debug("start")
 

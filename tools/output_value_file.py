@@ -32,6 +32,7 @@ def _insert_value_file_row(connection, value_file_row):
     cursor.execute("""
         insert into nimbusio_node.value_file (
             id,
+            space_id,
             creation_time,
             close_time,
             size,
@@ -47,6 +48,7 @@ def _insert_value_file_row(connection, value_file_row):
             last_integrity_check_time
         ) values (
             %(id)s,
+            %(space_id)s,
             %(creation_time)s::timestamp,
             %(close_time)s::timestamp,
             %(size)s,
@@ -75,6 +77,7 @@ class OutputValueFile(object):
                  expected_size=None):
         self._log = logging.getLogger("OutputValueFile")
         self._connection = connection
+        assert space_id is not None
         self._space_id = space_id
         self._value_file_id = _get_next_value_file_id(connection)
         self._value_file_path = compute_value_file_path(
@@ -136,6 +139,7 @@ class OutputValueFile(object):
 
         value_file_row = value_file_template(
             id=self._value_file_id,
+            space_id=self._space_id,
             creation_time=self._creation_time,
             close_time=create_timestamp(),
             size=self._size,

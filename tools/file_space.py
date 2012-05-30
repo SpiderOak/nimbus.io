@@ -11,6 +11,9 @@ from collections import defaultdict
 
 from tools.data_definitions import file_space_template
 
+class FileSpacesError(Exception):
+    pass
+
 def load_file_space_info(connection):
     """
     return a dict of lists of file_space rows keyed by purpose
@@ -51,6 +54,9 @@ def find_least_volume_space_id(purpose, file_space_info):
         if max_avail_space is None or avail_space > max_avail_space:
             max_avail_space = avail_space
             max_space_id = file_space_row.space_id
+
+    if max_space_id is None:
+        raise FileSpacesError("No space for purpose '{0}'".format(purpose))
 
     # XXX: should we have a check for minimum avalable space?
 

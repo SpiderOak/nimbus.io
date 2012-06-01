@@ -34,6 +34,8 @@ from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
 from tools.data_definitions import parse_timestamp_repr
+from tools.file_space import load_file_space_info, file_space_sanity_check
+
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
@@ -722,10 +724,15 @@ def _setup(_halt_event, state):
 
     state["database-connection"] = get_node_local_connection()
 
+    file_space_info = load_file_space_info(state["database-connection"]) 
+    file_space_sanity_check(file_space_info, _repository_path)
+
     # Ticket #1646 mark output value files as closed at startup
     mark_value_files_as_closed(state["database-connection"])
 
+
     state["writer"] = Writer(state["database-connection"], 
+                             file_space_info,
                              _repository_path,
                              state["active-segments"],
                              state["completions"])

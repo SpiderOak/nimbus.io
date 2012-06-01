@@ -15,6 +15,7 @@ _ref_row = namedtuple("RefRow", [
     "data_size",
     "data_hash",
     "data_adler32",
+    "space_id",
     "value_file_size",
     "value_row_num",
     "value_row_count",
@@ -95,9 +96,9 @@ create temp table gc_collectable_value_files as
  * we'll read them in batches, sort in memory, write sequentially, unlink
  */
 select s.id, s.collection_id, s.key, s.unified_id, 
-ss.sequence_num, ss.value_file_id, ss.value_file_offset, ss.size, ss.hash, 
-ss.adler32,
-vf.size,
+ss.sequence_num, ss.value_file_id, ss.value_file_offset, ss.size, 
+ss.hash, ss.adler32, 
+vf.space_id, vf.size,
 row_number() over value_rows as value_row_num,
 count(*) over value_rows as value_row_count
 from segment s 

@@ -316,10 +316,16 @@ class ClusterConfig(object):
         return os.path.join(self.basedir, "client")
 
     @property
+    def media_path(self):
+        "path to journal and storage volumes"
+        return os.path.join(self.basedir, "media")
+
+    @property
     def required_paths(self):
         "paths to all all folders that should exist to run this cluster"
         return [ self.basedir, self.log_path, self.profile_path, 
-                 self.socket_path, self.config_dir, self.client_path, ]
+                 self.socket_path, self.config_dir, self.client_path, 
+                 self.media_path, ]
 
     @property
     def node_repository_paths(self):

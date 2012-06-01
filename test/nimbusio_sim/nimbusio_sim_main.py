@@ -67,6 +67,9 @@ def main():
     if old_config.logprune:
         remove_files(config.log_path)
 
+    # save() sets createnew to false
+    createnew = config.createnew
+
     if old_config.createnew and not config.systemdb:
         config.database_users.update(create_database(config))
         print "Saving config to %s" % (config.config_path, )
@@ -84,7 +87,7 @@ def main():
     log.info("progam starts")
 
     log.info("entering main loop")
-    command_interpreter = CommandInterpreter(config)
+    command_interpreter = CommandInterpreter(config, createnew)
     if old_config.start:
         command_interpreter.do_start("all")
         print "Web servers at: %s" % ( ", ".join(config.web_server_urls), )

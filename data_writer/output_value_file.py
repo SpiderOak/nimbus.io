@@ -15,12 +15,12 @@ from tools.data_definitions import compute_value_file_path, \
         value_file_template, \
         create_timestamp
 
-def _insert_value_file_default_row(connection):
+def _insert_value_file_default_row(connection, space_id):
     # Ticket #1646: insert a row of defaults right at open
     value_file_id = connection.execute_and_return_id("""
-        insert into nimbusio_node.value_file default values 
+        insert into nimbusio_node.value_file (space_id) values (%s)
         returning id
-    """)
+    """, [space_id, ])
     connection.commit()
 
     return value_file_id
@@ -64,12 +64,14 @@ def mark_value_files_as_closed(connection):
     connection.commit()
 
 class OutputValueFile(object):
-    def __init__(self, connection, repository_path):
-        self._value_file_id =  _insert_value_file_default_row(connection)
+    def __init__(self, connection, space_id, repository_path):
+        self._space_id = space_id
+        self._value_file_id =  _insert_value_file_default_row(connection,
+                                                              space_id)
         self._log = logging.getLogger("VF%08d" % (self._value_file_id, ))
         self._connection = connection
         self._value_file_path = compute_value_file_path(
-             repository_path, self._value_file_id
+             repository_path, space_id, self._value_file_id
         )
         self._log.info("opening %s" % (self._value_file_path, )) 
         self._value_file_fd = _open_value_file(self._value_file_path)
@@ -140,6 +142,7 @@ class OutputValueFile(object):
         )) 
         value_file_row = value_file_template(
             id=self._value_file_id,
+            space_id=self._space_id,
             creation_time=self._creation_time,
             close_time=create_timestamp(),
             size=self._size,

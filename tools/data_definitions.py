@@ -85,11 +85,12 @@ _timestamp_repr_re = re.compile(r"""
 
 nimbus_meta_prefix = "__nimbus_io__"
 
-def compute_value_file_path(repository_path, value_file_id):
+def compute_value_file_path(repository_path, space_id, value_file_id):
     return os.path.join(
         repository_path, 
-        "%03d" % (value_file_id % 1000), 
-        "%08d" % value_file_id
+        str(space_id),
+        "{:03d}".format(value_file_id % 1000), 
+        "{:08d}".format(value_file_id)
     )
 
 def create_priority():
@@ -144,8 +145,16 @@ node_row_template = namedtuple("NodeRow", [
     "offline"]
 )
 
+file_space_template = namedtuple("FileSpace", [
+    "space_id",
+    "purpose",
+    "path",
+    "volume",
+    "creation_time"])
+
 value_file_template = namedtuple("ValueFile", [
     "id",
+    "space_id",
     "creation_time",
     "close_time",
     "size",

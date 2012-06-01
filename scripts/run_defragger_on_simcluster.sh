@@ -21,6 +21,8 @@ pushd "${BASEDIR}/config"
 source node_01_config.sh
 popd
 
+export NIMBUSIO_MIN_BYTES_FOR_DEFRAG_PASS="100"
+
 # run unit tests with identity file
 $PYTHON "${HOME}/git/nimbus.io/defragger/defragger_main.py"
 

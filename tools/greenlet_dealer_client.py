@@ -88,7 +88,7 @@ class GreenletDealerClient(Greenlet):
                 delivery_queue.put((message.control, message.body, ))
 
     def _send_message(self, message):
-        self._log.info("sending message: %s" % (message.control, ))
+        self._log.debug("sending message: %s" % (message.control, ))
 
         # don't send a zero size body 
         if type(message.body) not in [list, tuple, type(None), ]:

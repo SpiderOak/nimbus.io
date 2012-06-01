@@ -11,15 +11,22 @@ import zlib
 
 from tools.data_definitions import create_priority
 
-from web_server.exceptions import (
-    ArchiveFailedError,
-    DestroyFailedError,
-)
+def _segment_properties(segment):
+    segment_size = 0
+    segment_adler32 = 0
+    segment_md5 = hashlib.md5()
+    for data_block in segment:
+        segment_size += len(data_block)
+        segment_adler32 = zlib.adler32(data_block)
+        segment_md5.update(data_block)
+
+    return segment_size, segment_adler32, segment_md5
 
 class DataWriter(object):
 
     def __init__(self, node_name, resilient_client):
         self._log = logging.getLogger("DataWriter-%s" % (node_name, ))
+        self._node_name = node_name
         self._resilient_client = resilient_client
         self._archive_priority = None
 
@@ -27,15 +34,18 @@ class DataWriter(object):
     def connected(self):
         return self._resilient_client.connected
 
+    @property
+    def node_name(self):
+        return self._node_name
+
     def archive_key_entire(
         self,
         collection_id,
         key,
         unified_id,
         timestamp,
-        meta_dict,
-        conjoined_unified_id,
         conjoined_part,
+        meta_dict,
         segment_num,
         zfec_padding_size,
         file_size,
@@ -44,8 +54,8 @@ class DataWriter(object):
         segment,
         source_node_name,
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         message = {
             "message-type"              : "archive-key-entire",
@@ -54,13 +64,12 @@ class DataWriter(object):
             "key"                       : key, 
             "unified-id"                : unified_id,
             "timestamp-repr"            : repr(timestamp),
-            "conjoined-unified-id"      : conjoined_unified_id,
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
-            "segment-size"              : len(segment),
+            "segment-size"              : segment_size,
             "zfec-padding-size"         : zfec_padding_size,
             "segment-md5-digest"        : b64encode(segment_md5.digest()),
-            "segment-adler32"           : zlib.adler32(segment),
+            "segment-adler32"           : segment_adler32,
             "file-size"                 : file_size,
             "file-adler32"              : file_adler32,
             "file-hash"                 : b64encode(file_md5),
@@ -78,9 +87,7 @@ class DataWriter(object):
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def archive_key_start(
         self,
@@ -88,14 +95,15 @@ class DataWriter(object):
         key,
         unified_id,
         timestamp,
+        conjoined_part,
         segment_num,
         zfec_padding_size,
         sequence_num,
         segment,
         source_node_name
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         self._archive_priority = create_priority()
 
@@ -106,11 +114,12 @@ class DataWriter(object):
             "key"                   : key, 
             "unified-id"            : unified_id,
             "timestamp-repr"        : repr(timestamp),
+            "conjoined-part"        : conjoined_part,
             "segment-num"           : segment_num,
-            "segment-size"          : len(segment),
+            "segment-size"          : segment_size,
             "zfec-padding-size"     : zfec_padding_size,
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
-            "segment-adler32"       : zlib.adler32(segment),
+            "segment-adler32"       : segment_adler32,
             "sequence-num"          : sequence_num,
             "source-node-name"      : source_node_name,
             "handoff-node-name"     : None,
@@ -124,9 +133,7 @@ class DataWriter(object):
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def archive_key_next(
         self,
@@ -134,14 +141,15 @@ class DataWriter(object):
         key,
         unified_id,
         timestamp,
+        conjoined_part,
         segment_num,
         zfec_padding_size,
         sequence_num,
         segment,
         source_node_name
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         message = {
             "message-type"          : "archive-key-next",
@@ -150,11 +158,12 @@ class DataWriter(object):
             "key"                   : key,
             "unified-id"            : unified_id,
             "timestamp-repr"        : repr(timestamp),
+            "conjoined-part"        : conjoined_part,
             "segment-num"           : segment_num,
-            "segment-size"          : len(segment),
+            "segment-size"          : segment_size,
             "zfec-padding-size"     : zfec_padding_size,
             "segment-md5-digest"    : b64encode(segment_md5.digest()),
-            "segment-adler32"       : zlib.adler32(segment),
+            "segment-adler32"       : segment_adler32,
             "sequence-num"          : sequence_num,
             "source-node-name"      : source_node_name,
             "handoff-node-name"     : None,
@@ -167,9 +176,7 @@ class DataWriter(object):
             'sequence = %(sequence-num)s' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def archive_key_final(
         self,
@@ -177,9 +184,8 @@ class DataWriter(object):
         key,
         unified_id,
         timestamp,
-        meta_dict,
-        conjoined_unified_id,
         conjoined_part,
+        meta_dict,
         segment_num,
         zfec_padding_size,
         sequence_num,
@@ -189,8 +195,8 @@ class DataWriter(object):
         segment,
         source_node_name
     ):
-        segment_md5 = hashlib.md5()
-        segment_md5.update(segment)
+        segment_size, segment_adler32, segment_md5 = \
+                _segment_properties(segment)
 
         message = {
             "message-type"              : "archive-key-final",
@@ -199,13 +205,12 @@ class DataWriter(object):
             "key"                       : key,
             "unified-id"                : unified_id,
             "timestamp-repr"            : repr(timestamp),
-            "conjoined-unified-id"      : conjoined_unified_id,
             "conjoined-part"            : conjoined_part,
             "segment-num"               : segment_num,
-            "segment-size"              : len(segment),
+            "segment-size"              : segment_size,
             "zfec-padding-size"         : zfec_padding_size,
             "segment-md5-digest"        : b64encode(segment_md5.digest()),
-            "segment-adler32"           : zlib.adler32(segment),
+            "segment-adler32"           : segment_adler32,
             "sequence-num"              : sequence_num,
             "file-size"                 : file_size,
             "file-adler32"              : file_adler32,
@@ -224,9 +229,7 @@ class DataWriter(object):
             '%(message-type)s: %(collection-id)s %(key)s' % message
         )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise ArchiveFailedError(reply["error-message"])
+        return reply
 
     def destroy_key(
         self,
@@ -259,7 +262,5 @@ class DataWriter(object):
             'segment_num = %(segment-num)d' % message
             )
         reply, _data = delivery_channel.get()
-        if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
-            raise DestroyFailedError(reply["error-message"])
+        return reply
 

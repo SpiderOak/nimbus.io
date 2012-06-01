@@ -27,7 +27,7 @@ class ZeroMQPollster(object):
     functions. When the pollster finds that a socket is ready for non-blocking 
     I/O, it calls the callback.
 
-    Note that zeromq sockets are almost always writable so tghe pollster
+    Note that zeromq sockets are almost always writable so the pollster
     is used mostly for reads.
         
     .. _poller: http://zeromq.github.com/pyzmq/api/generated/zmq.core.poll.html

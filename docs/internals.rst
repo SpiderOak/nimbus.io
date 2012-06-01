@@ -1,11 +1,12 @@
 Internals
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
+   internals_overview
    resilience 
    tools
    web_server

@@ -6,18 +6,19 @@ A class that performs a destroy query on all data writers.
 """
 import logging
 import os
+import time
 
 import gevent
 import gevent.pool
+import gevent.queue
 
-from web_server.exceptions import (
-    AlreadyInProgress,
-    DestroyFailedError,
-)
+from web_server.exceptions import DestroyFailedError
 
-from web_server.local_database_util import current_status_of_key
+from web_server.local_database_util import current_status_of_key, \
+        current_status_of_version
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_task_timeout = 60.0
 
 class Destroyer(object):
     """Performs a destroy query on all data writers."""
@@ -31,67 +32,137 @@ class Destroyer(object):
         unified_id,
         timestamp        
     ):
-        self.log = logging.getLogger('Destroyer')
-        self.log.info('collection_id=%d, key=%r' % (collection_id, key, ))
+        self._log = logging.getLogger('Destroyer')
+        self._log.info('collection_id=%d, key=%r' % (collection_id, key, ))
         self._node_local_connection = node_local_connection
-        self.data_writers = data_writers
-        self.collection_id = collection_id
-        self.key = key
-        self.unified_id_to_delete = unified_id_to_delete
+        self._data_writers = data_writers
+        self._collection_id = collection_id
+        self._key = key
+        self._unified_id_to_delete = unified_id_to_delete
         self._unified_id = unified_id
         self.timestamp = timestamp
         self._pending = gevent.pool.Group()
-        self._done = []
-
-    def _join(self, timeout):
-        self._pending.join(timeout, True)
-        # make sure _done_link gets run first by cooperating
-        gevent.sleep(0)
-        if not self._pending:
-            return
-        raise DestroyFailedError()
+        self._finished_tasks = gevent.queue.Queue()
 
     def _done_link(self, task):
-        if isinstance(task.value, gevent.GreenletExit):
-            return
-        self._done.append(task)
-
-    def _spawn(self, run, *args):
-        task = self._pending.spawn(run, *args)
-        task.rawlink(self._done_link)
-        return task
+        self._finished_tasks.put(task, block=True)
 
     def destroy(self, timeout=None):
-        if self._pending:
-            raise AlreadyInProgress()
-
         # TODO: find a non-blocking way to do this
-        _conjoined_row, segment_rows = current_status_of_key(
-            self._node_local_connection, 
-            self.collection_id, 
-            self.key,
-            self.unified_id_to_delete
-        )
+        if self._unified_id_to_delete is None:
+            status_rows = current_status_of_key(
+                self._node_local_connection, 
+                self._collection_id,
+                self._key
+            )
+        else:
+            status_rows = current_status_of_version(
+                self._node_local_connection, 
+                self._unified_id_to_delete
+            )
 
-        if len(segment_rows) == 0:
-            raise DestroyFailedError
+        if len(status_rows) == 0:
+            raise DestroyFailedError("no status rows found")
 
-        file_size = sum([row.file_size for row in segment_rows])
+        file_size = sum([row.seg_file_size for row in status_rows])
 
-        for i, data_writer in enumerate(self.data_writers):
+        for i, data_writer in enumerate(self._data_writers):
             segment_num = i + 1
-            self._spawn(
+            task = self._pending.spawn(
                 data_writer.destroy_key,
-                self.collection_id,
-                self.key,
-                self.unified_id_to_delete,
+                self._collection_id,
+                self._key,
+                self._unified_id_to_delete,
                 self._unified_id,
                 self.timestamp,
                 segment_num,
                 _local_node_name,
             )
-        self._join(timeout)
-        self._done = []
+            task.link(self._done_link)
+            task.node_name = data_writer.node_name
+
+        self._process_node_replies(timeout)
 
         return file_size
+
+    def _process_node_replies(self, timeout):
+        finished_count = 0
+        error_count = 0
+        start_time = time.time()
+
+        # block on the finished_tasks queue until done
+        while finished_count < len(self._data_writers):
+            try:
+                task = self._finished_tasks.get(block=True, 
+                                                timeout=_task_timeout)
+            except gevent.queue.Empty:
+                elapsed_time = time.time() - start_time
+                if elapsed_time > timeout:
+                    error_message = \
+                        "timed out _finished_tasks %s %s %s" % (
+                            self._collection_id,
+                            self._key,
+                            self._unified_id
+                        )
+                    self._log.error(error_message)
+                    raise DestroyFailedError(error_message)
+
+                self._log.warn("timeout waiting for completed task")
+                continue
+
+            finished_count += 1
+            if isinstance(task.value, gevent.GreenletExit):
+                self._log.debug(
+                    "(%s) %s %s %s task ends with GreenletExit" % (
+                        self._collection_id,
+                        self._key,
+                        self._unified_id,
+                        task.node_name,
+                    )
+                )
+                error_count += 1
+                continue
+
+            if not task.successful():
+                # 2011-10-07 dougfort -- I don't know how a task
+                # could be unsuccessful
+                self._log.error("(%s) %s %s %s task unsuccessful" % (
+                    self._collection_id,
+                    self._key,
+                    self._unified_id,
+                    task.node_name,
+                ))
+                error_count += 1
+                continue
+
+            if task.value["result"] != "success":
+                self._log.error(
+                    "(%s) %s %s %s task ends with %s" % (
+                        self._collection_id,
+                        self._key,
+                        self._unified_id,
+                        task.node_name,
+                        task.value["error-message"]
+                    )
+                )
+                error_count += 1
+                continue
+
+            self._log.debug("(%s) %s %s %s task successful" % (
+                self._collection_id,
+                self._key,
+                self._unified_id,
+                task.node_name,
+            ))
+
+        if error_count > 0:
+            error_message = \
+                "%s errors %s %s %s" % (
+                    error_count,
+                    self._collection_id,
+                    self._key,
+                    self._unified_id
+                )
+            self._log.error(error_message)
+            raise DestroyFailedError(error_message)
 

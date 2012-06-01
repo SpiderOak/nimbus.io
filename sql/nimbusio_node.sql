@@ -18,9 +18,14 @@ create table conjoined (
     complete_timestamp timestamp,
     delete_timestamp timestamp,
     combined_size int8,
-    combined_hash bytea
+    combined_hash bytea,
+    handoff_node_id int4
 );
-create unique index conjoined_unified_id_idx on nimbusio_node.conjoined ("unified_id");
+create unique index conjoined_unified_id_idx on nimbusio_node.conjoined 
+("unified_id", "handoff_node_id");
+/* a partial index just for handoffs, so it's easy to find these records when a
+ * node comes back online */
+create index conjoined_handoff_idx on nimbusio_node.conjoined("handoff_node_id") where handoff_node_id is not null;
 
 /* every key and every handoff are stored in the same table, so a single index
  * lookup for reads finds both the key and the handoff with the same IO, and
@@ -48,7 +53,6 @@ create table segment (
     unified_id int8 not null, 
     timestamp timestamp not null,
     segment_num int2,
-    conjoined_unified_id int8, 
     conjoined_part int4 not null default 0,
     file_size int8 not null default 0,
     file_adler32 int4,
@@ -208,6 +212,19 @@ create table meta (
 /* get all meta data for a segment */
 create index meta_collection_id_segment_idx on nimbusio_node.meta(
     "collection_id", "segment_id");
+
+/* A table listing segment errors found by node inspector
+   status 'M' is missing sequence, 'D' is defective sequences */
+create table damaged_segment (
+    collection_id int4 not null,
+    key varchar(1024)not null,
+    status char not null,
+    unified_id int8 not null, 
+    timestamp timestamp not null,
+    segment_num int2 not null,
+    conjoined_part int4 not null default 0,
+    sequence_numbers int4[] not null
+);
 
 /* rollback; */
 commit;

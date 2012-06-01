@@ -2,7 +2,6 @@
 """
 A value file for defragged output
 """
-from datetime import datetime
 import hashlib
 import logging
 import os
@@ -10,7 +9,8 @@ import os
 import psycopg2
 
 from tools.data_definitions import compute_value_file_path, \
-        value_file_template
+        value_file_template, \
+        create_timestamp
 
 def _get_next_value_file_id(connection):
     """
@@ -75,14 +75,14 @@ class OutputValueFile(object):
         self._value_file_path = compute_value_file_path(
             repository_path, self._value_file_id)
         self._expected_size = expected_size
-        self._log.info("opening {0} expected size = {1}".format(
+        self._log.debug("opening {0} expected size = {1}".format(
             self._value_file_path, self._expected_size)) 
         value_file_dir = os.path.dirname(self._value_file_path)
         if not os.path.exists(value_file_dir):
             os.makedirs(value_file_dir)
         flags = os.O_WRONLY | os.O_CREAT
         self._value_file_fd = os.open(self._value_file_path, flags)
-        self._creation_time = datetime.now()
+        self._creation_time = create_timestamp()
         self._size = 0
         self._md5 = hashlib.md5()
         self._segment_sequence_count = 0
@@ -122,7 +122,7 @@ class OutputValueFile(object):
 
     def close(self):
         """close the file and make it visible in the database"""
-        self._log.info("closing %s size=%s segment_sequence_count=%s" % (
+        self._log.debug("closing %s size=%s segment_sequence_count=%s" % (
             self._value_file_path, self._size, self._segment_sequence_count
         )) 
 
@@ -132,7 +132,7 @@ class OutputValueFile(object):
         value_file_row = value_file_template(
             id=self._value_file_id,
             creation_time=self._creation_time,
-            close_time=datetime.now(),
+            close_time=create_timestamp(),
             size=self._size,
             hash=psycopg2.Binary(self._md5.digest()),
             segment_sequence_count=self._segment_sequence_count,

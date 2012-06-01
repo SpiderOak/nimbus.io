@@ -175,7 +175,7 @@ def main():
         return_code = -2
     else:
         log.info(
-            "found {0} candidate partitions, collected {1} segments".format(
+            "found {0:,} candidates, collected {1:,} segments".format(
                 partition_count, collectable_count
             )
         )

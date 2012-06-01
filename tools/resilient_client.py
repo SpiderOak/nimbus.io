@@ -45,7 +45,7 @@ class ResilientClient(object):
         The zeromq address of the ROUTER_ socket of the server we connect to
 
     client_tag
-        A unique identifier for our client, to be inclused in every message
+        A unique identifier for our client, to be included in every message
         so the remote server knows where to send replies
 
     client_address
@@ -172,7 +172,7 @@ class ResilientClient(object):
         if  self._pending_message is None:
             elapsed_time = time.time() - self._last_successful_ack_time
             if elapsed_time >= _max_idle_time:
-                self._log.info("idle for %s seconds, disconnecting" % (
+                self._log.debug("idle for %s seconds, disconnecting" % (
                     elapsed_time,
                 ))
                 self._disconnect()
@@ -294,7 +294,7 @@ class ResilientClient(object):
         self._send_message(message_to_send)
             
     def _send_message(self, message):
-        self._log.info("sending message: %s" % (message.control, ))
+        self._log.debug("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
 
         # don't send a zero size body 

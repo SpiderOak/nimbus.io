@@ -1,30 +1,199 @@
 Developer's Guide
 =======================================================
 
-Contents:
 
 .. toctree::
    :maxdepth: 10
+   :numbered:
 
-Overview
-^^^^^^^^
-This API is intended to offer the best possible value for bulk, long term 
-archival of data. We don't attempt to deliver a low-latency solution, but 
-rather focus on reliability and bulk-transfer throughput. It is not suitable, 
-for example, for serving content on a high-performance web page, or streaming 
-rich multimedia to many users.
+Customers, Collections, and Objects
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Data is stored using an adaptation of the Reed-Solomon algorithm to distribute 
-the data across many servers with minimal overhead. Using this storage method 
-requires greater computational time for handling requests, and is one of the 
-reasons that we focus on giving great cost-value rather than high performance.
+A :term:`customer` is someone using a Nimbus.io service.  Each customer has a default 
+:term:`Collection` (what S3 calls a bucket), and may create more collections to
+organize their data in.  Within a collection, objects maybe stored, retrieved,
+listed, and removed.  Collections can optionally support Object Versioning.
 
-The API itself is designed to be simple, adopting a RESTful interface to 
-key-value storage. It is similar to Amazon's S3 API, and we plan on providing 
-a drop-in module to help you migrate your application from S3 to nimbus.io.
+
+..
+    leaving this out for now: why have a paragraph just talking about what we
+    don't do?
+
+    As of this writing, Nimbus.io only supports a the simplest permission
+    system: authenticated users can access their own objects, and nothing else.
+    This will be expanded to allow objects to be set as publically readable.
+    That will be followed by a more rich Unix style user and group permission
+    model and ACLs.
+
+Command line tools
+^^^^^^^^^^^^^^^^^^
+
+If you have `lumberyard` and `motoboto` (the Python libraries for accessing
+Nimbus.io) installed, you can use a command line tool to list, delete, and
+archive data into a Nimbus.io :term:`Collection`.
+
+Here are some examples using the `nio_cmd` command line tool::
+
+    # list keys in collection 
+    nio_cmd ls collection_name 
+
+    # delete a key in a collection
+    nio_cmd rm collection_name key_name  
+
+    # copy the local file filename.ext to key_name in collection_name 
+    # (use a filename of - to copy stdin)
+    nio_cmd cp filename.ext nimbus.io://collection_name/key_name  
+
+    # copy the contents of key_name in collection_name mylocalfile.ext
+    nio_cmd cp nimbus.io://collection_name/key_name mylocalfile.ext 
+
+    # copy the contents of key_name in collection_name to the local file
+    # mylocalfile.ext
+    nio_cmd cp nimbus.io://collection_name/key_name mylocalfile.ext 
+
+    # copy a key from one nimbus.io location to another
+    nio_cmd cp nimbus.io://collection_name1/key_name1 nimbusio://collection_name2/key_name2 
+    # copy a key from s3 to nimbus.io
+    nio_cmd cp s3://bucket_name/key_name nimbusio://collection_name/key_name 
+
+    # copy a key from nimbus.io to s3
+    nio_cmd cp nimbusio://collection_name/key_name s3://bucket_name/key_name  
+
+    # move a key from s3 to nimbus.io
+    nio_cmd mv s3://bucket_name/key_name nimbusio://collection_name/key_name 
+
+Running Nimbus.io locally for Dev
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A production Nimbus.io :term:`storage cluster` operates across at least 10
+independent computers.
+
+For development and testing, you can simulate a full Nimbus.io storage cluster
+locally.  Included is a cluster simulator script which can spawn and configure
+each :term:`storage node` for a full cluster on a single machine.  This is
+suitable for development work and inclusion in unit tests.  
+
+Clone the latest version of the source code::
+
+    git clone https://nimbus.io/dev/source/nimbus.io.git/
+
+Install all the needed libraries and other dependencies.  There are well
+commented shell scripts to guide you through this for some operating systems in
+the `scripts/install
+<https://nimbus.io/dev/trac/browser/Nimbus.IO/scripts/install>`_ folder within
+the source.  Recent Linux distributions provide nearly everything you need as
+packages.
+
+In general, Nimbus.io depends on all of the following:
+
+* Python 2.6.x or 2.7.x
+* Python 3.2+
+* PostgreSQL 9.0+ (9.1+ recommended)
+* ZeroMQ 2.1.10+
+* Python libraries: cython, gevent, gevent-zeromq, webob, zfec
+* Optional: Perl StatGrabber library (for sending runtime stats to ganglia)
+* Optional: Sphinx (for building the documentation, not required)
+
+Once all of the dependencies are available, you can spawn a simulated test
+cluster.  This will create everything needed to run Nimbus.io, simulating 10
+nodes and a :term:`central database` within a folder in your file system.  New
+PostgreSQL instances will be initilized.  Configuration files for the overall
+Storage Cluster and each of the 10 Storage Nodes will be written.  
+
+The simulator will give you a command prompt where you can start and stop the
+full cluster or specific nodes.
+
+The script below will spawn a new simulated cluster inside a local folder.  You
+will have 10 nodes, each running the :term:`Nimbus.io web server` listening on
+a local TCP port for REST API commands.  The first of these will be on whatever
+the `--baseport` argument was (default `9000`).  If you get binding errors, try
+a different base port.  Read the source for details.
+
+::
+    
+    # by default, this will create the simulated cluster running in
+    # /tmp/clustersim
+    scripts/spawn_simulated_cluster.sh
+
+You can use the command line tool for creating customer accounts within a local
+cluster.  Note that this tool needs the ENV variables specififying the local
+configuration to operate.  Here's a bash session loading the config scripts
+(generated by the simulator above) and then using the tool.
+
+::
+
+    source /tmp/clustersim/config/central_config.sh
+    source /tmp/clustersim/config/client_config.sh
+    PYTHONPATH=$PWD python customer/customer_main.py --help
+     
+
+Run the standard unit tests against a simulated cluster (requires `lumberyard`
+and `motoboto` libraries to be installed.).  The script will create a test user
+`mutoboto-test-01` for the unit tests to use.
+
+::
+
+    scripts/run_tests_on_simcluster.sh /tmp/clustersim
+
+There's a standard benchmarking suite that uses the `motoboto` library.  This
+script creates many test users and invokes the tool with standand paramaters.
+The tool itself is driven by a JSON config file that allows specifying a
+variety of ways that the cluster will be used.
+
+::
+
+    scripts/run_greenlet_benchmark_on_simcluster.sh /tmp/clustersim
+ 
+Accessing Nimbus.io via a Library
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+You acn use Nimbus.io via the REST API directly over HTTP (described below.).
+However the easiest way is to use a library that abstracts the REST  API and
+provides a higher level interface.
+
+The base client library for Nimbus.io is called `lumberyard` and is available
+as a Python module.  
+
+We've ported the popular Amazon S3 library `boto` to use Nimbus.io and we call
+this module `motoboto`.  It internally uses `lumberyard`, but presents the same
+interface as `boto` so applications using `boto` could use `motoboto` as an
+easy alternative.
+
+The development roadmap includes expanding the selection of client libraries to
+include options for PHP, Perl, Ruby, Java, C#, Clojure, Node.js, Erlang, and
+Haskel.  Please contact us if you'd like to create a library for your favorite
+language, or even if you just have a recommendation on which popular S3
+libraries you'd like to have ported to use Nimbus.io.
+
+Similar to the Nimbus.io server software itself, all the client libraries we
+write are free software released under the LGPL license.
+
+API Usage
+^^^^^^^^^
+The basic idea of REST is that you have "resources" (URLs) that represent 
+ideas or concepts in your problem domain, and then you use HTTP verbs to 
+perform actions on the resources.
+
+nimbus.io resources for a customer:
+
+* The customer's account
+* The collections owned by the customer
+* The keys within a collection
+* The data (and meta data) for a key
+
+These are represented as::
+
+   https://nimbus.io/customers/<username>
+   https://nimbus.io/customers/<username>/collections
+   https://<collection name>.nimbus.io/data/
+   https://<collection name>.nimbus.io/data/<key>
+
+If you are running your own Nimbus.io service, you would configure the
+:term:`Nimbus.io Service Domain` for your site to be something other than
+Nimbus.io.
 
 Authentication
-^^^^^^^^^^^^^^
+##############
 Each request to the nimbus.io API must be authenticated using a key, 
 assigned to you when you sign up for the service. You may request additional 
 keys to be associated with your account if you wish.
@@ -33,7 +202,7 @@ Authentication is accomplished using the HTTP Authorization header with a
 special scheme name of NIMBUSIO. The format of this header is detailed below.
 
 HTTP Authorization Header
-#########################
++++++++++++++++++++++++++
 The format of the HTTP Authorization header is:
 
 Authorization: NIMBUS.IO <key_id>:<signature>
@@ -43,10 +212,11 @@ key_id
 
 
 signature
-   A hex string signature, generated for each request as described in Authentication Signature
+   A hex string signature, generated for each request as described in
+   Authentication Signature
 
 Authentication Signature
-########################
+++++++++++++++++++++++++
 The authentication signature is a SHA256 HMAC hex string generated using a 
 string representing the request and your authentication key. This string is 
 made up of the following fields, separated by newline characters 
@@ -58,7 +228,7 @@ username
 
 method
    The HTTP method being used for the request. At this time, 
-   either GET or POST.
+   either GET, POST, or DELETE.
 
 
 timestamp
@@ -91,26 +261,20 @@ The following Python function will generate a valid signature for its inputs:
        return hmac_value.hexdigest()
 
 X-NIMBUS-IO-Timestamp
-#####################
++++++++++++++++++++++
 
-To provide some protection against replay attacks, the authentication 
-signature contains a timestamp field. In order for the server to verify the 
-signature, a special header must be provided in the request with the same 
-timestamp used to generate the signature. The header is X-NIMBUS-IO-Timestamp, 
-and the value is the timestamp detailed in Authentication Signature. 
+To limit the useful lifetime of an authentication signature, the signature
+includes a timestamp.  In order for the server to verify the signature, a
+special header must be provided in the request with the same timestamp used to
+generate the signature. The header is X-NIMBUS-IO-Timestamp, and the value is
+the timestamp detailed in Authentication Signature. 
 
 For example:
 
 X-NIMBUS-IO-Timestamp: 1276808600
 
-Important
-
-The timestamp must agree within 10 minutes of that on the server, 
-or the server will reject the authentication. Please synchronize your clock to 
-an NTP server or otherwise make sure it is correct.
-
 Authentication Example
-######################
+++++++++++++++++++++++
 Using the following example credentials, we use the make_signature function 
 from Authentication Signature to generate an HTTP Authorization header.
 
@@ -129,28 +293,6 @@ Resulting HTTP Headers:
 
    Authorization: NIMBUS.IO 5001:e0942c34ee095825302dd6aede9ac7f7c8fc5985998f9eaacbe906b673855876
    X-NIMBUS.IO-Timestamp: 1276808600
-
-API Usage
-^^^^^^^^^
-The basic idea of REST is that you have "resources" (URLs) that represent 
-ideas or concepts in your problem domain, and then you use HTTP verbs to 
-perform actions on the resources.
-
-nimbus.io resources for a customer:
-
-* The customer's account
-* The collections owned by the customer
-* The keys within a collection
-* The data (and meta data) for a key
-
-These are represented as:
-
-::
-
-   https://nimbus.io/customers/<username>
-   https://nimbus.io/customers/<username>/collections
-   https://<collection name>.nimbus.io/data/
-   https://<collection name>.nimbus.io/data/<key>
 
 Customer's Account
 ##################
@@ -189,6 +331,7 @@ Deleting a Collection
     Delete an existing collection. [1]_ 
 
     :query action: delete (POST only) 
+
     :statuscode 200: no error
     :statuscode 403: forbidden to delete the default collection, or a collection contaning data.
     :statuscode 404: unknown collection
@@ -248,7 +391,7 @@ Each object within a collection is uniquely identified by a key. The key must
 be between 1 and 1024 characters long. When used in an HTTP request, the key
 must meet the standard HTTP restrictions. 
 
-nimbus.io does not impose, or recognize, any structure or hierarchy among the 
+Nimbus.io does not impose or recognize any structure or hierarchy among the 
 keys in a collection. 
 
 You can organize your data hierarchically by using a delimiter character in 
@@ -385,6 +528,8 @@ A conjoined archive enables multiple parts of a file to be uploaded in
 parallel. And/or for individual uploads to be restarted without restarting
 the entire archive.
 
+**Note**: As of this writing, support for Conjoined Archives is incomplete.
+
 Listing Conjoined Archives
 ++++++++++++++++++++++++++
 List the conjoined archives active for this collection 
@@ -452,7 +597,7 @@ Abort Conjoined Archive
 ++++++++++++++++++++++++
 Halt the conjoined archive and release all resources.
 
-.. http:delete:: /conjoined/<key>
+.. http:post:: /conjoined/<key>
 
     :query action=abort: abort a conjoined archive
     :query conjoined_identifier=<conjoined-identifier>: returned by start
@@ -466,6 +611,21 @@ List the known uploads in sequence
 
     :statuscode 200: no error
 
-.. [1] In an ideal world, we would just need DELETE for the this. But due to limited browser support for the DELETE verb, we also provide an alternative via POST with action=delete. 
+.. [1] In an ideal world, we would just need DELETE for the this. But due to
+   limited browser support for the DELETE verb, we also provide an alternative
+   via POST with action=delete. 
 
+
+Migrating data
+^^^^^^^^^^^^^^
+
+Nimbus.io is intended to facilitate easy bidirectional migration between
+Nimbus.io, Amazon S3, and other cloud storage systems.  
+
+Since the Nimbus.io platform is available under the AGPL free software license,
+there's also always the option to bring your data home.
+
+TODO to further ease interoperability, the development roadmap includes remote
+copy additions to the API, so that data can be directly transferred between the
+Nimbus.io storage service, S3, and other network accessible resources.
 

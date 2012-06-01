@@ -38,7 +38,7 @@ class GreenletResilientClient(Greenlet):
         The zeromq address of the ROUTER_ socket of the server we connect to
 
     client_tag
-        A unique identifier for our client, to be inclused in every message
+        A unique identifier for our client, to be included in every message
         so the remote server knows where to send replies
 
     client_address
@@ -244,7 +244,7 @@ class GreenletResilientClient(Greenlet):
                     break
 
     def _send_message(self, message):
-        self._log.info("sending message: %s" % (message.control, ))
+        self._log.debug("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
 
         # don't send a zero size body 

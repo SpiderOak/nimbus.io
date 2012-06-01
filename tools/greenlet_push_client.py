@@ -26,7 +26,7 @@ class GreenletPUSHClient(object):
         self._push_socket.close()
 
     def send(self, message, data=None):
-        self._log.info("sending message: %s" % (message))
+        self._log.debug("sending message: %s" % (message))
 
         # don't send a zero size body 
         if type(data) not in [list, tuple, type(None), ]:

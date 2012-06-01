@@ -5,6 +5,7 @@ test_sql_authenticator.py
 test the customer authentication process
 as a part of the test, it give the customer rputines a good workout too
 """
+import os
 import unittest
 
 from lumberyard.http_util import compute_authentication_string, \
@@ -39,7 +40,7 @@ class TestSqlAuthenticator(unittest.TestCase):
         self._connection = get_central_connection()
         self._connection.execute("begin")
         purge_customer(self._connection, _test_username)
-        create_customer(self._connection, _test_username)
+        create_customer(self._connection, _test_username, False)
         add_key_to_customer(self._connection, _test_username)
         self._connection.commit()
 

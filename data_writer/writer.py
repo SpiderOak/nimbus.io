@@ -10,10 +10,7 @@ import psycopg2
 
 from tools.data_definitions import segment_sequence_template, \
         parse_timestamp_repr, \
-        meta_row_template, \
         segment_status_active, \
-        segment_status_cancelled, \
-        segment_status_final, \
         segment_status_tombstone
 from data_writer.output_value_file import OutputValueFile
 
@@ -24,33 +21,56 @@ _max_value_file_size = int(os.environ.get(
 def _insert_conjoined_row(connection, conjoined_dict):
     connection.execute("""
         insert into nimbusio_node.conjoined (
-            collection_id, key, unified_id, create_timestamp
+            collection_id, key, unified_id, create_timestamp, handoff_node_id
         ) values (
             %(collection_id)s, 
             %(key)s, 
             %(unified_id)s, 
-            %(create_timestamp)s::timestamp
+            %(create_timestamp)s::timestamp,
+            %(handoff_node_id)s
         )""", conjoined_dict)                   
     connection.commit()
 
 def _set_conjoined_abort_timestamp(connection, conjoined_dict):
-    connection.execute("""
-        update nimbusio_node.conjoined 
-        set abort_timestamp = %(abort_timestamp)s::timestamp
-        where collection_id = %(collection_id)s
-        and key = %(key)s
-        and unified_id = %(unified_id)s
-        """, conjoined_dict)                   
+    if conjoined_dict["handoff_node_id"] is None:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set abort_timestamp = %(abort_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id is None
+            """, conjoined_dict)                   
+    else:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set abort_timestamp = %(abort_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id = %(handoff_node_id)s
+            """, conjoined_dict)                   
     connection.commit()
 
 def _set_conjoined_complete_timestamp(connection, conjoined_dict):
-    connection.execute("""
-        update nimbusio_node.conjoined 
-        set complete_timestamp = %(complete_timestamp)s::timestamp
-        where collection_id = %(collection_id)s
-        and key = %(key)s
-        and unified_id = %(unified_id)s
-        """, conjoined_dict)                   
+    if conjoined_dict["handoff_node_id"] is None:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set complete_timestamp = %(complete_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id is null
+            """, conjoined_dict) 
+    else:
+        connection.execute("""
+            update nimbusio_node.conjoined 
+            set complete_timestamp = %(complete_timestamp)s::timestamp
+            where collection_id = %(collection_id)s
+            and key = %(key)s
+            and unified_id = %(unified_id)s
+            and handoff_node_id = %(handoff_node_id)s
+            """, conjoined_dict) 
     connection.commit()
 
 def _insert_new_segment_row(
@@ -59,6 +79,7 @@ def _insert_new_segment_row(
     unified_id,
     key, 
     timestamp, 
+    conjoined_part,
     segment_num,
     source_node_id,
     handoff_node_id
@@ -74,6 +95,7 @@ def _insert_new_segment_row(
             unified_id,
             timestamp,
             segment_num,
+            conjoined_part,
             source_node_id,
             handoff_node_id
         ) values (
@@ -83,75 +105,37 @@ def _insert_new_segment_row(
             %(unified_id)s,
             %(timestamp)s::timestamp,
             %(segment_num)s,
+            %(conjoined_part)s,
             %(source_node_id)s,
             %(handoff_node_id)s
         ) returning id""", {
-            "collection_id"     : collection_id,
-            "key"               : key,
-            "status"            : segment_status_active,
-            "unified_id"        : unified_id,
-            "timestamp"         : timestamp,
-            "segment_num"       : segment_num,
-            "source_node_id"    : source_node_id,
-            "handoff_node_id"   : handoff_node_id,
+            "collection_id"         : collection_id,
+            "key"                   : key,
+            "status"                : segment_status_active,
+            "unified_id"            : unified_id,
+            "timestamp"             : timestamp,
+            "conjoined_part"        : conjoined_part,
+            "segment_num"           : segment_num,
+            "source_node_id"        : source_node_id,
+            "handoff_node_id"       : handoff_node_id,
         }
     )
-
-def _finalize_segment_row(
-    connection, segment_id, file_size, file_adler32, file_hash, meta_rows
-):
-    """
-    Update segment row, set status to 'F'inal, include
-    associated meta rows
-    """
-    connection.execute("""
-        update nimbusio_node.segment 
-        set status = %(status)s,
-            file_size = %(file_size)s,
-            file_adler32 = %(file_adler32)s,
-            file_hash = %(file_hash)s
-        where id = %(segment_id)s
-    """, {
-        "segment_id"    : segment_id,
-        "status"        : segment_status_final,
-        "file_size"     : file_size,
-        "file_adler32"  : file_adler32,
-        "file_hash"     : psycopg2.Binary(file_hash),
-    })
-
-    for meta_row in meta_rows:
-        meta_row_dict = meta_row._asdict()
-        connection.execute("""
-            insert into nimbusio_node.meta (
-                collection_id,
-                segment_id,
-                meta_key,
-                meta_value,
-                timestamp
-            ) values (
-                %(collection_id)s,
-                %(segment_id)s,
-                %(meta_key)s,
-                %(meta_value)s,
-                %(timestamp)s::timestamp
-            )
-        """, meta_row_dict)            
-
-    connection.commit()
 
 def _insert_segment_tombstone_row(
     connection,
     collection_id, 
     key, 
     unified_id,
-    timestamp, 
+    timestamp,
     segment_num,
     unified_id_to_delete,
     source_node_id,
     handoff_node_id
 ):
     """
-    Insert one segment entry, with default row id
+    Insert one segment entry, with status set to (T)ombstone
+    Set delete_timestamp on all conjoined rows for this key
+    that are older than this tombstone
     """
     connection.execute("""
         insert into nimbusio_node.segment (
@@ -186,6 +170,24 @@ def _insert_segment_tombstone_row(
             "handoff_node_id"           : handoff_node_id,
         }
     )
+    connection.execute("""
+        update nimbusio_node.conjoined 
+        set delete_timestamp = %(timestamp)s::timestamp
+        where collection_id = %(collection_id)s
+          and key = %(key)s
+          and (   (%(unified_id_to_delete)s is not null 
+                   and unified_id = %(unified_id_to_delete)s)
+               or (%(unified_id_to_delete)s is null
+                   and unified_id < %(unified_id)s)
+          )
+        """, {
+            "collection_id"             : collection_id,
+            "key"                       : key,
+            "unified_id"                : unified_id,
+            "timestamp"                 : timestamp,
+            "unified_id_to_delete"      : unified_id_to_delete,
+        }
+    )
     connection.commit()
 
 def _cancel_segment_rows(connection, source_node_id, timestamp):
@@ -205,16 +207,19 @@ def _cancel_segment_rows(connection, source_node_id, timestamp):
     """, [source_node_id, timestamp, ])
     connection.commit()
 
-def _cancel_segment_row(connection, segment_id):
+def _cancel_segment_row(connection, unified_id, conjoined_part, segment_num):
     """
     cancel a specific archive, presumably one in progress
     """
     connection.execute("""
         update nimbusio_node.segment
         set status = 'C'
-        where id = %s 
-        and status = 'A' 
-    """, [segment_id, ])
+        where unified_id = %(unified_id)s
+        and conjoined_part = %(conjoined_part)s
+        and segment_num = %(segment_num)s
+        """, {"unified_id"       : unified_id, 
+              "conjoined_part"   : conjoined_part,
+              "segment_num"      : segment_num})
     connection.commit()
 
 def _insert_segment_sequence_row(connection, segment_sequence_row):
@@ -258,49 +263,101 @@ def _get_segment_id(connection, collection_id, key, timestamp, segment_num):
     (segment_id, ) = result
     return segment_id
 
-def _purge_handoff_source(
-    connection, collection_id, unified_id, handoff_node_id
+def _purge_handoff_conjoined(
+    connection, unified_ids, handoff_node_id
 ):
     """
-    remove handoff source from local database
+    remove handoff conjoined from local database
+    """
+    command = """
+    delete from nimbusio_node.conjoined
+    where unified_id in (%s)
+    and handoff_node_id = %%(handoff_node_id)s;
+    """ % (",".join([str(unified_id) for unified_id in unified_ids]), )
+    connection.execute(command, {"handoff_node_id" : handoff_node_id})
+
+def _purge_handoff_segment(
+    connection, unified_id, conjoined_part, handoff_node_id
+):
+    """
+    remove handoff segment from local database
     """
     connection.execute("""
         delete from nimbusio_node.segment_sequence 
         where segment_id = (
             select id from nimbusio_node.segment
-            where collection_id = %s 
-            and unified_id = %s
-            and handoff_node_id = %s
+            where unified_id = %(unified_id)s
+            and conjoined_part = %(conjoined_part)s
+            and handoff_node_id = %(handoff_node_id)s
         );
         delete from nimbusio_node.segment
-        where collection_id = %s 
-        and unified_id = %s
-        and handoff_node_id = %s;
-    """, [collection_id,
-          unified_id,
-          handoff_node_id,
-          collection_id,
-          unified_id,
-          handoff_node_id])
+        where unified_id = %(unified_id)s
+        and conjoined_part = %(conjoined_part)s
+        and handoff_node_id = %(handoff_node_id)s;
+        """, {"unified_id"         :  unified_id,
+              "conjoined_part"     : conjoined_part,
+              "handoff_node_id"    : handoff_node_id})
     connection.commit()
 
 class Writer(object):
     """
     Manage writing segment values to disk
     """
-    def __init__(self, connection, repository_path):
+    def __init__(
+        self, connection, repository_path, active_segments, completions
+    ):
         self._log = logging.getLogger("Writer")
         self._connection = connection
         self._repository_path = repository_path
-        self._active_segments = dict()
+        self._active_segments = active_segments
+        self._completions = completions
 
         # open a new value file at startup
         self._value_file = OutputValueFile(
             self._connection, self._repository_path
         )
 
+    @property
+    def value_file_hash(self):
+        """
+        return the hash of the currently open value file
+        """
+        assert self._value_file is not None
+        return hash(self._value_file)
+
+    def sync_value_file(self):
+        """
+        sync the current value file
+        """
+        assert self._value_file is not None
+        self._value_file.sync()
+        # at this point we can complete all pending archives
+
+        self._connection.execute("begin")
+        try:
+            for completion in self._completions:
+                completion.pre_commit_process()
+        except Exception:
+            self._log.exception("sync_value_file")
+            self._connection.rollback()
+            raise
+        self._connection.commit()
+
+        for completion in self._completions:
+            completion.post_commit_process()
+
+        self._completions[:] = []
+
+    @property
+    def value_file_is_synced(self):
+        assert self._value_file is not None
+        return self._value_file.is_synced 
+
     def close(self):
+        assert self._value_file is not None
+        self.sync_value_file()
         self._value_file.close()
+        self._value_file = None
 
     def start_new_segment(
         self, 
@@ -308,6 +365,7 @@ class Writer(object):
         key, 
         unified_id,
         timestamp_repr, 
+        conjoined_part,
         segment_num,
         source_node_id,
         handoff_node_id,
@@ -315,12 +373,13 @@ class Writer(object):
         """
         Initiate storing a segment of data for a file
         """
-        segment_key = (unified_id, segment_num, )
-        self._log.info("start_new_segment %s %s %s %s %s %s" % (
+        segment_key = (unified_id, conjoined_part, segment_num, )
+        self._log.info("start_new_segment %s %s %s %s %s %s %s" % (
             collection_id, 
             key, 
             unified_id, 
             timestamp_repr, 
+            conjoined_part,
             segment_num, 
             source_node_id,
         ))
@@ -335,6 +394,7 @@ class Writer(object):
                                                    unified_id,
                                                    key, 
                                                    timestamp, 
+                                                   conjoined_part,
                                                    segment_num,
                                                    source_node_id,
                                                    handoff_node_id),
@@ -346,6 +406,7 @@ class Writer(object):
         key, 
         unified_id,
         timestamp_repr, 
+        conjoined_part,
         segment_num, 
         segment_size,
         zfec_padding_size,
@@ -357,7 +418,7 @@ class Writer(object):
         """
         store one piece (sequence) of segment data
         """
-        segment_key = (unified_id, segment_num, )
+        segment_key = (unified_id, conjoined_part, segment_num, )
         self._log.info("store_sequence %s %s %s %s %s: %s (%s)" % (
             collection_id, 
             key, 
@@ -395,49 +456,6 @@ class Writer(object):
 
         _insert_segment_sequence_row(self._connection, segment_sequence_row)
 
-    def finish_new_segment(
-        self, 
-        collection_id,
-        unified_id,
-        timestamp_repr,
-        segment_num,
-        file_size,
-        file_adler32,
-        file_hash,
-        meta_dict,
-    ): 
-        """
-        finalize storing one segment of data for a file
-        """
-        segment_key = (unified_id, segment_num, )
-        self._log.info("finish_new_segment %s %s" % (
-            unified_id, 
-            segment_num, 
-        ))
-        segment_entry = self._active_segments.pop(segment_key)
-
-        timestamp = parse_timestamp_repr(timestamp_repr)
-
-        meta_rows = list()
-        for meta_key, meta_value in meta_dict.items():
-            meta_row = meta_row_template(
-                collection_id=collection_id,
-                segment_id=segment_entry["segment-id"],
-                meta_key=meta_key,
-                meta_value=meta_value,
-                timestamp=timestamp
-            )
-            meta_rows.append(meta_row)
-
-        _finalize_segment_row(
-            self._connection, 
-            segment_entry["segment-id"],
-            file_size, 
-            file_adler32, 
-            file_hash, 
-            meta_rows
-        )
-    
     def set_tombstone(
         self, 
         collection_id, 
@@ -474,40 +492,47 @@ class Writer(object):
         """
         _cancel_segment_rows(self._connection, source_node_id, timestamp)
 
-    def cancel_active_archive(self, unified_id, segment_num):
+    def cancel_active_archive(self, unified_id, conjoined_part, segment_num):
         """
         cancel an archive that is in progress, presumably due to failure
         at the web server
         """
-        segment_key = (unified_id, segment_num, )
-        self._log.info("cancel_active_archive %s %s" % (
-            unified_id, segment_num
-        ))
+        segment_key = (unified_id, conjoined_part, segment_num, )
+        self._log.info("cancel_active_archive %s" % (segment_key, ))
         # 2012-02-27 dougfort -- there is a race condition where the web
         # server sends out cancellations on an archive that has completed
         # because it hasn't reveived the final message yet
         try:
-            segment_entry = self._active_segments.pop(segment_key)
+            self._active_segments.pop(segment_key)
         except KeyError:
             pass
-        else:
-            _cancel_segment_row(self._connection, segment_entry["segment-id"])
+        
+        _cancel_segment_row(self._connection, 
+                            unified_id, 
+                            conjoined_part, 
+                            segment_num)
 
-    def purge_handoff_source(
-        self, collection_id, unified_id, handoff_node_id
+    def purge_handoff_conjoined( self, unified_ids, handoff_node_id):
+        """
+        delete rows for a handoff source
+        """
+        _purge_handoff_conjoined(self._connection, 
+                                 unified_ids, 
+                                 handoff_node_id)
+
+    def purge_handoff_segment(
+        self, unified_id, conjoined_part, handoff_node_id
     ):
         """
         delete rows for a handoff source
         """
-        _purge_handoff_source(
-            self._connection, 
-            collection_id, 
-            unified_id, 
-            handoff_node_id
-        )
+        _purge_handoff_segment(self._connection, 
+                              unified_id, 
+                              conjoined_part, 
+                              handoff_node_id)
 
     def start_conjoined_archive(
-        self, collection_id, key, unified_id, timestamp
+        self, collection_id, key, unified_id, timestamp, handoff_node_id
     ):
         """
         start a conjoined archive
@@ -516,12 +541,13 @@ class Writer(object):
             "collection_id"     : collection_id,
             "key"               : key,
             "unified_id"        : unified_id,
-            "create_timestamp"  : timestamp
+            "create_timestamp"  : timestamp,
+            "handoff_node_id"   : handoff_node_id,
         }
         _insert_conjoined_row(self._connection, conjoined_dict)
 
     def abort_conjoined_archive(
-        self, collection_id, key, unified_id, timestamp
+        self, collection_id, key, unified_id, timestamp, handoff_node_id
     ):
         """
         mark a conjoined archive as aborted
@@ -530,12 +556,13 @@ class Writer(object):
             "collection_id"     : collection_id,
             "key"               : key,
             "unified_id"        : unified_id,
-            "abort_timestamp"   : timestamp
+            "abort_timestamp"   : timestamp,
+            "handoff_node_id"   : handoff_node_id,
         }
         _set_conjoined_abort_timestamp(self._connection, conjoined_dict)
 
     def finish_conjoined_archive(
-        self, collection_id, key, unified_id, timestamp
+        self, collection_id, key, unified_id, timestamp, handoff_node_id,
     ):
         """
         mark a conjoined archive as finished
@@ -544,7 +571,8 @@ class Writer(object):
             "collection_id"      : collection_id,
             "key"                : key,
             "unified_id"         : unified_id,
-            "completed_timestamp": timestamp
+            "complete_timestamp" : timestamp,
+            "handoff_node_id"    : handoff_node_id,
         }
         _set_conjoined_complete_timestamp(self._connection, conjoined_dict)
 

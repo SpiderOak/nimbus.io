@@ -169,7 +169,7 @@ def main(
 
         halt_event is passed to as an argument to callback functions.
         
-        If the caller wants greater access, the can can create their
+        If the caller wants greater access, they can create their
         own halt event and pass it here as an argument.
 
     returns 0 for normal termination, nonzero for failure

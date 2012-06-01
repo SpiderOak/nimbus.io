@@ -4,11 +4,13 @@ consistency_check_starter.py
 
 A time queue action to periodically start a new consistency check
 """
-import datetime
+from datetime import timedelta
 import logging
 import os
 import random
 import time
+
+from tools.data_definitions import create_timestamp
 
 from anti_entropy_server.audit_result_database import \
     AuditResultDatabase
@@ -41,8 +43,7 @@ class ConsistencyCheckStarter(object):
             return
                 
         cutoff_timestamp = \
-            datetime.datetime.now() - \
-            datetime.timedelta(days=_audit_cutoff_days)
+            create_timestamp() - timedelta(days=_audit_cutoff_days)
         database = AuditResultDatabase(
             self._state["central-database-connection"]
         )

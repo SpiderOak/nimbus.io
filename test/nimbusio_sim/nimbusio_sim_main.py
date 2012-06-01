@@ -6,7 +6,10 @@ Main module for nimbus.io simulator
 """
 import logging
 import os
+import os.path
 import sys
+
+from tools.standard_logging import initialize_logging
 
 from test.nimbusio_sim.command_interpreter import CommandInterpreter
 from test.nimbusio_sim.options import parse_cmdline
@@ -14,18 +17,6 @@ from test.nimbusio_sim.cluster_config import ClusterConfig
 from test.nimbusio_sim.db import create_database, start_database
 
 _log_name = u"nimbusio_sim.log"
-_log_format_template = u'%(asctime)s %(levelname)-8s %(name)-20s: %(message)s'
-
-def _initialize_logging(config):
-    """initialize the log"""
-    log_level = logging.DEBUG
-    handler = logging.FileHandler(
-        os.path.join(config.log_path, _log_name), mode="a", encoding="utf-8" )
-    formatter = logging.Formatter(_log_format_template)
-    handler.setFormatter(formatter)
-
-    logging.root.addHandler(handler)
-    logging.root.setLevel(log_level)
 
 def sanity_check(config):
     # if args.create, make sure basedir is empty or does not exist
@@ -87,7 +78,8 @@ def main():
 
     #import pdb
     #pdb.set_trace()
-    _initialize_logging(config)
+    log_path = os.path.join(config.log_path, _log_name)
+    initialize_logging(log_path)
     log = logging.getLogger("main")
     log.info("progam starts")
 

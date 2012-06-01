@@ -34,7 +34,9 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import create_priority, \
+from tools.data_definitions import incoming_slice_size, \
+        block_generator, \
+        create_priority, \
         create_timestamp, \
         nimbus_meta_prefix, \
         segment_status_final
@@ -51,7 +53,8 @@ from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
         RetrieveFailedError, \
         ArchiveFailedError, \
-        DestroyFailedError
+        DestroyFailedError, \
+        ConjoinedFailedError
 from web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
 from web_server.data_writer import DataWriter
@@ -92,7 +95,6 @@ _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
-_slice_size = int(os.environ.get("NIMBUS_IO_SLICE_SIZE", str(1024 * 1024)))
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
@@ -102,6 +104,10 @@ _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
 _archive_retry_interval = 120
 _retrieve_retry_interval = 120
+_content_type_json = "application/json"
+
+def _fix_timestamp(timestamp):
+    return (None if timestamp is None else repr(timestamp))
 
 def _build_meta_dict(req_get):
     """
@@ -162,16 +168,17 @@ def _create_data_writers(event_push_client, clients):
     # segment numbers get defined in
     return [data_writers_dict[node_name] for node_name in _node_names]
 
-def _send_archive_cancel(unified_id, clients):
+def _send_archive_cancel(unified_id, conjoined_part, clients):
     # message sent to data writers telling them to cancel the archive
     for i, client in enumerate(clients):
         if not client.connected:
             continue
         cancel_message = {
-            "message-type"  : "archive-key-cancel",
-            "priority"      : create_priority(),
-            "unified-id"    : unified_id,
-            "segment-num"   : i+1,
+            "message-type"      : "archive-key-cancel",
+            "priority"          : create_priority(),
+            "unified-id"        : unified_id,
+            "conjoined-part"    : conjoined_part,
+            "segment-num"       : i+1,
         }
         client.queue_message_for_broadcast(cancel_message)
 
@@ -254,7 +261,7 @@ class Application(object):
 
     def _list_collections(self, req, match_object):
         username = match_object.group("username")
-        self._log.debug("_list_collections %r" % (username, ))
+        self._log.info("_list_collections %r" % (username, ))
 
         authenticated = self._authenticator.authenticate(
             self._central_connection,
@@ -276,9 +283,11 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         # json won't dump datetime
-        json_collections = [(n, v, t.isoformat()) for (n, v, t) in collections]
+        json_collections = [
+            {"name" : n, "versioning" : v, "creation-time" : t.isoformat()} \
+            for (n, v, t) in collections]
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(json_collections))
 
         return response
@@ -288,7 +297,7 @@ class Application(object):
         collection_name = match_object.group("collection_name")
         versioning = False
 
-        self._log.debug("_create_collection: %s name = %r" % (
+        self._log.info("_create_collection: %s name = %r" % (
             username,
             collection_name,
         ))
@@ -302,7 +311,7 @@ class Application(object):
             raise exc.HTTPUnauthorized()
 
         try:
-            create_collection(
+            creation_time = create_collection(
                 self._central_connection, 
                 username,
                 collection_name,
@@ -319,13 +328,22 @@ class Application(object):
         else:
             self._central_connection.commit()
 
-        return Response('OK')
+        # this is the same format returned by list_collection
+        collection_dict = {
+            "name" : collection_name,
+            "versioning" : versioning,
+            "creation-time" : creation_time.isoformat()} 
+
+        # 2012-04-15 dougfort Ticket #12 - return 201 'created'
+        response = Response(status=201, content_type=_content_type_json)
+        response.body_file.write(json.dumps(collection_dict))
+        return response
 
     def _delete_collection(self, req, match_object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
 
-        self._log.debug("_delete_collection: %r %r" % (
+        self._log.info("_delete_collection: %r %r" % (
             username, collection_name, 
         ))
 
@@ -427,7 +445,7 @@ class Application(object):
                 kwargs["version_id_marker"]
             )
 
-        self._log.debug(
+        self._log.info(
             "_list_versions: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
@@ -449,7 +467,7 @@ class Application(object):
                         key_entry["version_identifier"]
                     )
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(result_dict))
         return response
 
@@ -457,7 +475,7 @@ class Application(object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
 
-        self._log.debug("_collection_space_usage: %r %r" % (
+        self._log.info("_collection_space_usage: %r %r" % (
             username, collection_name
         ))
 
@@ -481,7 +499,9 @@ class Application(object):
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
 
-        return Response(json.dumps(usage))
+        response = Response(content_type=_content_type_json)
+        response.body_file.write(json.dumps(usage))
+        return response
 
     def _archive_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -527,19 +547,19 @@ class Application(object):
             key, 
             req.content_length
         )
-        self._log.debug(description)
+        self._log.info(description)
 
         meta_dict = _build_meta_dict(req.GET)
 
-        conjoined_identifier = None
+        unified_id = None
         conjoined_part = 0
 
         if "conjoined_identifier" in req.GET:
-            value = req.GET["conjoined_identifier"]
-            value = urllib.unquote_plus(value)
-            value = value.decode("utf-8")
-            if len(value) > 0:
-                conjoined_identifier = long(value)
+            unified_id = self._id_translator.internal_id(
+               req.GET["conjoined_identifier"]
+            )
+        else:
+            unified_id = self._unified_id_factory.next()
 
         if "conjoined_part" in req.GET:
             value = req.GET["conjoined_part"]
@@ -548,7 +568,6 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-        unified_id = self._unified_id_factory.next()
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -564,13 +583,9 @@ class Application(object):
             unified_id,
             timestamp,
             meta_dict,
-            conjoined_identifier,
             conjoined_part
         )
-        segmenter = ZfecSegmenter(
-            _min_segments,
-            len(data_writers)
-        )
+        segmenter = ZfecSegmenter(_min_segments, len(data_writers))
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
@@ -581,7 +596,7 @@ class Application(object):
             # when any given slice is the last slice, so it works an iteration
             # behind, but sometimes sends an empty final slice.
             for slice_item in DataSlicer(req.body_file,
-                                    _slice_size,
+                                    incoming_slice_size,
                                     req.content_length):
                 if segments:
                     archiver.archive_slice(
@@ -590,7 +605,7 @@ class Application(object):
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
                 file_md5.update(slice_item)
                 file_size += len(slice_item)
-                segments = segmenter.encode(slice_item)
+                segments = segmenter.encode(block_generator(slice_item))
                 zfec_padding_size = segmenter.padding_size(slice_item)
             archiver.archive_final(
                 file_size,
@@ -608,8 +623,10 @@ class Application(object):
             self._log.error("archive failed: %s %s" % (
                 description, instance, 
             ))
-            _send_archive_cancel(unified_id, self._data_writer_clients)
-            # 2009-09-30 dougfort -- assume we have some node trouble
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
+            # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
             response.retry_after = _archive_retry_interval
@@ -626,7 +643,9 @@ class Application(object):
             self._log.exception("archive failed: %s %s" % (
                 description, instance, 
             ))
-            _send_archive_cancel(unified_id, self._data_writer_clients)
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
             response = Response(status=500, content_type=None)
             self._stats["archives"] -= 1
             return response
@@ -652,9 +671,8 @@ class Application(object):
             "version_identifier" : self._id_translator.public_id(unified_id),
         }
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(response_dict))
-
         return response
 
     def _list_keys(self, req, match_object):
@@ -692,7 +710,7 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
-        self._log.debug(
+        self._log.info(
             "_list_keys: collection = (%s) username = %r %r %s" % (
                 collection_entry.collection_id,
                 collection_entry.collection_name,
@@ -714,7 +732,7 @@ class Application(object):
                         key_entry["version_identifier"]
                     )
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(result_dict))
         return response
 
@@ -751,6 +769,24 @@ class Application(object):
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
+        slice_offset = 0
+        if "slice_offset" in req.GET:
+            slice_offset_str = req.GET["slice_offset"]
+            try:
+                slice_offset = int(slice_offset_str)
+            except ValueError:
+                self._log.error("invalid slice_offset %r" % (slice_offset_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+
+        slice_size = None
+        if "slice_size" in req.GET:
+            slice_size_str = req.GET["slice_size"]
+            try:
+                slice_size = int(slice_size_str)
+            except ValueError:
+                self._log.error("invalid slice_size %r" % (slice_size_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+
         connected_data_readers = _connected_clients(self.data_readers)
 
         if len(connected_data_readers) < _min_connected_clients:
@@ -758,14 +794,16 @@ class Application(object):
                 len(connected_data_readers),
             ))
 
-        description = "retrieve: (%s)%r customer=%r key=%r version=%r" % (
+        description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
             collection_entry.collection_id,
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            version_id
+            version_id,
+            slice_offset,
+            slice_size
         )
-        self._log.debug(description)
+        self._log.info(description)
 
         start_time = time.time()
         self._stats["retrieves"] += 1
@@ -776,6 +814,8 @@ class Application(object):
             collection_entry.collection_id,
             key,
             version_id,
+            slice_offset,
+            slice_size,
             _min_segments
         )
 
@@ -806,13 +846,21 @@ class Application(object):
                         encoded_segment, zfec_padding_size = \
                                 segments[segment_number]
                         encoded_segments.append(encoded_segment)
-                    data = segmenter.decode(
+                    data_list = segmenter.decode(
                         encoded_segments,
                         segment_numbers,
                         zfec_padding_size
                     )
-                    sent += len(data)
-                    yield data
+                    if sent == 0:
+                        data_list[0] = \
+                            data_list[0][retriever.offset_into_first_block:]
+                    if retriever.residue_from_last_block != 0:
+                        data_list[-1] = \
+                            data_list[-1][:-retriever.residue_from_last_block]
+
+                    for data in data_list:
+                        yield data
+                        sent += len(data)
             except RetrieveFailedError, instance:
                 self._event_push_client.warn(
                     "retrieve-failed",
@@ -886,11 +934,9 @@ class Application(object):
         if meta_dict is None:
             raise exc.HTTPNotFound(req.url)
 
-        response = Response(content_type='text/plain', charset='utf8')
+        response = Response(content_type=_content_type_json)
         response.body_file.write(json.dumps(meta_dict))
-
         return response
-
 
     def _delete_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -934,7 +980,7 @@ class Application(object):
                 key,
                 unified_id_to_delete
             )
-        self._log.debug(description)
+        self._log.info(description)
         data_writers = _create_data_writers(
             self._event_push_client,
             self._data_writer_clients
@@ -1008,7 +1054,7 @@ class Application(object):
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
-        self._log.debug(
+        self._log.info(
             "head_key: collection = (%s) %r username = %r key = %r %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
@@ -1018,16 +1064,20 @@ class Application(object):
         ))
 
         getter = StatGetter(self._node_local_connection)
-        segment_rows = getter.stat(
+        status_rows = getter.stat(
             collection_entry.collection_id, key, version_id
         )
-        if len(segment_rows) == 0 or \
-           segment_rows[0].status != segment_status_final:
+        if len(status_rows) == 0 or \
+           status_rows[0].seg_status != segment_status_final:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)
-        response.content_length = segment_rows[0].file_size 
-        response.content_md5 = b64encode(segment_rows[0].file_hash)
+        response.content_length = sum([r.seg_file_size for r in status_rows])
+
+        if status_rows[0].con_create_timestamp is None:
+            response.content_md5 = b64encode(status_rows[0].seg_file_hash)
+        else:
+            response.content_md5 = None
 
         return response
 
@@ -1065,7 +1115,7 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
-        self._log.debug(
+        self._log.info(
             "list_conjoined: collection = (%s) %r username = %r %s" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
@@ -1073,15 +1123,31 @@ class Application(object):
             kwargs,
         ))
 
-        result = list_conjoined_archives(
+        truncated, conjoined_entries = list_conjoined_archives(
             self._node_local_connection,
             collection_entry.collection_id,
             **kwargs
         )
 
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(result))
+        conjoined_list = list()
+        for entry in conjoined_entries:
+            row_dict = {
+                "conjoined_identifier" : \
+                    self._id_translator.public_id(entry.unified_id),
+                "key" : entry.key,
+                "create_timestamp" : _fix_timestamp(entry.create_timestamp),
+                "abort_timestamp"  : _fix_timestamp(entry.abort_timestamp),
+                "complete_timestamp":_fix_timestamp(entry.complete_timestamp),
+            }
+            conjoined_list.append(row_dict)
 
+        response_dict = {
+            "conjoined_list" : conjoined_list, 
+            "truncated" : truncated
+        }
+
+        response = Response(content_type=_content_type_json)
+        response.body_file.write(json.dumps(response_dict))
         return response
 
     def _start_conjoined(self, req, match_object):
@@ -1110,7 +1176,7 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        self._log.info(
             "start_conjoined: collection = (%s) %r username = %r key = %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
@@ -1127,17 +1193,47 @@ class Application(object):
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
 
-        result = start_conjoined_archive(
-            data_writers,
-            unified_id,
-            collection_entry.collection_id,
-            key,
-            timestamp
-        )
+        try:
+            start_conjoined_archive(
+                data_writers,
+                unified_id,
+                collection_entry.collection_id,
+                key,
+                timestamp
+            )
+        except ConjoinedFailedError, instance:
+            self._event_push_client.error(
+                "start-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.error("start-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            # 2012-03-21 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
+        except Exception, instance:
+            self._event_push_client.error(
+                "start-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.exception("start-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            return response
 
-        response = Response(content_type='text/plain', charset='utf8')
-        response.body_file.write(json.dumps(result))
+        conjoined_dict = {
+            "conjoined_identifier"      : \
+                    self._id_translator.public_id(unified_id),
+            "key"                       : key,
+            "create_timestamp"          : repr(timestamp)   
+        }
 
+        response = Response(content_type=_content_type_json)
+        response.body_file.write(json.dumps(conjoined_dict))
         return response
 
     def _finish_conjoined(self, req, match_object):
@@ -1167,13 +1263,15 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        unified_id = self._id_translator.internal_id(conjoined_identifier)
+
+        self._log.info(
             "finish_conjoined: collection = (%s) %r %r key = %r %s" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier
+            unified_id
         ))
 
         data_writers = _create_data_writers(
@@ -1184,13 +1282,37 @@ class Application(object):
         ) 
         timestamp = create_timestamp()
 
-        finish_conjoined_archive(
-            data_writers,
-            collection_entry.collection_id,
-            key,
-            conjoined_identifier,
-            timestamp
-        )
+        try:
+            finish_conjoined_archive(
+                data_writers,
+                collection_entry.collection_id,
+                key,
+                unified_id,
+                timestamp
+            )
+        except ConjoinedFailedError, instance:
+            self._event_push_client.error(
+                "finish-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.error("finish-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            # 2012-03-21 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
+        except Exception, instance:
+            self._event_push_client.error(
+                "finish-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.exception("finish-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            return response
 
         return  Response()
 
@@ -1221,13 +1343,15 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
+        unified_id = self._id_translator.internal_id(conjoined_identifier)
+
+        self._log.info(
             "abort_conjoined: collection = (%s) %r %r key = %r %s" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
             key,
-            conjoined_identifier
+            unified_id
         ))
 
         data_writers = _create_data_writers(
@@ -1238,13 +1362,37 @@ class Application(object):
         ) 
         timestamp = create_timestamp()
 
-        abort_conjoined_archive(
-            data_writers,
-            collection_entry.collection_id,
-            key,
-            conjoined_identifier,
-            timestamp
-        )
+        try:
+            abort_conjoined_archive(
+                data_writers,
+                collection_entry.collection_id,
+                key,
+                unified_id,
+                timestamp
+            )
+        except ConjoinedFailedError, instance:
+            self._event_push_client.error(
+                "abort-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.error("abort-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            # 2012-03-21 dougfort -- assume we have some node trouble
+            # tell the customer to retry in a little while
+            response = Response(status=503, content_type=None)
+            response.retry_after = _archive_retry_interval
+            return response
+        except Exception, instance:
+            self._event_push_client.error(
+                "abort-conjoined-failed-error",
+                "%s: %s" % (unified_id, instance, )
+            )
+            self._log.exception("abort-conjoined failed: %s %s" % (
+                unified_id, instance, 
+            ))
+            response = Response(status=500, content_type=None)
+            return response
 
         return  Response()
 
@@ -1275,11 +1423,13 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        self._log.debug(
-            "list_upload: collection = (%s) %r username = %r key = %r" % (
+        unified_id = self._id_translator.internal_id(conjoined_identifier)
+
+        self._log.info("list_upload: collection = (%s) %r %r key=%r %r" % (
             collection_entry.collection_id, 
             collection_entry.collection_name,
             collection_entry.username,
-            key
+            key,
+            unified_id
         ))
 

@@ -17,5 +17,6 @@
    },
    "max-bucket-count": 1000,
    "min-file-size"   : 1000000,
-   "max-file-size"   : 10000000
+   "max-file-size"   : 10000000,
+   "multipart-part-size" : 5000000
 }

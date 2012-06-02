@@ -1,11 +1,20 @@
 #!/bin/bash
+set -x
+set -e
+
 LEVEL="$1" 
-TEST_DIR="$2"
-export NIMBUSIO="${HOME}/git/nimbus.io"
-export PYTHONPATH="${NIMBUSIO}"
-export NIMBUSIO_LOG_DIR="${TEST_DIR}/logs"
-export NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS="tcp://127.0.0.1:8900"
+BASEDIR="$2"
+
+if [ ! -d $BASEDIR ]; then
+    echo "basedir '$BASEDIR' does not exist"
+    exit 1
+fi
+
 PYTHON="python2.7"
 
-rm "${NIMBUSIO_LOG_DIR}/event_subscriber.log"
-"${PYTHON}" "${NIMBUSIO}/test/event_subscriber.py" "${LEVEL}" "${TEST_DIR}"
+# pull in environment settings from the simulated cluster 
+pushd "${BASEDIR}/config"
+source node_01_config.sh
+popd
+
+"${PYTHON}" test/event_subscriber.py "${LEVEL}" "${BASEDIR}"

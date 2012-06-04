@@ -18,11 +18,11 @@ PYTHON="python3.2"
 
 # pull in environment settings from the simulated cluster 
 pushd "${BASEDIR}/config"
-source node_01_config.sh
+source node_05_config.sh
 popd
 
 
-export NIMBUSIO_RETRIEVE_SOURCE_ADDRESS="tcp://127.0.0.1:9876"
+#export NIMBUSIO_RETRIEVE_SOURCE_ADDRESS="tcp://127.0.0.1:9876"
 export NIMBUSIO_LOG_LEVEL="DEBUG"
 
 # run unit tests with identity file

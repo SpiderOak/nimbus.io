@@ -19,7 +19,7 @@ class InterrupedSystemCall(Exception):
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_retrieve_source_{1}.log"
-_retrieve_source_address = os.environ["NIMBUSIO_RETRIEVE_SOURCE_ADDRESS"]
+_retrieve_source_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
 
 def _create_signal_handler(halt_event):
     def cb_handler(*_):
@@ -42,10 +42,10 @@ def _bind_rep_socket(zeromq_context):
 
 def _handle_resilient_server_handshake(message, pull_addresses):
     log = logging.getLogger("_handle_resilient_server_handshake")
-    log.debug("%{client-tag} {client-address}".format(message))
+    log.debug("{client-tag} {client-address}".format(**message))
 
     if message["client-tag"] in pull_addresses:
-        log.debug("replacing existing client-tag {client-tag}".format(message)) 
+        log.debug("replacing client-tag {client-tag}".format(**message)) 
         del pull_addresses[message["client-tag"]]
 
     pull_addresses[message["client-tag"]] = message["client-address"]
@@ -55,9 +55,9 @@ def _handle_resilient_server_signoff(message, pull_addresses):
     try:
         del pull_addresses[message["client-tag"]]
     except KeyError:
-        log.info("no such client-tag: {client-tag}".format(message))
+        log.info("no such client-tag: {client-tag}".format(**message))
     else:
-        log.info("removing address: {client-tag}".format(message))
+        log.info("removing address: {client-tag}".format(**message))
 
 _dispatch_table = {
     "resilient-server-handshake" : _handle_resilient_server_handshake,
@@ -98,7 +98,7 @@ def _process_one_request(rep_socket, pull_addresses):
             _push_to_database_control(request, request_data)
             ack_message["accepted"] = True
         else:
-            log.error("No active client-tag {0}".format(request["client-tag"]))
+            log.error("No active client-tag {client-tag}".format(**request))
             ack_message["accepted"] = False
 
     rep_socket.send_json(ack_message)

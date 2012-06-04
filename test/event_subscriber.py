@@ -46,7 +46,7 @@ def _create_state():
 def _setup(_halt_event, state):
     log = logging.getLogger("_setup")
 
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 2:
         state["min-level"] = "debug"
     else:
         state["min-level"] = sys.argv[1]

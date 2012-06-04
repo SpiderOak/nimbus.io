@@ -17,4 +17,4 @@ pushd "${BASEDIR}/config"
 source node_01_config.sh
 popd
 
-"${PYTHON}" test/event_subscriber.py "${LEVEL}" "${BASEDIR}"
+"${PYTHON}" test/event_subscriber.py "${LEVEL}"

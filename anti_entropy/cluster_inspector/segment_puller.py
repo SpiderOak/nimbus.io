@@ -9,7 +9,7 @@ import os
 import subprocess
 import sys
 
-from anti_entropy.anti_entropy_util import identify_program_dir
+from tools.process_util import identify_program_dir
 
 class SegmentPullerError(Exception):
     pass
@@ -90,6 +90,7 @@ def pull_segments_from_nodes(halt_event, work_dir):
     """
     spawn subprocesses to request segment rows from nodes
     """
+    log = logging.getLogger("pull_segments_from_nodes")
     pullers = _start_pullers(halt_event, work_dir)
 
     if halt_event.is_set():

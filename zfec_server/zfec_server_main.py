@@ -8,7 +8,6 @@ This is a temporary expedient until zfec gets ported to Python 3
 """
 import logging
 import os
-import signal
 from threading import Event
 import sys
 
@@ -18,6 +17,7 @@ from zfec.easyfec import Encoder, Decoder
 
 from tools.standard_logging import initialize_logging
 from tools.zeromq_util import prepare_ipc_path
+from tools.process_util import set_signal_handler
 
 class ZfecServerInterrupedSystemCall(Exception):
     pass
@@ -27,11 +27,6 @@ _log_path_template = "{0}/nimbusio_zfec_server_{1}-{2}.log"
 _zfec_server_address = os.environ["NIMBUSIO_ZFEC_SERVER_ADDRESS"]
 _min_segments = 8
 _num_segments = 10
-
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
 
 def _bind_rep_socket(zeromq_context):
     log = logging.getLogger("_bind_rep_socket")
@@ -169,7 +164,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     zeromq_context = zmq.Context()
     rep_socket = _bind_rep_socket(zeromq_context)

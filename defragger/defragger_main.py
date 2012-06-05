@@ -6,7 +6,6 @@ from collections import namedtuple
 import hashlib
 import logging
 import os
-import signal
 import sys
 from threading import Event
 
@@ -20,6 +19,7 @@ from tools.file_space import load_file_space_info, \
         file_space_sanity_check, \
         find_least_volume_space_id
 from tools.output_value_file import OutputValueFile
+from tools.process_util import set_signal_handler
 
 from defragger.input_value_file import InputValueFile
 
@@ -53,11 +53,6 @@ _reference_template = namedtuple("Reference", [
     "sequence_hash",
     "sequence_adler32"
 ])
-
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
 
 def _query_value_file_candidate_rows(connection):
     """
@@ -327,7 +322,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     zmq_context =  zmq.Context()
 

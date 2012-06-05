@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 retrieve_source_main.py
 
@@ -5,7 +6,6 @@ top level process for the retrieve_soruce set of processes
 """
 import logging
 import os
-import signal
 from threading import Event
 import sys
 
@@ -13,6 +13,7 @@ import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.zeromq_util import prepare_ipc_path
+from tools.process_util import set_signal_handler
 
 class InterrupedSystemCall(Exception):
     pass
@@ -20,11 +21,6 @@ class InterrupedSystemCall(Exception):
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_retrieve_source_{1}.log"
 _retrieve_source_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
-
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
 
 def _bind_rep_socket(zeromq_context):
     log = logging.getLogger("_bind_rep_socket")
@@ -117,7 +113,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     zeromq_context = zmq.Context()
     rep_socket = _bind_rep_socket(zeromq_context)

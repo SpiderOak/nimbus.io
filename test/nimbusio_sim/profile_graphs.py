@@ -8,7 +8,7 @@ import os.path
 import subprocess
 import sys
 
-from test.nimbusio_sim.process_util import identify_program_dir
+from tools.process_util import identify_program_dir
 
 class ProfileGraphError(Exception):
     pass

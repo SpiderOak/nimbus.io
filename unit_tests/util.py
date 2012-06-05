@@ -10,23 +10,14 @@ import os.path
 import subprocess
 import sys
 
+from tools.process_util import identify_program_dir
+
 def generate_key():
     """generate a unique key for data storage"""
     n = 0
     while True:
         n += 1
         yield "test-key-%06d" % (n, )
-
-def identify_program_dir(target_dir):
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_dir)
-        if os.path.isdir(test_path):
-            return test_path
-
-    raise ValueError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_dir, python_path, )
-    )
 
 def poll_process(process):
     process.poll()

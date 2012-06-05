@@ -8,13 +8,13 @@ import heapq
 import itertools
 import logging
 import os 
-import signal
 import subprocess
 import sys
 from threading import Event
 
 from tools.standard_logging import initialize_logging
 from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
+from tools.process_util import identify_program_dir, set_signal_handler
 
 class NodeDataReaderError(Exception):
     pass
@@ -27,12 +27,6 @@ _read_buffer_size = int(
     os.environ.get("NIMBUSIO_ANTI_ENTROPY_READ_BUFFER_SIZE", 
                    str(10 * 1024 ** 2)))
 
-from anti_entropy.anti_entropy_util import identify_program_dir
-
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
 
 def _node_generator(halt_event, node_name, node_subprocess):
     log = logging.getLogger(node_name)
@@ -129,7 +123,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     node_generators = _start_subprocesses(halt_event)
     merge_manager = heapq.merge(*node_generators)

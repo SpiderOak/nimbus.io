@@ -7,13 +7,13 @@ manage 10 subprocesses to write data to nodes
 import errno
 import logging
 import os 
-import signal
 import subprocess
 import sys
 from threading import Event
 
 from tools.standard_logging import initialize_logging
 from tools.sized_pickle import store_sized_pickle, retrieve_sized_pickle
+from tools.process_util import set_signal_handler
 
 class NodeDataWriterError(Exception):
     pass
@@ -23,12 +23,7 @@ _log_path = "{0}/nimbusio_cluster_repair_data_writer_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 
-from anti_entropy.anti_entropy_util import identify_program_dir
-
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
+from tools.process_util import identify_program_dir
 
 def _start_subprocesses(halt_event):
     """
@@ -70,7 +65,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     node_subprocesses = _start_subprocesses(halt_event)
 

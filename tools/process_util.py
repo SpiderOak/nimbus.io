@@ -13,15 +13,13 @@ def identify_program_dir(target_dir):
     return the full path to the directory where a program resides
     raise ValueError if there is no such directory
     """
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_dir)
-        if os.path.isdir(test_path):
-            return test_path
+    # we are looking for ...<work-path>/tools/process_util.py
+    work_path = os.path.dirname(os.path.dirname(__file__))
+    test_path = os.path.join(work_path, target_dir)
+    if not os.path.isdir(test_path):
+        raise ValueError("Can't find {0}, {1}".format(target_dir, __file__, ))
 
-    raise ValueError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_dir, python_path, )
-    )
+    return test_path
 
 def _create_signal_handler(halt_event):
     def cb_handler(*_):

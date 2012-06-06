@@ -8,6 +8,7 @@ from argparse import Namespace
 from tools.database_connection import \
     central_database_name, central_database_user, \
     node_database_name_prefix, node_database_user_prefix
+from tools.zeromq_util import ipc_socket_uri
 
 _CONFIG_FILENAME = "config.json"
 
@@ -131,6 +132,9 @@ class ClusterConfig(object):
                 " ".join(self.data_writer_anti_entropy_addresses), ),
             ( "NIMBUSIO_EVENT_PUBLISHER_PUB_ADDRESSES",
                 " ".join(self.event_publisher_pub_addresses), ),
+            ( "NIMBUSIO_SOCKET_DIR",
+                self.socket_path, ),
+
         ]
 
         return _ENV_CONSTANTS + cluster_env
@@ -366,10 +370,9 @@ class ClusterConfig(object):
 
     @property
     def event_publisher_pull_addresses(self):
-        return [ 
-            "ipc:///%s/%s.nimbusio-event-publisher.socket" % ( 
-                self.socket_path, n, )
-             for n in self.node_names ]
+        s = self.socket_path
+        return [ipc_socket_uri(s, n, "nimbusio-event-publisher") \
+            for n in self.node_names]
 
     @property
     def event_publisher_pub_addresses(self):

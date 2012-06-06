@@ -21,6 +21,8 @@ from tools.process_util import identify_program_dir, \
         set_signal_handler, \
         poll_subprocess, \
         terminate_subprocess
+from tools.push_client import PUSHClient
+from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 from retrieve_source.internal_sockets import internal_socket_uri_list, \
         db_controller_pull_socket_uri
@@ -39,14 +41,14 @@ def _bind_rep_socket(zeromq_context):
 
     return rep_socket
 
-def _connect_db_controller_push_socket(zeromq_context):
-    log = logging.getLogger("_connect_db_controller_push_socket")
-    db_controller_push_socket = zeromq_context.socket(zmq.PUSH)
-    db_controller_push_socket.setsockopt(zmq.LINGER, 1000)
+def _connect_db_controller_push_client(zeromq_context):
+    log = logging.getLogger("_connect_db_controller_push_client")
+    db_controller_push_client = zeromq_context.socket(zmq.PUSH)
+    db_controller_push_client.setsockopt(zmq.LINGER, 1000)
     log.debug("connecting to {0}".format(db_controller_pull_socket_uri))
-    db_controller_push_socket.connect(db_controller_pull_socket_uri)
+    db_controller_push_client.connect(db_controller_pull_socket_uri)
 
-    return db_controller_push_socket
+    return db_controller_push_client
 
 def _launch_database_pool_controller():
     log = logging.getLogger("launch_database_pool_controller")
@@ -83,7 +85,7 @@ _dispatch_table = {
 
 def _process_one_request(rep_socket, 
                          client_pull_addresses, 
-                         db_controller_push_socket):
+                         db_controller_push_client):
     """
     This function reads a request message from our rep socket and
     sends an immediate ack.
@@ -138,7 +140,7 @@ def _process_one_request(rep_socket,
     if push_request_to_db_controller:
         request["client-pull-address"] = \
                 client_pull_addresses[request["client-tag"]]
-        db_controller_push_socket.send_json(request)
+        db_controller_push_client.send(request)
 
 def main():
     """
@@ -163,8 +165,10 @@ def main():
 
     zeromq_context = zmq.Context()
     rep_socket = _bind_rep_socket(zeromq_context)
-    db_controller_push_socket = \
-            _connect_db_controller_push_socket(zeromq_context)
+    db_controller_push_client = PUSHClient(zeromq_context, 
+                                           db_controller_pull_socket_uri)
+    event_push_client = EventPushClient(zeromq_context, "retrieve_source")
+
     client_pull_addresses = dict()
 
     try:
@@ -172,21 +176,28 @@ def main():
             poll_subprocess(database_pool_controller)
             _process_one_request(rep_socket, 
                                  client_pull_addresses,
-                                 db_controller_push_socket)
+                                 db_controller_push_client)
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
         else:
-            log.exception("error processing request")
+            log.exception("zeromq error processing request")
+            event_push_client.exception(unhandled_exception_topic,
+                                        "Interrupted zeromq system call",
+                                        exctype="InterruptedSystemCall")
             return_value = 1
-    except Exception:
+    except Exception as instance:
         log.exception("error processing request")
+        event_push_client.exception(unhandled_exception_topic,
+                                    str(instance),
+                                    exctype=instance.__class__.__name__)
         return_value = 1
     else:
         log.info("program teminates normally")
     finally:
         rep_socket.close()
-        db_controller_push_socket.close()
+        db_controller_push_client.close()
+        event_push_client.close()
         terminate_subprocess(database_pool_controller)
         zeromq_context.term()
 

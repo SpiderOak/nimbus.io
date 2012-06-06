@@ -17,6 +17,7 @@ from tools.standard_logging import initialize_logging
 from tools.zeromq_util import is_interrupted_system_call, \
         InterruptedSystemCall
 from tools.process_util import identify_program_dir, set_signal_handler
+from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 from retrieve_source.internal_sockets import db_controller_pull_socket_uri
 
@@ -56,6 +57,8 @@ def main():
     log.debug("binding to {0}".format(db_controller_pull_socket_uri))
     pull_socket.bind(db_controller_pull_socket_uri)
 
+    event_push_client = EventPushClient(zeromq_context, "retrieve_source")
+
     try:
         while not halt_event.is_set():
             _process_one_request(pull_socket)
@@ -63,15 +66,22 @@ def main():
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
         else:
-            log.exception("error processing request")
+            log.exception("zeromq error processing request")
+            event_push_client.exception(unhandled_exception_topic,
+                                        "Interrupted zeromq system call",
+                                        exctype="InterruptedSystemCall")
             return_value = 1
-    except Exception:
+    except Exception as instance:
         log.exception("error processing request")
+        event_push_client.exception(unhandled_exception_topic,
+                                    str(instance),
+                                    exctype=instance.__class__.__name__)
         return_value = 1
     else:
         log.info("program teminates normally")
     finally:
         pull_socket.close()
+        event_push_client.close()
         zeromq_context.term()
 
     return return_value

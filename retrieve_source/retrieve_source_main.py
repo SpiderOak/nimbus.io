@@ -6,17 +6,24 @@ top level process for the retrieve_soruce set of processes
 """
 import logging
 import os
-from threading import Event
+import os.path
+import subprocess
 import sys
+from threading import Event
 
 import zmq
 
 from tools.standard_logging import initialize_logging
-from tools.zeromq_util import prepare_ipc_path
-from tools.process_util import set_signal_handler
+from tools.zeromq_util import is_interrupted_system_call, \
+        InterruptedSystemCall, \
+        prepare_ipc_path
+from tools.process_util import identify_program_dir, \
+        set_signal_handler, \
+        poll_subprocess, \
+        terminate_subprocess
 
-class InterrupedSystemCall(Exception):
-    pass
+from retrieve_source.internal_sockets import internal_socket_uri_list, \
+        db_controller_pull_socket_uri
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_retrieve_source_{1}.log"
@@ -25,10 +32,6 @@ _retrieve_source_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
 def _bind_rep_socket(zeromq_context):
     log = logging.getLogger("_bind_rep_socket")
 
-    # we need a valid path for IPC sockets
-    if _retrieve_source_address.startswith("ipc://"):
-        prepare_ipc_path(_retrieve_source_address)
-
     rep_socket = zeromq_context.socket(zmq.REP)
     rep_socket.setsockopt(zmq.LINGER, 1000)
     log.info("binding to {0}".format(_retrieve_source_address))
@@ -36,20 +39,39 @@ def _bind_rep_socket(zeromq_context):
 
     return rep_socket
 
-def _handle_resilient_server_handshake(message, pull_addresses):
+def _connect_db_controller_push_socket(zeromq_context):
+    log = logging.getLogger("_connect_db_controller_push_socket")
+    db_controller_push_socket = zeromq_context.socket(zmq.PUSH)
+    db_controller_push_socket.setsockopt(zmq.LINGER, 1000)
+    log.debug("connecting to {0}".format(db_controller_pull_socket_uri))
+    db_controller_push_socket.connect(db_controller_pull_socket_uri)
+
+    return db_controller_push_socket
+
+def _launch_database_pool_controller():
+    log = logging.getLogger("launch_database_pool_controller")
+    module_dir = identify_program_dir("retrieve_source")
+    module_path = os.path.join(module_dir, "database_pool_controller.py")
+    
+    args = [sys.executable, module_path, ]
+
+    log.info("starting {0}".format(args))
+    return subprocess.Popen(args, stderr=subprocess.PIPE)
+
+def _handle_resilient_server_handshake(message, client_pull_addresses):
     log = logging.getLogger("_handle_resilient_server_handshake")
     log.debug("{client-tag} {client-address}".format(**message))
 
-    if message["client-tag"] in pull_addresses:
+    if message["client-tag"] in client_pull_addresses:
         log.debug("replacing client-tag {client-tag}".format(**message)) 
-        del pull_addresses[message["client-tag"]]
+        del client_pull_addresses[message["client-tag"]]
 
-    pull_addresses[message["client-tag"]] = message["client-address"]
+    client_pull_addresses[message["client-tag"]] = message["client-address"]
     
-def _handle_resilient_server_signoff(message, pull_addresses):
+def _handle_resilient_server_signoff(message, client_pull_addresses):
     log = logging.getLogger("_handle_resilient_server_signoff")
     try:
-        del pull_addresses[message["client-tag"]]
+        del client_pull_addresses[message["client-tag"]]
     except KeyError:
         log.info("no such client-tag: {client-tag}".format(**message))
     else:
@@ -59,22 +81,33 @@ _dispatch_table = {
     "resilient-server-handshake" : _handle_resilient_server_handshake,
     "resilient-server-signoff"   : _handle_resilient_server_signoff,}
 
-def _push_to_database_control(request, _request_data):
-    log = logging.getLogger("_push_to_database_control")
-    log.info("{0}".format(request))
+def _process_one_request(rep_socket, 
+                         client_pull_addresses, 
+                         db_controller_push_socket):
+    """
+    This function reads a request message from our rep socket and
+    sends an immediate ack.
 
-def _process_one_request(rep_socket, pull_addresses):
+    If the request is a handshake or a signoff from a web server client,
+    we use the information to update our client_pull_addresses
+
+    Otherwise, we insert the client_pull_address into the request and
+    push the message on to the database pool controller
+    """
     log = logging.getLogger("_process_one_request")
 
     try:
         request = rep_socket.recv_json()
-    except zmq.ZMQError as instance:
-        if str(instance) == "Interrupted system call":
-            raise InterrupedSystemCall()
+    except zmq.ZMQError as zmq_error:
+        if is_interrupted_system_call(zmq_error):
+            raise InterruptedSystemCall()
         raise
+
     request_data = list()
     while rep_socket.rcvmore:
         request_data.append(rep_socket.recv())
+    # we're not expecting any data from a retrieve request
+    assert len(request_data) ==0
 
     ack_message = {
         "message-type" : "resilient-server-ack",
@@ -83,21 +116,29 @@ def _process_one_request(rep_socket, pull_addresses):
         "accepted"     : None
     }
 
+    push_request_to_db_controller = False
+
     if request["message-type"] in _dispatch_table:
-        _dispatch_table[request["message-type"]](request, pull_addresses)
+        _dispatch_table[request["message-type"]](request, 
+                                                 client_pull_addresses)
         ack_message["accepted"] = True
     elif not "client-tag" in request:
         log.error("receive: invalid message '{0}'".format(request))
         ack_message["accepted"] = False
     else:
-        if request["client-tag"] in pull_addresses:
-            _push_to_database_control(request, request_data)
+        if request["client-tag"] in client_pull_addresses:
             ack_message["accepted"] = True
+            push_request_to_db_controller = True
         else:
             log.error("No active client-tag {client-tag}".format(**request))
             ack_message["accepted"] = False
 
     rep_socket.send_json(ack_message)
+
+    if push_request_to_db_controller:
+        request["client-pull-address"] = \
+                client_pull_addresses[request["client-tag"]]
+        db_controller_push_socket.send_json(request)
 
 def main():
     """
@@ -112,17 +153,27 @@ def main():
     log = logging.getLogger("main")
     log.info("program starts")
 
+    for internal_socket_uri in internal_socket_uri_list:
+        prepare_ipc_path(internal_socket_uri)
+
     halt_event = Event()
     set_signal_handler(halt_event)
 
+    database_pool_controller = _launch_database_pool_controller()
+
     zeromq_context = zmq.Context()
     rep_socket = _bind_rep_socket(zeromq_context)
-    pull_addresses = dict()
+    db_controller_push_socket = \
+            _connect_db_controller_push_socket(zeromq_context)
+    client_pull_addresses = dict()
 
     try:
         while not halt_event.is_set():
-            _process_one_request(rep_socket, pull_addresses)
-    except InterrupedSystemCall:
+            poll_subprocess(database_pool_controller)
+            _process_one_request(rep_socket, 
+                                 client_pull_addresses,
+                                 db_controller_push_socket)
+    except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
         else:
@@ -135,6 +186,8 @@ def main():
         log.info("program teminates normally")
     finally:
         rep_socket.close()
+        db_controller_push_socket.close()
+        terminate_subprocess(database_pool_controller)
         zeromq_context.term()
 
     return return_value

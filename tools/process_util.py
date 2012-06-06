@@ -4,9 +4,16 @@ process_util.py
 
 utility functions for managing processes
 """
+import logging
 import os
 import os.path
 import signal
+
+class SubprocessFailure(Exception):
+    """
+    A subprocess has terminated unexpectedly
+    """
+    pass
 
 def identify_program_dir(target_dir):
     """
@@ -31,4 +38,31 @@ def set_signal_handler(halt_event):
     set a signal handler to set halt_event when SIGTERM is raised
     """
     signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+
+def poll_subprocess(process):
+    """
+    poll a subprocess to see if it is still running
+    raise SubprocessFailure if it is not
+    """
+    process.poll()
+    if process.returncode is not None:
+        message = "subprocess failed {0} {1}".format(process.returncode,
+                                                     process.stderr.read())
+        raise SubprocessFailure(message)
+
+def terminate_subprocess(process):
+    """
+    terminate a subprocess if it is still running
+    if termination is abnormal, report it
+    """
+    log = logging.getLogger("terminate_subprocess")
+    if process.returncode is None:
+        process.terminate()
+        process.wait()
+    else:
+        log.warn("process is already terminated")
+
+    if process.returncode != 0:
+        log.error("process ({0}) {1}".format(process.returncode,
+                                             process.stderr.read()))
 

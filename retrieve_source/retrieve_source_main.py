@@ -177,6 +177,8 @@ def main():
             _process_one_request(rep_socket, 
                                  client_pull_addresses,
                                  db_controller_push_client)
+    except KeyboardInterrupt: # convenience for testing
+        log.info("keyboard interrupt: terminating normally")
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")

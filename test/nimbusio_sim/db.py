@@ -1,4 +1,5 @@
 import sys
+import string
 import time
 import subprocess
 import random
@@ -116,9 +117,9 @@ def create_database(cluster_config):
     return database_users
 
 def generate_db_user_pw():
-    length = random.choice(range(8, 12))
-    binary = os.urandom(length)
-    return b64encode(binary)
+    pw = "".join([random.choice(string.ascii_letters) 
+                  for _ in range(20)])
+    return pw
 
 def populate_central_database(cluster_config, database_users):
     params = dict(database=cluster_config.central_db_name, 
@@ -205,7 +206,7 @@ def create_owner_and_database(host, port, superuser_name,
     params = dict(database="template1", user=superuser_name, 
                   host=host, port=port)
     conn = retry_db_connect(params)
-    sql = 'create role "%s" with login password %%s' % (owner_username, )
+    sql = 'create role "%s" with login encrypted password %%s' % (owner_username, )
     print sql
     cursor = conn.cursor()
     cursor.execute(sql, [owner_password])
@@ -222,9 +223,13 @@ def apply_database_schema(schemapath, host, port, dbname, db_username):
     if not os.path.exists(schemapath):
         raise RuntimeError("schema %s not found" % (schemapath, ))
 
-    cmd = ["bash", "-c", 
-           "psql -h %s -p %d -U %s -d %s < %s" % ( host, port, db_username, 
-                                                   dbname, schemapath, ) ]
+    if host is None:
+        cmd = ["bash", "-c", 
+               "psql -U %s -d %s < %s" % ( db_username, dbname, schemapath, ) ]
+    else:
+        cmd = ["bash", "-c", 
+               "psql -h %s -p %d -U %s -d %s < %s" % ( host, port, db_username,
+                                                       dbname, schemapath, ) ]
     code, out, err = run_cmd(cmd)
     if code != 0:
         raise RuntimeError("cmd failed: %r exit code %d: %s: %s" % (

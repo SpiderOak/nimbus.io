@@ -4,6 +4,7 @@ database_pool_controller.py
 
 Manage a pool of database workers
 """
+from collections import deque
 import logging
 import os
 import os.path
@@ -22,11 +23,13 @@ from tools.process_util import identify_program_dir, \
         terminate_subprocess
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
-from retrieve_source.internal_sockets import db_controller_pull_socket_uri
+from retrieve_source.internal_sockets import db_controller_pull_socket_uri, \
+        db_controller_router_socket_uri
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_db_pool_controller_{1}.log"
 _worker_count = int(os.environ.get("NIMBUSIO_RETRIEVE_DB_POOL_COUNT", "2"))
+_poll_timeout = 3.0 
 
 def _launch_database_pool_worker(worker_number):
     log = logging.getLogger("launch_database_pool_worker")
@@ -38,16 +41,88 @@ def _launch_database_pool_worker(worker_number):
     log.info("starting {0}".format(args))
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
-def _process_one_request(pull_socket):
-    log = logging.getLogger("_process_one_request")
-    try:
-        request = pull_socket.recv_json()
-    except zmq.ZMQError as zmq_error:
-        if is_interrupted_system_call(zmq_error):
-            raise InterruptedSystemCall()
-        raise
-    assert not pull_socket.rcvmore
-    log.info("{0}".format(request))
+def _send_pending_work_to_available_workers(pending_work_queue, 
+                                            available_worker_ident_queue,
+                                            router_socket):
+    """
+    send messages from the pending_work_queue 
+    to workers in the available_worker_ident_queue_queue
+    """
+    log = logging.getLogger("_send_pending_work_to_available_workers")
+    work_count = min(len(pending_work_queue), 
+                     len(available_worker_ident_queue))
+    for _ in range(work_count):
+        message = pending_work_queue.popleft()
+        ident = available_worker_ident_queue.popleft()
+        log.debug("sending {0} to {1}".format(message, ident))
+        router_socket.send(ident, zmq.SNDMORE)
+        router_socket.send_json(message)
+
+def _read_pull_socket(pull_socket, 
+                      active_retrieves, 
+                      pending_work_queue, 
+                      available_worker_ident_queue,
+                      router_socket):
+    """
+    read messages from the PULL socket until we would block
+    if the message-type is 'retrieve-key-start'
+        add to the pending_work queue
+
+    if the message-type is 'retrieve-key-next'
+        get the next segment_slice info from active_retrieves
+        add the information to the request
+        push the request to the disk_io_controller 
+    """
+    log = logging.getLogger("_read_pull_socket")
+
+    while True: # read until we would block
+        try:
+            message = pull_socket.recv_json(zmq.NOBLOCK)
+        except zmq.ZMQError as instance:
+            if instance.errno == zmq.EAGAIN:
+                break
+            raise
+
+        assert not pull_socket.rcvmore
+
+        # retrieve_id = message["retrieve-id"]
+
+        #TODO: check active_retrieves
+
+        log.debug("adding {0} to pending work queue".format(message))
+        pending_work_queue.append(message)
+
+    _send_pending_work_to_available_workers(pending_work_queue, 
+                                            available_worker_ident_queue,
+                                            router_socket)
+
+def _read_router_socket(router_socket, 
+                        active_retrieves,
+                        pending_work_queue,
+                        available_worker_ident_queue):
+    """
+    read a message from the router socket (from one of our worker processes)
+    if the message-type is 'ready-for-work' (initial message)
+        add the message ident to the available_worker_ident_queue
+    if the message-type is 'work-complete'
+        use the attached data to start an active_retrieve
+        add the message ident to the available_worker_ident_queue
+    """
+    log = logging.getLogger("_read_router_socket")
+
+    ident = router_socket.recv()
+    log.debug("ident = {0}".format(ident))
+    assert router_socket.rcvmore
+    message = router_socket.recv_json()
+    if router_socket.rcvmore:
+        data = router_socket.recv()
+
+    #TODO: start active retrieve
+
+    available_worker_ident_queue.append(ident) 
+    _send_pending_work_to_available_workers(pending_work_queue, 
+                                            available_worker_ident_queue,
+                                            router_socket)
 
 def main():
     """
@@ -71,18 +146,55 @@ def main():
     log.debug("binding to {0}".format(db_controller_pull_socket_uri))
     pull_socket.bind(db_controller_pull_socket_uri)
 
+    router_socket = zeromq_context.socket(zmq.ROUTER)
+    router_socket.setsockopt(zmq.LINGER, 1000)
+    log.debug("binding to {0}".format(db_controller_router_socket_uri))
+    router_socket.bind(db_controller_router_socket_uri)
+
+    # we poll the sockets for readability, we assume we can always
+    # write to the router socket
+    poller = zmq.Poller()
+    poller.register(pull_socket, zmq.POLLIN | zmq.POLLERR)
+    poller.register(router_socket, zmq.POLLIN| zmq.POLLERR)
+
     event_push_client = EventPushClient(zeromq_context, 
                                         "rs_db_pool_controller")
 
     worker_processes = list()
     for index in range(_worker_count):
         worker_processes.append(_launch_database_pool_worker(index+1))
+    
+    # database results used for retrieves that are in progress
+    active_retrieves = dict()
+
+    # new messages from the pull socket which have not been passed to a
+    # worker subprocess
+    pending_work_queue = deque()
+
+    # the message ident(s) from workers waiting for work
+    available_worker_ident_queue = deque()
 
     try:
         while not halt_event.is_set():
             for worker_process in worker_processes:
                 poll_subprocess(worker_process)
-            _process_one_request(pull_socket)
+            for active_socket, event_flags in poller.poll(_poll_timeout):
+                if event_flags & zmq.POLLERR:
+                    log.error("error flags from zmq {0}".format(active_socket))
+                    continue
+                if active_socket == pull_socket:
+                    _read_pull_socket(pull_socket, 
+                                      active_retrieves, 
+                                      pending_work_queue, 
+                                      available_worker_ident_queue,
+                                      router_socket)
+                elif active_socket == router_socket:
+                    _read_router_socket(router_socket, 
+                                        active_retrieves, 
+                                        pending_work_queue,
+                                        available_worker_ident_queue)
+                else:
+                    log.error("unknown socket {0}".format(active_socket))
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
@@ -104,6 +216,7 @@ def main():
         pull_socket.close()
         for worker_process in worker_processes:
             terminate_subprocess(worker_process)
+        router_socket.close()
         event_push_client.close()
         zeromq_context.term()
 

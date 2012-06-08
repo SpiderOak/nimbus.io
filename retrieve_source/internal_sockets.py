@@ -16,6 +16,11 @@ db_controller_pull_socket_uri = ipc_socket_uri(_socket_dir,
                                                _local_node_name,
                                                "db_controller_pull")
 
-internal_socket_uri_list = [db_controller_pull_socket_uri, ]
+db_controller_router_socket_uri = ipc_socket_uri(_socket_dir,
+                                               _local_node_name,
+                                               "db_controller_router")
+
+internal_socket_uri_list = [db_controller_pull_socket_uri, 
+                            db_controller_router_socket_uri, ]
 
 

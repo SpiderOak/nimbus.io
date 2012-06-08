@@ -41,7 +41,7 @@ def start_event_aggregator(environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_event_subscriber(environment):
@@ -55,7 +55,7 @@ def start_event_subscriber(environment):
         "error"
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_data_writer(node_name, environment, profile):
@@ -82,7 +82,7 @@ def start_data_writer(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_data_reader(node_name, environment, profile):
@@ -109,7 +109,7 @@ def start_data_reader(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_space_accounting_server(node_name, environment):
@@ -124,7 +124,7 @@ def start_space_accounting_server(node_name, environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_handoff_server(node_name, environment, profile):
@@ -149,7 +149,7 @@ def start_handoff_server(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_event_publisher(node_name, environment):
@@ -162,7 +162,7 @@ def start_event_publisher(node_name, environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_performance_packager(node_name, environment):
@@ -177,7 +177,7 @@ def start_performance_packager(node_name, environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_stats_subscriber(environment):
@@ -192,7 +192,7 @@ def start_stats_subscriber(environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_web_server(node_name, environment, profile):
@@ -226,7 +226,7 @@ def start_web_server(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
 
     return subprocess.Popen(
         args, stdout=wsgi_log_file, stderr=subprocess.STDOUT, env=environment

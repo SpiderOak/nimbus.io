@@ -6,6 +6,7 @@ A class that retrieves data from data readers.
 """
 import logging
 import time
+import uuid
 
 import gevent
 import gevent.pool
@@ -215,15 +216,18 @@ class Retriever(object):
 
             status_row, block_offset, block_count = entry
 
+            retrieve_id = uuid.uuid1().hex
+
             # spawn retrieve_key start, then spawn retrieve key next
             # until we are done
             start = True
             while True:
                 self._sequence += 1
-                self._log.debug("retrieve: %s %s %s" % (
+                self._log.debug("retrieve: {0} {1} {2} {3}".format(
                     self._sequence, 
                     status_row.seg_unified_id, 
                     status_row.seg_conjoined_part,
+                    retrieve_id
                 ))
                 # send a request to all node
                 for i, data_reader in enumerate(self._data_readers):
@@ -237,6 +241,7 @@ class Retriever(object):
                     if start:
                         task = self._pending.spawn(
                             data_reader.retrieve_key_start,
+                            retrieve_id,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,
@@ -246,6 +251,7 @@ class Retriever(object):
                     else:
                         task = self._pending.spawn(
                             data_reader.retrieve_key_next,
+                            retrieve_id,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,

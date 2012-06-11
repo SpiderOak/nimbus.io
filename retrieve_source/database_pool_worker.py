@@ -7,6 +7,7 @@ One of a pool of database workers
 import logging
 import os
 import os.path
+import pickle
 import sys
 from threading import Event
 
@@ -17,11 +18,41 @@ from tools.zeromq_util import is_interrupted_system_call, \
         InterruptedSystemCall
 from tools.process_util import set_signal_handler
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
+from tools.database_connection import get_node_local_connection
+from tools.data_definitions import segment_sequence_template
 
 from retrieve_source.internal_sockets import db_controller_router_socket_uri
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_db_pool_worker_{1}_{2}.log"
+_all_sequence_rows_for_segment_query = """
+select {0} 
+from nimbusio_node.segment_sequence seq 
+inner join nimbusio_node.value_file val
+on seq.value_file_id = val.id
+where seq.segment_id = (
+    select id from nimbusio_node.segment 
+    where unified_id = %(segment-unified-id)s
+    and conjoined_part = %(segment-conjoined-part)s
+    and segment_num = %(segment-num)s
+    and handoff_node_id is null
+    and status = 'F'
+)
+order by seq.sequence_num asc"""
+_all_sequence_rows_for_handoff_query = """
+select {0} 
+from nimbusio_node.segment_sequence seq 
+inner join nimbusio_node.value_file val
+on seq.value_file_id = val.id
+where seq.segment_id = (
+    select id from nimbusio_node.segment 
+    where unified_id = %(segment-unified-id)s
+    and conjoined_part = %(segment-conjoined-part)s
+    and segment_num = %(segment-num)s
+    and handoff_node_id = %(handoff-node-id)s
+    and status = 'F'
+)
+order by seq.sequence_num asc"""
 
 def _send_initial_work_request(dealer_socket):
     """
@@ -32,7 +63,13 @@ def _send_initial_work_request(dealer_socket):
     message = {"message-type" : "ready-for-work"}
     dealer_socket.send_json(message)
 
-def _process_one_transaction(dealer_socket):
+def _define_seq_val_fields():
+    fields = ",".join(
+        ["seq.{0}".format(f) for f in segment_sequence_template._fields])
+    fields = ",".join([fields, "val.space_id"])
+    return fields
+
+def _process_one_transaction(dealer_socket, database_connection):
     """
     Wait for a reply to our last message from the controller.
     This will be a query request.
@@ -49,12 +86,28 @@ def _process_one_transaction(dealer_socket):
         raise
     assert not dealer_socket.rcvmore
 
-    data = b"pork"
+    fields = _define_seq_val_fields()
+    if request["handoff-node-id"] is None:
+        query = _all_sequence_rows_for_segment_query.format(fields)
+    else:
+        query = _all_sequence_rows_for_handoff_query.format(fields)
 
-    log.debug("sending reply")
-    message = {"message-type" : "work-complete"}
-    dealer_socket.send_json(message, zmq.SNDMORE)
-    dealer_socket.send(data)
+    result = database_connection.fetch_all_rows(query, request)    
+    result_list = list()
+    for row in result:
+        row_list = list(row)
+        segment_sequence_row = segment_sequence_template._make(row_list[:-1]) 
+        space_id = row_list[-1]
+        row_dict = dict(segment_sequence_row._asdict().items())
+        row_dict["hash"] = bytes(row_dict["hash"])
+        row_dict["space_id"] = space_id
+        result_list.append(row_dict)
+    pickled_result_list = pickle.dumps(result_list)
+
+    log.debug("sending request back to controller")
+    request["database-pool-result"] = "success"
+    dealer_socket.send_json(request, zmq.SNDMORE)
+    dealer_socket.send(pickled_result_list)
 
 def main():
     """
@@ -85,10 +138,13 @@ def main():
     log.debug("connecting to {0}".format(db_controller_router_socket_uri))
     dealer_socket.connect(db_controller_router_socket_uri)
 
+    log.debug("opening local database connection")
+    database_connection = get_node_local_connection()
+
     try:
         _send_initial_work_request(dealer_socket)
         while not halt_event.is_set():
-            _process_one_transaction(dealer_socket)
+            _process_one_transaction(dealer_socket, database_connection)
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
@@ -107,6 +163,7 @@ def main():
     else:
         log.info("program teminates normally")
     finally:
+        database_connection.close()
         dealer_socket.close()
         event_push_client.close()
         zeromq_context.term()

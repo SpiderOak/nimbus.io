@@ -8,6 +8,7 @@ from collections import deque
 import logging
 import os
 import os.path
+import pickle
 import subprocess
 import sys
 from threading import Event
@@ -54,9 +55,31 @@ def _send_pending_work_to_available_workers(pending_work_queue,
     for _ in range(work_count):
         message = pending_work_queue.popleft()
         ident = available_worker_ident_queue.popleft()
-        log.debug("sending {0} to {1}".format(message, ident))
         router_socket.send(ident, zmq.SNDMORE)
         router_socket.send_json(message)
+
+def _handle_retrieve_key_start(message, active_retrieves, pending_work_queue):
+    log = logging.getLogger("_handle_retrieve_key_start")
+    retrieve_id = message["retrieve-id"]
+    if retrieve_id in active_retrieves:
+        log.error("duplicate retrieve-id {0} in archive-key-start".format(
+             retrieve_id))
+        del active_retrieves[retrieve_id]
+
+    log.debug("adding {0} to pending work queue".format(message))
+    pending_work_queue.append(message)
+
+def _handle_retrieve_key_next(message, active_retrieves, pending_work_queue):
+    log = logging.getLogger("_handle_retrieve_key_next")
+    retrieve_id = message["retrieve-id"]
+
+    if retrieve_id not in active_retrieves:
+        log.error("unknown retrieve-id {0} in archive-key-next".format(
+             retrieve_id))
+        return
+
+_dispatch_table = { "retrieve-key-start" : _handle_retrieve_key_start,
+                    "retrieve-key-next"  : _handle_retrieve_key_next, }
 
 def _read_pull_socket(pull_socket, 
                       active_retrieves, 
@@ -85,12 +108,13 @@ def _read_pull_socket(pull_socket,
 
         assert not pull_socket.rcvmore
 
-        # retrieve_id = message["retrieve-id"]
-
-        #TODO: check active_retrieves
-
-        log.debug("adding {0} to pending work queue".format(message))
-        pending_work_queue.append(message)
+        try:
+            _dispatch_table[message["message-type"]](message,
+                                                     active_retrieves,
+                                                     pending_work_queue)
+        except KeyError as instance:
+            log.error("unknown message type {0} {1}".format(instance,
+                                                            message))
 
     _send_pending_work_to_available_workers(pending_work_queue, 
                                             available_worker_ident_queue,
@@ -111,13 +135,16 @@ def _read_router_socket(router_socket,
     log = logging.getLogger("_read_router_socket")
 
     ident = router_socket.recv()
-    log.debug("ident = {0}".format(ident))
     assert router_socket.rcvmore
     message = router_socket.recv_json()
+    data = None
     if router_socket.rcvmore:
-        data = router_socket.recv()
+        pickled_data = router_socket.recv()
+        data = pickle.loads(pickled_data)
 
     #TODO: start active retrieve
+    if message["message-type"] == "archive-key-start":
+        active_retrieves[message["retrieve-id"]] = (message, data, )
 
     available_worker_ident_queue.append(ident) 
     _send_pending_work_to_available_workers(pending_work_queue, 

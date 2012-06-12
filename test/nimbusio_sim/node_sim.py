@@ -61,9 +61,9 @@ class NodeSim(object):
         if not os.path.exists(self._home_dir):
             os.makedirs(self._home_dir)
 
-        id_translator_keys_path = os.path.join(
-            self._home_dir, "id_translator_keys.pkl"
-        )
+        id_translator_keys_path = os.environ.get(
+            "NIMBUS_IO_ID_TRANSLATION_KEYS", 
+            os.path.join(self._home_dir, "id_translator_keys.pkl"))
         if not os.path.exists(id_translator_keys_path):
             id_translator_keys = _create_id_translator_keys()
             with open(id_translator_keys_path, "w") as output_file:

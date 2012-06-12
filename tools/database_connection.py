@@ -119,7 +119,8 @@ def get_node_connection(
     node_name, database_password, database_host, database_port
 ):
     database_name = ".".join([node_database_name_prefix, node_name, ])
-    database_user = ".".join([node_database_user_prefix, node_name, ])
+    database_user = "_".join([node_database_user_prefix, node_name, ])
+    database_user = database_user.replace("-", "_")
     connection = DatabaseConnection(
         database_name=database_name,
         database_user=database_user,

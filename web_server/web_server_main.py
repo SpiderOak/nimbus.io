@@ -1,4 +1,4 @@
-#d -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Receives HTTP requests and distributes data to backend processes using zeromq
 
@@ -42,7 +42,7 @@ from tools.database_connection import get_central_connection, \
 from tools.event_push_client import EventPushClient
 from tools.unified_id_factory import UnifiedIDFactory
 from tools.id_translator import InternalIDTranslator
-from tools.data_definitions import create_priority, create_timestamp
+from tools.data_definitions import create_timestamp
 
 from web_server.application import Application
 from web_server.data_reader import DataReader
@@ -77,7 +77,7 @@ _stats = {
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _signal_handler_closure(halt_event):
-    def _signal_handler(*args):
+    def _signal_handler(*_args):
         halt_event.set()
     return _signal_handler
 
@@ -119,18 +119,6 @@ class WebServer(object):
         )
         self._pull_server.link_exception(self._unhandled_greenlet_exception)
 
-        # message sent to data readers and writers telling them the server
-        # is (re)starting, thereby invalidating any archvies or retrieved
-        # that are in progress for this node
-        timestamp = create_timestamp()
-        start_message = {
-            "message-type"              : "web-server-start",
-            "priority"                  : create_priority(),
-            "unified-id"                : self._unified_id_factory.next(),
-            "timestamp-repr"            : repr(timestamp),
-            "source-node-name"          : _local_node_name,
-        }
-
         self._data_writer_clients = list()
         for node_name, address in zip(_node_names, _data_writer_addresses):
             resilient_client = GreenletResilientClient(
@@ -140,7 +128,7 @@ class WebServer(object):
                 _client_tag,
                 _web_server_pipeline_address,
                 self._deliverator,
-                connect_messages=[start_message, ]
+                connect_messages=[]
             )
             resilient_client.link_exception(self._unhandled_greenlet_exception)
             self._data_writer_clients.append(resilient_client)
@@ -155,7 +143,7 @@ class WebServer(object):
                 _client_tag,
                 _web_server_pipeline_address,
                 self._deliverator,
-                connect_messages=[start_message, ]
+                connect_messages=[]
             )
             resilient_client.link_exception(self._unhandled_greenlet_exception)
             self._data_reader_clients.append(resilient_client)
@@ -189,6 +177,17 @@ class WebServer(object):
             self._zeromq_context,
             "web-server"
         )
+
+        # message sent to data readers and writers telling them the server
+        # is (re)starting, thereby invalidating any archvies or retrieved
+        # that are in progress for this node
+        unified_id = self._unified_id_factory.next()
+        timestamp = create_timestamp()
+        self._event_push_client.info("web-server-start",
+                                     "web server (re)start",
+                                     unified_id=unified_id,
+                                     timestamp_repr=repr(timestamp),
+                                     source_node_name=_local_node_name)
 
         self._watcher = Watcher(
             _stats, 

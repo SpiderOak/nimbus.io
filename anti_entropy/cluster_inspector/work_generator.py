@@ -32,11 +32,6 @@ def _row_key_check(segment_data):
             row_key_set.add(_row_key(entry["segment-row"]))
     assert len(row_key_set) == 1, str(row_key_set)
 
-def _load_damaged_set(work_dir, node_name):
-    path = compute_damaged_segment_file_path(work_dir, node_name)
-    with gzip.GzipFile(filename=path, mode="rb") as input_file:
-        return retrieve_sized_pickle(input_file)
-
 class NodeRowGenerator(object):
     """
     generate segment row information for one node
@@ -44,81 +39,66 @@ class NodeRowGenerator(object):
     def __init__(self, work_dir, node_name):
         path = compute_segment_file_path(work_dir, node_name)
         self._segment_file = gzip.GzipFile(filename=path, mode="rb")
-        self._damaged_set = _load_damaged_set(work_dir, node_name)
-        self.segment_row = None
-        self.handoff_rows = list()
+        path = compute_damaged_segment_file_path(work_dir, node_name)
+        self._damaged_file = gzip.GzipFile(filename=path, mode="rb")
+        self.segment_dict = None
+        try:
+            self._damaged_dict = retrieve_sized_pickle(self._damaged_file)
+        except EOFError:
+            self._damaged_dict = None
         self.advance()
 
-    @property
-    def segment_is_damaged(self):
-        return self.segment_row is not None and \
-                _row_key(self.segment_row) in self._damaged_set
-
     def advance(self):
-        self.segment_row = None
-        self.handoff_rows = list()
-        while self._segment_file is not None:
+        try:
+            self.segment_dict = retrieve_sized_pickle(self._segment_file)
+        except EOFError:
+            self.segment_dict = None
+            self._segment_file.close()
+            self._segment_file = None
+            return
+
+        segment_row_key = _row_key(self.segment_dict)
+
+        while self._damaged_dict is not None and \
+              segment_row_key > _row_key(self._damaged_dict):
             try:
-                segment_row = retrieve_sized_pickle(self._segment_file)
+                self._damaged_dict = retrieve_sized_pickle(self._damaged_file)
             except EOFError:
-                self._segment_file.close()
-                self._segment_file = None
-                break
+                self._damaged_dict = None
 
-            if segment_row["handoff_node_id"] is not None:
-                self.handoff_rows.append(segment_row)
-                continue
+        if self._damaged_dict is None:
+            self.segment_dict["damaged_sequence_numbers"] = list()
+            return
 
-            self.segment_row = segment_row
-            segment_row_key = _row_key(segment_row)
-            for handoff_row in self.handoff_rows:
-                assert _row_key(handoff_row) == segment_row_key
+        if segment_row_key < _row_key(self._damaged_dict):
+            self.segment_dict["damaged_sequence_numbers"] = list()
+            return
 
-            break
+        if segment_row_key == _row_key(self._damaged_dict):
+            self.segment_dict["damaged_sequence_numbers"] = \
+                self._damaged_dict["sequence_numbers"]
 
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
-
-def _load_node_id_dict():
-    central_connection = get_central_connection()
-    cluster_row = get_cluster_row(central_connection)
-    node_rows = get_node_rows(central_connection, cluster_row.id)
-    central_connection.close()
-
-    return dict([(node_row.name, node_row.id, ) for node_row in node_rows])
 
 def generate_work(work_dir):
     """
     generate work data structures for segment audit
     We use dicts instead of named tuples for easy pickling
-
-    audit_data (dict)
-        "segment-status"
-        "segment-data" (dict keyed by node_name)
-            <node-name-1> (dict)
-                "segment-row" : (dict)
-                "is-damaged" : Boolean
-            
+    We yield a tuple of ((unified_id, conjoined_part), status, [segment_rows],)
+    with segment rows in order of node_name
     """
     log = logging.getLogger("generate_work")
-    row_generators = dict()
-
-    node_id_dict =_load_node_id_dict()
-
-    # create the generators (with initial advance)
-    for node_name in _node_names:
-        row_generators[node_name] = NodeRowGenerator(work_dir, node_name)
+    row_generators = [NodeRowGenerator(work_dir, n) for n in _node_names]
 
     while True:
 
         # find the minimum row_key (unified_id, conjoined_part)
         minimum_row_key = None
-        for node_name in _node_names:
-            row_generator = row_generators[node_name]
-
-            if row_generator.segment_row is None:
+        for row_generator in row_generators:
+            if row_generator.segment_dict is None:
                 continue
 
-            row_key = _row_key(row_generator.segment_row)
+            row_key = _row_key(row_generator.segment_dict)
             if minimum_row_key is None:
                 minimum_row_key = row_key
             else:
@@ -128,42 +108,20 @@ def generate_work(work_dir):
         if minimum_row_key is None:
             raise StopIteration()
         
-        # build an audit data structure
-        audit_data = {"segment-status"  : anti_entropy_pre_audit,
-                      "segment-data"    : dict()}
-
-        handoff_rows = list()
-        for node_name in _node_names:
-            node_data = {"segment-row"  : None,
-                         "is-damaged"   : False}
-            audit_data["segment-data"][node_name] = node_data
-
-            row_generator = row_generators[node_name]
-
-            if row_generator.segment_row is None:
+        segment_data = list()
+        for row_generator in row_generators:
+            if row_generator.segment_dict is None:
+                segment_data.append(None)
                 continue
 
-            row_key = _row_key(row_generator.segment_row)
-            if row_key == minimum_row_key:
-                node_data["segment-row"] = row_generator.segment_row
-                node_data["is-damaged"] = row_generator.segment_is_damaged
-                handoff_rows.extend(row_generator.handoff_rows)
-                row_generator.advance()
+            row_key = _row_key(row_generator.segment_dict)
+            if row_key != minimum_row_key:
+                assert row_key > minimum_row_key
+                segment_data.append(None)
+                continue
 
-        # now make a pass to fill in handoffs:
-        # if we have a missing segment_row and some row generator has a handoff
-        # for it, we substitute the handoff row. 
-        # These substitutions can be recognized by handoff_node_id not None
-        for node_name in _node_names:
-            node_data = audit_data["segment-data"][node_name]
-            if node_data["segment-row"] is None:
-                node_id = node_id_dict[node_name]
-                for handoff_row in handoff_rows:
-                    if handoff_row["handoff_node_id"] == node_id:
-                        assert _row_key(handoff_row) == minimum_row_key
-                        node_data["segment-row"] = handoff_row
-                        break
+            segment_data.append(row_generator.segment_dict)
+            row_generator.advance()
 
-        yield audit_data
-
+        yield (minimum_row_key, anti_entropy_pre_audit, segment_data, )
 

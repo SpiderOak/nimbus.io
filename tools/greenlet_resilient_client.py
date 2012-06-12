@@ -2,7 +2,7 @@
 """
 resilient_client.py
 
-a class that manages a zeromq DEALER (aka XREQ) socket as a client,
+a class that manages a zeromq REQ socket as a client,
 to a resilient server
 """
 import logging
@@ -35,7 +35,7 @@ class GreenletResilientClient(Greenlet):
         The node name of the server we connect to
         
     server_address
-        The zeromq address of the ROUTER_ socket of the server we connect to
+        The zeromq address of the REP socket of the server we connect to
 
     client_tag
         A unique identifier for our client, to be included in every message
@@ -54,12 +54,12 @@ class GreenletResilientClient(Greenlet):
     - request-reply_ for sending messages and for receiving acknowledgements
     - pipeline_ for receiving the actual replies to messages
 
-    Each process maintains a single PULL_ socket for all of its resilient 
+    Each process maintains a single PULL socket for all of its resilient 
     clients. The address of this socket is the member **_client_address**.
     The client includes this in every message along with **_client_tag** which
     uniquely identifies the client to the server
 
-    Each resilient client maintains its own DEALER_ socket **_self._dealer_socket**.
+    Each resilient client maintains its own REQ socket **_self._req_socket**.
 
     At startup the client sends a *handshake* message to the server. The client
     is not considered connected until it gets an ack fro the handshake.
@@ -74,11 +74,6 @@ class GreenletResilientClient(Greenlet):
     5. The actual reply from the server comes to the PULL_ socket and is
        handled outside the client
 
-    .. _ROUTER: http://api.zeromq.org/2-1:zmq-socket#toc7
-    .. _request-reply: http://www.zeromq.org/sandbox:dealer
-    .. _pipeline: http://api.zeromq.org/2-1:zmq-socket#toc11
-    .. _PULL: http://api.zeromq.org/2-1:zmq-socket#toc13
-    .. _DEALER: http://api.zeromq.org/2-1:zmq-socket#toc6
     """
     def __init__(
         self, 
@@ -116,7 +111,7 @@ class GreenletResilientClient(Greenlet):
             )
             self._send_queue.put(message)
 
-        self._dealer_socket = None
+        self._req_socket = None
         self.connected = False
 
     @property
@@ -129,9 +124,9 @@ class GreenletResilientClient(Greenlet):
 
     def join(self, timeout=3.0):
         self._log.debug("joining")
-        if self._dealer_socket is not None:
-            self._dealer_socket.close()
-            self._dealer_socket = None
+        if self._req_socket is not None:
+            self._req_socket.close()
+            self._req_socket = None
         Greenlet.join(self, timeout)
         self._log.debug("join complete")
 
@@ -183,10 +178,10 @@ class GreenletResilientClient(Greenlet):
 
             assert not self.connected
 
-            self._dealer_socket = self._context.socket(zmq.XREQ)
-            self._dealer_socket.setsockopt(zmq.LINGER, 1000)
+            self._req_socket = self._context.socket(zmq.REQ)
+            self._req_socket.setsockopt(zmq.LINGER, 1000)
             self._log.debug("connecting to server")
-            self._dealer_socket.connect(self._server_address)
+            self._req_socket.connect(self._server_address)
 
             # send a handshake
             message_control = {
@@ -195,12 +190,12 @@ class GreenletResilientClient(Greenlet):
                 "client-tag"        : self._client_tag,
                 "client-address"    : self._client_address,
             }
-            self._dealer_socket.send_json(message_control)
+            self._req_socket.send_json(message_control)
 
             # wait for  an ack
             ack_reply = gevent.with_timeout(
                 _ack_timeout, 
-                self._dealer_socket.recv_json,
+                self._req_socket.recv_json,
                 timeout_value=None
             )
             if ack_reply is None:
@@ -209,8 +204,8 @@ class GreenletResilientClient(Greenlet):
                         _handshake_retry_interval
                     )
                 self._log.error(error_message)
-                self._dealer_socket.close()
-                self._dealer_socket = None
+                self._req_socket.close()
+                self._req_socket = None
                 gevent.sleep(_handshake_retry_interval)
                 continue
 
@@ -226,15 +221,15 @@ class GreenletResilientClient(Greenlet):
                 # wait for  an ack
                 ack_reply = gevent.with_timeout(
                     _ack_timeout, 
-                    self._dealer_socket.recv_json,
+                    self._req_socket.recv_json,
                     timeout_value=None
                 )
                 if ack_reply is None:
                     error_message = \
                         "timeout waiting ack: treating as disconnect"
                     self._log.error(error_message)
-                    self._dealer_socket.close()
-                    self._dealer_socket = None
+                    self._req_socket.close()
+                    self._req_socket = None
 
                     self.connected = False
 
@@ -255,12 +250,12 @@ class GreenletResilientClient(Greenlet):
                 message = message._replace(body=[message.body, ])
 
         if message.body is None:
-            self._dealer_socket.send_json(message.control)
+            self._req_socket.send_json(message.control)
         else:
-            self._dealer_socket.send_json(message.control, zmq.SNDMORE)
+            self._req_socket.send_json(message.control, zmq.SNDMORE)
             for segment in message.body[:-1]:
-                self._dealer_socket.send(segment, zmq.SNDMORE)
-            self._dealer_socket.send(message.body[-1])
+                self._req_socket.send(segment, zmq.SNDMORE)
+            self._req_socket.send(message.body[-1])
 
     def _deliver_failure_reply(self, message_to_send):
         """

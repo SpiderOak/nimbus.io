@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-cluster_inspector_maibn.py
+cluster_inspector_main.py
 
 pull segment and damaged_segment rows from node local databases
 """
@@ -8,15 +8,14 @@ import logging
 import os
 import os.path
 import shutil
-import signal
 import sys
 from threading import Event
-import time
 
 import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
+from tools.process_util import set_signal_handler
 
 from anti_entropy.cluster_inspector.segment_puller import \
         pull_segments_from_nodes
@@ -31,11 +30,6 @@ _log_path = "{0}/nimbusio_cluster_inspector_{1}.log".format(
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]      
 _work_dir = os.path.join(_repository_path, "cluster_inspector")
 
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
-
 def main():
     """
     main entry point
@@ -47,7 +41,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     zmq_context =  zmq.Context()
 
@@ -65,14 +59,12 @@ def main():
 
         if halt_event.is_set():
             log.info("halt_event set (1): exiting")
-            _terminate_pullers(pullers)
             return -1
 
         audit_segments(halt_event, _work_dir)
 
     except KeyboardInterrupt:
         halt_event.set()
-        connection.rollback()
     except Exception as instance:
         log.exception(str(instance))
         event_push_client.exception(

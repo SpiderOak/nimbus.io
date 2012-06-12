@@ -33,6 +33,6 @@ class PUBServer(object):
         self._log.debug("sending message: %s %s" % (
             message["message-type"], message,  
         ))
-        self._pub_socket.send(message["message-type"], zmq.SNDMORE)
+        self._pub_socket.send(str(message["message-type"]), zmq.SNDMORE)
         self._pub_socket.send_json(message)
 

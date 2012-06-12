@@ -1,5 +1,5 @@
 #!/bin/bash
-export NIMBUSIO="${HOME}/nimbus.io"
+export NIMBUSIO="${HOME}/git/nimbus.io"
 export PYTHONPATH="${NIMBUSIO}"
 export NIMBUSIO_LOG_DIR="/var/log/nimbusio"
 
@@ -15,8 +15,9 @@ export NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS="ipc:///tmp/nimbusio-event-publishe
 export NIMBUSIO_CENTRAL_USER_PASSWORD="1.332009188365191"
 export NIMBUSIO_NODE_USER_PASSWORD="1.332009188365191"
 export NIMBUSIO_REPLY_TIMEOUT="900"
+PYTHON="python2.7"
 
 rm "${NIMBUSIO_LOG_DIR}/nimbusio_web_server.log"
 rm "${NIMBUSIO_LOG_DIR}/nimbusio_web_server_wsgi.log"
-bash -c 'ulimit -H -n 32768 ; chpst -u dougfort:dougfort -o 32768 python "${NIMBUSIO}/web_server/web_server_main.py"' "$@" &> /var/log/nimbusio/nimbusio_web_server_wsgi.log
+bash -c 'ulimit -H -n 32768 ; chpst -u dougfort:dougfort -o 32768 ${PYTHON} "${NIMBUSIO}/web_server/web_server_main.py"' "$@" &> /var/log/nimbusio/nimbusio_web_server_wsgi.log
 

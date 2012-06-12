@@ -9,8 +9,8 @@ try:
 except ImportError:
     import unittest
 
-from tools.data_definitions import block_generator
-from web_server.zfec_segmenter import ZfecSegmenter
+from tools.data_definitions import block_generator, incoming_slice_size
+from tools.zfec_segmenter import ZfecSegmenter
 
 _min_segments = 8
 _num_segments = 10
@@ -26,7 +26,7 @@ class TestZfecSegmenter(unittest.TestCase):
 
     def test_unpadded_segment(self):
         """test a segment that doesn't need padding"""
-        segment_size = 10 * 1024 * 1024
+        segment_size = incoming_slice_size
         test_data = os.urandom(segment_size)
         segmenter = ZfecSegmenter(_min_segments, _num_segments)
 
@@ -47,7 +47,7 @@ class TestZfecSegmenter(unittest.TestCase):
 
     def test_padded_segment(self):
         """test a segment that needs padding"""
-        segment_size = 10 * 1024 * 1024 - 1
+        segment_size = incoming_slice_size - 1
         test_data = os.urandom(segment_size)
         segmenter = ZfecSegmenter(_min_segments, _num_segments)
 

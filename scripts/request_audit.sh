@@ -1,5 +1,5 @@
 #!/bin/bash
-export NIMBUSIO="${HOME}/nimbus.io"
+export NIMBUSIO="${HOME}/git/nimbus.io"
 export PYTHONPATH="${NIMBUSIO}"
 export NIMBUSIO_LOG_DIR="/var/log/nimbusio"
 export NIMBUSIO_NODE_NAME="multi-node-01"

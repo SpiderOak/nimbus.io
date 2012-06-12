@@ -14,13 +14,16 @@ _pickle_length_size = struct.calcsize(_pickle_length_format)
 
 def store_sized_pickle(data, file_object):
     """
-    store a sized pickle in the file object
+    store structured data as a sized pickle in the file object
     """
     pickled_data = dumps(data)
     file_object.write(struct.pack(_pickle_length_format, len(pickled_data)))
     file_object.write(pickled_data)
 
 def retrieve_sized_pickle(file_object):
+    """
+    return structured data from one sized pickle in the file object
+    """
     length_str = file_object.read(_pickle_length_size)
     if len(length_str) == 0:
         raise EOFError()

@@ -42,6 +42,20 @@ class PriorityQueue(object):
             (priority, self._counter.next(), message_tuple, )
         )
 
+    def appendleft(self, message_tuple):
+        """
+        add a message to the head of the queue
+
+        The message must be created by tools.data_definitions.message_format
+
+        """
+        priority = 0
+
+        heapq.heappush(
+            self._internal_queue, 
+            (priority, self._counter.next(), message_tuple, )
+        )
+
     def popleft(self):
         """
         return the next message in order

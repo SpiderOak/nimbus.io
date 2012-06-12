@@ -14,13 +14,13 @@ if [ ! -d $BASEDIR ]; then
     exit 1
 fi
 
-PYTHON="${HOME}/python_env/nimbus.io.0.0.1/bin/python3"
+PYTHON="python3.2"
 
 # pull in environment settings from the simulated cluster 
 pushd "${BASEDIR}/config"
-source node_01_config.sh
+source node_05_config.sh
 popd
 
 # run unit tests with identity file
-$PYTHON "${HOME}/nimbus.io/anti_entropy/node_inspector/node_inspector_main.py"
+$PYTHON "${HOME}/git/nimbus.io/anti_entropy/node_inspector/node_inspector_main.py"
 

@@ -10,16 +10,7 @@ import os.path
 import subprocess
 import sys
 
-def identify_program_dir(target_dir):
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_dir)
-        if os.path.isdir(test_path):
-            return test_path
-
-    raise ValueError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_dir, python_path, )
-    )
+from tools.process_util import identify_program_dir
 
 def poll_process(process):
     process.poll()
@@ -110,33 +101,6 @@ def start_data_reader(node_name, environment, profile):
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
             "data_reader_%s.pstats" % (node_name, )
-        )
-        args[1:1] = [
-            "-m",
-            "cProfile",
-            "-o",
-            profile_path
-        ]
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-def start_anti_entropy_server(node_name, environment, profile):
-    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"anti_entropy_server")
-    server_path = os.path.join(
-        server_dir, "anti_entropy_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    if profile:
-        profile_path = os.path.join(
-            environment["NIMBUSIO_PROFILE_DIR"],
-            "anti_entropy_server_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",

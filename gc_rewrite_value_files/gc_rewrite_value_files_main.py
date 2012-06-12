@@ -7,7 +7,6 @@ garbage_collector_main.py
 import io
 import logging
 import os
-import signal
 import sys
 from threading import Event
 

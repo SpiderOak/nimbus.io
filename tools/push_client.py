@@ -15,7 +15,7 @@ class PUSHClient(object):
     The purpose is to have multiple clients pushing to a single PULL server
     """
     def __init__(self, context, address):
-        self._log = logging.getLogger("PUSHClient-%s" % (address, ))
+        self._log = logging.getLogger("PUSH{0}".format(address))
 
         self._push_socket = context.socket(zmq.PUSH)
         self._push_socket.setsockopt(zmq.LINGER, 1000)
@@ -26,7 +26,7 @@ class PUSHClient(object):
         self._push_socket.close()
 
     def send(self, message, data=None):
-        self._log.debug("sending message: %s" % (message,  ))
+        self._log.debug("sending message: {0}".format(message))
 
         # don't send a zero size body 
         if type(data) not in [list, tuple, type(None), ]:

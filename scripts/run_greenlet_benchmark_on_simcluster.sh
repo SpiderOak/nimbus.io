@@ -53,13 +53,15 @@ CLIENT_PATH=$BASEDIR/client
 source $BASEDIR/config/central_config.sh
 source $BASEDIR/config/client_config.sh
 
+PYTHON="python2.7"
+
 # create 100 test users
 for i in {0..99} ; do
     printf -v TEST_USERNAME "motoboto-benchmark-%03d" $i
     MOTOBOTO_IDENTIY="$CLIENT_PATH/$TEST_USERNAME"
     if [ ! -e $MOTOBOTO_IDENTIY ]; then
         echo "Creating user $TEST_USERNAME with config $MOTOBOTO_IDENTIY"
-        python2.7 customer/customer_main.py --create-customer \
+        "${PYTHON}" customer/customer_main.py --create-customer \
             --username=$TEST_USERNAME > $MOTOBOTO_IDENTIY
     fi 
 done
@@ -67,7 +69,7 @@ done
 export NIMBUSIO_CONNECTION_TIMEOUT=360.0
 
 # run the benchmark
-python2.7 $MOTOBOTO_BENCH_DIR/motoboto_benchmark_greenlet_main.py \
+${PYTHON} $MOTOBOTO_BENCH_DIR/motoboto_benchmark_greenlet_main.py \
     --test-script="$SCRIPTS_DIR/motoboto_big_test_script.json" \
     --user-identity-dir="$CLIENT_PATH" \
     --max-users=100 \

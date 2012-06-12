@@ -48,6 +48,7 @@ from tools.collection import get_username_and_collection_id, \
         list_collections, \
         delete_collection, \
         set_collection_versioning
+from tools.zfec_segmenter import ZfecSegmenter
 
 from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError, \
@@ -59,7 +60,6 @@ from web_server.data_writer_handoff_client import \
         DataWriterHandoffClient
 from web_server.data_writer import DataWriter
 from web_server.data_slicer import DataSlicer
-from web_server.zfec_segmenter import ZfecSegmenter
 from web_server.archiver import Archiver
 from web_server.destroyer import Destroyer
 from web_server.listmatcher import list_keys, list_versions

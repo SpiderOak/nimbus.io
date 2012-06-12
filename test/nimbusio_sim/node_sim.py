@@ -10,6 +10,7 @@ import os.path
 import pickle
 
 from tools.id_translator import _KEY_SIZE
+from tools.database_connection import get_node_connection
 
 class SimError(Exception):
     pass
@@ -21,7 +22,6 @@ from test.nimbusio_sim.process_util import start_web_server, \
         start_data_reader, \
         start_space_accounting_server, \
         start_handoff_server, \
-        start_anti_entropy_server, \
         start_event_publisher, \
         start_performance_packager, \
         start_stats_subscriber, \
@@ -43,6 +43,7 @@ class NodeSim(object):
         self, 
         node_index, 
         cluster_config,
+        createnew,
         space_accounting=False,
         performance_packager=False,
         event_aggregator=False,
@@ -52,12 +53,14 @@ class NodeSim(object):
     ):
         self._node_index = node_index
         self._cluster_config = cluster_config
+        self._createnew = createnew
         self._log = logging.getLogger(self.node_name)
         self._home_dir = os.path.join(
             self._cluster_config.basedir, self.node_name
         )
         if not os.path.exists(self._home_dir):
             os.makedirs(self._home_dir)
+
         id_translator_keys_path = os.path.join(
             self._home_dir, "id_translator_keys.pkl"
         )
@@ -66,6 +69,10 @@ class NodeSim(object):
             with open(id_translator_keys_path, "w") as output_file:
                 pickle.dump(id_translator_keys, output_file)
 
+        self._media_dir = os.path.join(
+            self._cluster_config.basedir, "media"
+        )
+        
         self._processes = dict()
         self._space_accounting = space_accounting
         self._performance_packager = performance_packager
@@ -93,6 +100,11 @@ class NodeSim(object):
                     self._cluster_config.env_for_node(self._node_index))
 
     def start(self):
+
+        if self._createnew:
+            self._create_file_spaces()
+            self._createnew = False
+            
         self._log.debug("start")
 
         self._processes["event_publisher"] = start_event_publisher(
@@ -113,12 +125,6 @@ class NodeSim(object):
         )
 
         self._processes["handoff_server"] = start_handoff_server(
-            self.node_name,
-            self.env,
-            self._cluster_config.profile
-        )
-
-        self._processes["anti_entropy_server"] = start_anti_entropy_server(
             self.node_name,
             self.env,
             self._cluster_config.profile
@@ -179,3 +185,53 @@ class NodeSim(object):
                     self._log.error(error_string)
                     self._processes[process_name] = None
 
+    def _create_file_spaces(self):
+        media_dir_names = ["{0}.journal1.0".format(self.node_name),
+                           "{0}.storage1.0".format(self.node_name),
+                           "{0}.storage1.1".format(self.node_name),
+                           "{0}.storage2.0".format(self.node_name),
+                           "{0}.storage2.1".format(self.node_name), ]
+
+        media_paths = \
+            [os.path.join(self._media_dir, n) for n in media_dir_names]
+
+        # make media dirs for the node
+        for media_path in media_paths:
+            os.mkdir(media_path)
+
+        # link to local
+        media_link_paths = \
+            [os.path.join(self._home_dir, str(n+1)) \
+             for n in range(len(media_dir_names))]
+
+        for media_path, media_link_path in zip(media_paths,
+                                               media_link_paths):
+            self._log.info("linking {0} to {1}".format(media_path,
+                                                       media_link_path))
+            os.symlink(media_path, media_link_path)
+
+        database_password = self.env['NIMBUSIO_NODE_USER_PASSWORD']
+        database_host = self.env["NIMBUSIO_NODE_DATABASE_HOST"]
+        database_port = int(self.env["NIMBUSIO_NODE_DATABASE_PORT"])
+
+        connection = get_node_connection(self.node_name, 
+                                         database_password, 
+                                         database_host, 
+                                         database_port)
+
+        connection.execute("begin")
+        command = """
+            insert into nimbusio_node.file_space 
+            (space_id, purpose, path, volume )
+            values ( %s, %s, %s, %s);"""
+
+        connection.execute(command, [1, "journal", media_paths[0], "journal1"])
+        connection.execute(command, [2, "storage", media_paths[1], "storage1"])
+        connection.execute(command, [3, "storage", media_paths[2], "storage1"])
+        connection.execute(command, [4, "storage", media_paths[3], "storage2"])
+        connection.execute(command, [5, "storage", media_paths[4], "storage2"])
+
+        connection.commit()
+        connection.close()
+    
+    

@@ -1,5 +1,4 @@
-#!/usr/bin/env python
-
+# -*- coding: utf-8 -*-
 """
 Nimbus.io uses unified ID numbers for a variety of purposes -- most notably
 version IDs.  It is convenient to provide those same identifiers to users to

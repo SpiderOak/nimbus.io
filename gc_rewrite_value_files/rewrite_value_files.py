@@ -9,6 +9,9 @@ import operator
 import os
 
 from tools.data_definitions import compute_value_file_path
+from tools.file_space import load_file_space_info, \
+                             file_space_sanity_check, \
+                             find_least_volume_space_id
 from tools.output_value_file import OutputValueFile
 
 _max_value_file_size = int(os.environ.get(
@@ -18,10 +21,9 @@ _max_value_file_size = int(os.environ.get(
 def _allocate_output_value_files(connection, repository_path, refs):
     output_value_file_sizes = defaultdict(list)
 
-    # Open temp files for each new value file, 
-    # Open on the storage volume with the most free space.
-    # pre-allocate it to the right size, 
-    # madvise to WONTNEED. 
+    file_space_info = load_file_space_info(connection) 
+    file_space_sanity_check(file_space_info, repository_path)
+    space_id = find_least_volume_space_id("storage", file_space_info)
 
     for ref in refs:
         if len(output_value_file_sizes[ref.collection_id]) == 0:
@@ -40,6 +42,7 @@ def _allocate_output_value_files(connection, repository_path, refs):
         for expected_size in output_value_file_sizes[collection_id]:
             output_value_files[collection_id].append(
                 OutputValueFile(connection, 
+                                space_id,
                                 repository_path, 
                                 expected_size=expected_size))
 
@@ -77,7 +80,8 @@ def _process_batch(connection, repository_path, refs, value_file_data):
         elif value_files[index].size == value_files[index].expected_size:
             index += 1
 
-        data_block = value_file_data[ref.value_file_id]
+        value_file_key = (ref.value_file_id, ref.space_id, )
+        data_block = value_file_data[value_file_key]
         data = data_block[
             ref.value_file_offset:ref.value_file_offset+ref.data_size
         ]
@@ -116,7 +120,7 @@ def _process_batch(connection, repository_path, refs, value_file_data):
               ref.sequence_num])
 
     # heave all the old value files from the database
-    for value_file_id in value_file_data.keys():
+    for value_file_id, _space_id in value_file_data.keys():
         connection.execute("""
             delete from nimbusio_node.value_file 
             where id = %s""", [value_file_id, ])
@@ -130,15 +134,17 @@ def _process_batch(connection, repository_path, refs, value_file_data):
 
     return output_size
 
-def _remove_old_value_files(repository_path, value_file_ids):
+def _remove_old_value_files(repository_path, value_file_keys):
     log = logging.getLogger("_remove_old_value_files")
-    for value_file_id in value_file_ids:
+    for value_file_id, space_id in value_file_keys:
         value_file_path = \
-                compute_value_file_path(repository_path, value_file_id)
+                compute_value_file_path(repository_path, 
+                                        space_id, 
+                                        value_file_id)
         try:
             os.unlink(value_file_path)
         except Exception:       
-            log.exception
+            log.exception(value_file_path)
 
 def rewrite_value_files(options, connection, repository_path, ref_generator):
     log = logging.getLogger("_rewrite_value_files")
@@ -196,11 +202,15 @@ def rewrite_value_files(options, connection, repository_path, ref_generator):
         # garbage, effectively decreasing the size of our output sort batch.  
         # We could end up with very small outputs from each batch if a large 
         # portion of the input value files are garbage.
-        assert ref.value_file_id not in value_file_data
+
+        value_file_key = (ref.value_file_id, ref.space_id, )
+        assert value_file_key not in value_file_data
         value_file_path = \
-                compute_value_file_path(repository_path, ref.value_file_id)
+                compute_value_file_path(repository_path, 
+                                        ref.space_id, 
+                                        ref.value_file_id)
         with open(value_file_path, "rb") as input_file:
-            value_file_data[ref.value_file_id] = input_file.read()
+            value_file_data[value_file_key] = input_file.read()
 
         # load up the refs for this partition
         refs.append(ref)

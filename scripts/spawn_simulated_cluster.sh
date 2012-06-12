@@ -12,8 +12,9 @@ export BASE_PORT=9000
 if [ -d $SIM_DIR ]; then
     rm -rf $SIM_DIR 
 fi
+PYTHON="python2.7"
 
-python2.7 test/nimbusio_sim/nimbusio_sim_main.py \
+$PYTHON test/nimbusio_sim/nimbusio_sim_main.py \
     --basedir $SIM_DIR --baseport $BASE_PORT \
     --logprune --start --singledb --create 
 # --systemdb

@@ -8,7 +8,6 @@ from collections import namedtuple
 import hashlib
 import logging
 import os
-import signal
 import sys
 from threading import Event
 
@@ -17,9 +16,12 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
-from tools.data_definitions import compute_value_file_path, \
-        value_file_template
+from tools.data_definitions import value_file_template
+from tools.file_space import load_file_space_info, \
+        file_space_sanity_check, \
+        find_least_volume_space_id
 from tools.output_value_file import OutputValueFile
+from tools.process_util import set_signal_handler
 
 from defragger.input_value_file import InputValueFile
 
@@ -54,11 +56,6 @@ _reference_template = namedtuple("Reference", [
     "sequence_adler32"
 ])
 
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
-
 def _query_value_file_candidate_rows(connection):
     """
     query the database for qualifying value files:
@@ -82,13 +79,13 @@ def _identify_defrag_candidates(connection):
     candidates = list()
     defraggable_bytes = 0
     for value_file_row in _query_value_file_candidate_rows(connection):
-       if defraggable_bytes > _min_bytes_for_defrag_pass and \
-          value_file_row.size is not None and \
-          defraggable_bytes + value_file_row.size > _max_bytes_for_defrag_pass:
-           break
-       candidates.append(value_file_row)
-       if value_file_row.size is not None:
-           defraggable_bytes += value_file_row.size
+        if defraggable_bytes > _min_bytes_for_defrag_pass and \
+        value_file_row.size is not None and \
+        defraggable_bytes + value_file_row.size > _max_bytes_for_defrag_pass:
+            break
+        candidates.append(value_file_row)
+        if value_file_row.size is not None:
+            defraggable_bytes += value_file_row.size
 
     if defraggable_bytes < _min_bytes_for_defrag_pass:
         log.info("too few defraggable bytes {0} in {1} value files".format(
@@ -136,11 +133,10 @@ def _query_value_file_references(connection, value_file_ids):
     for row in result:
         yield  _reference_template._make(row)
 
-def _generate_work(connection, value_file_rows):
+def _generate_work(connection, file_space_info, value_file_rows):
     log = logging.getLogger("_generate_work")
     prev_handoff_node_id = None
     prev_collection_id = None
-    input_value_file = None
     output_value_file = None
     for reference in _query_value_file_references(
         connection, [row.id for row in value_file_rows]
@@ -163,9 +159,11 @@ def _generate_work(connection, value_file_rows):
                     )
                 )
                 assert output_value_file is None
-                output_value_file = OutputValueFile(
-                    connection, _repository_path
-                )
+                space_id = find_least_volume_space_id("storage", 
+                                                      file_space_info)
+                output_value_file = OutputValueFile(connection, 
+                                                    space_id, 
+                                                    _repository_path)
                 prev_handoff_node_id = reference.handoff_node_id
         elif reference.collection_id != prev_collection_id:
             if prev_handoff_node_id is not None:
@@ -196,8 +194,10 @@ def _generate_work(connection, value_file_rows):
                 )
             )
             assert output_value_file is None
+            space_id = find_least_volume_space_id("storage", 
+                                                  file_space_info)
             output_value_file = OutputValueFile(
-                connection, _repository_path
+                connection, space_id, _repository_path
             )
             prev_collection_id = reference.collection_id
 
@@ -209,8 +209,10 @@ def _generate_work(connection, value_file_rows):
         if expected_size > _max_value_file_size:
             log.debug("closing value_file and opening new one due to size")
             output_value_file.close()
+            space_id = find_least_volume_space_id("storage", 
+                                                  file_space_info)
             output_value_file = OutputValueFile(
-                connection, _repository_path
+                connection, space_id, _repository_path
             )
 
         yield reference, output_value_file
@@ -231,7 +233,7 @@ def _generate_work(connection, value_file_rows):
 
     output_value_file.close()
 
-def _defrag_pass(connection, event_push_client):
+def _defrag_pass(connection, file_space_info, event_push_client):
     """
     Make a single defrag pass
     Open target value files as follows:
@@ -258,7 +260,7 @@ def _defrag_pass(connection, event_push_client):
 
     bytes_defragged = 0
     for reference, output_value_file in _generate_work(
-        connection, value_file_rows
+        connection, file_space_info, value_file_rows
     ):
         # read the segment sequence from the old value_file
         input_value_file = input_value_files[reference.value_file_id]
@@ -322,7 +324,7 @@ def main():
     log.info("program starts")
 
     halt_event = Event()
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     zmq_context =  zmq.Context()
 
@@ -330,6 +332,7 @@ def main():
     event_push_client.info("program-start", "defragger starts")  
 
     connection = None
+    file_space_info = None
 
     while not halt_event.is_set():
 
@@ -348,13 +351,18 @@ def main():
                 halt_event.wait(_database_retry_interval)
                 continue
 
+            file_space_info = load_file_space_info(connection) 
+            file_space_sanity_check(file_space_info, _repository_path)
+
         # start a transaction
         connection.execute("begin")
 
         # try one defrag pass
         bytes_defragged = 0
         try:
-            bytes_defragged = _defrag_pass(connection, event_push_client)
+            bytes_defragged = _defrag_pass(connection, 
+                                           file_space_info, 
+                                           event_push_client)
         except KeyboardInterrupt:
             halt_event.set()
             connection.rollback()

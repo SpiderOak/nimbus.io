@@ -25,6 +25,7 @@ def load_file_space_info(connection):
     for row in rows:
         row_tuple = file_space_template._make(row)
         result_dict[row_tuple.purpose].append(row_tuple)
+    result_dict = dict(result_dict.items())
 
     return result_dict
 

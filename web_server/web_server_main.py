@@ -198,7 +198,7 @@ class WebServer(object):
 
         id_translator_keys_path = os.environ.get(
             "NIMBUS_IO_ID_TRANSLATION_KEYS", 
-            os.path.join(self._home_dir, "id_translator_keys.pkl"))
+            os.path.join(_repository_path, "id_translator_keys.pkl"))
         with open(id_translator_keys_path, "r") as input_file:
             id_translator_keys = pickle.load(input_file)
 

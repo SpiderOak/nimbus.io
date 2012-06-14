@@ -121,7 +121,9 @@ def generate_db_user_pw():
                   for _ in range(20)])
     return pw
 
-def populate_central_database(cluster_config, database_users):
+def populate_central_database(cluster_config, database_users, hostnames=None):
+    if hostnames is None:
+        hostnames = [ _SIM_HOSTNAME for _ in range(10) ]
     params = dict(database=cluster_config.central_db_name, 
                   host=cluster_config.dbhost, 
                   port=cluster_config.central_db_port,
@@ -138,7 +140,7 @@ def populate_central_database(cluster_config, database_users):
                        "        where name=%s), "
                        "        %s, %s, %s)", 
                        [cluster_config.clustername, idx + 1, name, 
-                        _SIM_HOSTNAME ])
+                        hostnames[idx] ])
     conn.commit()
     conn.close()
 

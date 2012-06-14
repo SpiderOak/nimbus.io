@@ -60,6 +60,16 @@ def _launch_database_pool_controller():
     log.info("starting {0}".format(args))
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
+def _launch_io_controller():
+    log = logging.getLogger("launch_io_controller")
+    module_dir = identify_program_dir("retrieve_source")
+    module_path = os.path.join(module_dir, "io_controller.py")
+    
+    args = [sys.executable, module_path, ]
+
+    log.info("starting {0}".format(args))
+    return subprocess.Popen(args, stderr=subprocess.PIPE)
+
 def _handle_resilient_server_handshake(message, client_pull_addresses):
     log = logging.getLogger("_handle_resilient_server_handshake")
     log.debug("{client-tag} {client-address}".format(**message))
@@ -162,6 +172,7 @@ def main():
     set_signal_handler(halt_event)
 
     database_pool_controller = _launch_database_pool_controller()
+    io_controller = _launch_io_controller()
 
     zeromq_context = zmq.Context()
     rep_socket = _bind_rep_socket(zeromq_context)
@@ -174,6 +185,7 @@ def main():
     try:
         while not halt_event.is_set():
             poll_subprocess(database_pool_controller)
+            poll_subprocess(io_controller)
             _process_one_request(rep_socket, 
                                  client_pull_addresses,
                                  db_controller_push_client)
@@ -197,10 +209,11 @@ def main():
     else:
         log.info("program teminates normally")
     finally:
+        terminate_subprocess(database_pool_controller)
+        terminate_subprocess(io_controller)
         rep_socket.close()
         db_controller_push_client.close()
         event_push_client.close()
-        terminate_subprocess(database_pool_controller)
         zeromq_context.term()
 
     return return_value

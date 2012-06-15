@@ -8,7 +8,6 @@ from collections import deque, namedtuple
 import logging
 import os
 import os.path
-import pickle
 import subprocess
 import sys
 from threading import Event
@@ -23,6 +22,8 @@ from tools.process_util import identify_program_dir, \
         terminate_subprocess
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 from tools.data_definitions import encoded_block_slice_size
+from tools.zeromq_util import PollError, \
+        is_interrupted_system_call
 
 from retrieve_source.internal_sockets import db_controller_pull_socket_uri, \
         db_controller_router_socket_uri, \
@@ -180,8 +181,7 @@ def _read_router_socket(resources):
     message = resources.router_socket.recv_json()
     sequence_rows = None
     if resources.router_socket.rcvmore:
-        pickled_data = resources.router_socket.recv()
-        sequence_rows = pickle.loads(pickled_data)
+        sequence_rows = resources.router_socket.recv_pyobj()
 
     resources.available_ident_queue.append(ident) 
     _send_pending_work_to_available_workers(resources)
@@ -230,10 +230,8 @@ def _send_request_to_io_controller(resources, message, retrieve_state):
         resources.active_retrieves[message["retrieve-id"]] = \
             retrieve_state._replace(sequence_index=next_sequence_index)
 
-    pickled_sequence_row = pickle.dumps(sequence_row)
-
     resources.io_controller_push_socket.send_json(message, zmq.SNDMORE)
-    resources.io_controller_push_socket.send(pickled_sequence_row)
+    resources.io_controller_push_socket.send_pyobj(sequence_row)
 
 def main():
     """
@@ -292,14 +290,25 @@ def main():
                 poll_subprocess(worker_process)
             for active_socket, event_flags in poller.poll(_poll_timeout):
                 if event_flags & zmq.POLLERR:
-                    log.error("error flags from zmq {0}".format(active_socket))
-                    continue
-                if active_socket == resources.pull_socket:
+                    error_message = \
+                        "error flags from zmq {0}".format(active_socket)
+                    log.error(error_message)
+                    raise PollError(error_message) 
+                if active_socket is resources.pull_socket:
                     _read_pull_socket(resources)
-                elif active_socket == resources.router_socket:
+                elif active_socket is resources.router_socket:
                     _read_router_socket(resources)
                 else:
                     log.error("unknown socket {0}".format(active_socket))
+    except zmq.ZMQError as zmq_error:
+        if is_interrupted_system_call(zmq_error) and halt_event.is_set():
+            log.info("program teminates normally with interrupted system call")
+        else:
+            log.exception("zeromq error processing request")
+            resources.event_push_client.exception(unhandled_exception_topic,
+                                                  "zeromq_error",
+                                                  exctype="ZMQError")
+            return_value = 1
     except Exception as instance:
         log.exception("error processing request")
         resources.event_push_client.exception(unhandled_exception_topic,

@@ -23,7 +23,7 @@ from retrieve_source.internal_sockets import io_controller_router_socket_uri
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_io_worker_{1}_{2}_{3}.log"
 
-def _send_work_request(dealer_socket, volume_name):
+def _send_work_request(volume_name, dealer_socket):
     """
     start the work cycle by notifying the controller that we are available
     """
@@ -47,7 +47,7 @@ def _process_request(dealer_socket):
         raise
     assert dealer_socket.rcvmore
 
-    segment_row = dealer_socket.recv_json()
+    segment_row = dealer_socket.recv_pyobj()
 
 def main():
     """

@@ -8,7 +8,6 @@ from collections import defaultdict, deque, namedtuple
 import logging
 import os
 import os.path
-import pickle
 import subprocess
 import sys
 from threading import Event
@@ -23,6 +22,8 @@ from tools.process_util import identify_program_dir, \
         terminate_subprocess
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 from tools.file_space import load_file_space_info, file_space_sanity_check
+from tools.zeromq_util import PollError, \
+        is_interrupted_system_call
 
 from retrieve_source.internal_sockets import io_controller_pull_socket_uri, \
         io_controller_router_socket_uri
@@ -63,11 +64,11 @@ def _send_pending_work_to_available_workers(resources):
                          len(resources.available_ident_by_volume[volume_name]))
         for _ in range(work_count):
             message, sequence_row = \
-                resources.pending_work_by_volume.popleft()
-            ident = resources.available_ident_by_volume.popleft()
+                resources.pending_work_by_volume[volume_name].popleft()
+            ident = resources.available_ident_by_volume[volume_name].popleft()
             resources.router_socket.send(ident, zmq.SNDMORE)
             resources.router_socket.send_json(message, zmq.SNDMORE)
-            resources.router_socket.send_json(sequence_row)
+            resources.router_socket.send_pyobj(sequence_row)
 
 def _read_pull_socket(resources):
     """
@@ -84,8 +85,7 @@ def _read_pull_socket(resources):
             raise
 
         assert resources.pull_socket.rcvmore
-        pickled_sequence_row = resources.pull_socket.recv()
-        sequence_row = pickle.loads(pickled_sequence_row)
+        sequence_row = resources.pull_socket.recv_pyobj()
 
         space_id = sequence_row["space_id"]
         try:
@@ -142,14 +142,15 @@ def _volume_name_by_space_id():
 
     volume_name_by_space_id = dict() 
     null_count = 0
-    for file_space_row in file_space_info.values():
-        if file_space_row.volume is None:
-            null_count += 1
-            volume_name = "null-{0}".format(null_count)
-        else:
-            volume_name = file_space_row.volume
+    for file_space_row_list in file_space_info.values():
+        for file_space_row in file_space_row_list:
+            if file_space_row.volume is None:
+                null_count += 1
+                volume_name = "null-{0}".format(null_count)
+            else:
+                volume_name = file_space_row.volume
 
-        volume_name_by_space_id[file_space_row.space_id] = volume_name
+            volume_name_by_space_id[file_space_row.space_id] = volume_name
 
     return volume_name_by_space_id
 
@@ -207,14 +208,25 @@ def main():
                 poll_subprocess(worker_process)
             for active_socket, event_flags in poller.poll(_poll_timeout):
                 if event_flags & zmq.POLLERR:
-                    log.error("error flags from zmq {0}".format(active_socket))
-                    continue
-                if active_socket == resources.pull_socket:
+                    error_message = \
+                        "error flags from zmq {0}".format(active_socket)
+                    log.error(error_message)
+                    raise PollError(error_message)
+                if active_socket is resources.pull_socket:
                     _read_pull_socket(resources)
-                elif active_socket == resources.router_socket:
+                elif active_socket is resources.router_socket:
                     _read_router_socket(resources)
                 else:
                     log.error("unknown socket {0}".format(active_socket))
+    except zmq.ZMQError as zmq_error:
+        if is_interrupted_system_call(zmq_error) and halt_event.is_set():
+            log.info("program teminates normally with interrupted system call")
+        else:
+            log.exception("zeromq error processing request")
+            resources.event_push_client.exception(unhandled_exception_topic,
+                                                  "zeromq_error",
+                                                  exctype="ZMQError")
+            return_value = 1
     except Exception as instance:
         log.exception("error processing request")
         resources.event_push_client.exception(unhandled_exception_topic,

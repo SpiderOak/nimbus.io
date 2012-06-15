@@ -7,7 +7,6 @@ One of a pool of database workers
 import logging
 import os
 import os.path
-import pickle
 import sys
 from threading import Event
 
@@ -102,12 +101,11 @@ def _process_one_transaction(dealer_socket, database_connection):
         row_dict["hash"] = bytes(row_dict["hash"])
         row_dict["space_id"] = space_id
         result_list.append(row_dict)
-    pickled_result_list = pickle.dumps(result_list)
 
     log.debug("sending request back to controller")
     request["database-pool-result"] = "success"
     dealer_socket.send_json(request, zmq.SNDMORE)
-    dealer_socket.send(pickled_result_list)
+    dealer_socket.send_pyobj(result_list)
 
 def main():
     """

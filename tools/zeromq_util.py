@@ -8,6 +8,9 @@ import logging
 import os
 import os.path
 
+class PollError(Exception):
+    pass
+
 class InterruptedSystemCall(Exception):
     pass
 

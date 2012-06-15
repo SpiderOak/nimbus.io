@@ -14,8 +14,8 @@ from threading import Event
 import zmq
 
 from tools.standard_logging import initialize_logging
-from tools.zeromq_util import is_interrupted_system_call, \
-        InterruptedSystemCall, \
+from tools.zeromq_util import PollError, \
+        is_interrupted_system_call, \
         prepare_ipc_path
 from tools.process_util import identify_program_dir, \
         set_signal_handler, \
@@ -30,6 +30,7 @@ from retrieve_source.internal_sockets import internal_socket_uri_list, \
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_retrieve_source_{1}.log"
 _retrieve_source_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
+_poll_timeout = 3.0
 
 def _bind_rep_socket(zeromq_context):
     log = logging.getLogger("_bind_rep_socket")
@@ -108,18 +109,10 @@ def _process_one_request(rep_socket,
     """
     log = logging.getLogger("_process_one_request")
 
-    try:
-        request = rep_socket.recv_json()
-    except zmq.ZMQError as zmq_error:
-        if is_interrupted_system_call(zmq_error):
-            raise InterruptedSystemCall()
-        raise
+    request = rep_socket.recv_json()
 
-    request_data = list()
-    while rep_socket.rcvmore:
-        request_data.append(rep_socket.recv())
     # we're not expecting any data from a retrieve request
-    assert len(request_data) ==0
+    assert not rep_socket.rcvmore
 
     ack_message = {
         "message-type" : "resilient-server-ack",
@@ -180,25 +173,44 @@ def main():
                                            db_controller_pull_socket_uri)
     event_push_client = EventPushClient(zeromq_context, "retrieve_source")
 
+    # we poll the sockets for readability, we assume we can always
+    # write to the push client sockets
+    poller = zmq.Poller()
+    poller.register(rep_socket, zmq.POLLIN | zmq.POLLERR)
+
     client_pull_addresses = dict()
 
     try:
         while not halt_event.is_set():
             poll_subprocess(database_pool_controller)
             poll_subprocess(io_controller)
-            _process_one_request(rep_socket, 
-                                 client_pull_addresses,
-                                 db_controller_push_client)
+
+            # we've only registered one socket, so we could use an 'if' here,
+            # but this 'for' works ok and it has the same form as the other
+            # places where we use poller
+            for active_socket, event_flags in poller.poll(_poll_timeout):
+                if event_flags & zmq.POLLERR:
+                    error_message = \
+                        "error flags from zmq {0}".format(active_socket)
+                    log.error(error_message)
+                    raise PollError(error_message) 
+
+                assert active_socket is rep_socket
+
+                _process_one_request(rep_socket, 
+                                     client_pull_addresses,
+                                     db_controller_push_client)
+
     except KeyboardInterrupt: # convenience for testing
         log.info("keyboard interrupt: terminating normally")
-    except InterruptedSystemCall:
-        if halt_event.is_set():
+    except zmq.ZMQError as zmq_error:
+        if is_interrupted_system_call(zmq_error) and halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
         else:
             log.exception("zeromq error processing request")
             event_push_client.exception(unhandled_exception_topic,
-                                        "Interrupted zeromq system call",
-                                        exctype="InterruptedSystemCall")
+                                        "zeromq_error",
+                                        exctype="ZMQError")
             return_value = 1
     except Exception as instance:
         log.exception("error processing request")

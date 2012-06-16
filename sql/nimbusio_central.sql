@@ -54,8 +54,6 @@ create table collection (
     deletion_time timestamp
 );
 
-/* get collection_row for collection name */
-create index collection_name_idx on nimbusio_central.collection("name");
 
 /* get all collection names for customer_id */
 create index collection_customer_id_name_idx on nimbusio_central.collection("customer_id", "name");

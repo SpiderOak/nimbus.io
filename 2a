@@ -135,10 +135,7 @@ def _compute_blocks_in_sequence(sequence_data_size):
     """
     compute the number of encoded blocks in sequence_row.size
     """
-    blocks_in_sequence = sequence_data_size // encoded_block_slice_size
-    if sequence_data_size % encoded_block_slice_size:
-        blocks_in_sequence += 1
-    return blocks_in_sequence
+    return sequence_data_size / encoded_block_slice_size
 
 def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
     """
@@ -233,7 +230,7 @@ def _read_router_socket(resources):
             right_offset))
 
     retrieve_state = _retrieve_state_tuple(sequence_rows=sequence_rows,
-                                           sequence_index=row_skip_count,
+                                           sequence_index=skip_count,
                                            left_offset=left_offset,
                                            right_offset=right_offset,
                                            timestamp=time.time())

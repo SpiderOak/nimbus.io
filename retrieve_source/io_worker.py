@@ -47,8 +47,63 @@ def _process_request(dealer_socket):
         raise
     assert dealer_socket.rcvmore
 
-    segment_row = dealer_socket.recv_pyobj()
+    sequence_row = dealer_socket.recv_pyobj()
 
+    value_file_path = compute_value_file_path(_repository_path, 
+                                              sequence_row["space_id"], 
+                                              sequence_row["value_file_id"]) 
+
+    with  open(value_file_path, "rb") as value_file:
+        value_file.seek(sequence_row.value_file_offset)
+        encoded_data = value_file.read(sequence_row["size"])
+
+    assert len(encoded_data) == sequence_row["size"]
+
+    encoded_block_list = list(encoded_block_generator(encoded_data))
+
+    recompute = False
+    if request["left-offset"] > 0:
+        encoded_block_list = encoded_block_list[request["left-offset"]:]
+        recompute = True
+    if request["right-offset"] > 0:
+        encoded_block_list = encoded_block_list[:-request["left-offset"]]
+        recompute = True
+
+    segment_size = sequence_row["size"]
+    segment_adler32 = sequence_row["adler32"]
+    segment_md5_digest = sequence_row["hash"]
+
+    # if we chopped some blocks out of the data, we must recompute
+    # the check values
+    if recompute:
+        segment_size = 0
+        segment_adler32 = 0
+        segment_md5 = hashlib.md5()
+        for encoded_block in encoded_block_list:
+            segment_size += len(encoded_block)
+            segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
+            segment_md5.update(encoded_block)
+        segment_md5_digest = segment_md5.digest()
+
+    reply = {
+        "message-type"          : "retrieve-key-reply",
+        "client-tag"            : request["client-tag"],
+        "message-id"            : request["message-id"],
+        "retrieve-id"           : request["retrieve-id"]
+        "segment-unified-id"    : request["segment-unified-id"],
+        "segment-num"           : request["segment-num"],
+        "segment-size"          : segment_size,
+        "zfec-padding-size"     : sequence_row["zfec_padding_size"],
+        "segment-adler32"       : segment_adler32,
+        "segment-md5-digest"    : b64encode(segment_md5_digest),
+        "sequence-num"          : None,
+        "completed"             : request["completed"],
+        "result"                : result,
+        "error-message"         : error_message,
+    }
+
+    client_pull_address = request["client-pull-address"]
+        
 def main():
     """
     main entry point

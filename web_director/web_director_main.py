@@ -13,6 +13,8 @@ does not implement several of the needed capabilities including:
       heartbeats)
     - handle key authentication for reads
     - handle requests for public collections w/o auth
+    - warm the cache on startup (select all the clusters, and the mapping of
+      collections to clusters in bulk from the database.)
     - expiration of cached values (i.e. when a collections information changes,
       such as becoming public, private, or being migrated to a different
       cluster.)
@@ -24,6 +26,7 @@ import logging
 import os
 import re
 import random
+from collections import deque
 import gevent.coros
 import psycopg2
 import gevent_psycopg2
@@ -34,8 +37,8 @@ from tools.database_connection import get_central_connection
 
 def _supervise_db_interaction(bound_method):
     """
-    Decorator for methods of Router class to manage locks and reconnections to
-    database
+    Decorator for methods of Router class (below) to manage locks and
+    reconnections to database
     """
     @wraps(bound_method)
     def __supervise_db_interaction(instance, *args, **kwargs):
@@ -92,6 +95,10 @@ def _supervise_db_interaction(bound_method):
     return __supervise_db_interaction
 
 class Router(object):
+    """
+    Router object for assisting the proxy function (below.)
+    Holds database connection, state for caching, etc.
+    """
 
     def __init__(self):
         self.conn = get_central_connection()
@@ -142,7 +149,9 @@ class Router(object):
             "order by node_number_in_cluster", 
             [cluster_id, ])
     
-        info = dict(hosts = [r['hostname'] for r in rows])
+        info = dict(rows = list(rows), 
+                    hosts = deque([r['hostname'] for r in rows]))
+
         return info
 
     def cluster_info(self, cluster_id):
@@ -163,6 +172,10 @@ class Router(object):
         return dict(close = response)
 
     def route(self, hostname):
+        """
+        route a to a host in the appropriate cluster, using simple round-robin
+        among the hosts in a cluster
+        """
         if not hostname.endswith(self.service_domain):
             return self.reject(404, "Not found")
         collection = self.parse_collection(hostname)
@@ -170,12 +183,26 @@ class Router(object):
             self.reject(404, "Collection not found")
         hosts = self.hosts_for_collection(collection)
         if hosts:
-            return dict(remote=random.choice(hosts))
+            # simple round robin rouding
+            hosts.rotate(1)
+            return dict(remote=hosts[0])
         elif hosts is None:
             self.reject(404, "Collection not found")
         return self.reject(500, "Retry later")
 
 def proxy(data, _re_host=re.compile("Host:\s*(.*)\r\n"), _router=Router()):
+    """
+    the function called by tproxy to determine where to send traffic
+
+    tproxy will call this function repeatedly for the same connection, as we
+    receive more incoming data, until we return something other than None.
+
+    typically our response tells tproxy where to proxy the connection to, but
+    may also tell it to hang up, or respond with some error message.
+    """
+
+    # match against the HTTP host headers to determine routing by collection
+    # name
     matches = _re_host.findall(data)
     if matches:
         hostname = matches.pop()

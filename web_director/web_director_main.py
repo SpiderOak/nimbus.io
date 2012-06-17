@@ -89,8 +89,8 @@ def _supervise_db_interaction(bound_method):
                             conn_id = id(instance.conn)
                         except psycopg2.OperationalError, err2:
                             log.warn("could not reconnect: %s %s" % ( 
-                                getattr(err, "pgcode", '-'),
-                                getattr(err, "pgerror", '-'), ))
+                                getattr(err2, "pgcode", '-'),
+                                getattr(err2, "pgerror", '-'), ))
         return result
     return __supervise_db_interaction
 

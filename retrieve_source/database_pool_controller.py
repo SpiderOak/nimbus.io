@@ -31,6 +31,8 @@ from retrieve_source.internal_sockets import db_controller_pull_socket_uri, \
 
 _resources_tuple = namedtuple("Resources", 
                               ["halt_event",
+                               "zeromq_context",
+                               "reply_push_sockets",
                                "pull_socket",
                                "io_controller_push_socket",
                                "router_socket",
@@ -70,12 +72,13 @@ def _send_pending_work_to_available_workers(resources):
     work_count = min(len(resources.pending_work_queue), 
                      len(resources.available_ident_queue))
     for _ in range(work_count):
-        message = resources.pending_work_queue.popleft()
+        message, control = resources.pending_work_queue.popleft()
         ident = resources.available_ident_queue.popleft()
         resources.router_socket.send(ident, zmq.SNDMORE)
-        resources.router_socket.send_json(message)
+        resources.router_socket.send_pyobj(message, zmq.SNDMORE)
+        resources.router_socket.send_pyobj(control)
 
-def _handle_retrieve_key_start(resources, message):
+def _handle_retrieve_key_start(resources, message, control):
     log = logging.getLogger("_handle_retrieve_key_start")
     retrieve_id = message["retrieve-id"]
     if retrieve_id in resources.active_retrieves:
@@ -84,9 +87,9 @@ def _handle_retrieve_key_start(resources, message):
         del resources.active_retrieves[retrieve_id]
 
     log.debug("adding {0} to pending work queue".format(message))
-    resources.pending_work_queue.append(message)
+    resources.pending_work_queue.append((message, control, ))
 
-def _handle_retrieve_key_next(resources, message):
+def _handle_retrieve_key_next(resources, message, control):
     log = logging.getLogger("_handle_retrieve_key_next")
     retrieve_id = message["retrieve-id"]
 
@@ -96,7 +99,7 @@ def _handle_retrieve_key_next(resources, message):
         return
 
     retrieve_state = resources.active_retrieves.pop(retrieve_id)
-    _send_request_to_io_controller(resources, message, retrieve_state)
+    _send_request_to_io_controller(resources, message, control, retrieve_state)
 
 _dispatch_table = { "retrieve-key-start" : _handle_retrieve_key_start,
                     "retrieve-key-next"  : _handle_retrieve_key_next, }
@@ -116,16 +119,19 @@ def _read_pull_socket(resources):
 
     while True: # read until we would block
         try:
-            message = resources.pull_socket.recv_json(zmq.NOBLOCK)
+            message = resources.pull_socket.recv_pyobj(zmq.NOBLOCK)
         except zmq.ZMQError as instance:
             if instance.errno == zmq.EAGAIN:
                 break
             raise
 
-        assert not resources.pull_socket.rcvmore
+        assert resources.pull_socket.rcvmore
+        control = resources.pull_socket.recv_pyobj()
 
         try:
-            _dispatch_table[message["message-type"]](resources, message)
+            _dispatch_table[message["message-type"]](resources, 
+                                                     message, 
+                                                     control)
         except KeyError as instance:
             log.error("unknown message type {0} {1}".format(instance, message))
 
@@ -193,6 +199,30 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
         skip_count, left_offset, right_offset))
     return (skip_count, left_offset, right_offset)
 
+def _send_error_reply(resources, message, control):
+    """
+    if we failed to get sequence data, there's no point in going on
+    so send the error reply here.
+    """
+    log = logging.getLogger("_send_error_reply")
+    if not control["client-pull-address"] in resources.reply_push_sockets:
+        push_socket = resources.zeromq_context.socket(zmq.PUSH)
+        push_socket.setsockopt(zmq.LINGER, 5000)
+        log.info("connecting to {0}".format(control["client-pull-address"]))
+        push_socket.connect(control["client-pull-address"])
+        resources.reply_push_sockets[control["client-pull-address"]] = \
+            push_socket
+    push_socket = resources.reply_push_sockets[control["client-pull-address"]]
+    reply = {"message-type"          : "archive-key-reply",
+             "client-tag"            : message["client-tag"],
+             "message-id"            : message["message-id"],
+             "retrieve-id"           : message["retrieve-id"],
+             "segment-unified-id"    : message["segment-unified-id"],
+             "segment-num"           : message["segment-num"],
+             "result"                : control["result"],
+              "error-message"        : control["error-message"],}
+    push_socket.send(reply)
+
 def _read_router_socket(resources):
     """
     read a message from the router socket (from one of our worker processes)
@@ -206,16 +236,26 @@ def _read_router_socket(resources):
 
     ident = resources.router_socket.recv()
     assert resources.router_socket.rcvmore
-    message = resources.router_socket.recv_json()
-    sequence_rows = None
-    if resources.router_socket.rcvmore:
-        sequence_rows = resources.router_socket.recv_pyobj()
-
-    resources.available_ident_queue.append(ident) 
-    _send_pending_work_to_available_workers(resources)
+    message = resources.router_socket.recv_pyobj()
 
     if message["message-type"] == "ready-for-work":
         return
+
+    assert resources.router_socket.rcvmore
+    control = resources.router_socket.recv_pyobj()
+
+    if control["result"] != "success":
+        log.error("{0} {1} {2}".format(message["retrieve-id"],
+                                       control["result"],
+                                       control["error-message"]))
+        _send_error_reply(resources, message, control)
+        return
+
+    assert resources.router_socket.rcvmore
+    sequence_rows = resources.router_socket.recv_pyobj()
+
+    resources.available_ident_queue.append(ident) 
+    _send_pending_work_to_available_workers(resources)
 
     assert  message["message-type"] == "retrieve-key-start", message
     assert sequence_rows is not None
@@ -238,9 +278,12 @@ def _read_router_socket(resources):
                                            right_offset=right_offset,
                                            timestamp=time.time())
 
-    _send_request_to_io_controller(resources, message, retrieve_state)
+    _send_request_to_io_controller(resources, message, control, retrieve_state)
 
-def _send_request_to_io_controller(resources, message, retrieve_state):
+def _send_request_to_io_controller(resources, 
+                                   message, 
+                                   control, 
+                                   retrieve_state):
     log = logging.getLogger("_send_request_to_io_controller")
     log.debug("{0} sending row[{1}] of {2}".format(
         message["retrieve-id"],
@@ -248,25 +291,26 @@ def _send_request_to_io_controller(resources, message, retrieve_state):
         len(retrieve_state.sequence_rows)))
 
     if message["message-type"] == "retrieve-key-start":
-        message["left-offset"] = retrieve_state.left_offset
+        control["left-offset"] = retrieve_state.left_offset
     else:
-        message["left-offset"] = 0
+        control["left-offset"] = 0
 
     sequence_row = retrieve_state.sequence_rows[retrieve_state.sequence_index]
 
     next_sequence_index = retrieve_state.sequence_index +1
     assert next_sequence_index <= len(retrieve_state.sequence_rows)
-    message["completed"] = \
+    control["completed"] = \
         next_sequence_index == len(retrieve_state.sequence_rows)
 
-    if message["completed"]:
-        message["right-offset"] = retrieve_state.right_offset
+    if control["completed"]:
+        control["right-offset"] = retrieve_state.right_offset
     else:
-        message["right-offset"] = 0
+        control["right-offset"] = 0
         resources.active_retrieves[message["retrieve-id"]] = \
             retrieve_state._replace(sequence_index=next_sequence_index)
 
-    resources.io_controller_push_socket.send_json(message, zmq.SNDMORE)
+    resources.io_controller_push_socket.send_pyobj(message, zmq.SNDMORE)
+    resources.io_controller_push_socket.send_pyobj(control, zmq.SNDMORE)
     resources.io_controller_push_socket.send_pyobj(sequence_row)
 
 def main():
@@ -289,6 +333,8 @@ def main():
 
     resources = \
         _resources_tuple(halt_event=Event(),
+                         zeromq_context=zeromq_context,
+                         reply_push_sockets=dict(),
                          pull_socket=zeromq_context.socket(zmq.PULL),
                          io_controller_push_socket=\
                             zeromq_context.socket(zmq.PUSH),
@@ -359,6 +405,8 @@ def main():
         resources.pull_socket.close()
         resources.io_controller_push_socket.close()
         resources.router_socket.close()
+        for push_socket in resources.reply_push_sockets.values():
+            push_socket.close()
         resources.event_push_client.close()
         zeromq_context.term()
 

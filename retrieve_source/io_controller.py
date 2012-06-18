@@ -63,11 +63,12 @@ def _send_pending_work_to_available_workers(resources):
         work_count = min(len(resources.pending_work_by_volume[volume_name]), 
                          len(resources.available_ident_by_volume[volume_name]))
         for _ in range(work_count):
-            message, sequence_row = \
+            message, control, sequence_row = \
                 resources.pending_work_by_volume[volume_name].popleft()
             ident = resources.available_ident_by_volume[volume_name].popleft()
             resources.router_socket.send(ident, zmq.SNDMORE)
-            resources.router_socket.send_json(message, zmq.SNDMORE)
+            resources.router_socket.send_pyobj(message, zmq.SNDMORE)
+            resources.router_socket.send_pyobj(control, zmq.SNDMORE)
             resources.router_socket.send_pyobj(sequence_row)
 
 def _read_pull_socket(resources):
@@ -78,11 +79,14 @@ def _read_pull_socket(resources):
 
     while True: # read until we would block
         try:
-            message = resources.pull_socket.recv_json(zmq.NOBLOCK)
+            message = resources.pull_socket.recv_pyobj(zmq.NOBLOCK)
         except zmq.ZMQError as instance:
             if instance.errno == zmq.EAGAIN:
                 break
             raise
+
+        assert resources.pull_socket.rcvmore
+        control = resources.pull_socket.recv_pyobj()
 
         assert resources.pull_socket.rcvmore
         sequence_row = resources.pull_socket.recv_pyobj()
@@ -100,7 +104,8 @@ def _read_pull_socket(resources):
 
         log.debug("work for volume {0} {1}".format(volume_name, sequence_row))
         resources.pending_work_by_volume[volume_name].append((message,
-                                                             sequence_row, ))
+                                                              control,
+                                                              sequence_row, ))
 
     _send_pending_work_to_available_workers(resources)
 
@@ -114,7 +119,7 @@ def _read_router_socket(resources):
 
     ident = resources.router_socket.recv()
     assert resources.router_socket.rcvmore
-    message = resources.router_socket.recv_json()
+    message = resources.router_socket.recv_pyobj()
     assert not resources.router_socket.rcvmore
     assert message["message-type"] == "ready-for-work"
 

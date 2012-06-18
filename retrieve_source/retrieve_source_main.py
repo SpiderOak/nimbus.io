@@ -42,14 +42,14 @@ def _bind_rep_socket(zeromq_context):
 
     return rep_socket
 
-def _connect_db_controller_push_client(zeromq_context):
-    log = logging.getLogger("_connect_db_controller_push_client")
-    db_controller_push_client = zeromq_context.socket(zmq.PUSH)
-    db_controller_push_client.setsockopt(zmq.LINGER, 1000)
+def _connect_db_controller_push_socket(zeromq_context):
+    log = logging.getLogger("_connect_db_controller_push_socket")
+    db_controller_push_socket = zeromq_context.socket(zmq.PUSH)
+    db_controller_push_socket.setsockopt(zmq.LINGER, 1000)
     log.debug("connecting to {0}".format(db_controller_pull_socket_uri))
-    db_controller_push_client.connect(db_controller_pull_socket_uri)
+    db_controller_push_socket.connect(db_controller_pull_socket_uri)
 
-    return db_controller_push_client
+    return db_controller_push_socket
 
 def _launch_database_pool_controller():
     log = logging.getLogger("launch_database_pool_controller")
@@ -96,7 +96,7 @@ _dispatch_table = {
 
 def _process_one_request(rep_socket, 
                          client_pull_addresses, 
-                         db_controller_push_client):
+                         db_controller_push_socket):
     """
     This function reads a request message from our rep socket and
     sends an immediate ack.
@@ -141,9 +141,12 @@ def _process_one_request(rep_socket,
     rep_socket.send_json(ack_message)
 
     if push_request_to_db_controller:
-        request["client-pull-address"] = \
-                client_pull_addresses[request["client-tag"]]
-        db_controller_push_client.send(request)
+        client_pull_address = client_pull_addresses[request["client-tag"]]
+        control = {"client-pull-address" : client_pull_address, 
+                   "result"              : None,
+                   "error-message"       : None, } 
+        db_controller_push_socket.send_pyobj(request, zmq.SNDMORE)
+        db_controller_push_socket.send_pyobj(control)
 
 def main():
     """
@@ -169,8 +172,8 @@ def main():
 
     zeromq_context = zmq.Context()
     rep_socket = _bind_rep_socket(zeromq_context)
-    db_controller_push_client = PUSHClient(zeromq_context, 
-                                           db_controller_pull_socket_uri)
+    db_controller_push_socket = \
+        _connect_db_controller_push_socket(zeromq_context)
     event_push_client = EventPushClient(zeromq_context, "retrieve_source")
 
     # we poll the sockets for readability, we assume we can always
@@ -199,7 +202,7 @@ def main():
 
                 _process_one_request(rep_socket, 
                                      client_pull_addresses,
-                                     db_controller_push_client)
+                                     db_controller_push_socket)
 
     except KeyboardInterrupt: # convenience for testing
         log.info("keyboard interrupt: terminating normally")
@@ -224,7 +227,7 @@ def main():
         terminate_subprocess(database_pool_controller)
         terminate_subprocess(io_controller)
         rep_socket.close()
-        db_controller_push_client.close()
+        db_controller_push_socket.close()
         event_push_client.close()
         zeromq_context.term()
 

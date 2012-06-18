@@ -4,15 +4,21 @@ io_worker.py
 
 One of a pool of io workers
 """
+from base64 import b64encode
+from collections import namedtuple
+import hashlib
 import logging
 import os
 import os.path
 import sys
 from threading import Event
+import zlib
 
 import zmq
 
 from tools.standard_logging import initialize_logging
+from tools.data_definitions import compute_value_file_path, \
+        encoded_block_generator
 from tools.zeromq_util import is_interrupted_system_call, \
         InterruptedSystemCall
 from tools.process_util import set_signal_handler
@@ -22,8 +28,16 @@ from retrieve_source.internal_sockets import io_controller_router_socket_uri
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_io_worker_{1}_{2}_{3}.log"
+_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
-def _send_work_request(volume_name, dealer_socket):
+_resources_tuple = namedtuple("Resources", 
+                              ["halt_event",
+                               "zeromq_context",
+                               "reply_push_sockets",
+                               "dealer_socket",
+                               "event_push_client",])
+
+def _send_work_request(resources, volume_name):
     """
     start the work cycle by notifying the controller that we are available
     """
@@ -31,42 +45,102 @@ def _send_work_request(volume_name, dealer_socket):
     log.debug("sending initial request")
     message = {"message-type" : "ready-for-work",
                "volume-name"  : volume_name,}
-    dealer_socket.send_json(message)
+    resources.dealer_socket.send_pyobj(message)
 
-def _process_request(dealer_socket):
+def _get_reply_push_socket(resources, client_pull_address):
+    log = logging.getLogger("_get_reply_push_socket")
+    if not client_pull_address in resources.eply_push_sockets:
+        push_socket = resources.zeromq_context.socket(zmq.PUSH)
+        push_socket.setsockopt(zmq.LINGER, 5000)
+        log.info("connecting to {0}".format(client_pull_address))
+        push_socket.connect(client_pull_address)
+        resources.reply_push_sockets[client_pull_address] = push_socket
+    return resources.reply_push_sockets[client_pull_address]
+
+def _send_error_reply(resources, message, control):
+    """
+    so send the error reply here.
+    """
+    log = logging.getLogger("_send_error_reply")
+    push_socket = _get_reply_push_socket(resources,
+                                         control["client-pull-address"])
+
+    reply = {"message-type"          : "archive-key-reply",
+             "client-tag"            : message["client-tag"],
+             "message-id"            : message["message-id"],
+             "retrieve-id"           : message["retrieve-id"],
+             "segment-unified-id"    : message["segment-unified-id"],
+             "segment-num"           : message["segment-num"],
+             "result"                : control["result"],
+              "error-message"        : control["error-message"],}
+    push_socket.send_json(reply)
+
+def _process_request(resources):
     """
     Wait for a reply to our last message from the controller.
     """
     log = logging.getLogger("_process_one_transaction")
     log.debug("waiting work request")
     try:
-        request = dealer_socket.recv_json()
+        request = resources.dealer_socket.recv_pyobj()
     except zmq.ZMQError as zmq_error:
         if is_interrupted_system_call(zmq_error):
             raise InterruptedSystemCall()
         raise
-    assert dealer_socket.rcvmore
 
-    sequence_row = dealer_socket.recv_pyobj()
+    assert resources.dealer_socket.rcvmore
+    control = resources.dealer_socket.recv_pyobj()
+
+    assert resources.dealer_socket.rcvmore
+    sequence_row = resources.dealer_socket.recv_pyobj()
 
     value_file_path = compute_value_file_path(_repository_path, 
                                               sequence_row["space_id"], 
                                               sequence_row["value_file_id"]) 
 
-    with  open(value_file_path, "rb") as value_file:
-        value_file.seek(sequence_row.value_file_offset)
-        encoded_data = value_file.read(sequence_row["size"])
+    try:
+        with  open(value_file_path, "rb") as value_file:
+            value_file.seek(sequence_row.value_file_offset)
+            encoded_data = value_file.read(sequence_row["size"])
+    except Exception as instance:
+        log.exception("read {0}".format(value_file_path))
+        resources.event_push_client.exception("error_reading_value_file", 
+                                              str(instance))
+        control["result"] = "error_reading_vqalue_file"
+        control["error-message"] = str(instance)
+        _send_error_reply(resources, request, control)
+        return
 
-    assert len(encoded_data) == sequence_row["size"]
+    if len(encoded_data) != sequence_row["size"]:
+        error_message = "{0} size mismatch {1} {2}".format(
+            request["retrieve-id"],
+            len(encoded_data),
+            sequence_row["size"])
+        log.error(error_message)
+        resources.event_push_client.error("size_mismatch", error_message)
+        control["result"] = "size_mismatch"
+        control["error-message"] = error_message
+        _send_error_reply(resources, request, control)
+        return
+
+    segment_md5 = hashlib.md5(encoded_data)
+    if segment_md5.digest() != sequence_row["hash"]:
+        error_message = "{0} md5 mismatch".format(request["retrieve-id"])
+        log.error(error_message)
+        resources.event_push_client.error("md5_mismatch", error_message)
+        control["result"] = "md5_mismatch"
+        control["error-message"] = error_message
+        _send_error_reply(resources, request, control)
+        return
 
     encoded_block_list = list(encoded_block_generator(encoded_data))
 
     recompute = False
-    if request["left-offset"] > 0:
-        encoded_block_list = encoded_block_list[request["left-offset"]:]
+    if control["left-offset"] > 0:
+        encoded_block_list = encoded_block_list[control["left-offset"]:]
         recompute = True
-    if request["right-offset"] > 0:
-        encoded_block_list = encoded_block_list[:-request["left-offset"]]
+    if control["right-offset"] > 0:
+        encoded_block_list = encoded_block_list[:-control["right-offset"]]
         recompute = True
 
     segment_size = sequence_row["size"]
@@ -89,7 +163,7 @@ def _process_request(dealer_socket):
         "message-type"          : "retrieve-key-reply",
         "client-tag"            : request["client-tag"],
         "message-id"            : request["message-id"],
-        "retrieve-id"           : request["retrieve-id"]
+        "retrieve-id"           : request["retrieve-id"],
         "segment-unified-id"    : request["segment-unified-id"],
         "segment-num"           : request["segment-num"],
         "segment-size"          : segment_size,
@@ -97,12 +171,17 @@ def _process_request(dealer_socket):
         "segment-adler32"       : segment_adler32,
         "segment-md5-digest"    : b64encode(segment_md5_digest),
         "sequence-num"          : None,
-        "completed"             : request["completed"],
-        "result"                : result,
-        "error-message"         : error_message,
+        "completed"             : control["completed"],
+        "result"                : "success",
+        "error-message"         : "",
     }
 
-    client_pull_address = request["client-pull-address"]
+    push_socket = _get_reply_push_socket(resources, 
+                                         control["client-pull-address"])
+    push_socket.send_json(reply, zmq.SNDMORE)
+    for encoded_block in encoded_block_list[:-1]:
+        push_socket.send(encoded_block, zmq.SNDMORE)
+    push_socket.send(encoded_block[-1])
         
 def main():
     """
@@ -129,38 +208,47 @@ def main():
 
     event_source_name = "rs_io_worker_{0}_{1}".format(volume_name, 
                                                       worker_number)
-    event_push_client = EventPushClient(zeromq_context, event_source_name)
+    resources = \
+        _resources_tuple(halt_event=halt_event,
+                         zeromq_context=zeromq_context,
+                         reply_push_sockets=dict(),
+                         event_push_client=EventPushClient(zeromq_context, 
+                                                           event_source_name),
+                         dealer_socket=zeromq_context.socket(zmq.DEALER))
 
-    dealer_socket = zeromq_context.socket(zmq.DEALER)
-    dealer_socket.setsockopt(zmq.LINGER, 1000)
+    resources.dealer_socket.setsockopt(zmq.LINGER, 1000)
     log.debug("connecting to {0}".format(io_controller_router_socket_uri))
-    dealer_socket.connect(io_controller_router_socket_uri)
+    resources.dealer_socket.connect(io_controller_router_socket_uri)
 
     try:
         while not halt_event.is_set():
-            _send_work_request(volume_name, dealer_socket)
-            _process_request(dealer_socket)
+            _send_work_request(resources, volume_name)
+            _process_request(resources)
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")
         else:
             log.exception("zeromq error processing request")
-            event_push_client.exception(unhandled_exception_topic,
-                                        "Interrupted zeromq system call",
-                                        exctype="InterruptedSystemCall")
+            resources.event_push_client.exception(
+                unhandled_exception_topic,
+                "Interrupted zeromq system call",
+                exctype="InterruptedSystemCall")
             return_value = 1
     except Exception as instance:
         log.exception("error processing request")
-        event_push_client.exception(unhandled_exception_topic,
-                                    str(instance),
-                                    exctype=instance.__class__.__name__)
+        resources.event_push_client.exception(
+            unhandled_exception_topic,
+            str(instance),
+            exctype=instance.__class__.__name__)
         return_value = 1
     else:
         log.info("program teminates normally")
     finally:
-        dealer_socket.close()
-        event_push_client.close()
-        zeromq_context.term()
+        resources.dealer_socket.close()
+        for push_socket in resources.reply_push_sockets.values():
+            push_socket.close()
+        resources.event_push_client.close()
+        resources.zeromq_context.term()
 
     return return_value
 

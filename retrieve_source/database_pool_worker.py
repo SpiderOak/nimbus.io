@@ -10,6 +10,7 @@ import os.path
 import sys
 from threading import Event
 
+import psycopg2
 import zmq
 
 from tools.standard_logging import initialize_logging
@@ -60,7 +61,7 @@ def _send_initial_work_request(dealer_socket):
     log = logging.getLogger("_send_initial_work_request")
     log.debug("sending initial request")
     message = {"message-type" : "ready-for-work"}
-    dealer_socket.send_json(message)
+    dealer_socket.send_pyobj(message)
 
 def _define_seq_val_fields():
     fields = ",".join(
@@ -68,7 +69,9 @@ def _define_seq_val_fields():
     fields = ",".join([fields, "val.space_id"])
     return fields
 
-def _process_one_transaction(dealer_socket, database_connection):
+def _process_one_transaction(dealer_socket, 
+                             database_connection, 
+                             event_push_client):
     """
     Wait for a reply to our last message from the controller.
     This will be a query request.
@@ -78,12 +81,13 @@ def _process_one_transaction(dealer_socket, database_connection):
     log = logging.getLogger("_process_one_transaction")
     log.debug("waiting work request")
     try:
-        request = dealer_socket.recv_json()
+        request = dealer_socket.recv_pyobj()
     except zmq.ZMQError as zmq_error:
         if is_interrupted_system_call(zmq_error):
             raise InterruptedSystemCall()
         raise
-    assert not dealer_socket.rcvmore
+    assert dealer_socket.rcvmore
+    control = dealer_socket.recv_pyobj()
 
     fields = _define_seq_val_fields()
     if request["handoff-node-id"] is None:
@@ -91,7 +95,27 @@ def _process_one_transaction(dealer_socket, database_connection):
     else:
         query = _all_sequence_rows_for_handoff_query.format(fields)
 
-    result = database_connection.fetch_all_rows(query, request)    
+    control["result"] = "success"
+    control["error-message"] = ""
+    try:
+        result = database_connection.fetch_all_rows(query, request)    
+    except psycopg2.OperationalError as instance:
+        error_message = "database error {0}".format(instance)
+        event_push_client.error("database_error", error_message)
+        control["result"] = "database_error"
+        control["error-message"] = error_message
+    else:        
+        if len(result) == 0:
+            control["result"] = "no_sequence_rows_found"
+            control["error-message"] = "no sequence rows found"
+
+    if control["result"] != "success":
+        log.error("{0} {1}".format(control["result"], 
+                                   control["error-message"]))
+        dealer_socket.send_pyobj(request, zmq.SNDMORE)
+        dealer_socket.send_pyobj(control)
+        return
+
     result_list = list()
     for row in result:
         row_list = list(row)
@@ -103,8 +127,8 @@ def _process_one_transaction(dealer_socket, database_connection):
         result_list.append(row_dict)
 
     log.debug("sending request back to controller")
-    request["database-pool-result"] = "success"
-    dealer_socket.send_json(request, zmq.SNDMORE)
+    dealer_socket.send_pyobj(request, zmq.SNDMORE)
+    dealer_socket.send_pyobj(control, zmq.SNDMORE)
     dealer_socket.send_pyobj(result_list)
 
 def main():
@@ -142,7 +166,9 @@ def main():
     try:
         _send_initial_work_request(dealer_socket)
         while not halt_event.is_set():
-            _process_one_transaction(dealer_socket, database_connection)
+            _process_one_transaction(dealer_socket, 
+                                     database_connection,
+                                     event_push_client)
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")

@@ -25,15 +25,26 @@ import time
 import logging
 import os
 import re
-import random
 from collections import deque
-import gevent.coros
+import gevent
+from gevent.coros import RLock as Lock
+from gevent.event import Event
+
 import psycopg2
 import gevent_psycopg2
 gevent_psycopg2.monkey_patch()
 
+from tools.standard_logging import initialize_logging
 from tools.LRUCache import LRUCache
-from tools.database_connection import get_central_connection
+from tools.database_connection import retry_central_connection
+
+# how long to wait before returning an error message to avoid fast loops
+RETRY_DELAY = 5.0
+# LRUCache mapping names to integers is approximately 32m of memory per 100,000
+# entries
+COLLECTION_CACHE_SIZE = 500000
+
+_log_path = "%s/nimbusio_web_director.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
 def _supervise_db_interaction(bound_method):
     """
@@ -43,7 +54,6 @@ def _supervise_db_interaction(bound_method):
     @wraps(bound_method)
     def __supervise_db_interaction(instance, *args, **kwargs):
         log = logging.getLogger("supervise_db")
-        conn_id = id(instance.conn)
         lock = instance.dblock
         retries = 0
         start_time = time.time()
@@ -62,35 +72,34 @@ def _supervise_db_interaction(bound_method):
         while True:
             if retries:
                 # do not retry too fast
-                gevent.sleep(1.0)
-            try:
-                with lock:
+                time.sleep(1.0)
+            with lock:
+                conn_id = id(instance.conn)
+                try:
                     if cache_check_func is not None:
                         result = cache_check_func()
                         if result:
                             break
                     result = bound_method(*args, **kwargs)
                     break
-            except psycopg2.OperationalError, err:
-                log.warn("Database error %s %s (retry #%d)" % (
-                    getattr(err, "pgcode", '-'),
-                    getattr(err, "pgerror", '-'),
-                    retries, ))
-                retries += 1
-                with lock:
+                except psycopg2.OperationalError, err:
+                    log.warn("Database error %s %s (retry #%d)" % (
+                        getattr(err, "pgcode", '-'),
+                        getattr(err, "pgerror", '-'),
+                        retries, ))
+                    retries += 1
                     # only let one greenlet be retrying the connection
                     # only reconnect if some other greenlet hasn't already done
                     # so.
-                    if id(instance.conn) == conn_id:
-                        log.warn("replacing database connection %r" % (
-                            conn_id, ))
-                        try:
-                            instance.conn = get_central_connection()
-                            conn_id = id(instance.conn)
-                        except psycopg2.OperationalError, err2:
-                            log.warn("could not reconnect: %s %s" % ( 
-                                getattr(err2, "pgcode", '-'),
-                                getattr(err2, "pgerror", '-'), ))
+                    log.warn("replacing database connection %r" % (
+                        conn_id, ))
+                    try:
+                        if instance.conn is not None:
+                            instance.conn.close()
+                    except psycopg2.OperationalError, err2:
+                        pass
+                    instance.conn = retry_central_connection()
+                    conn_id = id(instance.conn)
         return result
     return __supervise_db_interaction
 
@@ -101,25 +110,34 @@ class Router(object):
     """
 
     def __init__(self):
-        self.conn = get_central_connection()
-        self.dblock = gevent.coros.RLock()
-        self.service_domain = os.environ['NIMBUSIO_SERVICE_DOMAIN']
+        self.init_complete = Event()
+        self.conn = None
+        self.dblock = Lock()
+        self.service_domain = os.environ['NIMBUS_IO_SERVICE_DOMAIN']
         self.known_clusters = dict()
-        # LRUCache mapping names to integers is approximately 32m of memory per
-        # 100,000 entries
-        self.known_collections = LRUCache(500000) 
+        self.known_collections = LRUCache(COLLECTION_CACHE_SIZE) 
 
-    def parse_collection(self, hostname):
+    def init(self):
+        #import logging
+        #import traceback
+        #from tools.database_connection import get_central_connection
+        log = logging.getLogger("init")
+        log.info("init start")
+        self.conn = retry_central_connection()
+        log.info("init complete")
+        self.init_complete.set()
+
+    def _parse_collection(self, hostname):
         "return the Nimbus.io collection name from host name"
         offset = -1 * ( len(self.service_domain) + 1 )
         return hostname[:offset]
 
-    def hosts_for_collection(self, collection):
+    def _hosts_for_collection(self, collection):
         "return a list of hosts for this collection"
-        cluster_id = self.cluster_for_collection(collection)
+        cluster_id = self._cluster_for_collection(collection)
         if cluster_id is None:
             return None
-        cluster_info = self.cluster_info(cluster_id)
+        cluster_info = self._cluster_info(cluster_id)
         return cluster_info['hosts']
 
     @_supervise_db_interaction
@@ -132,7 +150,7 @@ class Router(object):
         return row
 
     @_supervise_db_interaction
-    def cluster_for_collection(self, collection, _retries=0):
+    def _cluster_for_collection(self, collection, _retries=0):
         "return cluster ID for collection"
         if collection in self.known_collections:
             return self.known_collections[collection]
@@ -154,7 +172,7 @@ class Router(object):
 
         return info
 
-    def cluster_info(self, cluster_id):
+    def _cluster_info(self, cluster_id):
         "return info about a cluster and its hosts"
         if cluster_id in self.known_clusters:
             return self.known_clusters[cluster_id]
@@ -166,9 +184,11 @@ class Router(object):
         return info
 
     @staticmethod
-    def reject(code, reason):
+    def _reject(code, reason):
         "return a go away response"
+        log = logging.getLogger("reject")
         response = "%d %s" % (code, reason, )
+        log.debug("reject:" + response)
         return dict(close = response)
 
     def route(self, hostname):
@@ -176,21 +196,40 @@ class Router(object):
         route a to a host in the appropriate cluster, using simple round-robin
         among the hosts in a cluster
         """
+        log = logging.getLogger("route")
+
+        self.init_complete.wait()
+
         if not hostname.endswith(self.service_domain):
-            return self.reject(404, "Not found")
-        collection = self.parse_collection(hostname)
+            return self._reject(404, "Not found")
+
+        if hostname == self.service_domain:
+            # this is not a request specific to any particular collection
+            # TODO figure out how to route these requests.
+            # in production, this might not matter.
+
+        collection = self._parse_collection(hostname)
         if collection is None:
-            self.reject(404, "Collection not found")
-        hosts = self.hosts_for_collection(collection)
+            self._reject(404, "Collection not found")
+
+        hosts = self._hosts_for_collection(collection)
         if hosts:
             # simple round robin rouding
             hosts.rotate(1)
-            return dict(remote=hosts[0])
+            target = hosts[0]
+            log.debug("routing connection to %s to backend host %s" % 
+                (hostname, target, ))
+            return dict(remote = target)
         elif hosts is None:
-            self.reject(404, "Collection not found")
-        return self.reject(500, "Retry later")
+            self._reject(404, "Collection not found")
 
-def proxy(data, _re_host=re.compile("Host:\s*(.*)\r\n"), _router=Router()):
+        # no hosts currently available (hosts is an empty list, presumably)
+        gevent.sleep(RETRY_DELAY)
+        return self._reject(500, "Retry later")
+
+_ROUTER = Router()
+
+def proxy(data, _re_host=re.compile("Host:\s*(.*?)(:\d+)?\r\n")):
     """
     the function called by tproxy to determine where to send traffic
 
@@ -201,15 +240,28 @@ def proxy(data, _re_host=re.compile("Host:\s*(.*)\r\n"), _router=Router()):
     may also tell it to hang up, or respond with some error message.
     """
 
+    log = logging.getLogger("proxy")
     # match against the HTTP host headers to determine routing by collection
     # name
     matches = _re_host.findall(data)
     if matches:
         hostname = matches.pop()
-        return _router.route(hostname)
+        log.debug("trying to route %r" % (hostname, ))
+        return _ROUTER.route(hostname)
     elif len(data) > 4096:
         # we should have had a host header by now...
         return dict(close=True)
     else:
         # wait until we have more data
         return None
+
+def init_setup():
+    initialize_logging(_log_path)
+    log = logging.getLogger("init_setup")
+    log.info("setup start")
+    global _ROUTER
+    _ROUTER = Router()
+    gevent.spawn_later(0.0, _ROUTER.init)
+    log.info("setup complete")
+
+init_setup()

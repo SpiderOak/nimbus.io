@@ -5,6 +5,9 @@ database_connecton.py
 provide connections to the nimbus.io databases
 """
 import os
+import logging
+import time
+import psycopg2
 
 central_database_name = "nimbusio_central"
 central_database_user = "nimbusio_central_user"
@@ -97,6 +100,25 @@ class DatabaseConnection(object):
     def close(self):
         """close the connection"""
         self._connection.close()
+
+def retry_central_connection(retry_delay=1.0):
+    "retry until we connect to central db"
+    log = logging.getLogger("retry_central_connection")
+    conn = None
+    attempts = 1
+    while True:
+        try:
+            conn = get_central_connection()
+            break
+        except psycopg2.OperationalError, err:
+            if attempts % 10 == 1:
+                log.warn("could not connect: attempt %d %s %s" % (
+                    attempts,
+                    getattr(err, "pgcode", '-'),
+                    getattr(err, "pgerror", '-'), ))
+            attempts += 1
+            time.sleep(retry_delay)
+    return conn
 
 def get_central_connection():
     central_database_password = os.environ["NIMBUSIO_CENTRAL_USER_PASSWORD"]

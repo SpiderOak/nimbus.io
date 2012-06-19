@@ -49,7 +49,7 @@ def _send_work_request(resources, volume_name):
 
 def _get_reply_push_socket(resources, client_pull_address):
     log = logging.getLogger("_get_reply_push_socket")
-    if not client_pull_address in resources.eply_push_sockets:
+    if not client_pull_address in resources.reply_push_sockets:
         push_socket = resources.zeromq_context.socket(zmq.PUSH)
         push_socket.setsockopt(zmq.LINGER, 5000)
         log.info("connecting to {0}".format(client_pull_address))
@@ -65,7 +65,7 @@ def _send_error_reply(resources, message, control):
     push_socket = _get_reply_push_socket(resources,
                                          control["client-pull-address"])
 
-    reply = {"message-type"          : "archive-key-reply",
+    reply = {"message-type"          : "retrieve-key-reply",
              "client-tag"            : message["client-tag"],
              "message-id"            : message["message-id"],
              "retrieve-id"           : message["retrieve-id"],
@@ -98,9 +98,12 @@ def _process_request(resources):
                                               sequence_row["space_id"], 
                                               sequence_row["value_file_id"]) 
 
+    control["result"] = "success"
+    control["error-message"] = ""
+
     try:
         with  open(value_file_path, "rb") as value_file:
-            value_file.seek(sequence_row.value_file_offset)
+            value_file.seek(sequence_row["value_file_offset"])
             encoded_data = value_file.read(sequence_row["size"])
     except Exception as instance:
         log.exception("read {0}".format(value_file_path))
@@ -108,6 +111,8 @@ def _process_request(resources):
                                               str(instance))
         control["result"] = "error_reading_vqalue_file"
         control["error-message"] = str(instance)
+
+    if control["result"] != "success":
         _send_error_reply(resources, request, control)
         return
 
@@ -120,6 +125,8 @@ def _process_request(resources):
         resources.event_push_client.error("size_mismatch", error_message)
         control["result"] = "size_mismatch"
         control["error-message"] = error_message
+
+    if control["result"] != "success":
         _send_error_reply(resources, request, control)
         return
 
@@ -130,6 +137,8 @@ def _process_request(resources):
         resources.event_push_client.error("md5_mismatch", error_message)
         control["result"] = "md5_mismatch"
         control["error-message"] = error_message
+
+    if control["result"] != "success":
         _send_error_reply(resources, request, control)
         return
 
@@ -169,7 +178,7 @@ def _process_request(resources):
         "segment-size"          : segment_size,
         "zfec-padding-size"     : sequence_row["zfec_padding_size"],
         "segment-adler32"       : segment_adler32,
-        "segment-md5-digest"    : b64encode(segment_md5_digest),
+        "segment-md5-digest"    : b64encode(segment_md5_digest).decode("utf-8"),
         "sequence-num"          : None,
         "completed"             : control["completed"],
         "result"                : "success",
@@ -181,7 +190,7 @@ def _process_request(resources):
     push_socket.send_json(reply, zmq.SNDMORE)
     for encoded_block in encoded_block_list[:-1]:
         push_socket.send(encoded_block, zmq.SNDMORE)
-    push_socket.send(encoded_block[-1])
+    push_socket.send(encoded_block_list[-1])
         
 def main():
     """

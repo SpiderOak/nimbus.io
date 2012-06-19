@@ -82,7 +82,7 @@ def _handle_retrieve_key_start(resources, message, control):
     log = logging.getLogger("_handle_retrieve_key_start")
     retrieve_id = message["retrieve-id"]
     if retrieve_id in resources.active_retrieves:
-        log.error("duplicate retrieve-id {0} in archive-key-start".format(
+        log.error("duplicate retrieve-id {0} in retrieve-key-start".format(
              retrieve_id))
         del resources.active_retrieves[retrieve_id]
 
@@ -94,11 +94,12 @@ def _handle_retrieve_key_next(resources, message, control):
     retrieve_id = message["retrieve-id"]
 
     if retrieve_id not in resources.active_retrieves:
-        log.error("unknown retrieve-id {0} in archive-key-next".format(
+        log.error("unknown retrieve-id {0} in retrieve-key-next".format(
              retrieve_id))
         return
 
     retrieve_state = resources.active_retrieves.pop(retrieve_id)
+    log.debug("sending {0} to io-controller".format(message))
     _send_request_to_io_controller(resources, message, control, retrieve_state)
 
 _dispatch_table = { "retrieve-key-start" : _handle_retrieve_key_start,
@@ -213,7 +214,7 @@ def _send_error_reply(resources, message, control):
         resources.reply_push_sockets[control["client-pull-address"]] = \
             push_socket
     push_socket = resources.reply_push_sockets[control["client-pull-address"]]
-    reply = {"message-type"          : "archive-key-reply",
+    reply = {"message-type"          : "retrieve-key-reply",
              "client-tag"            : message["client-tag"],
              "message-id"            : message["message-id"],
              "retrieve-id"           : message["retrieve-id"],
@@ -228,7 +229,7 @@ def _read_router_socket(resources):
     read a message from the router socket (from one of our worker processes)
     if the message-type is 'ready-for-work' (initial message)
         add the message ident to the resources.available_ident_queue
-    if the message-type is 'archive-key-start'
+    if the message-type is 'retrieve-key-start'
         use the attached data to start an active_retrieve
         add the message ident to the resources.available_ident_queue
     """
@@ -237,6 +238,9 @@ def _read_router_socket(resources):
     ident = resources.router_socket.recv()
     assert resources.router_socket.rcvmore
     message = resources.router_socket.recv_pyobj()
+
+    resources.available_ident_queue.append(ident) 
+    _send_pending_work_to_available_workers(resources)
 
     if message["message-type"] == "ready-for-work":
         return
@@ -253,9 +257,6 @@ def _read_router_socket(resources):
 
     assert resources.router_socket.rcvmore
     sequence_rows = resources.router_socket.recv_pyobj()
-
-    resources.available_ident_queue.append(ident) 
-    _send_pending_work_to_available_workers(resources)
 
     assert  message["message-type"] == "retrieve-key-start", message
     assert sequence_rows is not None

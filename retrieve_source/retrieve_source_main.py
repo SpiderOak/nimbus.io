@@ -10,6 +10,7 @@ import os.path
 import subprocess
 import sys
 from threading import Event
+import time
 
 import zmq
 
@@ -21,7 +22,6 @@ from tools.process_util import identify_program_dir, \
         set_signal_handler, \
         poll_subprocess, \
         terminate_subprocess
-from tools.push_client import PUSHClient
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 from retrieve_source.internal_sockets import internal_socket_uri_list, \
@@ -31,6 +31,7 @@ _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_retrieve_source_{1}.log"
 _retrieve_source_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
 _poll_timeout = 3.0
+_reporting_interval = 60.0
 
 def _bind_rep_socket(zeromq_context):
     log = logging.getLogger("_bind_rep_socket")
@@ -141,6 +142,8 @@ def _process_one_request(rep_socket,
     rep_socket.send_json(ack_message)
 
     if push_request_to_db_controller:
+        log.info("pushing {0} {1}".format(request["message-type"],
+                                          request["retrieve-id"]))
         client_pull_address = client_pull_addresses[request["client-tag"]]
         control = {"client-pull-address" : client_pull_address, 
                    "result"              : None,
@@ -175,6 +178,7 @@ def main():
     db_controller_push_socket = \
         _connect_db_controller_push_socket(zeromq_context)
     event_push_client = EventPushClient(zeromq_context, "retrieve_source")
+    event_push_client.info("program-starts", "retrieve source starts")
 
     # we poll the sockets for readability, we assume we can always
     # write to the push client sockets
@@ -183,6 +187,8 @@ def main():
 
     client_pull_addresses = dict()
 
+    last_report_time = 0.0
+    request_count = 0
     try:
         while not halt_event.is_set():
             poll_subprocess(database_pool_controller)
@@ -203,6 +209,19 @@ def main():
                 _process_one_request(rep_socket, 
                                      client_pull_addresses,
                                      db_controller_push_socket)
+
+                request_count += 1
+
+            current_time = time.time()
+            elapsed_time = current_time - last_report_time
+            if elapsed_time > _reporting_interval:
+                report_message = "{0:,} requests".format(request_count)
+                log.info(report_message)
+                event_push_client.info("request_count", 
+                                       report_message, 
+                                       request_count=request_count)
+                last_report_time = current_time
+                request_count = 0
 
     except KeyboardInterrupt: # convenience for testing
         log.info("keyboard interrupt: terminating normally")

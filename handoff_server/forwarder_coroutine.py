@@ -29,7 +29,7 @@ def forwarder_coroutine(
     # start retrieving from our reader
     message = {
         "message-type"              : "retrieve-key-start",
-        "retrieve_id"               : retrieve_id,
+        "retrieve-id"               : retrieve_id,
         "segment-unified-id"        : segment_row.unified_id,
         "segment-conjoined-part"    : segment_row.conjoined_part,
         "segment-num"               : segment_row.segment_num,
@@ -108,7 +108,7 @@ def forwarder_coroutine(
 
         message = {
             "message-type"              : "retrieve-key-next",
-            "retrieve_id"               : retrieve_id,
+            "retrieve-id"               : retrieve_id,
             "segment-unified-id"        : segment_row.unified_id,
             "segment-conjoined-part"    : segment_row.conjoined_part,
             "segment-num"               : segment_row.segment_num,

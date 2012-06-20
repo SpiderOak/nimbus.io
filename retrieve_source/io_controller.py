@@ -11,6 +11,7 @@ import os.path
 import subprocess
 import sys
 from threading import Event
+import time
 
 import zmq
 
@@ -42,6 +43,7 @@ _log_path_template = "{0}/nimbusio_rs_io_controller_{1}.log"
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _worker_count = int(os.environ.get("NIMBUSIO_RETRIEVE_IO_WORKER_COUNT", "2"))
 _poll_timeout = 3.0 
+_reporting_interval = 60.0
 
 def _launch_io_worker(volume_name, worker_number):
     log = logging.getLogger("launch_io_worker")
@@ -207,6 +209,7 @@ def main():
         for index in range(_worker_count):
             worker_processes.append(_launch_io_worker(volume_name, index+1))
     
+    last_report_time = 0.0
     try:
         while not halt_event.is_set():
             for worker_process in worker_processes:
@@ -223,6 +226,23 @@ def main():
                     _read_router_socket(resources)
                 else:
                     log.error("unknown socket {0}".format(active_socket))
+
+            current_time = time.time()
+            elapsed_time = current_time - last_report_time
+            if elapsed_time > _reporting_interval:
+                pending_work = 0
+                for volume_queue in resources.pending_work_by_volume.values():
+                    pending_work += len(volume_queue)
+                report_message = \
+                    "{0:,} pending_work entries".format(pending_work)
+                log.info(report_message)
+                resources.event_push_client.info(
+                    "queue_sizes", 
+                    report_message,
+                    pending_work=pending_work)
+
+                last_report_time = current_time
+
     except zmq.ZMQError as zmq_error:
         if is_interrupted_system_call(zmq_error) and halt_event.is_set():
             log.info("program teminates normally with interrupted system call")

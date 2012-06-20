@@ -52,6 +52,7 @@ _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_db_pool_controller_{1}.log"
 _worker_count = int(os.environ.get("NIMBUSIO_RETRIEVE_DB_POOL_COUNT", "2"))
 _poll_timeout = 3.0 
+_reporting_interval = 60.0
 
 def _launch_database_pool_worker(worker_number):
     log = logging.getLogger("launch_database_pool_worker")
@@ -161,8 +162,9 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
     skip_count = 0
     left_offset = 0
     right_offset = 0
-
     index = 0
+    skip_count = 0
+
     while pre_block_count < block_offset:
         sequence_row = sequence_rows[index]
         blocks_in_sequence = _compute_blocks_in_sequence(sequence_row["size"])
@@ -170,9 +172,9 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
         log.debug("{0} blocks_in_sequence={1}, pre_block_count={2}".format(
             index, blocks_in_sequence, pre_block_count))
 
-        index += 1
-
-    skip_count = index
+        if pre_block_count < block_offset:
+            index += 1
+            skip_count += 1
 
     if block_offset > 0: 
         if skip_count == 0:
@@ -183,7 +185,8 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
     # index points to the first segment we are actually going to send
     if total_block_count is not None:
         blocks_to_send = (0 if left_offset == 0 else -left_offset)
-        while blocks_to_send < total_block_count:
+        while blocks_to_send < total_block_count \
+        and index < len(sequence_rows):
             sequence_row = sequence_rows[index]
             blocks_in_sequence = \
                 _compute_blocks_in_sequence(sequence_row["size"])
@@ -195,6 +198,9 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
 
         if blocks_to_send > total_block_count:
             right_offset = blocks_to_send - total_block_count
+
+        assert blocks_to_send - right_offset == total_block_count, \
+            (blocks_to_send, right_offset, total_block_count, )
 
     log.debug("skip_count={0}, left_offset={1}, right_offset={2}".format(
         skip_count, left_offset, right_offset))
@@ -298,7 +304,7 @@ def _send_request_to_io_controller(resources,
 
     sequence_row = retrieve_state.sequence_rows[retrieve_state.sequence_index]
 
-    next_sequence_index = retrieve_state.sequence_index +1
+    next_sequence_index = retrieve_state.sequence_index + 1
     assert next_sequence_index <= len(retrieve_state.sequence_rows)
     control["completed"] = \
         next_sequence_index == len(retrieve_state.sequence_rows)
@@ -367,6 +373,7 @@ def main():
     for index in range(_worker_count):
         worker_processes.append(_launch_database_pool_worker(index+1))
     
+    last_report_time = 0.0
     try:
         while not halt_event.is_set():
             for worker_process in worker_processes:
@@ -383,6 +390,26 @@ def main():
                     _read_router_socket(resources)
                 else:
                     log.error("unknown socket {0}".format(active_socket))
+            current_time = time.time()
+            elapsed_time = current_time - last_report_time
+            if elapsed_time > _reporting_interval:
+                report_message = \
+                    "{0:,} active_retrives, " \
+                    "{1:,} pending_work_queue entries, " \
+                    "{2:,} available_ident_queue entries" \
+                    "".format(len(resources.active_retrieves),
+                              len(resources.pending_work_queue),
+                              len(resources.available_ident_queue))
+                log.info(report_message)
+                resources.event_push_client.info(
+                    "queue_sizes", 
+                    report_message,
+                    active_retrieves=len(resources.active_retrieves),
+                    pending_work_queue=len(resources.pending_work_queue),
+                    available_ident_queue=len(resources.available_ident_queue))
+
+                last_report_time = current_time
+
     except zmq.ZMQError as zmq_error:
         if is_interrupted_system_call(zmq_error) and halt_event.is_set():
             log.info("program teminates normally with interrupted system call")

@@ -12,6 +12,8 @@ import sys
 
 from tools.process_util import identify_program_dir
 
+_python3 = "/usr/local/bin/python3.2"
+
 def poll_process(process):
     process.poll()
     if process.returncode is None:
@@ -85,22 +87,22 @@ def start_data_writer(node_name, environment, profile):
     log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_data_reader(node_name, environment, profile):
-    log = logging.getLogger("start_data_reader %s profile = %r" % (
+def start_retrieve_source(node_name, environment, profile):
+    log = logging.getLogger("start_retrieve_source %s profile = %r" % (
         node_name, profile, 
     ))
-    server_dir = identify_program_dir(u"data_reader")
-    server_path = os.path.join(server_dir, "data_reader_main.py")
+    server_dir = identify_program_dir(u"retrieve_source")
+    server_path = os.path.join(server_dir, "retrieve_source_main.py")
     
     args = [
-        sys.executable,
+        _python3,
         server_path,
     ]
 
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "data_reader_%s.pstats" % (node_name, )
+            "retrieve_source_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",

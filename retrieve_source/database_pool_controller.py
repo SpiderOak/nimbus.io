@@ -228,7 +228,7 @@ def _send_error_reply(resources, message, control):
              "segment-num"           : message["segment-num"],
              "result"                : control["result"],
               "error-message"        : control["error-message"],}
-    push_socket.send(reply)
+    push_socket.send_json(reply)
 
 def _read_router_socket(resources):
     """

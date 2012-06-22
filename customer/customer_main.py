@@ -114,6 +114,7 @@ def main():
     options = _parse_command_line()
     connection = get_central_connection()
 
+    connection.begin_transaction()
     try:
         _dispatch_table[options.command](connection, options)
     except Exception:

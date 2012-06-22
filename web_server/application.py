@@ -310,6 +310,7 @@ class Application(object):
         if not authenticated:
             raise exc.HTTPUnauthorized()
 
+        self._central_connection.begin_transaction()
         try:
             creation_time = create_collection(
                 self._central_connection, 
@@ -363,6 +364,7 @@ class Application(object):
             ))
 
         # TODO: can't delete a collection that contains keys
+        self._central_connection.begin_transaction()
         try:
             delete_collection(self._central_connection, collection_name)
         except Exception, instance:

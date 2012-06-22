@@ -219,7 +219,7 @@ class NodeSim(object):
                                          database_host, 
                                          database_port)
 
-        connection.execute("begin")
+        connection.begin_transaction()
         command = """
             insert into nimbusio_node.file_space 
             (space_id, purpose, path, volume )

@@ -25,7 +25,7 @@ _query_template = """
 /* SQL for garbage collection */
 set search_path to nimbusio_node, public;
 
-begin;
+/* begin; */
 /* just put our parameters into the db here so I only have to specify them once
  * */
 drop table if exists gc_param;

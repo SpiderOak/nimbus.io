@@ -188,7 +188,7 @@ def _apply_conjoined_handoffs(connection, conjoined_dicts):
     # 2012-03-23 dougfort -- to begin with, let's just apply these 
     # conjoined handoffs as they come in, that may be enough
     
-    connection.execute("begin")
+    connection.begin_transaction()
     try:
         for conjoined_dict in conjoined_dicts:
             if handoff_node_id is None:

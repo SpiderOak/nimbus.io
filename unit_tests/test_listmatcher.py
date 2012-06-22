@@ -43,7 +43,7 @@ _insert_test_row_with_timestamp_and_tombstone= """
 """
 
 def _load_test_data(connection, keys):
-    connection.execute("begin")
+    connection.begin_trqansaction()
     for key in keys:
         connection.execute(_insert_test_row, [_collection_id, key])
     connection.commit()

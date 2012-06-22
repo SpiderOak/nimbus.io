@@ -155,6 +155,7 @@ create sequence value_file_id_seq;
  * only hold 38,000 of them. */
 create table value_file (
     id int4 primary key default nextval('nimbusio_node.value_file_id_seq'),
+    space_id int4 not null,
     creation_time timestamp not null default current_timestamp,
     close_time timestamp,
     size int8,
@@ -224,6 +225,20 @@ create table damaged_segment (
     segment_num int2 not null,
     conjoined_part int4 not null default 0,
     sequence_numbers int4[] not null
+);
+
+/* File spaces are a simple way to organize value files among the storage volumes. 
+   Their concept is influenced by PostgreSQL's Table Spaces. 
+   http://www.postgresql.org/docs/9.1/static/manage-ag-tablespaces.html */
+
+create sequence file_space_id_seq;
+create table file_space (
+    space_id int4 primary key default nextval('nimbusio_node.file_space_id_seq'),
+    purpose text not null,
+    path text not null,
+    volume text,
+    creation_time timestamp not null default current_timestamp,
+    constraint possible_purpose check (purpose in ('journal', 'storage'))
 );
 
 /* rollback; */

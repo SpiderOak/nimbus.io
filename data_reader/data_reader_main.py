@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+# -*- CODING: Utf-8 -*-
 """
 data_reader_main.py
 
@@ -23,6 +23,8 @@ import Statgrabber
 from tools.data_definitions import encoded_block_generator
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.rep_server import REPServer
+from tools.sub_client import SUBClient
 from tools.event_push_client import EventPushClient, exception_event
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
@@ -33,13 +35,14 @@ from data_reader.state_cleaner import StateCleaner
 from data_reader.stats_reporter import StatsReporter
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_log_path = u"%s/nimbusio_data_reader_%s.log" % (
-    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
+_log_path = "{0}/nimbusio_data_reader_{1}.log".format(
+    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name
 )
-_data_reader_address = os.environ.get(
-    "NIMBUSIO_DATA_READER_ADDRESS",
-    "tcp://127.0.0.1:8200"
-)
+_data_reader_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
+_data_reader_anti_entropy_address = \
+        os.environ["NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESS"]
+_event_aggregator_pub_address = \
+        os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _retrieve_timeout = 30 * 60.0
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
@@ -164,7 +167,7 @@ def _handle_retrieve_key_start(state, message, _data):
         sequence_read_count=1,
         block_count=message["block-count"],
         blocks_sent=len(encoded_block_list), 
-        timeout=time.time() + _retrieve_timeout
+        timeout=time.time() + _retrieve_timeout,
     )
 
     # save stuff we need to recall in state
@@ -229,9 +232,6 @@ def _handle_retrieve_key_next(state, message, _data):
     except KeyError:
         error_string = "unknown request %r" % (_str_state_key(state_key), )
         log.error(error_string)
-        reply["result"] = "unknown-request"
-        reply["error-message"] = error_string
-        state["resilient-server"].send_reply(reply)
         return
 
     try:
@@ -305,16 +305,62 @@ def _handle_retrieve_key_next(state, message, _data):
     reply["result"] = "success"
     state["resilient-server"].send_reply(reply, data=encoded_block_list)
 
-def _handle_web_server_start(state, message, _data):
+def _handle_retrieve_segment_sequence(state, message, _data):
+    log = logging.getLogger("_handle_retrieve_segment_sequence")
+    state_key = _compute_state_key(message)
+    log.info("{0} sequence_num={1}".format(_str_state_key(state_key),
+                                           message["sequence-num"]))
+    reply = {
+        "message-type"          : "retrieve-segment-sequence-reply",
+        "client-tag"            : message["client-tag"],
+        "message-id"            : message["message-id"],
+        "segment-unified-id"    : message["segment-unified-id"],
+        "segment-conjoined-part": message["segment-conjoined-part"],
+        "segment-num"           : message["segment-num"],
+        "sequence_num"          : message["sequence-num"],
+        "zfec-padding-size"     : None,
+        "result"                : None,
+        "error-message"         : None,
+    }
+
+    try:
+        sequence_row, segment_data = state["reader"].retrieve_one_sequence(
+            message["segment-unified-id"],
+            message["segment-conjoined-part"],
+            message["segment-num"],
+            message["sequence-num"])
+    except Exception, instance:
+        log.exception("retrieving")
+        reply["result"] = "exception"
+        reply["error-message"] = str(instance)
+        state["anti-entropy-server"].send_reply(reply)
+        return
+
+    segment_md5 = hashlib.md5(segment_data)
+    if segment_md5.digest() != str(sequence_row.hash):
+        error_message = "md5 mismatch %s" % (_str_state_key(state_key), )
+        log.error(error_message)
+        state["event-push-client"].error("md5-mismatch", error_message)  
+        reply["result"] = "md5-mismatch"
+        reply["error-message"] = "segment md5 does not match expected value"
+        state["anti-entropy-server"].send_reply(reply)
+        return
+
+    encoded_block_list = list(encoded_block_generator(segment_data))
+    reply["result"] = "success"
+    state["anti-entropy-server"].send_reply(reply, data=encoded_block_list)
+
+def _handle_web_server_start(_state, message, _data):
     log = logging.getLogger("_handle_web_server_start")
-    log.info("%s %s %s" % (message["unified-id"], 
-                           message["timestamp-repr"],
-                           message["source-node-name"]))
+    log.info("{0} {1} {2}".format(message["unified_id"], 
+                                  message["timestamp_repr"],
+                                  message["source_node_name"]))
 
 _dispatch_table = {
-    "retrieve-key-start"    : _handle_retrieve_key_start,
-    "retrieve-key-next"     : _handle_retrieve_key_next,
-    "web-server-start"      : _handle_web_server_start,
+    "retrieve-key-start"        : _handle_retrieve_key_start,
+    "retrieve-key-next"         : _handle_retrieve_key_next,
+    "retrieve-segment-sequence" : _handle_retrieve_segment_sequence, 
+    "web-server-start"          : _handle_web_server_start,
 }
 
 def _create_state():
@@ -322,6 +368,8 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "anti-entropy-server"   : None,
+        "sub-client"            : None,
         "event-push-client"     : None,
         "stats-reporter"        : None,
         "state-cleaner"         : None,
@@ -342,13 +390,35 @@ def _setup(_halt_event, state):
         "data_reader"
     )
 
-    log.info("binding resilient-server to %s" % (_data_reader_address, ))
+    log.info("binding resilient-server to {0}".format(_data_reader_address))
     state["resilient-server"] = ResilientServer(
         state["zmq-context"],
         _data_reader_address,
         state["receive-queue"]
     )
     state["resilient-server"].register(state["pollster"])
+
+    log.info("binding anti-entropy-server to {0}".format(
+        _data_reader_anti_entropy_address))
+    state["anti-entropy-server"] = REPServer(
+        state["zmq-context"],
+        _data_reader_anti_entropy_address,
+        state["receive-queue"]
+    )
+    state["anti-entropy-server"].register(state["pollster"])
+
+    topics = ["web-server-start", "segment-sequence-retrieved", ]
+    log.info("connecting sub-client to {0} subscribing to {1}".format(
+        _event_aggregator_pub_address,
+        topics))
+    state["sub-client"] = SUBClient(
+        state["zmq-context"],
+        _event_aggregator_pub_address,
+        topics,
+        state["receive-queue"],
+        queue_action="prepend"
+    )
+    state["sub-client"].register(state["pollster"])
 
     state["queue-dispatcher"] = DequeDispatcher(
         state,
@@ -381,10 +451,8 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
-    state["event-push-client"].close()
-
-    state["zmq-context"].term()
-
+    state["anti-entropy-server"].close()
+    state["sub-client"].close()
     state["reader"].close()
     state["database-connection"].close()
 

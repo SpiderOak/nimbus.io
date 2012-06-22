@@ -1,6 +1,7 @@
 #!/bin/bash
-NIMBUSIO="${HOME}/nimbus.io"
+NIMBUSIO="${HOME}/git/nimbus.io"
 export PYTHONPATH="${NIMBUSIO}"
 export NIMBUSIO_CENTRAL_USER_PASSWORD="pork"
-python "${NIMBUSIO}/customer/customer_main.py" "$1" "$2" "$3" "$4"
+PYTHON="python2.7"
+"${PYTHON}" "${NIMBUSIO}/customer/customer_main.py" "$1" "$2" "$3" "$4"
 

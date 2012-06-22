@@ -5,8 +5,7 @@ A value file for existing sequences, to be removed or renamed after defrag
 import logging
 import os
 
-from tools.data_definitions import compute_value_file_path, \
-        value_file_template
+from tools.data_definitions import compute_value_file_path
 
 class InputValueFile(object):
     def __init__(self, local_connection, repository_path, value_file_row): 
@@ -14,9 +13,10 @@ class InputValueFile(object):
         self._local_connection = local_connection
         self._repository_path = repository_path
         self._value_file_row = value_file_row
-        self._value_file_path = compute_value_file_path(
-            repository_path, value_file_row.id
-        )
+        self._value_file_path = \
+                compute_value_file_path(repository_path, 
+                                        value_file_row.space_id, 
+                                        value_file_row.id)
         self._value_file = open(self._value_file_path, "rb")
 
     def close(self):

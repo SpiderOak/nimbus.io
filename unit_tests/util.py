@@ -10,23 +10,14 @@ import os.path
 import subprocess
 import sys
 
+from tools.process_util import identify_program_dir
+
 def generate_key():
     """generate a unique key for data storage"""
     n = 0
     while True:
         n += 1
         yield "test-key-%06d" % (n, )
-
-def identify_program_dir(target_dir):
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_dir)
-        if os.path.isdir(test_path):
-            return test_path
-
-    raise ValueError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_dir, python_path, )
-    )
 
 def poll_process(process):
     process.poll()
@@ -140,46 +131,6 @@ def start_data_reader(
             "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
                 event_publisher_pull_address,
             "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
-        }        
-
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-def start_anti_entropy_server(
-    cluster_name,
-    node_names,
-    node_name, 
-    anti_entropy_server_addresses,
-    pipeline_address,
-    event_publisher_pull_address, 
-    environment = None,
-):
-    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"anti_entropy_server")
-    server_path = os.path.join(
-        server_dir, "anti_entropy_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    if environment is None:
-        environment = {
-            "PYTHONPATH"                        : os.environ["PYTHONPATH"],
-            "NIMBUSIO_LOG_DIR"         : os.environ["NIMBUSIO_LOG_DIR"],
-            "NIMBUSIO_CLUSTER_NAME"      : cluster_name,
-            "NIMBUSIO_NODE_NAME_SEQ"     : \
-                " ".join(node_names),
-            "NIMBUSIO_NODE_NAME"         : node_name,
-            "NIMBUSIO_ANTI_ENTROPY_SERVER_ADDRESSES": \
-                " ".join(anti_entropy_server_addresses),
-            "NIMBUSIO_ANTI_ENTROPY_SERVER_PIPELINE_ADDRESS": pipeline_address,
-            "NIMBUSIO_CENTRAL_USER_PASSWORD"             : "pork",
-            "NIMBUSIO_NODE_USER_PASSWORD"             : "pork",
-            "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
-                event_publisher_pull_address,
         }        
 
     log.info("starting %s %s" % (args, environment, ))

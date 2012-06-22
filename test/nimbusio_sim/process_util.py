@@ -10,16 +10,9 @@ import os.path
 import subprocess
 import sys
 
-def identify_program_dir(target_dir):
-    python_path = os.environ["PYTHONPATH"]
-    for work_path in python_path.split(os.pathsep):
-        test_path = os.path.join(work_path, target_dir)
-        if os.path.isdir(test_path):
-            return test_path
+from tools.process_util import identify_program_dir
 
-    raise ValueError(
-        "Can't find %s in PYTHONPATH '%s'" % (target_dir, python_path, )
-    )
+_python3 = "/usr/local/bin/python3.2"
 
 def poll_process(process):
     process.poll()
@@ -50,7 +43,7 @@ def start_event_aggregator(environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_event_subscriber(environment):
@@ -64,7 +57,7 @@ def start_event_subscriber(environment):
         "error"
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_data_writer(node_name, environment, profile):
@@ -91,25 +84,25 @@ def start_data_writer(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
-def start_data_reader(node_name, environment, profile):
-    log = logging.getLogger("start_data_reader %s profile = %r" % (
+def start_retrieve_source(node_name, environment, profile):
+    log = logging.getLogger("start_retrieve_source %s profile = %r" % (
         node_name, profile, 
     ))
-    server_dir = identify_program_dir(u"data_reader")
-    server_path = os.path.join(server_dir, "data_reader_main.py")
+    server_dir = identify_program_dir(u"retrieve_source")
+    server_path = os.path.join(server_dir, "retrieve_source_main.py")
     
     args = [
-        sys.executable,
+        _python3,
         server_path,
     ]
 
     if profile:
         profile_path = os.path.join(
             environment["NIMBUSIO_PROFILE_DIR"],
-            "data_reader_%s.pstats" % (node_name, )
+            "retrieve_source_%s.pstats" % (node_name, )
         )
         args[1:1] = [
             "-m",
@@ -118,34 +111,7 @@ def start_data_reader(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
-    return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
-
-def start_anti_entropy_server(node_name, environment, profile):
-    log = logging.getLogger("_start_anti_entropy_server%s" % (node_name, ))
-    server_dir = identify_program_dir(u"anti_entropy_server")
-    server_path = os.path.join(
-        server_dir, "anti_entropy_server_main.py"
-    )
-    
-    args = [
-        sys.executable,
-        server_path,
-    ]
-
-    if profile:
-        profile_path = os.path.join(
-            environment["NIMBUSIO_PROFILE_DIR"],
-            "anti_entropy_server_%s.pstats" % (node_name, )
-        )
-        args[1:1] = [
-            "-m",
-            "cProfile",
-            "-o",
-            profile_path
-        ]
-
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_space_accounting_server(node_name, environment):
@@ -160,7 +126,7 @@ def start_space_accounting_server(node_name, environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_handoff_server(node_name, environment, profile):
@@ -185,7 +151,7 @@ def start_handoff_server(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_event_publisher(node_name, environment):
@@ -198,7 +164,7 @@ def start_event_publisher(node_name, environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_performance_packager(node_name, environment):
@@ -213,7 +179,7 @@ def start_performance_packager(node_name, environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_stats_subscriber(environment):
@@ -228,7 +194,7 @@ def start_stats_subscriber(environment):
         server_path,
     ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_web_server(node_name, environment, profile):
@@ -262,7 +228,7 @@ def start_web_server(node_name, environment, profile):
             profile_path
         ]
 
-    log.info("starting %s %s" % (args, environment, ))
+    log.info("starting %s" % (args, ))
 
     return subprocess.Popen(
         args, stdout=wsgi_log_file, stderr=subprocess.STDOUT, env=environment

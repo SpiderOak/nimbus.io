@@ -46,18 +46,13 @@ The server is driven by callback functions passed in at startup::
 
 """
 import logging
-import signal
 import sys
 from threading import Event
 import time
 
 from tools.time_queue import TimeQueue
 from tools.standard_logging import initialize_logging
-
-def _create_signal_handler(halt_event):
-    def cb_handler(*_):
-        halt_event.set()
-    return cb_handler
+from tools.process_util import set_signal_handler
 
 def _run_until_halt(
     state,
@@ -67,7 +62,7 @@ def _run_until_halt(
 ):
     log = logging.getLogger("_run_until_halt")
 
-    signal.signal(signal.SIGTERM, _create_signal_handler(halt_event))
+    set_signal_handler(halt_event)
 
     time_queue = TimeQueue()
 
@@ -97,7 +92,7 @@ def _run_until_halt(
 
         next_task_delay = time_queue.peek_time() - time.time()
         if next_task_delay > 0.0:
-         halt_event.wait(next_task_delay)
+            halt_event.wait(next_task_delay)
 
         next_task = time_queue.pop()
         result_list = next_task(halt_event)

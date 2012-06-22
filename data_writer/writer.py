@@ -12,6 +12,7 @@ from tools.data_definitions import segment_sequence_template, \
         parse_timestamp_repr, \
         segment_status_active, \
         segment_status_tombstone
+from tools.file_space import find_least_volume_space_id
 from data_writer.output_value_file import OutputValueFile
 
 _max_value_file_size = int(os.environ.get(
@@ -303,19 +304,26 @@ class Writer(object):
     """
     Manage writing segment values to disk
     """
-    def __init__(
-        self, connection, repository_path, active_segments, completions
+    def __init__(self, 
+                 connection, 
+                 file_space_info, 
+                 repository_path, 
+                 active_segments, 
+                 completions
     ):
         self._log = logging.getLogger("Writer")
         self._connection = connection
+        self._file_space_info = file_space_info
         self._repository_path = repository_path
         self._active_segments = active_segments
         self._completions = completions
+        
+        space_id = find_least_volume_space_id("journal", self._file_space_info)
 
         # open a new value file at startup
-        self._value_file = OutputValueFile(
-            self._connection, self._repository_path
-        )
+        self._value_file = OutputValueFile(self._connection, 
+                                           space_id, 
+                                           self._repository_path)
 
     @property
     def value_file_hash(self):
@@ -434,9 +442,11 @@ class Writer(object):
         # start a new output value file
         if self._value_file.size + segment_size > _max_value_file_size:
             self._value_file.close()
-            self._value_file = OutputValueFile(
-                self._connection, self._repository_path
-            )
+            space_id = find_least_volume_space_id("journal",
+                                                  self._file_space_info)
+            self._value_file = OutputValueFile(self._connection, 
+                                               space_id,
+                                               self._repository_path)
 
         segment_sequence_row = segment_sequence_template(
             collection_id=collection_id,

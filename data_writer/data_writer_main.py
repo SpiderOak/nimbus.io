@@ -25,14 +25,17 @@ import Statgrabber
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
+from tools.rep_server import REPServer
+from tools.sub_client import SUBClient
 from tools.event_push_client import EventPushClient, exception_event
 from tools.priority_queue import PriorityQueue
 from tools.deque_dispatcher import DequeDispatcher
 from tools import time_queue_driven_process
 from tools.database_connection import get_node_local_connection, \
         get_central_connection
-from tools.data_definitions import parse_timestamp_repr, \
-        nimbus_meta_prefix
+from tools.data_definitions import parse_timestamp_repr
+from tools.file_space import load_file_space_info, file_space_sanity_check
+
 from web_server.central_database_util import get_cluster_row, \
         get_node_rows
 
@@ -43,13 +46,14 @@ from data_writer.sync_manager import SyncManager
 from data_writer.post_sync_completion import PostSyncCompletion
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_log_path = u"%s/nimbusio_data_writer_%s.log" % (
+_log_path = "{0}/nimbusio_data_writer_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
-_data_writer_address = os.environ.get(
-    "NIMBUSIO_DATA_WRITER_ADDRESS",
-    "tcp://127.0.0.1:8100"
-)
+_data_writer_address = os.environ["NIMBUSIO_DATA_WRITER_ADDRESS"]
+_data_writer_anti_entropy_address = \
+        os.environ["NIMBUSIO_DATA_WRITER_ANTI_ENTROPY_ADDRESS"]
+_event_aggregator_pub_address = \
+        os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _handle_archive_key_entire(state, message, data):
@@ -616,12 +620,12 @@ def _handle_finish_conjoined_archive(state, message, _data):
 
 def _handle_web_server_start(state, message, _data):
     log = logging.getLogger("_handle_web_server_start")
-    log.info("%s %s %s" % (message["unified-id"], 
-                           message["timestamp-repr"],
-                           message["source-node-name"]))
+    log.info("{0} {1} {2}".format(message["unified_id"], 
+                                  message["timestamp_repr"],
+                                  message["source_node_name"]))
 
-    source_node_id = state["node-id-dict"][message["source-node-name"]]
-    timestamp = parse_timestamp_repr(message["timestamp-repr"])
+    source_node_id = state["node-id-dict"][message["source_node_name"]]
+    timestamp = parse_timestamp_repr(message["timestamp_repr"])
     state["writer"].cancel_active_archives_from_node(
         source_node_id, timestamp 
     )
@@ -646,6 +650,8 @@ def _create_state():
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "anti-entropy-server"   : None,
+        "sub-client"            : None,
         "event-push-client"     : None,
         "stats-reporter"        : None,
         "receive-queue"         : PriorityQueue(),
@@ -677,6 +683,28 @@ def _setup(_halt_event, state):
     )
     state["resilient-server"].register(state["pollster"])
 
+    log.info("binding anti-entropy-server to {0}".format(
+        _data_writer_anti_entropy_address))
+    state["anti-entropy-server"] = REPServer(
+        state["zmq-context"],
+        _data_writer_anti_entropy_address,
+        state["receive-queue"]
+    )
+    state["anti-entropy-server"].register(state["pollster"])
+
+    topics = ["web-server-start", ]
+    log.info("connecting sub-client to {0} subscribing to {1}".format(
+        _event_aggregator_pub_address,
+        topics))
+    state["sub-client"] = SUBClient(
+        state["zmq-context"],
+        _event_aggregator_pub_address,
+        topics,
+        state["receive-queue"],
+        queue_action="prepend"
+    )
+    state["sub-client"].register(state["pollster"])
+
     state["queue-dispatcher"] = DequeDispatcher(
         state,
         state["receive-queue"],
@@ -696,10 +724,15 @@ def _setup(_halt_event, state):
 
     state["database-connection"] = get_node_local_connection()
 
+    file_space_info = load_file_space_info(state["database-connection"]) 
+    file_space_sanity_check(file_space_info, _repository_path)
+
     # Ticket #1646 mark output value files as closed at startup
     mark_value_files_as_closed(state["database-connection"])
 
+
     state["writer"] = Writer(state["database-connection"], 
+                             file_space_info,
                              _repository_path,
                              state["active-segments"],
                              state["completions"])
@@ -727,6 +760,8 @@ def _tear_down(_state):
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
+    state["anti-entropy-server"].close()
+    state["sub-client"].close()
     state["event-push-client"].close()
 
     state["zmq-context"].term()

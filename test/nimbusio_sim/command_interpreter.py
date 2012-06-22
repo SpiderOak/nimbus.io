@@ -16,7 +16,7 @@ class CommandInterpreter(cmd.Cmd):
     """
     accept commands while running simulated nodes
     """
-    def __init__(self, config):
+    def __init__(self, config, createnew):
         cmd.Cmd.__init__(self)
         self._cluster_config = config
         self._node_sims = list()
@@ -24,6 +24,7 @@ class CommandInterpreter(cmd.Cmd):
             NodeSim(
                 0, 
                 config,
+                createnew,
                 space_accounting=True, 
                 performance_packager=True,
                 event_aggregator=True,
@@ -33,7 +34,8 @@ class CommandInterpreter(cmd.Cmd):
             )
         )
         for i in xrange(_node_count-1):
-            self._node_sims.append(NodeSim(i+1, config, web_server=True))
+            self._node_sims.append(
+                NodeSim(i+1, config, createnew, web_server=True))
 
     def _get_node_from_line(self, line):
         try:

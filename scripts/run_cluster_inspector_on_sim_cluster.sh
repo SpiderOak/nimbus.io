@@ -14,7 +14,7 @@ if [ ! -d $BASEDIR ]; then
     exit 1
 fi
 
-PYTHON="${HOME}/python_env/nimbus.io.0.0.1/bin/python3"
+PYTHON="python3.2"
 
 # pull in environment settings from the simulated cluster 
 pushd "${BASEDIR}/config"
@@ -24,6 +24,5 @@ popd
 export NIMBUSIO_LOG_LEVEL="DEBUG"
 export NIMBUSIO_MIN_ANTI_ENTROPY_AGE="hours=1"
 
-# run unit tests with identity file
-$PYTHON "${HOME}/nimbus.io/anti_entropy/cluster_inspector/cluster_inspector_main.py"
+$PYTHON "${HOME}/git/nimbus.io/anti_entropy/cluster_inspector/cluster_inspector_main.py"
 

@@ -24,12 +24,12 @@ def forwarder_coroutine(
     """
     log = logging.getLogger("forwarder_coroutine")
     archive_priority = create_priority()
+    retrieve_id = uuid.uuid1().hex
 
     # start retrieving from our reader
-    message_id = uuid.uuid1().hex
     message = {
         "message-type"              : "retrieve-key-start",
-        "message-id"                : message_id,
+        "retrieve-id"               : retrieve_id,
         "segment-unified-id"        : segment_row.unified_id,
         "segment-conjoined-part"    : segment_row.conjoined_part,
         "segment-num"               : segment_row.segment_num,
@@ -52,11 +52,9 @@ def forwarder_coroutine(
 
     sequence = 1
 
-    message_id = uuid.uuid1().hex
     if completed:
         message = {
             "message-type"      : "archive-key-entire",
-            "message-id"        : message_id,
             "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
@@ -77,7 +75,6 @@ def forwarder_coroutine(
     else:
         message = {
             "message-type"      : "archive-key-start",
-            "message-id"        : message_id,
             "priority"          : archive_priority,
             "collection-id"     : segment_row.collection_id,
             "key"               : segment_row.key, 
@@ -109,10 +106,9 @@ def forwarder_coroutine(
     while not completed:
         sequence += 1
 
-        message_id = uuid.uuid1().hex
         message = {
             "message-type"              : "retrieve-key-next",
-            "message-id"                : message_id,
+            "retrieve-id"               : retrieve_id,
             "segment-unified-id"        : segment_row.unified_id,
             "segment-conjoined-part"    : segment_row.conjoined_part,
             "segment-num"               : segment_row.segment_num,
@@ -126,11 +122,9 @@ def forwarder_coroutine(
         assert reply["result"] == "success", reply
         completed = reply["completed"]
 
-        message_id = uuid.uuid1().hex
         if completed:
             message = {
                 "message-type"      : "archive-key-final",
-                "message-id"        : message_id,
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,
@@ -153,7 +147,6 @@ def forwarder_coroutine(
         else:
             message = {
                 "message-type"      : "archive-key-next",
-                "message-id"        : message_id,
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row.collection_id,
                 "key"               : segment_row.key,

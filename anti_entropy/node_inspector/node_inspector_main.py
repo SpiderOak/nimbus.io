@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-garbage_collector_main.py
+node_inspector_main.py
 """
 import errno
 import hashlib
-import io
 import logging
 import os
 import sys
@@ -14,15 +13,15 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
-from tools.data_definitions import incoming_slice_size, \
-        zfec_slice_size, \
+from tools.data_definitions import compute_expected_slice_count, \
         compute_value_file_path, \
         parse_timedelta_str, \
         create_timestamp, \
         damaged_segment_defective_sequence, \
         damaged_segment_missing_sequence
 
-from node_inspector.work_generator import make_batch_key, generate_work
+from anti_entropy.node_inspector.work_generator import \
+        make_batch_key, generate_work
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_node_inspector_{1}.log".format(
@@ -33,6 +32,7 @@ _max_value_file_time_str = \
         os.environ.get("NIMBUSIO_MAX_TIME_BETWEEN_VALUE_FILE_INTEGRITY_CHECK",
                        "weeks=1")
 _max_value_file_time = None
+_read_buffer_size = 1024 ** 2
 
 # If the value file is missing, 
 # consider all of the segment_sequences to be missing
@@ -80,7 +80,6 @@ def _store_damaged_segment(connection, entry, status, sequence_numbers):
           "conjoined_part"  : entry.conjoined_part,
           "sequence_numbers": sequence_numbers,
     })
-    connection.commit()
 
 def _update_value_file_last_integrity_check_time(connection, 
                                                  value_file_id,
@@ -89,7 +88,6 @@ def _update_value_file_last_integrity_check_time(connection,
         update nimbusio_node.value_file
         set last_integrity_check_time = %s
         where id = %s""", [timestamp, value_file_id, ])
-    connection.commit()
 
 def _value_file_status(connection, entry):
     log = logging.getLogger("_value_file_status")
@@ -100,7 +98,7 @@ def _value_file_status(connection, entry):
     # Always do a stat on the value file. 
     try:
         stat_result = os.stat(value_file_path)
-    except Exception as instance:
+    except OSError as instance:
         # If the value file is missing, consider all of the segment_sequences 
         # to be missing, and handle it as such.
         if instance.errno == errno.ENOENT:
@@ -144,35 +142,61 @@ def _value_file_status(connection, entry):
     if value_file_row_age < _max_value_file_time:
         return _value_file_valid
 
+    value_file_result = _value_file_valid
+
     # If the value matches all the previous criteria EXCEPT the 
     # MAX_TIME_BETWEEN_VALUE_FILE_INTEGRITY_CHECK, then read the whole file, 
     # and calculate the md5. If it matches, consider the whole file good as 
     # above. Update last_integrity_check_time regardless.
-    _update_value_file_last_integrity_check_time(connection,
-                                                 entry.value_file_id,
-                                                 create_timestamp())
 
     md5_sum = hashlib.md5()
-    with open(value_file_path, "rb") as input_file:
-        md5_sum.update(input_file.read())
+    try:
+        with open(value_file_path, "rb") as input_file:
+            while True:
+                data = input_file.read(_read_buffer_size)
+                if len(data) == 0:
+                    break
+                md5_sum.update(data)
+    except (OSError, IOError) as instance:
+        log.error("Error reading {0} {1}".format(value_file_path, 
+                                                 instance))
+        value_file_result =  _value_file_questionable
 
-    if md5_sum.digest() != bytes(entry.value_file_hash):
+    if value_file_result == _value_file_valid and \
+       md5_sum.digest() != bytes(entry.value_file_hash):
         log.error(
             "md5 mismatch {0} {1} {2} {3}".format(md5_sum.digest(),
                                                   bytes(entry.value_file_hash),
                                                   batch_key,
                                                   value_file_path))
-        return _value_file_questionable
+        value_file_result =  _value_file_questionable
 
-    return _value_file_valid
+
+    # we're only supposed to do this after we've also read the file
+    # and inserted any damage. not before. otherwise it's a race condition --
+    # we may crash before finishing checking the file, and then the file
+    # doesn't get checked, but it's marked as checked.
+
+    _update_value_file_last_integrity_check_time(connection,
+                                                 entry.value_file_id,
+                                                 create_timestamp())
+
+    return value_file_result
 
 def _verify_entry_against_value_file(entry):
+    log = logging.getLogger("_verify_entry_against_vaue_file")
     value_file_path = compute_value_file_path(_repository_path, 
                                               entry.value_file_id)
     md5_sum = hashlib.md5()
-    with open(value_file_path, "rb") as input_file:
-        input_file.seek(entry.value_file_offset)
-        md5_sum.update(input_file.read(entry.value_file_size))
+    try:
+        with open(value_file_path, "rb") as input_file:
+            input_file.seek(entry.value_file_offset)
+            md5_sum.update(input_file.read(entry.value_file_size))
+    except (OSError, IOError) as instance:
+        log.error("Error seek/reading {0} {1}".format(value_file_path, 
+                                                      instance))
+        return False
+
     return md5_sum.digest() == bytes(entry.sequence_hash)
 
 def _process_work_batch(connection, known_value_files, batch):
@@ -185,13 +209,7 @@ def _process_work_batch(connection, known_value_files, batch):
     missing_sequence_numbers = list()
     defective_sequence_numbers = list()
 
-    # we divide incoming files into N slices, 
-    # each one gets a segment_sequence row
-    # so we expect this batch to have N entries,
-    expected_slice_count = batch[0].file_size // incoming_slice_size
-    if batch[0].file_size % incoming_slice_size != 0:
-        expected_slice_count += 1
-
+    expected_slice_count = compute_expected_slice_count(batch[0].file_size)
     expected_sequence_numbers = set(range(0, expected_slice_count))
     actual_sequence_numbers = set([entry.sequence_num for entry in batch])
     missing_sequence_numbers.extend(
@@ -266,10 +284,14 @@ def main():
     log.info("program starts; max_value_file_time = {0}".format(
         _max_value_file_time))
 
+    zmq_context =  zmq.Context()
+
+    event_push_client = EventPushClient(zmq_context, "node_inspector")
+    event_push_client.info("program-start", "node_inspector starts")  
+
     try:
         connection = get_node_local_connection()
     except Exception as instance:
-        exctype, value = sys.exc_info()[:2]
         log.exception("Exception connecting to database {0}".format(instance))
         event_push_client.exception(
             unhandled_exception_topic,
@@ -278,18 +300,14 @@ def main():
         )
         return -1
 
-    zmq_context =  zmq.Context()
-
-    event_push_client = EventPushClient(zmq_context, "node_inspector")
-    event_push_client.info("program-start", "node_inspector starts")  
-
     known_value_files = dict()
 
+    connection.execute("begin")
     try:
         for batch in generate_work(connection):
             _process_work_batch(connection, known_value_files, batch)
     except Exception as instance:
-        exctype, value = sys.exc_info()[:2]
+        connection.rollback()
         log.exception("Exception processing batch {0} {1}".format(
             batch, instance))
         event_push_client.exception(
@@ -298,11 +316,12 @@ def main():
             exctype=instance.__class__.__name__
         )
         return -1
-
-    connection.close()
-
-    event_push_client.close()
-    zmq_context.term()
+    else:
+        connection.commit()
+    finally:
+        connection.close()
+        event_push_client.close()
+        zmq_context.term()
 
     log.info("program terminates normally")
     return 0

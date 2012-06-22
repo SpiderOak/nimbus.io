@@ -20,6 +20,7 @@ does not implement several of the needed capabilities including:
       cluster.)
 """
 
+import traceback
 from functools import wraps
 import time
 import logging
@@ -39,10 +40,14 @@ from tools.LRUCache import LRUCache
 from tools.database_connection import retry_central_connection
 
 # how long to wait before returning an error message to avoid fast loops
-RETRY_DELAY = 5.0
+RETRY_DELAY = 0.0
 # LRUCache mapping names to integers is approximately 32m of memory per 100,000
 # entries
 COLLECTION_CACHE_SIZE = 500000
+NIMBUS_IO_SERVICE_DOMAIN = os.environ['NIMBUS_IO_SERVICE_DOMAIN']
+NIMBUSIO_WEB_SERVER_PORT = int(os.environ['NIMBUSIO_WEB_SERVER_PORT'])
+NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = \
+    os.environ['NIMBUSIO_MANAGEMENT_API_REQUEST_DEST']
 
 _log_path = "%s/nimbusio_web_director.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
@@ -66,7 +71,7 @@ def _supervise_db_interaction(bound_method):
         # thundering herd of database hits of likely cached values, the caller
         # may supply us with a cache check function.
         cache_check_func = None
-        if cache_check_func in kwargs:
+        if 'cache_check_func' in kwargs:
             cache_check_func = kwargs.pop('cache_check_func') 
 
         while True:
@@ -80,7 +85,7 @@ def _supervise_db_interaction(bound_method):
                         result = cache_check_func()
                         if result:
                             break
-                    result = bound_method(*args, **kwargs)
+                    result = bound_method(instance, *args, **kwargs)
                     break
                 except psycopg2.OperationalError, err:
                     log.warn("Database error %s %s (retry #%d)" % (
@@ -113,9 +118,12 @@ class Router(object):
         self.init_complete = Event()
         self.conn = None
         self.dblock = Lock()
-        self.service_domain = os.environ['NIMBUS_IO_SERVICE_DOMAIN']
+        self.service_domain = NIMBUS_IO_SERVICE_DOMAIN
+        self.dest_port = NIMBUSIO_WEB_SERVER_PORT
         self.known_clusters = dict()
         self.known_collections = LRUCache(COLLECTION_CACHE_SIZE) 
+        self.management_api_request_dest_hosts = \
+            deque(NIMBUSIO_MANAGEMENT_API_REQUEST_DEST.strip().split())
 
     def init(self):
         #import logging
@@ -145,9 +153,10 @@ class Router(object):
         # FIXME how do we handle null result here? do we just cache the null
         # result?
         row = self.conn.fetch_one_row(
-            "select * from nimbusio_central.collection where name=%s",
+            "select cluster_id from nimbusio_central.collection where name=%s",
             [collection, ])
-        return row
+        if row:
+            return row[0]
 
     @_supervise_db_interaction
     def _cluster_for_collection(self, collection, _retries=0):
@@ -162,13 +171,15 @@ class Router(object):
             
     @_supervise_db_interaction
     def _db_cluster_info(self, cluster_id):
-        rows = self.conn.fetch_all_rows(
-            "select * from nimbusio_central.node where cluster_id=%s "
-            "order by node_number_in_cluster", 
+        rows = self.conn.fetch_all_rows("""
+            select name, hostname, node_number_in_cluster 
+            from nimbusio_central.node 
+            where cluster_id=%s 
+            order by node_number_in_cluster""", 
             [cluster_id, ])
     
         info = dict(rows = list(rows), 
-                    hosts = deque([r['hostname'] for r in rows]))
+                    hosts = deque([r[1] for r in rows]))
 
         return info
 
@@ -207,6 +218,12 @@ class Router(object):
             # this is not a request specific to any particular collection
             # TODO figure out how to route these requests.
             # in production, this might not matter.
+            self.management_api_request_dest_hosts.rotate(1)
+            target = self.management_api_request_dest_hosts[0]
+            log.debug("routing management request to backend host %s" %
+                (target, ))
+            return dict(remote = target)
+
 
         collection = self._parse_collection(hostname)
         if collection is None:
@@ -219,7 +236,7 @@ class Router(object):
             target = hosts[0]
             log.debug("routing connection to %s to backend host %s" % 
                 (hostname, target, ))
-            return dict(remote = target)
+            return dict(remote = "%s:%d" % (target, self.dest_port, ))
         elif hosts is None:
             self._reject(404, "Collection not found")
 
@@ -229,7 +246,7 @@ class Router(object):
 
 _ROUTER = Router()
 
-def proxy(data, _re_host=re.compile("Host:\s*(.*?)(:\d+)?\r\n")):
+def proxy(data, _re_host=re.compile("Host:\s*(.*?)(:(\d+))?\r\n")):
     """
     the function called by tproxy to determine where to send traffic
 
@@ -245,9 +262,17 @@ def proxy(data, _re_host=re.compile("Host:\s*(.*?)(:\d+)?\r\n")):
     # name
     matches = _re_host.findall(data)
     if matches:
-        hostname = matches.pop()
+        hostname, _, port = matches.pop()
+        port = int(port)
         log.debug("trying to route %r" % (hostname, ))
-        return _ROUTER.route(hostname)
+        try:
+            return _ROUTER.route(hostname)
+            #return dict(remote = "bonsai2:9000")
+        except Exception, err:
+            log.error("error routing %s:%d: %s" % (
+                hostname, port, traceback.format_exc(), ))
+            gevent.sleep(RETRY_DELAY)
+            return dict(close=True)
     elif len(data) > 4096:
         # we should have had a host header by now...
         return dict(close=True)

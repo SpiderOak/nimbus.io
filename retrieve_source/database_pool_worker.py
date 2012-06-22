@@ -37,6 +37,7 @@ where seq.segment_id = (
     and segment_num = %(segment-num)s
     and handoff_node_id is null
     and status = 'F'
+    limit 1
 )
 order by seq.sequence_num asc"""
 _all_sequence_rows_for_handoff_query = """

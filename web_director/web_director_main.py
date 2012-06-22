@@ -103,7 +103,9 @@ def _supervise_db_interaction(bound_method):
                             instance.conn.close()
                     except psycopg2.OperationalError, err2:
                         pass
-                    instance.conn = retry_central_connection()
+                    instance.conn = retry_central_connection(
+                        isolation_level =
+                            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
                     conn_id = id(instance.conn)
         return result
     return __supervise_db_interaction
@@ -131,7 +133,8 @@ class Router(object):
         #from tools.database_connection import get_central_connection
         log = logging.getLogger("init")
         log.info("init start")
-        self.conn = retry_central_connection()
+        self.conn = retry_central_connection(
+            isolation_level=psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
         log.info("init complete")
         self.init_complete.set()
 

@@ -101,7 +101,7 @@ class DatabaseConnection(object):
         """close the connection"""
         self._connection.close()
 
-def retry_central_connection(retry_delay=1.0):
+def retry_central_connection(retry_delay=1.0, isolation_level=None):
     "retry until we connect to central db"
     log = logging.getLogger("retry_central_connection")
     conn = None
@@ -109,6 +109,8 @@ def retry_central_connection(retry_delay=1.0):
     while True:
         try:
             conn = get_central_connection()
+            if isolation_level is not None:
+                conn.set_isolation_level(isolation_level)
             break
         except psycopg2.OperationalError, err:
             if attempts % 10 == 1:

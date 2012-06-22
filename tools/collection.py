@@ -91,6 +91,10 @@ def create_collection(connection, username, collection_name, versioning):
     if result is not None:
         (row_id, creation_time, deletion_time) = result
         # if the existing collection is deleted, undelete it
+        # XXX review: What?!? This will totally screw up historical data for
+        # billing and space accounting. We should rename the existing
+        # collection or move it to an archive table, leave it deleted, and
+        # create a new one.
         if deletion_time is not None:
             (creation_time, ) = connection.fetch_one_row("""
                 update nimbusio_central.collection
@@ -101,11 +105,15 @@ def create_collection(connection, username, collection_name, versioning):
             """, [versioning, collection_name, ])
         return creation_time
 
+    # XXX: for now just select a cluster at random to assign the collection to.
+    # the real management API code needs more sophisticated cluster selection.
     (creation_time, ) = connection.fetch_one_row("""
         insert into nimbusio_central.collection
-        (name, customer_id, versioning)
+        (name, customer_id, cluster_id, versioning)
         values (%s, 
                 (select id from nimbusio_central.customer where username = %s),
+                (select id from nimbusio_central.cluster 
+                 order by random() limit 1),
                 %s)
         returning creation_time
     """, [collection_name, username, versioning, ]

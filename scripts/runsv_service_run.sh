@@ -14,6 +14,11 @@ export NIMBUS_IO_RUN_PROGRAM_NAME="${NIMBUS_IO_RUN_SERVICE_NAME#nimbus.io.}"
 
 NODE_CONFIG="/etc/default/nimbus.io"
 
+# if there's a specific config file for this particular program, use that
+if [[ -e "$NODE_CONFIG.$NIMBUS_IO_RUN_PROGRAM_NAME" ]]; then
+    NODE_CONFIG="$NODE_CONFIG.$NIMBUS_IO_RUN_PROGRAM_NAME"
+fi
+
 test -f $NODE_CONFIG || {
     echo "$NODE_CONFIG does not exist"
     exit 1

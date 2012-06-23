@@ -105,7 +105,6 @@ class WebServer(object):
         self._cluster_row = get_cluster_row(self._central_connection)
         self._node_local_connection = get_node_local_connection()
         self._unified_id_factory = UnifiedIDFactory(
-            self._central_connection,
             _get_shard_id(self._central_connection, self._cluster_row.id)
         )
         self._deliverator = Deliverator()

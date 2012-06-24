@@ -36,7 +36,17 @@ class DatabaseConnection(object):
         cursor = self._connection.cursor()
         cursor.execute("set time zone 'UTC'")
         cursor.close()
+
+    @property
+    def status(self):
+        return self._connection.status
         
+    def set_isolation_level(self, *args, **kwargs):
+        return self._connection.set_isolation_level(*args, **kwargs)
+
+    def get_transaction_status(self, *args, **kwargs):
+        return self._connection.get_transaction_status(*args, **kwargs)
+
     def fetch_one_row(self, query, *args):
         """run a query and return the contents of one row"""
         cursor = self._connection.cursor()
@@ -82,6 +92,7 @@ class DatabaseConnection(object):
         presumably an insert that includes 'returning id'
         return the id
         """
+        assert "returning" in query.lower()
         cursor = self._connection.cursor()
         cursor.execute(query, *args)
         (returned_id, ) = cursor.fetchone()

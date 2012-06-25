@@ -354,11 +354,10 @@ def main():
             file_space_info = load_file_space_info(connection) 
             file_space_sanity_check(file_space_info, _repository_path)
 
-        # start a transaction
-        connection.execute("begin")
 
         # try one defrag pass
         bytes_defragged = 0
+        connection.begin_transaction()
         try:
             bytes_defragged = _defrag_pass(connection, 
                                            file_space_info, 

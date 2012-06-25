@@ -4,30 +4,12 @@ unified_id_factory.py
 
 generate unique ids
 """
+import time 
+
 _max_shard_id  = 0b1111111111111 # 13 bits for shard id
-_shard_schema_template = """
-drop schema if exists nimbusio_shard_{0:0>5} cascade;
-create schema nimbusio_shard_{0:0>5};
-set search_path to nimbusio_shard_{0:0>5}, public;
 
-create sequence nimbusio_shard_{0:0>5}.base_seq;
-
-CREATE OR REPLACE FUNCTION nimbusio_shard_{0:0>5}.next_id(OUT result bigint) AS $$
-DECLARE
-    our_epoch bigint := 1314220021721;
-    seq_id bigint;
-    now_millis bigint;
-    shard_id int := {0};
-BEGIN
-    SELECT nextval('nimbusio_shard_{0:0>5}.base_seq') % 1024 INTO seq_id;
-
-    SELECT FLOOR(EXTRACT(EPOCH FROM clock_timestamp()) * 1000) INTO now_millis;
-    result := (now_millis - our_epoch) << 23;
-    result := result | (shard_id << 10);
-    result := result | (seq_id);
-END;
-$$ LANGUAGE PLPGSQL;
-"""
+#XXX could use the founding of SpiderOak
+_instagram_epoch = 1314220021721
 
 class UnifiedIDFactory(object):
     """
@@ -35,34 +17,45 @@ class UnifiedIDFactory(object):
 
     http://instagram-engineering.tumblr.com/post/10853187575/sharding-ids-at-instagram
 
-    At startup:
-     * create a schema based on shard id
-     * create next_id table
-     * install the next_id function
+    41 bits for time in milliseconds 
+       (gives us 41 years of IDs with a custom epoch)
+    13 bits that represent the logical shard ID
+    10 bits that represent an auto-incrementing sequence, modulus 1024. 
+       This means we can generate 1024 IDs, per shard, per millisecond
     """
-    def __init__(self, connection, shard_id):
+    def __init__(self, shard_id):
         if shard_id > _max_shard_id:
             raise ValueError("shard_id {0} exceeds {1}".format(
                 shard_id, _max_shard_id
             ))
-        self._shard_id = shard_id
-        self._connection = connection
-        shard_schema = _shard_schema_template.format(shard_id)
-        self._connection.execute(shard_schema)
+        self._shifted_shard_id = shard_id << (64-41-13)
+        self._prev_millisecond = 0
+        self._sequence = 0
 
     def __iter__(self):
         return self
 
     def next(self):
         """
-        return the next id, by calling the postgres next_id function
+        return the next id
         """
-        (next_id, ) = self._connection.fetch_one_row(
-            "select next_id from nimbusio_shard_{0:0>5}.next_id()".format(
-                self._shard_id
-            ), 
-            []
-        )
+        current_millisecond = int(round(time.time() * 1000.0))
+        if current_millisecond != self._prev_millisecond:
+            self._sequence = 0
+            self._prev_millisecond = current_millisecond
+
+        milliseconds_since_epoch = current_millisecond - _instagram_epoch
+
+        # fill the left-most 41 bits into an unsigned integer
+        next_id = milliseconds_since_epoch << (64 - 41)
+
+        # fill the next 13 bits with shard-id
+        next_id |= self._shifted_shard_id
+
+        # use our sequence to fill out the remaining bits.
+        # mod by 1024 (so it fits in 10 bits)
+        self._sequence += 1
+        next_id |= (self._sequence % 1024)
 
         return next_id
 

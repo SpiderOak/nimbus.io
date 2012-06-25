@@ -38,7 +38,7 @@ class TestSqlAuthenticator(unittest.TestCase):
     def setUp(self):
         self.tearDown()
         self._connection = get_central_connection()
-        self._connection.execute("begin")
+        self._connection.begin_trqansaction()
         purge_customer(self._connection, _test_username)
         create_customer(self._connection, _test_username, False)
         add_key_to_customer(self._connection, _test_username)
@@ -47,7 +47,7 @@ class TestSqlAuthenticator(unittest.TestCase):
     def tearDown(self):
         if hasattr(self, "_connection") \
         and self._connection is not None:
-            self._connection.execute("begin")
+            self._connection.begin_transaction()
             purge_customer(self._connection, _test_username)
             self._connection.commit()
             self._connection.close()

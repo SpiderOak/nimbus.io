@@ -19,7 +19,7 @@ from test.nimbusio_sim.process_util import start_web_server, \
         start_event_aggregator, \
         start_event_subscriber, \
         start_data_writer, \
-        start_data_reader, \
+        start_retrieve_source, \
         start_space_accounting_server, \
         start_handoff_server, \
         start_event_publisher, \
@@ -112,7 +112,7 @@ class NodeSim(object):
             self.env
         )
 
-        self._processes["data_reader"] = start_data_reader(
+        self._processes["retrieve_source"] = start_retrieve_source(
             self.node_name, 
             self.env,
             self._cluster_config.profile
@@ -163,7 +163,7 @@ class NodeSim(object):
         for process_name in self._processes.keys():
             process = self._processes[process_name]
             if process is not None:
-                self._log.debug("terminate process %s" % (process_name, ))
+                self._log.info("terminate process %s" % (process_name, ))
                 terminate_process(process)
                 self._processes[process_name] = None
 
@@ -219,7 +219,7 @@ class NodeSim(object):
                                          database_host, 
                                          database_port)
 
-        connection.execute("begin")
+        connection.begin_transaction()
         command = """
             insert into nimbusio_node.file_space 
             (space_id, purpose, path, volume )

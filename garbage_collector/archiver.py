@@ -94,7 +94,7 @@ def archive_collectable_segment_rows(
       * OR are a tombstone older than MAX_NODE_OFFLINE_TIME
     insert the rows from the table expression into segment_archived
     """
-    connection.execute("begin")
+    connection.begin_transaction()
     try:
         _archive_collectable_segment_rows(connection, 
                                           collectable_segment_ids,

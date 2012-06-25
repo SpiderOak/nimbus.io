@@ -67,7 +67,7 @@ def unlink_totally_unused_value_files(connection, repository_path):
         )
     )
 
-    connection.execute("begin", [])
+    connection.begin_transaction()
     try:
         _unlink_value_files(
             connection, repository_path, unused_value_file_ids

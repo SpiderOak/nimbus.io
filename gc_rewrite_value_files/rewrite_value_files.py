@@ -169,7 +169,7 @@ def rewrite_value_files(options, connection, repository_path, ref_generator):
         assert ref.value_row_num == 1, ref
 
         if batch_size + ref.value_file_size > max_sort_mem:
-            connection.execute("begin", [])
+            connection.begin_transaction()
             try:
                 output_size = _process_batch(connection, 
                                              repository_path, 
@@ -218,7 +218,7 @@ def rewrite_value_files(options, connection, repository_path, ref_generator):
             refs.append(next(ref_generator)) 
 
     if len(refs) > 0:
-        connection.execute("begin")
+        connection.begin_transaction()
         try:
             output_size = _process_batch(connection, 
                                          repository_path, 

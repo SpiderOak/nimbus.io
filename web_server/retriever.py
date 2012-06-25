@@ -6,6 +6,7 @@ A class that retrieves data from data readers.
 """
 import logging
 import time
+import uuid
 
 import gevent
 import gevent.pool
@@ -19,7 +20,9 @@ from web_server.exceptions import RetrieveFailedError
 from web_server.local_database_util import current_status_of_key, \
     current_status_of_version
 
-_task_timeout = 60.0
+# 2012-06-13 dougfort - we don't want to block too long here
+# because if a node is down, we will block a lot
+_task_timeout = 1.0
 
 class Retriever(object):
     """Retrieves data from data readers."""
@@ -215,15 +218,18 @@ class Retriever(object):
 
             status_row, block_offset, block_count = entry
 
+            retrieve_id = uuid.uuid1().hex
+
             # spawn retrieve_key start, then spawn retrieve key next
             # until we are done
             start = True
             while True:
                 self._sequence += 1
-                self._log.debug("retrieve: %s %s %s" % (
+                self._log.debug("retrieve: {0} {1} {2} {3}".format(
                     self._sequence, 
                     status_row.seg_unified_id, 
                     status_row.seg_conjoined_part,
+                    retrieve_id
                 ))
                 # send a request to all node
                 for i, data_reader in enumerate(self._data_readers):
@@ -237,6 +243,7 @@ class Retriever(object):
                     if start:
                         task = self._pending.spawn(
                             data_reader.retrieve_key_start,
+                            retrieve_id,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,
@@ -246,6 +253,7 @@ class Retriever(object):
                     else:
                         task = self._pending.spawn(
                             data_reader.retrieve_key_next,
+                            retrieve_id,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,
@@ -280,9 +288,8 @@ class Retriever(object):
         # block on the finished_tasks queue until done
         while finished_task_count < len(self._data_readers):
             try:
-                task = self._finished_tasks.get(
-                    block=True, timeout=_task_timeout
-                )
+                task = self._finished_tasks.get(block=True, 
+                                                timeout=_task_timeout)
             except gevent.queue.Empty:
                 elapsed_time = time.time() - start_time
                 if elapsed_time > timeout:
@@ -294,7 +301,6 @@ class Retriever(object):
                     self._log.error(error_message)
                     raise RetrieveFailedError(error_message)
 
-                self._log.warn("timeout waiting for completed task")
                 continue
 
             # if we previously only waited for 8/10 replies, we may still get

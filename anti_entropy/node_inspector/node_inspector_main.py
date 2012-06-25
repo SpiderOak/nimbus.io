@@ -302,7 +302,7 @@ def main():
 
     known_value_files = dict()
 
-    connection.execute("begin")
+    connection.begin_transaction()
     try:
         for batch in generate_work(connection):
             _process_work_batch(connection, known_value_files, batch)

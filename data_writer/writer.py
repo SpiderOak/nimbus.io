@@ -30,7 +30,6 @@ def _insert_conjoined_row(connection, conjoined_dict):
             %(create_timestamp)s::timestamp,
             %(handoff_node_id)s
         )""", conjoined_dict)                   
-    connection.commit()
 
 def _set_conjoined_abort_timestamp(connection, conjoined_dict):
     if conjoined_dict["handoff_node_id"] is None:
@@ -51,7 +50,6 @@ def _set_conjoined_abort_timestamp(connection, conjoined_dict):
             and unified_id = %(unified_id)s
             and handoff_node_id = %(handoff_node_id)s
             """, conjoined_dict)                   
-    connection.commit()
 
 def _set_conjoined_complete_timestamp(connection, conjoined_dict):
     if conjoined_dict["handoff_node_id"] is None:
@@ -72,7 +70,6 @@ def _set_conjoined_complete_timestamp(connection, conjoined_dict):
             and unified_id = %(unified_id)s
             and handoff_node_id = %(handoff_node_id)s
             """, conjoined_dict) 
-    connection.commit()
 
 def _insert_new_segment_row(
     connection,
@@ -189,7 +186,6 @@ def _insert_segment_tombstone_row(
             "unified_id_to_delete"      : unified_id_to_delete,
         }
     )
-    connection.commit()
 
 def _cancel_segment_rows(connection, source_node_id, timestamp):
     """
@@ -206,7 +202,6 @@ def _cancel_segment_rows(connection, source_node_id, timestamp):
         and status = 'A' 
         and timestamp < %s::timestamp
     """, [source_node_id, timestamp, ])
-    connection.commit()
 
 def _cancel_segment_row(connection, unified_id, conjoined_part, segment_num):
     """
@@ -221,7 +216,6 @@ def _cancel_segment_row(connection, unified_id, conjoined_part, segment_num):
         """, {"unified_id"       : unified_id, 
               "conjoined_part"   : conjoined_part,
               "segment_num"      : segment_num})
-    connection.commit()
 
 def _insert_segment_sequence_row(connection, segment_sequence_row):
     """
@@ -250,7 +244,6 @@ def _insert_segment_sequence_row(connection, segment_sequence_row):
             %(adler32)s
         )
     """, segment_sequence_row._asdict())
-    connection.commit()
 
 def _get_segment_id(connection, collection_id, key, timestamp, segment_num): 
     result = connection.fetch_one_row(""" 
@@ -298,7 +291,6 @@ def _purge_handoff_segment(
         """, {"unified_id"         :  unified_id,
               "conjoined_part"     : conjoined_part,
               "handoff_node_id"    : handoff_node_id})
-    connection.commit()
 
 class Writer(object):
     """
@@ -341,7 +333,7 @@ class Writer(object):
         self._value_file.sync()
         # at this point we can complete all pending archives
 
-        self._connection.execute("begin")
+        self._connection.begin_transaction()
         try:
             for completion in self._completions:
                 completion.pre_commit_process()

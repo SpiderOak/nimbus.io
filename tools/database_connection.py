@@ -9,6 +9,9 @@ import logging
 import time
 import psycopg2
 
+import psycopg2
+import psycopg2.extensions
+
 central_database_name = "nimbusio_central"
 central_database_user = "nimbusio_central_user"
 node_database_name_prefix = "nimbusio_node"
@@ -25,7 +28,6 @@ class DatabaseConnection(object):
         database_port
     ):
         """Create an instance of the connection"""
-        import psycopg2
         self._connection = psycopg2.connect(
             database=database_name, 
             user=database_user, 
@@ -33,6 +35,9 @@ class DatabaseConnection(object):
             host=database_host, 
             port=database_port
         )
+        self._connection.set_isolation_level(
+            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        self._in_transaction = False
         cursor = self._connection.cursor()
         cursor.execute("set time zone 'UTC'")
         cursor.close()
@@ -99,17 +104,37 @@ class DatabaseConnection(object):
         cursor.close()
 
         return returned_id
+
+    def begin_transaction(self):
+        """
+        start a transaction
+        """
+        self._connection.set_isolation_level(
+            psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED)
+        self._in_transaction = True
+        cursor = self._connection.cursor()
+        cursor.execute("begin")
+        cursor.close()
         
     def commit(self):
         """commit any pending transaction"""
+        assert self._in_transaction
         self._connection.commit()
+        self._connection.set_isolation_level(
+            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        self._in_transaction = False
 
     def rollback(self):
         """roll back any pending transaction"""
+        assert self._in_transaction
         self._connection.rollback()
+        self._connection.set_isolation_level(
+            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
+        self._in_transaction = False
 
     def close(self):
         """close the connection"""
+        assert not self._in_transaction
         self._connection.close()
 
 def retry_central_connection(retry_delay=1.0, isolation_level=None):

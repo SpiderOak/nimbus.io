@@ -21,7 +21,6 @@ def _insert_value_file_default_row(connection, space_id):
         insert into nimbusio_node.value_file (space_id) values (%s)
         returning id
     """, [space_id, ])
-    connection.commit()
 
     return value_file_id
 
@@ -49,7 +48,6 @@ def _update_value_file_row(connection, value_file_row):
             collection_ids=%(collection_ids)s
         where id = %(id)s
     """, value_file_row._asdict())
-    connection.commit()
 
 def mark_value_files_as_closed(connection):
     """
@@ -61,7 +59,6 @@ def mark_value_files_as_closed(connection):
         update nimbusio_node.value_file set close_time=current_timestamp
         where close_time is null
         """, [])
-    connection.commit()
 
 class OutputValueFile(object):
     def __init__(self, connection, space_id, repository_path):

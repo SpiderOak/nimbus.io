@@ -21,6 +21,9 @@ monkey.patch_all()
 import gevent_zeromq
 gevent_zeromq.monkey_patch()
 
+import gevent_psycopg2
+gevent_psycopg2.monkey_patch()
+
 import gevent
 from  gevent.greenlet import Greenlet
 

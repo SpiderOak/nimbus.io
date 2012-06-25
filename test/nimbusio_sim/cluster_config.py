@@ -202,7 +202,9 @@ class ClusterConfig(object):
 
     @property
     def username(self):
-        return os.environ['USERNAME']
+        if 'USERNAME' in os.environ:
+            return os.environ['USERNAME']
+        return os.environ['USER']
 
     @property
     def groupname(self):
@@ -371,7 +373,7 @@ class ClusterConfig(object):
 
     @property
     def node_db_users(self):
-        return [".".join([node_database_user_prefix, name]) 
+        return ["_".join([node_database_user_prefix, name]).replace("-", "_")
                 for name in self.node_names]
 
     @property

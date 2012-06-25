@@ -148,7 +148,7 @@ def retry_central_connection(retry_delay=1.0, isolation_level=None):
             if isolation_level is not None:
                 conn.set_isolation_level(isolation_level)
             break
-        except psycopg2.OperationalError, err:
+        except psycopg2.OperationalError as err:
             if attempts % 10 == 1:
                 log.warn("could not connect: attempt %d %s %s" % (
                     attempts,

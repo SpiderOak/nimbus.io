@@ -25,3 +25,30 @@ class GetConnection(object):
         self._active_connection.rollback()
         self._connection_pool.putconn(self._active_connection)
 
+
+class WithConnection(object):
+    """
+    decorator for the connection pool
+    supplies connection as keyword argument 'connection'
+    """
+    def __init__(self, connection_pool_getter):
+        self._connection_pool_getter = connection_pool_getter
+
+    def __call__(self, function):
+        connection_pool_getter = self._connection_pool_getter
+        def wrap(*args, **kwargs):
+            connection_pool = connection_pool_getter()
+            connection = connection_pool.getconn()
+            connection.set_isolation_level(
+                psycopg2.extensions.ISOLATION_LEVEL_READ_COMMITTED)
+            kwargs["connection"] = connection
+
+            try:
+                return function(*args, **kwargs)
+            finally:
+                # we assume the caller has committed if they are going to
+                connection.rollback()
+                connection_pool.putconn(connection)
+
+        return wrap
+            

@@ -55,8 +55,7 @@ def authenticate(connection, username, request):
     authenticate user request
     """
     log = logging.getLogger("authenticate")
-    log.info("request.args = {0}".format(request.args))
-    log.info("request.headers = {0}".format(request.headers))
+    log.debug("{0} {1}".format(username, request.url))
     try:
         auth_type, auth_string = request.headers["Authorization"].split()
     except Exception, instance:

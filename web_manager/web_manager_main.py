@@ -38,36 +38,27 @@ _views = [list_collections_view, ]
 from flask import Flask
 app = Flask("web_manager")
 
+app.logger.info("creating connection pool")
+ConnectionPoolView.connection_pool = \
+    ThreadedConnectionPool(_min_database_pool_connections,
+                           _max_database_pool_connections,
+                           **_database_credentials)
+
+for view in _views:
+    app.logger.info("loading {0}".format(view.endpoint))
+    for rule in view.rules:
+        app.add_url_rule(rule, 
+                         endpoint=view.endpoint, 
+                         view_func=view.view_function)
+
 if __name__ == "__main__":
     initialize_logging(_log_path)
     log = logging.getLogger("__main__")
     log.info("program starts")
 
     host, port_str = _management_api_dest.split(":")
-
-    log.info("creating connection pool")
-    ConnectionPoolView.connection_pool = \
-        ThreadedConnectionPool(_min_database_pool_connections,
-                               _max_database_pool_connections,
-                               **_database_credentials)
-
-    log.info("loading views")
-    try:
-        for view in _views:
-            log.info("loading {0}".format(view.endpoint))
-            for rule in view.rules:
-                app.add_url_rule(rule, 
-                                 endpoint=view.endpoint, 
-                                 view_func=view.view_function)
-    except Exception:
-        log.exception("loading views")
-
-    try:
-        app.run(host=host, port=int(port_str))
-    except Exception:
-        log.exception("app.run")
     
-    log.info("closing connection pool")
-    ConnectionPoolView.connection_pool.closeall()
+    log.info("app.run(host={0}, port={1})".format(host, port_str))
+    app.run(host=host, port=int(port_str))
+    
 
-    log.info("program terminates")

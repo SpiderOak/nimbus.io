@@ -41,7 +41,10 @@ def _create_collection(cursor, username, collection_name, versioning):
         # collection or move it to an archive table, leave it deleted, and
         # create a new one.
 
-        deleted_name = "".join(["__deleted__", collection_name, ])
+        # 2012-07-06 dougfort -- add the id to make the name unique in the
+        # case of multiple deletions
+        deleted_name = "".join(["__deleted__{0}__".format(row_id), 
+                                collection_name, ])
         cursor.execute("""
             update nimbusio_central.collection
             set name = %s 

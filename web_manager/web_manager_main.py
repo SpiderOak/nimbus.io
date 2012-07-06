@@ -17,6 +17,8 @@ from tools.database_connection import central_database_name, \
 
 from web_manager.connection_pool_view import ConnectionPoolView
 from web_manager import list_collections_view
+from web_manager import create_collection_view
+from web_manager import delete_collection_view
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_web_manager_{1}.log".format(
@@ -33,10 +35,15 @@ _database_credentials = {
     "port"      : os.environ["NIMBUSIO_CENTRAL_DATABASE_PORT"],
 }
 
-_views = [list_collections_view, ]
+_views = [list_collections_view, 
+          create_collection_view,
+          delete_collection_view, ]
 
 from flask import Flask
 app = Flask("web_manager")
+
+if not app.debug:
+    initialize_logging(_log_path)
 
 app.logger.info("creating connection pool")
 ConnectionPoolView.connection_pool = \
@@ -52,7 +59,6 @@ for view in _views:
                          view_func=view.view_function)
 
 if __name__ == "__main__":
-    initialize_logging(_log_path)
     log = logging.getLogger("__main__")
     log.info("program starts")
 

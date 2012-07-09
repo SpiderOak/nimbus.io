@@ -23,7 +23,8 @@ from web_manager import delete_collection_view
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_web_manager_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
-_management_api_dest = os.environ["NIMBUSIO_MANAGEMENT_API_REQUEST_DEST"]
+_management_host = os.environ['NIMBUSIO_WEB_MANAGER_HOST']
+_management_port = int(os.environ['NIMBUSIO_WEB_MANAGER_PORT'])
 
 _min_database_pool_connections = 1
 _max_database_pool_connections = 5
@@ -62,9 +63,8 @@ if __name__ == "__main__":
     log = logging.getLogger("__main__")
     log.info("program starts")
 
-    host, port_str = _management_api_dest.split(":")
-    
-    log.info("app.run(host={0}, port={1})".format(host, port_str))
-    app.run(host=host, port=int(port_str))
+    log.info("app.run(host={0}, port={1})".format(_management_host, 
+        str(_management_port)))
+    app.run(host=_management_host, port=_management_port)
     
 

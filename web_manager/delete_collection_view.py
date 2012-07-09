@@ -51,10 +51,10 @@ class DeleteCollectionView(ConnectionPoolView):
         log.info("user_name = {0}, collection_name = {1}".format(
             username, collection_name))
 
-        assert request.method == "DELETE" or \
-            (request.method == "POST" \
-             and request.args["action"] == "delete"), \
-                (request.method, request.args, )
+        assert flask.request.method == "DELETE" or \
+            (flask.request.method == "POST" \
+             and flask.request.args["action"] == "delete"), \
+                (flask.request.method, flask.request.args, )
 
         with GetConnection(self.connection_pool) as connection:
             authenticated = authenticate(connection,

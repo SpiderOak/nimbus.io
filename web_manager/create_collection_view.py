@@ -14,6 +14,9 @@ from tools.collection import valid_collection_name
 from web_manager.connection_pool_view import ConnectionPoolView
 from web_manager.authenticator import authenticate
 
+class CreateCollectionError(Exception):
+    pass
+
 rules = ["/customers/<username>/collections", ]
 endpoint = "create_collection"
 
@@ -21,6 +24,7 @@ def _create_collection(cursor, username, collection_name, versioning):
     """
     create a collection for the customer
     """
+    log = logging.getLogger("_create_collection")
     assert valid_collection_name(collection_name)
 
     # if the collecton already exists, use it
@@ -34,22 +38,11 @@ def _create_collection(cursor, username, collection_name, versioning):
         (row_id, creation_time, deletion_time) = result
         if deletion_time is None:
             return creation_time
-
-        # if the existing collection is deleted, rename it
-        # XXX review: What?!? This will totally screw up historical data for
-        # billing and space accounting. We should rename the existing
-        # collection or move it to an archive table, leave it deleted, and
-        # create a new one.
-
-        # 2012-07-06 dougfort -- add the id to make the name unique in the
-        # case of multiple deletions
-        deleted_name = "".join(["__deleted__{0}__".format(row_id), 
-                                collection_name, ])
-        cursor.execute("""
-            update nimbusio_central.collection
-            set name = %s 
-            where id = %s
-            """, [deleted_name, row_id, ])
+        error_message = \
+            "A deleted collection (id={0}) exists with this name {1}".format(
+                row_id, collection_name)
+        log.error(error_message)
+        raise CreateCollectionError(error_message)
 
     # XXX: for now just select a cluster at random to assign the collection to.
     # the real management API code needs more sophisticated cluster selection.

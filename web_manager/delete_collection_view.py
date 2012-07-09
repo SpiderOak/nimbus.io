@@ -21,14 +21,30 @@ def _delete_collection(cursor, collection_name):
     """
     mark the collection as deleted
     """
+    log = logging.getLogger("_delete_collection")
+    cursor.execute("""
+        select id
+        from nimbusio_central.collection
+        where name = %s""", [collection_name, ])
+    result = cursor.fetchone()
+    if result is None:
+        log.warn("attempt to delete non-existent collection {0}".format(
+            collection_name))
+        return
+    (row_id, ) = result
+
+    deleted_name = "".join(["__deleted__{0}__".format(row_id), 
+                            collection_name, ])
+    log.debug("renaming deleted collection to  {0}".format(deleted_name))
     cursor.execute("""
         update nimbusio_central.collection
-        set deletion_time = current_timestamp
-        where name = %s
-        """, [collection_name, ])
+        set deletion_time = current_timestamp,
+            name = %s
+        where id = %s
+        """, [deleted_name, row_id])
 
 class DeleteCollectionView(ConnectionPoolView):
-    methods = ["DELETE", ]
+    methods = ["DELETE", "PUSH", ]
 
     def dispatch_request(self, username, collection_name):
         log = logging.getLogger("DeleteCollectionView")
@@ -52,7 +68,6 @@ class DeleteCollectionView(ConnectionPoolView):
             # TODO: can't delete a collection that contains keys
 
             cursor = connection.cursor()
-            cursor.execute("begin")
             try:
                 _delete_collection(cursor, collection_name)
             except Exception:

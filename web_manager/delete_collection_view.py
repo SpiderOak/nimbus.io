@@ -44,12 +44,17 @@ def _delete_collection(cursor, collection_name):
         """, [deleted_name, row_id])
 
 class DeleteCollectionView(ConnectionPoolView):
-    methods = ["DELETE", "PUSH", ]
+    methods = ["DELETE", "POST", ]
 
     def dispatch_request(self, username, collection_name):
         log = logging.getLogger("DeleteCollectionView")
         log.info("user_name = {0}, collection_name = {1}".format(
             username, collection_name))
+
+        assert request.method == "DELETE" or \
+            (request.method == "POST" \
+             and request.args["action"] == "delete"), \
+                (request.method, request.args, )
 
         with GetConnection(self.connection_pool) as connection:
             authenticated = authenticate(connection,

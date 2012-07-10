@@ -203,7 +203,7 @@ def main():
     worker_number = int(sys.argv[2])
 
     log_path = _log_path_template.format(os.environ["NIMBUSIO_LOG_DIR"], 
-                                         volume_name,
+                                         volume_name.replace("/", "_"),
                                          worker_number,
                                          _local_node_name)
     initialize_logging(log_path)

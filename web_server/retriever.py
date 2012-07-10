@@ -244,6 +244,9 @@ class Retriever(object):
                         task = self._pending.spawn(
                             data_reader.retrieve_key_start,
                             retrieve_id,
+                            self._sequence,
+                            self._collection_id,
+                            self._key,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,
@@ -254,6 +257,9 @@ class Retriever(object):
                         task = self._pending.spawn(
                             data_reader.retrieve_key_next,
                             retrieve_id,
+                            self._sequence,
+                            self._collection_id,
+                            self._key,
                             status_row.seg_unified_id,
                             status_row.seg_conjoined_part,
                             segment_number,

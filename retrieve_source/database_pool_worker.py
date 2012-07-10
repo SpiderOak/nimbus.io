@@ -32,7 +32,9 @@ inner join nimbusio_node.value_file val
 on seq.value_file_id = val.id
 where seq.segment_id = (
     select id from nimbusio_node.segment 
-    where unified_id = %(segment-unified-id)s
+    where collection_id = %(collection-id)s
+    and key = %(key)s
+    and unified_id = %(segment-unified-id)s
     and conjoined_part = %(segment-conjoined-part)s
     and segment_num = %(segment-num)s
     and handoff_node_id is null
@@ -47,7 +49,9 @@ inner join nimbusio_node.value_file val
 on seq.value_file_id = val.id
 where seq.segment_id = (
     select id from nimbusio_node.segment 
-    where unified_id = %(segment-unified-id)s
+    where collection_id = %(collection-id)s
+    and key = %(key)s
+    and unified_id = %(segment-unified-id)s
     and conjoined_part = %(segment-conjoined-part)s
     and segment_num = %(segment-num)s
     and handoff_node_id = %(handoff-node-id)s

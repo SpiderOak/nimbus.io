@@ -27,6 +27,9 @@ class DataReader(object):
 
     def retrieve_key_start(self, 
                            retrieve_id,
+                           sequence,
+                           collection_id,
+                           key,
                            segment_unified_id, 
                            segment_conjoined_part, 
                            segment_num,
@@ -35,6 +38,9 @@ class DataReader(object):
         message = {
             "message-type"              : "retrieve-key-start",
             "retrieve-id"               : retrieve_id,
+            "retrieve-sequence"         : sequence,
+            "collection-id"             : collection_id,
+            "key"                       : key,
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,
@@ -87,6 +93,9 @@ class DataReader(object):
 
     def retrieve_key_next(self, 
                           retrieve_id,
+                          sequence,
+                          collection_id,
+                          key,
                           segment_unified_id, 
                           segment_conjoined_part, 
                           segment_num,
@@ -95,6 +104,9 @@ class DataReader(object):
         message = {
             "message-type"              : "retrieve-key-next",
             "retrieve-id"               : retrieve_id,
+            "retrieve-sequence"         : sequence,
+            "collection-id"             : collection_id,
+            "key"                       : key,
             "segment-unified-id"        : segment_unified_id,
             "segment-conjoined-part"    : segment_conjoined_part,
             "segment-num"               : segment_num,

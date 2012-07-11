@@ -202,7 +202,7 @@ def main():
     # write to the router socket
     poller = zmq.Poller()
     poller.register(resources.pull_socket, zmq.POLLIN | zmq.POLLERR)
-    poller.register(resources.router_socket, zmq.POLLIN| zmq.POLLERR)
+    poller.register(resources.router_socket, zmq.POLLIN | zmq.POLLERR)
 
     worker_processes = list()
     for volume_name in set(resources.volume_by_space_id.values()):

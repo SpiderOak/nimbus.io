@@ -16,6 +16,7 @@ class SimError(Exception):
     pass
 
 from test.nimbusio_sim.process_util import start_web_server, \
+        start_web_manager, \
         start_event_aggregator, \
         start_event_subscriber, \
         start_data_writer, \
@@ -48,6 +49,7 @@ class NodeSim(object):
         performance_packager=False,
         event_aggregator=False,
         web_server=False,
+        web_manager=False,
         event_subscriber=False,
         stats_subscriber=False
     ):
@@ -78,6 +80,7 @@ class NodeSim(object):
         self._performance_packager = performance_packager
         self._event_aggregator = event_aggregator
         self._web_server = web_server
+        self._web_manager = web_manager
         self._event_subscriber = event_subscriber
         self._stats_subscriber = stats_subscriber
 
@@ -153,6 +156,14 @@ class NodeSim(object):
         if self._web_server:
             self._processes["web_server"] = \
                 start_web_server(
+                    self.node_name, 
+                    self.env,
+                    self._cluster_config.profile
+                )
+
+        if self._web_manager:
+            self._processes["web_manager"] = \
+                start_web_manager(
                     self.node_name, 
                     self.env,
                     self._cluster_config.profile

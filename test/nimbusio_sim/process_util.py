@@ -198,7 +198,7 @@ def start_stats_subscriber(environment):
     return subprocess.Popen(args, stderr=subprocess.PIPE, env=environment)
 
 def start_web_server(node_name, environment, profile):
-    log = logging.getLogger("start_performance_packager_%s" % (node_name, ))
+    log = logging.getLogger("start_web_server_%s" % (node_name, ))
     server_dir = identify_program_dir(u"web_server")
     server_path = os.path.join(
         server_dir, "web_server_main.py"
@@ -232,5 +232,35 @@ def start_web_server(node_name, environment, profile):
 
     return subprocess.Popen(
         args, stdout=wsgi_log_file, stderr=subprocess.STDOUT, env=environment
+    )
+
+def start_web_manager(node_name, environment, profile):
+    log = logging.getLogger("start_web_manager_%s" % (node_name, ))
+    server_dir = identify_program_dir(u"web_manager")
+    server_path = os.path.join(
+        server_dir, "web_manager_main.py"
+    )
+
+    args = [
+        sys.executable,
+        server_path,
+    ]
+
+    if profile:
+        profile_path = os.path.join(
+            environment["NIMBUSIO_PROFILE_DIR"],
+            "web_server_%s.pstats" % (node_name, )
+        )
+        args[1:1] = [
+            "-m",
+            "cProfile",
+            "-o",
+            profile_path
+        ]
+
+    log.info("starting %s" % (args, ))
+
+    return subprocess.Popen(
+        args, stderr=subprocess.STDOUT, env=environment
     )
 

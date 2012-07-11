@@ -31,6 +31,7 @@ class CommandInterpreter(cmd.Cmd):
                 event_subscriber=True,
                 stats_subscriber=True,
                 web_server=True,
+                web_manager=True,
             )
         )
         for i in xrange(_node_count-1):

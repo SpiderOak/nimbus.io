@@ -385,6 +385,10 @@ def main():
         # if we didn't do anything on this pass...
         if bytes_defragged == 0:
 
+            # exit if we're done and asked to do single pass
+            if int(os.environ.get('NIMBUSIO_EXIT_WHEN_DONE', '0')):
+                halt_event.set()
+
             # close the database connection
             if connection is not None:
                 connection.close()

@@ -66,7 +66,11 @@ def _query_value_file_candidate_rows(connection):
     """
     result = connection.generate_all_rows("""
         select {0} from nimbusio_node.value_file 
-        where close_time is not null
+        where 
+        space_id=(select space_id 
+                  from nimbusio_node.file_space 
+                  where purpose='journal')
+        and close_time is not null
         and (distinct_collection_count > 1 or 
              distinct_collection_count is null)
         order by creation_time

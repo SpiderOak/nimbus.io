@@ -12,13 +12,16 @@ import os
 import os.path
 import sys
 from threading import Event
+import time
 import zlib
 
 import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.data_definitions import compute_value_file_path, \
+        encoded_block_slice_size, \
         encoded_block_generator
+from tools.LRUCache import LRUCache
 from tools.zeromq_util import is_interrupted_system_call, \
         InterruptedSystemCall
 from tools.process_util import set_signal_handler
@@ -29,13 +32,16 @@ from retrieve_source.internal_sockets import io_controller_router_socket_uri
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_io_worker_{1}_{2}_{3}.log"
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_max_file_cache_size = 1000
+_unused_file_close_interval = 120.0
 
 _resources_tuple = namedtuple("Resources", 
                               ["halt_event",
                                "zeromq_context",
                                "reply_push_sockets",
                                "dealer_socket",
-                               "event_push_client",])
+                               "event_push_client",
+                               "file_cache", ])
 
 def _send_work_request(resources, volume_name):
     """
@@ -101,10 +107,36 @@ def _process_request(resources):
     control["result"] = "success"
     control["error-message"] = ""
 
+    if value_file_path in resources.file_cache:
+        value_file, _ = resources.file_cache[value_file_path]
+        del resources.file_cache[value_file_path]
+    else:
+        try:
+            value_file = open(value_file_path, "rb")
+        except Exception as instance:
+            log.exception("read {0}".format(value_file_path))
+            resources.event_push_client.exception("error_opening_value_file", 
+                                                  str(instance))
+            control["result"] = "error_opening_value_file"
+            control["error-message"] = str(instance)
+            
+        if control["result"] != "success":
+            _send_error_reply(resources, request, control)
+            return
+
+
+    read_offset = \
+        sequence_row["value_file_offset"] + \
+        (control["left-offset"] * encoded_block_slice_size)
+
+    read_size = \
+        sequence_row["size"] - \
+        (control["left-offset"] * encoded_block_slice_size) - \
+        (control["right-offset"] * encoded_block_slice_size)
+
     try:
-        with  open(value_file_path, "rb") as value_file:
-            value_file.seek(sequence_row["value_file_offset"])
-            encoded_data = value_file.read(sequence_row["size"])
+        value_file.seek(read_offset)
+        encoded_data = value_file.read(read_size)
     except Exception as instance:
         log.exception("read {0}".format(value_file_path))
         resources.event_push_client.exception("error_reading_value_file", 
@@ -113,14 +145,17 @@ def _process_request(resources):
         control["error-message"] = str(instance)
 
     if control["result"] != "success":
+        value_file.close()
         _send_error_reply(resources, request, control)
         return
 
-    if len(encoded_data) != sequence_row["size"]:
+    resources.file_cache[value_file_path] = value_file, time.time()
+
+    if len(encoded_data) != read_size:
         error_message = "{0} size mismatch {1} {2}".format(
             request["retrieve-id"],
             len(encoded_data),
-            sequence_row["size"])
+            read_size)
         log.error(error_message)
         resources.event_push_client.error("size_mismatch", error_message)
         control["result"] = "size_mismatch"
@@ -130,43 +165,16 @@ def _process_request(resources):
         _send_error_reply(resources, request, control)
         return
 
-    segment_md5 = hashlib.md5(encoded_data)
-    if segment_md5.digest() != sequence_row["hash"]:
-        error_message = "{0} md5 mismatch".format(request["retrieve-id"])
-        log.error(error_message)
-        resources.event_push_client.error("md5_mismatch", error_message)
-        control["result"] = "md5_mismatch"
-        control["error-message"] = error_message
-
-    if control["result"] != "success":
-        _send_error_reply(resources, request, control)
-        return
-
     encoded_block_list = list(encoded_block_generator(encoded_data))
 
-    recompute = False
-    if control["left-offset"] > 0:
-        encoded_block_list = encoded_block_list[control["left-offset"]:]
-        recompute = True
-    if control["right-offset"] > 0:
-        encoded_block_list = encoded_block_list[:-control["right-offset"]]
-        recompute = True
-
-    segment_size = sequence_row["size"]
-    segment_adler32 = sequence_row["adler32"]
-    segment_md5_digest = sequence_row["hash"]
-
-    # if we chopped some blocks out of the data, we must recompute
-    # the check values
-    if recompute:
-        segment_size = 0
-        segment_adler32 = 0
-        segment_md5 = hashlib.md5()
-        for encoded_block in encoded_block_list:
-            segment_size += len(encoded_block)
-            segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
-            segment_md5.update(encoded_block)
-        segment_md5_digest = segment_md5.digest()
+    segment_size = 0
+    segment_adler32 = 0
+    segment_md5 = hashlib.md5()
+    for encoded_block in encoded_block_list:
+        segment_size += len(encoded_block)
+        segment_adler32 = zlib.adler32(encoded_block, segment_adler32) 
+        segment_md5.update(encoded_block)
+    segment_md5_digest = segment_md5.digest()
 
     reply = {
         "message-type"          : "retrieve-key-reply",
@@ -192,6 +200,22 @@ def _process_request(resources):
         push_socket.send(encoded_block, zmq.SNDMORE)
     push_socket.send(encoded_block_list[-1])
         
+def _make_close_pass(resources, current_time):
+    log = logging.getLogger("_make_close_pass")
+
+    files_to_close = list()
+    for file_name, (_, last_used_time) in resources.file_cache.iteritems():
+        unused_interval = current_time - last_used_time
+        if unused_interval > _unused_file_close_interval:
+            files_to_close.append(file_name)
+
+    log.debug("{0} files to close".format(len(files_to_close)))
+    for file_name in files_to_close:
+        log.info("closing {0}".format(file_name))
+        file_object, _ = resources.file_cache[file_name]
+        del resources.file_cache[file_name]
+        file_object.close()
+
 def main():
     """
     main entry point
@@ -223,16 +247,27 @@ def main():
                          reply_push_sockets=dict(),
                          event_push_client=EventPushClient(zeromq_context, 
                                                            event_source_name),
-                         dealer_socket=zeromq_context.socket(zmq.DEALER))
+                         dealer_socket=zeromq_context.socket(zmq.DEALER),
+                         file_cache=LRUCache(_max_file_cache_size))
 
     resources.dealer_socket.setsockopt(zmq.LINGER, 1000)
     log.debug("connecting to {0}".format(io_controller_router_socket_uri))
     resources.dealer_socket.connect(io_controller_router_socket_uri)
 
+    last_close_pass_time = time.time()
     try:
         while not halt_event.is_set():
+            # an occasional pass that closes any open files that haven't 
+            # been used
+            current_time = time.time()
+            elapsed_time = current_time - last_close_pass_time
+            if elapsed_time > _unused_file_close_interval:
+                _make_close_pass(resources, current_time)
+                last_close_pass_time = current_time 
+
             _send_work_request(resources, volume_name)
             _process_request(resources)
+
     except InterruptedSystemCall:
         if halt_event.is_set():
             log.info("program teminates normally with interrupted system call")

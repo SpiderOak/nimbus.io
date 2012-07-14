@@ -18,8 +18,8 @@ class PULLServer(object):
         zeromq context
 
     address
-        the address our socket binds to. Sent to the remote server in the 
-        initial handshake, by the resilient client.
+        the address our socket binds to. Sent to the remote server by the 
+        resilient client.
 
     receve_queue
         The queue (deque) where we put incoming messages. This is shared with

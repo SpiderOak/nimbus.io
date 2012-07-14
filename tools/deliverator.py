@@ -67,17 +67,3 @@ class Deliverator(object):
         else:
             channel.put((message.control, message.body, ))
 
-    def discard_delivery_channel(self, message_id):
-        """
-        Discard a delivery channel without attempting to put a reply
-
-        This is used for handshakes, which don't get a reply
-        """
-        self._lock.acquire()
-        try:
-            self._active_requests.pop(message_id)
-        except KeyError:
-            self._log.error("unknown message_id %s" % (message_id, ))
-        finally:
-            self._lock.release()
-

@@ -19,8 +19,8 @@ class GreenletPULLServer(Greenlet):
         zeromq context
 
     address
-        the address our socket binds to. Sent to the remote server in the 
-        initial handshake, by the resilient client.
+        the address our socket binds to. Sent to the remote server by the 
+        resilient client.
 
     deliverator
         we pass incoming messages to the Deliverator, which delivers them

@@ -46,11 +46,10 @@ class ResilientClient(object):
 
     client_tag
         A unique identifier for our client, to be included in every message
-        so the remote server knows where to send replies
 
     client_address
-        the address our socket binds to. Sent to the remote server in the 
-        initial handshake
+        the address our socket binds to. Sent to the remote server in every
+        message
 
     ResilientClient uses two zeromq patterns to maintain a connection
     to a resilient server.
@@ -66,7 +65,7 @@ class ResilientClient(object):
     Each resilient client maintains its own REQ socket.
 
     At startup the client sends a *handshake* message to the server. The client
-    is not considered connected until it gets an ack fro the handshake.
+    is not considered connected until it gets an ack from the handshake.
 
     Normal workflow:
     
@@ -148,8 +147,6 @@ class ResilientClient(object):
         message = {
             "message-type"      : "resilient-server-handshake",
             "message-id"        : uuid.uuid1().hex,
-            "client-tag"        : self._client_tag,
-            "client-address"    : self._client_address,
         }
         message = message_format(ident=None, control=message, body=None)
         self._pending_message = message
@@ -226,6 +223,7 @@ class ResilientClient(object):
 
         queue a message for send (unless we can send it immediately)
 
+        This function adds client-tag and client-address to the message
         if message_control does not contain a message-id, we will supply one.
         """
         if not "message-id" in message_control:
@@ -290,6 +288,7 @@ class ResilientClient(object):
     def _send_message(self, message):
         self._log.debug("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
+        message.control["client-address"] = self._client_address
 
         # don't send a zero size body 
         if type(message.body) not in [list, tuple, type(None), ]:

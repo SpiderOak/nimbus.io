@@ -39,11 +39,10 @@ class GreenletResilientClient(Greenlet):
 
     client_tag
         A unique identifier for our client, to be included in every message
-        so the remote server knows where to send replies
 
     client_address
-        the address our socket binds to. Sent to the remote server in the 
-        initial handshake
+        the address our socket binds to. Sent to the remote server in every 
+        message
 
     deliverator
         handle to the deliverator object
@@ -62,7 +61,7 @@ class GreenletResilientClient(Greenlet):
     Each resilient client maintains its own REQ socket **_self._req_socket**.
 
     At startup the client sends a *handshake* message to the server. The client
-    is not considered connected until it gets an ack fro the handshake.
+    is not considered connected until it gets an ack from the handshake.
 
     Normal workflow:
     
@@ -241,6 +240,7 @@ class GreenletResilientClient(Greenlet):
     def _send_message(self, message):
         self._log.debug("sending message: %s" % (message.control, ))
         message.control["client-tag"] = self._client_tag
+        message.control["client-address"] = self._client_address
 
         # don't send a zero size body 
         if type(message.body) not in [list, tuple, type(None), ]:

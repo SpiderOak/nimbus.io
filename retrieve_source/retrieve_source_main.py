@@ -72,41 +72,27 @@ def _launch_io_controller():
     log.info("starting {0}".format(args))
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
-def _handle_resilient_server_handshake(message, client_pull_addresses):
+def _handle_resilient_server_handshake(message):
     log = logging.getLogger("_handle_resilient_server_handshake")
     log.debug("{client-tag} {client-address}".format(**message))
 
-    if message["client-tag"] in client_pull_addresses:
-        log.debug("replacing client-tag {client-tag}".format(**message)) 
-        del client_pull_addresses[message["client-tag"]]
-
-    client_pull_addresses[message["client-tag"]] = message["client-address"]
-    
-def _handle_resilient_server_signoff(message, client_pull_addresses):
+def _handle_resilient_server_signoff(message):
     log = logging.getLogger("_handle_resilient_server_signoff")
-    try:
-        del client_pull_addresses[message["client-tag"]]
-    except KeyError:
-        log.info("no such client-tag: {client-tag}".format(**message))
-    else:
-        log.info("removing address: {client-tag}".format(**message))
+    log.debug("{client-tag} {client-address}".format(**message))
 
 _dispatch_table = {
     "resilient-server-handshake" : _handle_resilient_server_handshake,
     "resilient-server-signoff"   : _handle_resilient_server_signoff,}
 
-def _process_one_request(rep_socket, 
-                         client_pull_addresses, 
-                         db_controller_push_socket):
+def _process_one_request(rep_socket, db_controller_push_socket):
     """
     This function reads a request message from our rep socket and
     sends an immediate ack.
 
     If the request is a handshake or a signoff from a web server client,
-    we use the information to update our client_pull_addresses
+    we just log the occurrence
 
-    Otherwise, we insert the client_pull_address into the request and
-    push the message on to the database pool controller
+    Otherwise, push the message on to the database pool controller
     """
     log = logging.getLogger("_process_one_request")
 
@@ -125,28 +111,20 @@ def _process_one_request(rep_socket,
     push_request_to_db_controller = False
 
     if request["message-type"] in _dispatch_table:
-        _dispatch_table[request["message-type"]](request, 
-                                                 client_pull_addresses)
+        _dispatch_table[request["message-type"]](request)
         ack_message["accepted"] = True
-    elif not "client-tag" in request:
+    elif not ("client-tag" in request and "client-address" in request):
         log.error("receive: invalid message '{0}'".format(request))
         ack_message["accepted"] = False
     else:
-        if request["client-tag"] in client_pull_addresses:
-            ack_message["accepted"] = True
-            push_request_to_db_controller = True
-        else:
-            log.error("No active client-tag {client-tag}".format(**request))
-            ack_message["accepted"] = False
+        push_request_to_db_controller = True
 
     rep_socket.send_json(ack_message)
 
     if push_request_to_db_controller:
         log.info("pushing {0} {1}".format(request["message-type"],
                                           request["retrieve-id"]))
-        client_pull_address = client_pull_addresses[request["client-tag"]]
-        control = {"client-pull-address" : client_pull_address, 
-                   "result"              : None,
+        control = {"result"              : None,
                    "error-message"       : None, } 
         db_controller_push_socket.send_pyobj(request, zmq.SNDMORE)
         db_controller_push_socket.send_pyobj(control)
@@ -185,8 +163,6 @@ def main():
     poller = zmq.Poller()
     poller.register(rep_socket, zmq.POLLIN | zmq.POLLERR)
 
-    client_pull_addresses = dict()
-
     last_report_time = 0.0
     request_count = 0
     try:
@@ -206,9 +182,7 @@ def main():
 
                 assert active_socket is rep_socket
 
-                _process_one_request(rep_socket, 
-                                     client_pull_addresses,
-                                     db_controller_push_socket)
+                _process_one_request(rep_socket, db_controller_push_socket)
 
                 request_count += 1
 

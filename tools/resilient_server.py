@@ -79,14 +79,17 @@ class ResilientServer(object):
         use the appropriate PUSH client (identified by 'client-tag') to send 
         a reply to the PULL server of the requestor
         """
-        try:
-            client = self._active_clients[message["client-tag"]]
-        except KeyError:
-            self._log.error("send: No active client %s message discarded" % (
-                message["client-tag"]
-            ))
-        else:
-            client.send(message, data)
+        log = logging.getLogger("send_reply")
+        if message["client-tag"] not in self._active_clients:
+            log.info("creating PUSHClient {0} {1}".format(
+                message["client-tag"], message["client-address"]))
+            self._active_clients[message["client-tag"]] = PUSHClient(
+                self._context,
+                message["client-address"]
+            )
+
+        client = self._active_clients[message["client-tag"]]
+        client.send(message, data)
 
     def pollster_callback(self, _active_socket, readable, writable):
         """
@@ -118,22 +121,15 @@ class ResilientServer(object):
                 message.control, message.body
             )
             ack_message["accepted"] = True
-        elif not "client-tag" in message.control:
+        elif not ("client-tag" in message.control and \
+                  "client-address" in message.control):
             self._log.error("receive: invalid message '%s'" % (
                 message.control, 
             ))
             ack_message["accepted"] = False
         else:
-            if message.control["client-tag"] in self._active_clients:
-                self._receive_queue.append((message.control, message.body, ))
-                ack_message["accepted"] = True
-            else:
-                self._log.error(
-                    "receive: No active client %s message discarded" % (
-                        message.control["client-tag"]
-                    )
-                )
-                ack_message["accepted"] = False
+            self._receive_queue.append((message.control, message.body, ))
+            ack_message["accepted"] = True
 
         self._rep_socket.send_json(ack_message)
 

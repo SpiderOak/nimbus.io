@@ -64,6 +64,8 @@ def _send_pending_work_to_available_workers(resources):
     for volume_name in set(resources.volume_by_space_id.values()):
         work_count = min(len(resources.pending_work_by_volume[volume_name]), 
                          len(resources.available_ident_by_volume[volume_name]))
+        log.debug("work_count {0} for volume {1}".format(work_count, 
+                                                         volume_name))
         for _ in range(work_count):
             message, control, sequence_row = \
                 resources.pending_work_by_volume[volume_name].popleft()

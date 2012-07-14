@@ -212,14 +212,13 @@ def _send_error_reply(resources, message, control):
     so send the error reply here.
     """
     log = logging.getLogger("_send_error_reply")
-    if not control["client-pull-address"] in resources.reply_push_sockets:
+    if not message["client-address"] in resources.reply_push_sockets:
         push_socket = resources.zeromq_context.socket(zmq.PUSH)
         push_socket.setsockopt(zmq.LINGER, 5000)
-        log.info("connecting to {0}".format(control["client-pull-address"]))
-        push_socket.connect(control["client-pull-address"])
-        resources.reply_push_sockets[control["client-pull-address"]] = \
-            push_socket
-    push_socket = resources.reply_push_sockets[control["client-pull-address"]]
+        log.info("connecting to {0}".format(message["client-address"]))
+        push_socket.connect(message["client-address"])
+        resources.reply_push_sockets[message["client-address"]] = push_socket
+    push_socket = resources.reply_push_sockets[message["client-address"]]
     reply = {"message-type"          : "retrieve-key-reply",
              "client-tag"            : message["client-tag"],
              "message-id"            : message["message-id"],

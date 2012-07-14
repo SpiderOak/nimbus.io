@@ -68,8 +68,7 @@ def _send_error_reply(resources, message, control):
     so send the error reply here.
     """
     log = logging.getLogger("_send_error_reply")
-    push_socket = _get_reply_push_socket(resources,
-                                         control["client-pull-address"])
+    push_socket = _get_reply_push_socket(resources, message["client-address"])
 
     reply = {"message-type"          : "retrieve-key-reply",
              "client-tag"            : message["client-tag"],
@@ -96,6 +95,8 @@ def _process_request(resources):
 
     assert resources.dealer_socket.rcvmore
     control = resources.dealer_socket.recv_pyobj()
+
+    log.debug("request = {0}; control = {1}".format(request, control))
 
     assert resources.dealer_socket.rcvmore
     sequence_row = resources.dealer_socket.recv_pyobj()
@@ -193,8 +194,7 @@ def _process_request(resources):
         "error-message"         : "",
     }
 
-    push_socket = _get_reply_push_socket(resources, 
-                                         control["client-pull-address"])
+    push_socket = _get_reply_push_socket(resources, request["client-address"])
     push_socket.send_json(reply, zmq.SNDMORE)
     for encoded_block in encoded_block_list[:-1]:
         push_socket.send(encoded_block, zmq.SNDMORE)

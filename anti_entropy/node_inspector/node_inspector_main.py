@@ -33,6 +33,8 @@ _max_value_file_time_str = \
                        "weeks=1")
 _max_value_file_time = None
 _read_buffer_size = 1024 ** 2
+_always_check_entries = bool(
+    int(os.environ.get("NIMBUSIO_NODE_INSPECTOR_CHECK_ENTRIES", "0")))
 
 # If the value file is missing, 
 # consider all of the segment_sequences to be missing
@@ -94,6 +96,7 @@ def _value_file_status(connection, entry):
     batch_key = make_batch_key(entry)
 
     value_file_path = compute_value_file_path(_repository_path, 
+                                              entry.space_id, 
                                               entry.value_file_id)
     # Always do a stat on the value file. 
     try:
@@ -186,6 +189,7 @@ def _value_file_status(connection, entry):
 def _verify_entry_against_value_file(entry):
     log = logging.getLogger("_verify_entry_against_vaue_file")
     value_file_path = compute_value_file_path(_repository_path, 
+                                              entry.space_id,
                                               entry.value_file_id)
     md5_sum = hashlib.md5()
     try:
@@ -229,17 +233,19 @@ def _process_work_batch(connection, known_value_files, batch):
             missing_sequence_numbers.append(entry.sequence_num)
             continue
 
-        if value_file_status == _value_file_valid:
-            continue
+        if not _always_check_entries:
+            if value_file_status == _value_file_valid:
+                continue
 
-        # if none of the above branches were fruitful, 
-        # then all records in the database that point to this value file 
-        # must be verified by opening, seeking, reading, and hashing the 
-        # record pointed to in the value file. This will be terribly costly 
-        # in terms of IO because our work is not sorted by value file. 
-        # Fortunately, data corruption should be rare enough that the 
-        # efficiency will be irrelevant
-        assert value_file_status == _value_file_questionable
+            # if none of the above branches were fruitful, 
+            # then all records in the database that point to this value file 
+            # must be verified by opening, seeking, reading, and hashing the 
+            # record pointed to in the value file. This will be terribly costly 
+            # in terms of IO because our work is not sorted by value file. 
+            # Fortunately, data corruption should be rare enough that the 
+            # efficiency will be irrelevant
+            assert value_file_status == _value_file_questionable
+
         if not _verify_entry_against_value_file(entry):
             log.info("Defective value file {0} for {1} sequence {2}".format(
                 entry.value_file_id, batch_key, entry.sequence_num))

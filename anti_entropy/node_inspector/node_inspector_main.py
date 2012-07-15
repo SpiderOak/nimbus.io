@@ -195,12 +195,11 @@ def _verify_entry_against_value_file(entry):
     try:
         with open(value_file_path, "rb") as input_file:
             input_file.seek(entry.value_file_offset)
-            md5_sum.update(input_file.read(entry.value_file_size))
+            md5_sum.update(input_file.read(entry.sequence_size))
     except (OSError, IOError) as instance:
         log.error("Error seek/reading {0} {1}".format(value_file_path, 
                                                       instance))
         return False
-
     return md5_sum.digest() == bytes(entry.sequence_hash)
 
 def _process_work_batch(connection, known_value_files, batch):

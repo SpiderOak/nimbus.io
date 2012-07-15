@@ -2,6 +2,7 @@
 """
 work_generator.py
 """
+import os
 from collections import namedtuple
 
 _entry_template = namedtuple("WorkEntry", [
@@ -36,13 +37,22 @@ from nimbusio_node.segment seg
 left join nimbusio_node.segment_sequence sq  on (sq.segment_id = seg.id)
 left join nimbusio_node.value_file vf on (sq.value_file_id = vf.id)
 where 
-space_id not in (select space_id 
-                 from nimbusio_node.file_space 
-                 where purpose='journal')
-and seg.status = 'F'
+"""
+
+if not int(os.environ.get("NIMBUSIO_INSPECT_JOURNALS", "0")):
+    _work_query = _work_query + """
+     space_id not in (select space_id 
+                      from nimbusio_node.file_space 
+                      where purpose='journal')
+    and 
+    """
+
+_work_query = _work_query + """
+seg.status = 'F'
 order by seg.collection_id, seg.key, seg.unified_id, seg.conjoined_part,
 sq.sequence_num
 """
+
 def make_batch_key(entry):
     return (entry.unified_id, entry.conjoined_part, entry.segment_num, )
 

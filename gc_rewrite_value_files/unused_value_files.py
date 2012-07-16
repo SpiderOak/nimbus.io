@@ -13,7 +13,7 @@ with used_value_files as (
     select distinct value_file_id as id
     from nimbusio_node.segment_sequence
 )
-select id, size from nimbusio_node.value_file where 
+select id, space_id, size from nimbusio_node.value_file where 
     close_time is not null and
     not exists (
         select 1 from used_value_files uvf 
@@ -24,25 +24,25 @@ _delete_value_file_query = """
     delete from nimbusio_node.value_file where id = %s
 """
 
-def _list_unused_value_file_ids(connection):
-    value_file_ids = list()
+def _list_unused_value_files(connection):
+    value_files = list()
     total_size = 0
 
     result = connection.fetch_all_rows(_unused_value_files_query, [])
 
-    for (value_file_id, value_file_size, ) in result:
-        value_file_ids.append(value_file_id)
+    for (value_file_id, space_id, value_file_size, ) in result:
+        value_files.append((value_file_id, space_id, ))
         if value_file_size is not None:
             total_size += value_file_size
 
-    return value_file_ids, total_size
+    return value_files, total_size
 
-def _unlink_value_files(connection, repository_path, unused_value_file_ids):
+def _unlink_value_files(connection, repository_path, unused_value_files):
     log = logging.getLogger("_unlink_value_files")
-    for value_file_id in unused_value_file_ids:
+    for value_file_id, space_id in unused_value_files:
         connection.execute(_delete_value_file_query, [value_file_id, ])
         value_file_path = compute_value_file_path(
-            repository_path, value_file_id
+            repository_path, space_id, value_file_id
         )
         try:
             os.unlink(value_file_path)
@@ -59,18 +59,18 @@ def unlink_totally_unused_value_files(connection, repository_path):
           since this action is outside of the database)
     """
     log = logging.getLogger("unlink_totally_unused_value_files")
-    unused_value_file_ids, total_size = _list_unused_value_file_ids(connection)
+    unused_value_files, total_size = _list_unused_value_files(connection)
     
     log.info(
         "found {0:,} unused value files total size={1:,}".format(
-            len(unused_value_file_ids), total_size
+            len(unused_value_files), total_size
         )
     )
 
     connection.begin_transaction()
     try:
         _unlink_value_files(
-            connection, repository_path, unused_value_file_ids
+            connection, repository_path, unused_value_files
         )
     except Exception:
         connection.rollback()

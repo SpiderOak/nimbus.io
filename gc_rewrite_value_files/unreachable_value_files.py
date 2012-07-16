@@ -35,23 +35,25 @@ def unlink_unreachable_value_files(connection, repository_path):
                 filesystem_value_file_ids.add(value_file_id)
 
     # 2) explicitly rollback the connection's current transaction
-    connection.rollback()
+    # not needed because we are in auto-commit mode.
+    # connection.rollback()
+    assert not connection._in_transaction
 
     # 3) do the "select id from value_file" and store in a set
-    database_value_file_ids = set()
-    for (value_file_id, ) in connection.fetch_all_rows(
-        "select id from nimbusio_node.value_file", []
+    database_value_file_ids = dict()
+    for (value_file_id, space_id, ) in connection.fetch_all_rows(
+        "select id, space_id from nimbusio_node.value_file", []
     ):  
-        database_value_file_ids.add(value_file_id)
+        database_value_file_ids[value_file_id] = space_id
 
     # 4) unlink things from #1 not present in #3.
     unreachable_value_file_ids = filesystem_value_file_ids \
-                               - database_value_file_ids
+                               - set(database_value_file_ids)
 
     total_value_file_size = 0
     for value_file_id in list(unreachable_value_file_ids):
-        value_file_path = compute_value_file_path(repository_path, 
-                                                  value_file_id)
+        value_file_path = compute_value_file_path(repository_path,
+            database_value_file_ids[value_file_id], value_file_id)
         value_file_size = os.path.getsize(value_file_path)
         log.info("unlinking unreachable value_file {0} size = {1}".format(
             value_file_path, value_file_size

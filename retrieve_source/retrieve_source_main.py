@@ -30,7 +30,7 @@ from retrieve_source.internal_sockets import internal_socket_uri_list, \
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_retrieve_source_{1}.log"
 _retrieve_source_address = os.environ["NIMBUSIO_DATA_READER_ADDRESS"]
-_poll_timeout = 3.0
+_poll_timeout = 3000 # milliseconds
 _reporting_interval = 60.0
 
 def _bind_rep_socket(zeromq_context):

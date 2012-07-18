@@ -51,7 +51,7 @@ _retrieve_state_tuple = namedtuple("RetrieveState",
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path_template = "{0}/nimbusio_rs_db_pool_controller_{1}.log"
 _worker_count = int(os.environ.get("NIMBUSIO_RETRIEVE_DB_POOL_COUNT", "2"))
-_poll_timeout = 3.0 
+_poll_timeout = 3000 # milliseconds
 _reporting_interval = 60.0
 
 def _launch_database_pool_worker(worker_number):

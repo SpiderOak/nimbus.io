@@ -89,8 +89,8 @@ def main():
     result_message = {"message-type"    : "ping-result",
                       "url"             : args.url,
                       "result"          : None,
-                      "req-open-count"  : 0,
-                      "ping-count"      : 0, }
+                      "socket-reconnection-number"  : 0,
+                      "check-number"    : 0, }
 
     poller = zmq.Poller()
 
@@ -98,10 +98,10 @@ def main():
         if req_socket is None:
             req_socket = zeromq_context.socket(zmq.REQ)
             req_socket.connect(args.url)
-            result_message["req-open-count"] += 1
+            result_message["socket-reconnection-number"] += 1
             poller.register(req_socket, zmq.POLLIN | zmq.POLLERR)
 
-        result_message["ping-count"] += 1
+        result_message["check-number"] += 1
         req_socket.send_json(ping_message)
         result = poller.poll(timeout=args.timeout)
 

@@ -33,7 +33,7 @@ class ZeroMQPollster(object):
     .. _poller: http://zeromq.github.com/pyzmq/api/generated/zmq.core.poll.html
     """
     
-    def __init__(self, polling_interval=0.1, poll_timeout=0.1):
+    def __init__(self, polling_interval=0.1, poll_timeout=1000):
         self._log = logging.getLogger("pollster")
         self._polling_interval = polling_interval
         self._poll_timeout = poll_timeout

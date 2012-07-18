@@ -25,11 +25,15 @@ def forwarder_coroutine(
     log = logging.getLogger("forwarder_coroutine")
     archive_priority = create_priority()
     retrieve_id = uuid.uuid1().hex
+    retrieve_sequence = 0
 
     # start retrieving from our reader
     message = {
         "message-type"              : "retrieve-key-start",
         "retrieve-id"               : retrieve_id,
+        "retrieve-sequence"         : retrieve_sequence,
+        "collection-id"             : segment_row.collection_id,
+        "key"                       : segment_row.key,
         "segment-unified-id"        : segment_row.unified_id,
         "segment-conjoined-part"    : segment_row.conjoined_part,
         "segment-num"               : segment_row.segment_num,
@@ -104,11 +108,15 @@ def forwarder_coroutine(
 
     # send the intermediate segments
     while not completed:
+        retrieve_sequence += 1
         sequence += 1
 
         message = {
             "message-type"              : "retrieve-key-next",
             "retrieve-id"               : retrieve_id,
+            "retrieve-sequence"         : retrieve_sequence,
+            "collection-id"             : segment_row.collection_id,
+            "key"                       : segment_row.key,
             "segment-unified-id"        : segment_row.unified_id,
             "segment-conjoined-part"    : segment_row.conjoined_part,
             "segment-num"               : segment_row.segment_num,

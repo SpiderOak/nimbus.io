@@ -494,20 +494,62 @@ def _create_state():
         "database-connection"       : None,
         "cluster-row"               : None,
         "node-rows"                 : None,
+        # list of rows for each node in the cluster
         "node-id-dict"              : None,
+        # maps node ids to names
         "node-name-dict"            : None,
+        # maps node names to ids
         "zmq-context"               : zmq.Context(),
         "pollster"                  : ZeroMQPollster(),
+        # used for other handoff servers to ask us for the handoffs that should
+        # go to their node.  acknowledgements of the messages are sent
+        # immediately, and then the received messages are put into
+        # receive-queue (below) to be dispatched.
         "resilient-server"          : None,
+        # general event notification system used throughout nimbus.io
+        # we also push an event for every handoff that we initiate.
         "event-push-client"         : None,
+        # this is the address that our resilient clients (to data readers, data
+        # writers, and handoff servers) receive responses on. 
+        # (resilient clients receive acknowledgements to the request directly
+        # via REQ/REP, but the actual responses come in via this pull server.)
+        # The pull server puts the messages it receives into receive-queue
+        # (below) and they are then dispatched by queue-dipatcher (below.)
+        # Note that resilient-server (above) also puts messages into that same
+        # receive-queue.
         "pull-server"               : None,
+        # maps node name to 10 data writer resilient clients
         "reader-client-dict"        : dict(),
+        # maps node name to 10 data reader resilient clients
+        # responses are sent to pull-server (above.)
         "writer-client-dict"        : dict(),
+        # 9 resilient clients (connected to other nodes). 
+        # responses are sent to pull-server (above.)
         "handoff-server-clients"    : list(),
+        # messages received by our resilient server are put into this queue to
+        # be dispatched.  So are messages recevied in response to all the
+        # requests from our resilient clients
         "receive-queue"             : deque(),
+        # this is the dispatcher object for messages in the above queue.
+        # it uses the _dispatch_table defined above to process messages 
+        # received via our resilient server AND by our pipeline address
+        # (pull-server, above.)
         "queue-dispatcher"          : None,
+
+        # a time queue that periodically sends request-handoffs messages
+        # via each of handoff-server-clients (above).
         "handoff-requestor"         : None,
+        # a time queue task peridically initiates the fulfillment of a handoff
+        # held by another node for our node.
+        "handoff-starter"           : None,
+        # a data structure that holds all the pending handoffs we need to
+        # retrieve from other nodes, in unified_id order and grouped by
+        # unified_id (i.e. the same handoff from 2 nodes is stored together in
+        # this structure.)
         "pending-handoffs"          : PendingHandoffs(),
+        # a forwarder co-routine in use to transfer exactly one handoff to us
+        # from another node.  A new forwarder object is created for each
+        # handoff.  only one forwarder is active at any given time.
         "forwarder"                 : None,
         "already-seen-cache"        : LRUCache(_already_seen_cache_size),
         "active-deletes"            : dict(),

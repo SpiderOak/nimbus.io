@@ -87,7 +87,7 @@ def main():
     ping_message = {"message-type"   : "ping"}
 
     result_message = {"message-type"    : "ping-result",
-                      "url"             : args.url,
+                      "url"             : args.ping_url,
                       "result"          : None,
                       "socket-reconnection-number"  : 0,
                       "check-number"    : 0, }
@@ -97,7 +97,7 @@ def main():
     while not halt_event.is_set():
         if req_socket is None:
             req_socket = zeromq_context.socket(zmq.REQ)
-            req_socket.connect(args.url)
+            req_socket.connect(args.ping_url)
             result_message["socket-reconnection-number"] += 1
             poller.register(req_socket, zmq.POLLIN | zmq.POLLERR)
 
@@ -114,7 +114,7 @@ def main():
             else:
                 result_message["result"] = "ok"
 
-        reporting_socket.send_pyobject(result_message)
+        reporting_socket.send_pyobj(result_message)
     
         if result_message["result"] != "ok":
             poller.unregister(req_socket)

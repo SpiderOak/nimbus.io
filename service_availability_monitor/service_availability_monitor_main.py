@@ -14,13 +14,11 @@ import os.path
 import subprocess
 import sys
 from threading import Event
-import time
 
 import zmq
 
 from tools.standard_logging import initialize_logging
-from tools.zeromq_util import PollError, \
-        is_interrupted_system_call, \
+from tools.zeromq_util import is_interrupted_system_call, \
         prepare_ipc_path, \
         ipc_socket_uri
 from tools.process_util import identify_program_dir, \
@@ -45,7 +43,7 @@ _ping_process_desc = namedtuple("PingProcessDesc", ["module_dir",
                                                     "ping_uri",
                                                     "process", 
                                                     "reachable_state", ])
-_ping_processe_descs = [ 
+_ping_process_descs = [ 
     _ping_process_desc(module_dir="zmq_ping",
                        file_name="zmq_ping_main.py",
                        service_name="retrieve_source",
@@ -60,14 +58,14 @@ def _bind_pull_socket(zeromq_context):
     pull_socket.setsockopt(zmq.HWM, _pull_socket_hwm)
     log.info("binding to {0} hwm = {1}".format(_pull_socket_uri,
                                                _pull_socket_hwm))
-    pull_socket.bind(_retrieve_source_address)
+    pull_socket.bind(_pull_socket_uri)
 
     return pull_socket
 
 def _launch_ping_process(ping_process):
     log = logging.getLogger("launch_ping_process")
     module_dir = identify_program_dir(ping_process.module_dir)
-    module_path = os.path.join(module_dir, ping_process_file_name)
+    module_path = os.path.join(module_dir, ping_process.file_name)
     
     args = [sys.executable, module_path,
             "-u", ping_process.ping_uri,
@@ -77,7 +75,7 @@ def _launch_ping_process(ping_process):
     log.info("starting {0}".format(args))
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
-def _process_one_message(message, ping_process_dict_dict, event_push_socket):
+def _process_one_message(message, ping_process_dict, event_push_client):
     """
     process one ping message, report state change 
     """
@@ -87,7 +85,7 @@ def _process_one_message(message, ping_process_dict_dict, event_push_socket):
     reachable_state = message["result"] == "ok"
     ping_process = ping_process_dict[message["url"]]
 
-    if reachable_state == ping_process.reachable_state
+    if reachable_state == ping_process.reachable_state:
         return
     
     description = "{0} reachable state changes from {1} to {2}".format(
@@ -96,7 +94,7 @@ def _process_one_message(message, ping_process_dict_dict, event_push_socket):
         reachable_state)
     log.info(description)
 
-    event_push_socket.info("service-availability-state-change",
+    event_push_client.info("service-availability-state-change",
                            description,
                            service_name=ping_process.service_name, 
                            node_name=_local_node_name,
@@ -126,9 +124,6 @@ def main():
     halt_event = Event()
     set_signal_handler(halt_event)
 
-    database_pool_controller = _launch_database_pool_controller()
-    io_controller = _launch_io_controller()
-
     zeromq_context = zmq.Context()
 
     pull_socket = _bind_pull_socket(zeromq_context)
@@ -137,25 +132,25 @@ def main():
     event_push_client.info("program-starts", "retrieve source starts")
 
     ping_process_dict = dict()
-    for ping_process_desc in _ping_process_descs:
-        ping_process = _launch_ping_process(ping_process_desc)
-        halt_event.wait(1.0)
-        poll_subprocess(ping_process)
-        ping_process_dict[ping_process_spec.ping_uri] = \
-            ping_process_spec._replace(process=ping_process)
-
     message_count = 0
     try:
+        for ping_process_desc in _ping_process_descs:
+            ping_process = _launch_ping_process(ping_process_desc)
+            halt_event.wait(1.0)
+            poll_subprocess(ping_process)
+            ping_process_dict[ping_process_desc.ping_uri] = \
+                ping_process_desc._replace(process=ping_process)
+
         while not halt_event.is_set():
 
-            if message_count % len(ping_processes) == 0:
-                for ping_process in ping_processes:
-                    poll_subprocess(ping_process)
+            if message_count % len(ping_process_dict) == 0:
+                for ping_process in ping_process_dict.values():
+                    poll_subprocess(ping_process.process)
 
-            message = pull_socket.recv_pyobject()
+            message = pull_socket.recv_pyobj()
             assert not pull_socket.rcvmore
 
-            _process_one_message(message, ping_process_dict, event_push_socket)
+            _process_one_message(message, ping_process_dict, event_push_client)
 
             message_count += 1
 

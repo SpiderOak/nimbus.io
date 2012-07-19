@@ -72,6 +72,10 @@ def _launch_io_controller():
     log.info("starting {0}".format(args))
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
+def _handle_ping(message):
+    log = logging.getLogger("_handle_ping")
+    log.debug("{message-id}".format(**message))
+
 def _handle_resilient_server_handshake(message):
     log = logging.getLogger("_handle_resilient_server_handshake")
     log.debug("{client-tag} {client-address}".format(**message))
@@ -81,6 +85,7 @@ def _handle_resilient_server_signoff(message):
     log.debug("{client-tag} {client-address}".format(**message))
 
 _dispatch_table = {
+    "ping"                       : _handle_ping,
     "resilient-server-handshake" : _handle_resilient_server_handshake,
     "resilient-server-signoff"   : _handle_resilient_server_signoff,}
 

@@ -13,6 +13,7 @@ import argparse
 import logging
 import sys
 from threading import Event
+import uuid
 
 import zmq
 
@@ -84,7 +85,8 @@ def main():
 
     req_socket = None
 
-    ping_message = {"message-type"   : "ping"}
+    ping_message = {"message-type"   : "ping",
+                    "message-id"     : uuid.uuid1().hex, }
 
     result_message = {"message-type"    : "ping-result",
                       "url"             : args.ping_url,
@@ -103,16 +105,18 @@ def main():
 
         result_message["check-number"] += 1
         req_socket.send_json(ping_message)
-        result = poller.poll(timeout=args.timeout)
+        result = poller.poll(timeout=(args.timeout * 1000))
 
         if len(result) == 0:
             result_message["result"] = "timeout"
         else:
-            _, event_flags = result
-            if event_flags & zmq.POLLERR:
-                result_message["result"] = "socket-error"
-            else:
-                result_message["result"] = "ok"
+            # we only expect one result here, 
+            for _, event_flags in result:
+                if event_flags & zmq.POLLERR:
+                    result_message["result"] = "socket-error"
+                else:
+                    reply = req_socket.recv_json()
+                    result_message["result"] = "ok"
 
         reporting_socket.send_pyobj(result_message)
     

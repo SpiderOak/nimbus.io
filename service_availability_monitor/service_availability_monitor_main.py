@@ -27,7 +27,12 @@ from tools.process_util import identify_program_dir, \
         terminate_subprocess
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
+_node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_local_node_index = _node_names.index(_local_node_name)
+_handoff_server_addresses = \
+    os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
+_handoff_server_address = _handoff_server_addresses[_local_node_index]
 _log_path_template = "{0}/nimbusio_service_availability_monitor_{1}.log"
 _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _pull_socket_uri = ipc_socket_uri(_socket_dir, 
@@ -43,11 +48,25 @@ _ping_process_desc = namedtuple("PingProcessDesc", ["module_dir",
                                                     "ping_uri",
                                                     "process", 
                                                     "reachable_state", ])
+_handoff_server_addresses = \
+    os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
 _ping_process_descs = [ 
     _ping_process_desc(module_dir="zmq_ping",
                        file_name="zmq_ping_main.py",
                        service_name="retrieve_source",
                        ping_uri=os.environ["NIMBUSIO_DATA_READER_ADDRESS"],
+                       process=None,
+                       reachable_state=None),
+    _ping_process_desc(module_dir="zmq_ping",
+                       file_name="zmq_ping_main.py",
+                       service_name="data_writer",
+                       ping_uri=os.environ["NIMBUSIO_DATA_WRITER_ADDRESS"],
+                       process=None,
+                       reachable_state=None),
+    _ping_process_desc(module_dir="zmq_ping",
+                       file_name="zmq_ping_main.py",
+                       service_name="handoff_server",
+                       ping_uri=_handoff_server_address,
                        process=None,
                        reachable_state=None), ]
 
@@ -88,8 +107,9 @@ def _process_one_message(message, ping_process_dict, event_push_client):
     if reachable_state == ping_process.reachable_state:
         return
     
-    description = "{0} reachable state changes from {1} to {2}".format(
+    description = "{0} {1} reachable state changes from {2} to {3}".format(
         ping_process.service_name,
+        message["result"],
         ping_process.reachable_state,
         reachable_state)
     log.info(description)
@@ -128,8 +148,9 @@ def main():
 
     pull_socket = _bind_pull_socket(zeromq_context)
 
-    event_push_client = EventPushClient(zeromq_context, "retrieve_source")
-    event_push_client.info("program-starts", "retrieve source starts")
+    event_push_client = EventPushClient(zeromq_context, "service_availability")
+    event_push_client.info("program-starts", 
+                           "service availability monitor starts")
 
     ping_process_dict = dict()
     message_count = 0
@@ -175,7 +196,7 @@ def main():
         log.info("program teminates normally")
     finally:
         for ping_process in ping_process_dict.values():
-            terminate_subprocess(ping_process)
+            terminate_subprocess(ping_process.process)
         pull_socket.close()
         event_push_client.close()
         zeromq_context.term()

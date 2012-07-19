@@ -46,6 +46,8 @@ class ResilientServer(object):
         self._receive_queue = receive_queue
 
         self._dispatch_table = {
+            "ping" : \
+                self._handle_ping,
             "resilient-server-handshake" : \
                 self._handle_resilient_server_handshake,
             "resilient-server-signoff" : \
@@ -148,6 +150,10 @@ class ResilientServer(object):
             body = body[0]
 
         return message_format(ident=None, control=control, body=body)
+
+    def _handle_ping(self, message, _data):
+        log = logging.getLogger("_handle_ping")
+        log.debug("{message-id}".format(**message))
 
     def _handle_resilient_server_handshake(self, message, _data):
         log = logging.getLogger("_handle_resilient_server_handshake")

@@ -92,7 +92,7 @@ def _launch_ping_process(ping_process):
             "-m", str(_pull_socket_hwm), ]
 
     log.info("starting {0}".format(args))
-    return subprocess.Popen(args, stderr=subprocess.PIPE)
+    return subprocess.Popen(args)
 
 def _process_one_message(message, ping_process_dict, event_push_client):
     """

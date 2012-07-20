@@ -58,11 +58,12 @@ def terminate_subprocess(process):
     log = logging.getLogger("terminate_subprocess")
     if process.returncode is None:
         process.terminate()
-        process.wait()
+        _, stderr_data = process.communicate()
     else:
         log.warn("process is already terminated")
 
     if process.returncode != 0:
         log.error("process ({0}) {1}".format(process.returncode,
-                                             process.stderr.read()))
+                                             stderr_data))
+
 

@@ -19,6 +19,7 @@ import zmq
 
 from tools.standard_logging import _log_format_template
 from tools.process_util import set_signal_handler
+from tools.zeromq_util import is_interrupted_system_call
 
 class CommandLineError(Exception):
     pass
@@ -68,10 +69,61 @@ def _parse_command_line():
 
     return args
 
+def _process_one_ping(halt_event,
+                      args,
+                      zeromq_context,
+                      ping_message, 
+                      result_message, 
+                      req_socket, 
+                      poller,
+                      reporting_socket):
+
+    if req_socket is None:
+        req_socket = zeromq_context.socket(zmq.REQ)
+        req_socket.connect(args.ping_url)
+        result_message["socket-reconnection-number"] += 1
+        poller.register(req_socket, zmq.POLLIN | zmq.POLLERR)
+
+    result_message["check-number"] += 1
+    req_socket.send_json(ping_message)
+    result = poller.poll(timeout=(args.timeout * 1000))
+
+    if len(result) == 0:
+        result_message["result"] = "timeout"
+    else:
+        # we only expect one result here, 
+        for _, event_flags in result:
+            if event_flags & zmq.POLLERR:
+                result_message["result"] = "socket-error"
+            else:
+                # if the server we are pinging has been shut down
+                # we will block forever waiting to read from it
+                try:
+                    _ = req_socket.recv_json(zmq.NOBLOCK)
+                except zmq.ZMQError as instance:
+                    if instance.errno == zmq.EAGAIN and halt_event.is_set():
+                        result_message["result"] = "ok"
+                    else:
+                        result_message["result"] = "socket-error"
+                else:
+                    result_message["result"] = "ok"
+
+    if not halt_event.is_set():
+        reporting_socket.send_pyobj(result_message)
+
+        if result_message["result"] != "ok":
+            poller.unregister(req_socket)
+            req_socket.close()
+            req_socket = None
+
+    return req_socket
+
+
 def main():
     """
     main entry point
     """
+    return_code = 0
     args = _parse_command_line()
     halt_event = Event()
     set_signal_handler(halt_event)
@@ -97,42 +149,38 @@ def main():
     poller = zmq.Poller()
 
     while not halt_event.is_set():
-        if req_socket is None:
-            req_socket = zeromq_context.socket(zmq.REQ)
-            req_socket.connect(args.ping_url)
-            result_message["socket-reconnection-number"] += 1
-            poller.register(req_socket, zmq.POLLIN | zmq.POLLERR)
+        try:
+            req_socket = _process_one_ping(halt_event,
+                                           args,
+                                           zeromq_context,
+                                           ping_message, 
+                                           result_message, 
+                                           req_socket, 
+                                           poller,
+                                           reporting_socket)
+         
+        except zmq.ZMQError as zmq_error:
+            if is_interrupted_system_call(zmq_error) and halt_event.is_set():
+                pass
+            else:
+                logging.exception(str(zmq_error))
+                halt_event.set()
+                return_code = 1
 
-        result_message["check-number"] += 1
-        req_socket.send_json(ping_message)
-        result = poller.poll(timeout=(args.timeout * 1000))
+        except Exception as instance:
+            logging.exception(str(instance))
+            halt_event.set()
+            return_code = 1
 
-        if len(result) == 0:
-            result_message["result"] = "timeout"
         else:
-            # we only expect one result here, 
-            for _, event_flags in result:
-                if event_flags & zmq.POLLERR:
-                    result_message["result"] = "socket-error"
-                else:
-                    reply = req_socket.recv_json()
-                    result_message["result"] = "ok"
-
-        reporting_socket.send_pyobj(result_message)
-    
-        if result_message["result"] != "ok":
-            poller.unregister(req_socket)
-            req_socket.close()
-            req_socket = None
-
-        halt_event.wait(args.interval)
+            halt_event.wait(args.interval)
         
     if req_socket is not None:
         req_socket.close()
     reporting_socket.close()
     zeromq_context.term()
 
-    return 0
+    return return_code
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

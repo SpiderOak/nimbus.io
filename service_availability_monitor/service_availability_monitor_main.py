@@ -23,16 +23,11 @@ from tools.zeromq_util import is_interrupted_system_call, \
         ipc_socket_uri
 from tools.process_util import identify_program_dir, \
         set_signal_handler, \
-        poll_subprocess, \
-        terminate_subprocess
+        poll_subprocess
 from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_local_node_index = _node_names.index(_local_node_name)
-_handoff_server_addresses = \
-    os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
-_handoff_server_address = _handoff_server_addresses[_local_node_index]
 _log_path_template = "{0}/nimbusio_service_availability_monitor_{1}.log"
 _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _pull_socket_uri = ipc_socket_uri(_socket_dir, 
@@ -45,30 +40,26 @@ _reporting_interval = 60.0
 _ping_process_desc = namedtuple("PingProcessDesc", ["module_dir",
                                                     "file_name",
                                                     "service_name",
-                                                    "ping_uri",
-                                                    "process", 
-                                                    "reachable_state", ])
-_handoff_server_addresses = \
-    os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
+                                                    "ping_uris", ])
+
+_ping_process = namedtuple("PingProcess", ["service_name",
+                                           "node_name",
+                                           "process", 
+                                           "reachable_state", ])
 _ping_process_descs = [ 
     _ping_process_desc(module_dir="zmq_ping",
                        file_name="zmq_ping_main.py",
                        service_name="retrieve_source",
-                       ping_uri=os.environ["NIMBUSIO_DATA_READER_ADDRESS"],
-                       process=None,
-                       reachable_state=None),
+                       ping_uris=os.environ["NIMBUSIO_DATA_READER_ADDRESSES"]),
     _ping_process_desc(module_dir="zmq_ping",
                        file_name="zmq_ping_main.py",
                        service_name="data_writer",
-                       ping_uri=os.environ["NIMBUSIO_DATA_WRITER_ADDRESS"],
-                       process=None,
-                       reachable_state=None),
+                       ping_uris=os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"]),
     _ping_process_desc(module_dir="zmq_ping",
                        file_name="zmq_ping_main.py",
                        service_name="handoff_server",
-                       ping_uri=_handoff_server_address,
-                       process=None,
-                       reachable_state=None), ]
+                       ping_uris=\
+                           os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"]),]
 
 def _bind_pull_socket(zeromq_context):
     log = logging.getLogger("_bind_pull_socket")
@@ -81,18 +72,71 @@ def _bind_pull_socket(zeromq_context):
 
     return pull_socket
 
-def _launch_ping_process(ping_process):
+def _launch_ping_process(ping_process_desc, node_name, ping_uri):
     log = logging.getLogger("launch_ping_process")
-    module_dir = identify_program_dir(ping_process.module_dir)
-    module_path = os.path.join(module_dir, ping_process.file_name)
+    module_dir = identify_program_dir(ping_process_desc.module_dir)
+    module_path = os.path.join(module_dir, ping_process_desc.file_name)
     
     args = [sys.executable, module_path,
-            "-u", ping_process.ping_uri,
+            "-u", ping_uri,
             "-r", _pull_socket_uri,
             "-m", str(_pull_socket_hwm), ]
 
     log.info("starting {0}".format(args))
-    return subprocess.Popen(args)
+    process = subprocess.Popen(args, bufsize=4096, stderr=subprocess.PIPE)
+
+    return _ping_process(service_name=ping_process_desc.service_name,
+                         node_name=node_name,
+                         process=process,
+                         reachable_state=None)
+
+def _start_ping_processes(halt_event):
+    log = logging.getLogger("_start_ping_processes")
+    ping_process_dict = dict()
+    for ping_process_desc in _ping_process_descs:
+        ping_uris = ping_process_desc.ping_uris.split()
+        for node_name, ping_uri in zip(_node_names, ping_uris):
+            log.debug("launching {0} {1} {2}".format(
+                ping_process_desc.service_name, node_name, ping_uri))
+            ping_process_dict[ping_uri] = \
+                _launch_ping_process(ping_process_desc, node_name, ping_uri)
+
+            # don't slam all the subprocesses out in one lump
+            halt_event.wait(1.0)
+            if halt_event.is_set():
+                break
+        if halt_event.is_set():
+            break
+
+    return ping_process_dict
+
+def _terminate_ping_processes(ping_process_dict):
+    log = logging.getLogger("_terminate_ping_processes")
+    for ping_process in ping_process_dict.values():
+        log.debug("terminating {0} {1}".format(ping_process.service_name,
+                                               ping_process.node_name))
+
+        ping_process.process.poll()
+        if ping_process.process.returncode is None:
+            ping_process.process.terminate()
+
+    # if some of these processes are still running, kill them
+    for ping_process in ping_process_dict.values():
+        ping_process.process.poll()
+        if ping_process.process.returncode is None:
+            log.debug("killing {0} {1}".format(ping_process.service_name,
+                                               ping_process.node_name))
+
+            ping_process.process.kill()
+
+    for ping_process in ping_process_dict.values():
+        ping_process.process.poll()
+        if ping_process.process.returncode != 0:
+            _, stderr_data = ping_process.process.communicate()
+            if ping_process.process.returncode != 0:
+                log.error("process ({0}) {1}".format(
+                    ping_process.process.returncode, 
+                    stderr_data.decode("utf-8")))
 
 def _process_one_message(message, ping_process_dict, event_push_client):
     """
@@ -107,9 +151,11 @@ def _process_one_message(message, ping_process_dict, event_push_client):
     if reachable_state == ping_process.reachable_state:
         return
     
-    description = "{0} {1} reachable state changes from {2} to {3}".format(
+    description = \
+        "{0} ping {1} from {2} reachable state changes from {3} to {4}".format(
         ping_process.service_name,
-        message["result"],
+        ping_process.node_name,
+        _local_node_name,
         ping_process.reachable_state,
         reachable_state)
     log.info(description)
@@ -117,7 +163,8 @@ def _process_one_message(message, ping_process_dict, event_push_client):
     event_push_client.info("service-availability-state-change",
                            description,
                            service_name=ping_process.service_name, 
-                           node_name=_local_node_name,
+                           local_node_name=_local_node_name,
+                           target_node_name=ping_process.node_name,
                            check_number=message["check-number"], 
                            socket_reconnection_number=\
                                message["socket-reconnection-number"], 
@@ -152,15 +199,9 @@ def main():
     event_push_client.info("program-starts", 
                            "service availability monitor starts")
 
-    ping_process_dict = dict()
     message_count = 0
     try:
-        for ping_process_desc in _ping_process_descs:
-            ping_process = _launch_ping_process(ping_process_desc)
-            halt_event.wait(1.0)
-            poll_subprocess(ping_process)
-            ping_process_dict[ping_process_desc.ping_uri] = \
-                ping_process_desc._replace(process=ping_process)
+        ping_process_dict = _start_ping_processes(halt_event)
 
         while not halt_event.is_set():
 
@@ -179,7 +220,7 @@ def main():
         log.info("keyboard interrupt: terminating normally")
     except zmq.ZMQError as zmq_error:
         if is_interrupted_system_call(zmq_error) and halt_event.is_set():
-            log.info("program teminates normally with interrupted system call")
+            log.info("program terminating normally; interrupted system call")
         else:
             log.exception("zeromq error processing request")
             event_push_client.exception(unhandled_exception_topic,
@@ -193,13 +234,13 @@ def main():
                                     exctype=instance.__class__.__name__)
         return_value = 1
     else:
-        log.info("program teminates normally")
-    finally:
-        for ping_process in ping_process_dict.values():
-            terminate_subprocess(ping_process.process)
-        pull_socket.close()
-        event_push_client.close()
-        zeromq_context.term()
+        log.info("program teminating normally")
+
+    log.debug("terminating subprocesses")
+    _terminate_ping_processes(ping_process_dict)
+    pull_socket.close()
+    event_push_client.close()
+    zeromq_context.term()
 
     return return_value
 

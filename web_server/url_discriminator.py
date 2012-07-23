@@ -13,6 +13,7 @@ https://<collection name>.nimbus.io/data/<key>
 import re
 import os
 
+action_respond_to_ping = "respond-to-ping"
 action_list_collections = "list-collections"
 action_create_collection = "create-collection"
 action_delete_collection = "delete-collection"
@@ -33,6 +34,10 @@ action_list_upload_in_conjoined = "list-uploads-in-conjoined"
 
 _service_domain = os.environ.get("NIMBUS_IO_SERVICE_DOMAIN", "nimbus.io")
 _re_service_domain = _service_domain.replace(".", "\.")
+
+_ping_re = re.compile(
+    r"^http://.*/ping$"
+)
 
 _list_collections_re = re.compile(
     r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections$"
@@ -112,6 +117,7 @@ _list_upload_in_conjoined_re = re.compile(
 # ?action=delete, or ?action=meta so we need to check for those first
 _regex_by_method = {
     "GET"   : [
+        (_ping_re, action_respond_to_ping, ),
         (_list_collections_re, action_list_collections, ),
         (_space_usage_re, action_space_usage, ),
         (_list_versions_re, action_list_versions, ),

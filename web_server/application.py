@@ -73,6 +73,7 @@ from web_server.conjoined_manager import list_conjoined_archives, \
         finish_conjoined_archive, \
         list_upload_in_conjoined
 from web_server.url_discriminator import parse_url, \
+        action_respond_to_ping, \
         action_list_collections, \
         action_create_collection, \
         action_delete_collection, \
@@ -212,6 +213,7 @@ class Application(object):
 
 
         self._dispatch_table = {
+            action_respond_to_ping      : self._respond_to_ping,
             action_list_collections     : self._list_collections,
             action_create_collection    : self._create_collection,
             action_delete_collection    : self._delete_collection,
@@ -258,6 +260,11 @@ class Application(object):
                 exctype=instance.__class__.__name__
             )
             raise
+
+    def _respond_to_ping(self, _req, _match_object):
+        self._log.debug("_respond_to_ping")
+        response = Response(status=200, content_type=None)
+        return response
 
     def _list_collections(self, req, match_object):
         username = match_object.group("username")

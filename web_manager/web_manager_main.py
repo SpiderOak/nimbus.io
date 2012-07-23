@@ -16,6 +16,7 @@ from tools.database_connection import central_database_name, \
     central_database_user
 
 from web_manager.connection_pool_view import ConnectionPoolView
+from web_manager import ping_view
 from web_manager import list_collections_view
 from web_manager import create_collection_view
 from web_manager import delete_collection_view
@@ -36,7 +37,8 @@ _database_credentials = {
     "port"      : os.environ["NIMBUSIO_CENTRAL_DATABASE_PORT"],
 }
 
-_views = [list_collections_view, 
+_views = [ping_view,
+          list_collections_view, 
           create_collection_view,
           delete_collection_view, ]
 

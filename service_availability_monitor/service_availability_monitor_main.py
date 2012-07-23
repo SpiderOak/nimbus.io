@@ -59,7 +59,16 @@ _ping_process_descs = [
                        file_name="zmq_ping_main.py",
                        service_name="handoff_server",
                        ping_uris=\
-                           os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"]),]
+                           os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"]),
+    _ping_process_desc(module_dir="http_ping",
+                       file_name="http_ping_main.py",
+                       service_name="web_server",
+                       ping_uris=os.environ["NIMBUSIO_WEB_SERVER_ADDRESSES"]),
+    _ping_process_desc(module_dir="http_ping",
+                       file_name="http_ping_main.py",
+                       service_name="web_manager",
+                       ping_uris=os.environ["NIMBUSIO_WEB_MANAGER_ADDRESSES"]),
+]
 
 def _bind_pull_socket(zeromq_context):
     log = logging.getLogger("_bind_pull_socket")
@@ -152,12 +161,13 @@ def _process_one_message(message, ping_process_dict, event_push_client):
         return
     
     description = \
-        "{0} ping {1} from {2} reachable state changes from {3} to {4}".format(
+        "{0} ping {1} from {2} state changes from {3} to {4} --- {5}".format(
         ping_process.service_name,
         ping_process.node_name,
         _local_node_name,
         ping_process.reachable_state,
-        reachable_state)
+        reachable_state,
+        message["result"])
     log.info(description)
 
     event_push_client.info("service-availability-state-change",

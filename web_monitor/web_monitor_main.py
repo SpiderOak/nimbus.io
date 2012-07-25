@@ -47,6 +47,7 @@ import signal
 import sys
 
 import gevent
+import gevent.queue
 
 from gevent.monkey import patch_all
 patch_all(httplib=True)
@@ -54,6 +55,8 @@ patch_all(httplib=True)
 from gevent.event import Event
 
 from tools.standard_logging import initialize_logging
+
+from web_monitor.redis_sink import RedisSink
 
 _log_path = \
     "{0}/nimbusio_web_monitor.log".format(os.environ["NIMBUSIO_LOG_DIR"])
@@ -80,8 +83,15 @@ def main():
     gevent.signal(signal.SIGTERM, _handle_sigterm, halt_event)
     log.info("program starts")
 
+    redis_queue = gevent.queue.Queue()
+    redis_sink = RedisSink(halt_event, redis_queue)
+    redis_sink.link_exception(_unhandled_greenlet_exception)
+    redis_sink.start()
+
     while not halt_event.is_set():
         halt_event.wait(10)
+
+    redis_sink.join(timeout=3.0)
 
     log.info("program terminates return code {0}".format(return_code))
     return return_code

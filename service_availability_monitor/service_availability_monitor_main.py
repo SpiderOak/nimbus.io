@@ -66,8 +66,8 @@ _ping_process_descs = [
                        ping_uris=os.environ["NIMBUSIO_WEB_SERVER_ADDRESSES"]),
     _ping_process_desc(module_dir="http_ping",
                        file_name="http_ping_main.py",
-                       service_name="web_manager",
-                       ping_uris=os.environ["NIMBUSIO_WEB_MANAGER_ADDRESSES"]),
+                       service_name="web_collection_manager",
+                       ping_uris=os.environ["NIMBUSIO_WEB_COLLECTION_MANAGER_ADDRESSES"]),
 ]
 
 def _bind_pull_socket(zeromq_context):

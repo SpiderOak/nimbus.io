@@ -38,7 +38,6 @@ web_monitor_main.py
    result updates onto that queue.  No fancy connection pool needed.  
 
 """
-
 import json
 import logging
 import os
@@ -57,9 +56,11 @@ from gevent.event import Event
 from tools.standard_logging import initialize_logging
 
 from web_monitor.redis_sink import RedisSink
+from web_monitor.pinger import Pinger
 
 _log_path = \
     "{0}/nimbusio_web_monitor.log".format(os.environ["NIMBUSIO_LOG_DIR"])
+_polling_interval = 3.0
 
 def _handle_sigterm(halt_event):
     halt_event.set()
@@ -84,14 +85,40 @@ def main():
     log.info("program starts")
 
     redis_queue = gevent.queue.Queue()
-    redis_sink = RedisSink(halt_event, redis_queue)
-    redis_sink.link_exception(_unhandled_greenlet_exception)
-    redis_sink.start()
+    greenlets = list()
 
-    while not halt_event.is_set():
-        halt_event.wait(10)
+    try:
+        config_path = sys.argv[1]
+        log.info("reading config from '{0}'".format(config_path))
+        with open(config_path) as input_file:
+            config = json.load(input_file)
 
-    redis_sink.join(timeout=3.0)
+        redis_sink = RedisSink(halt_event, redis_queue)
+        redis_sink.link_exception(_unhandled_greenlet_exception)
+        redis_sink.start()
+
+        greenlets.append(redis_sink)
+
+        for config_entry in config:
+            pinger = Pinger(halt_event, 
+                            _polling_interval, 
+                            redis_queue, 
+                            config_entry)
+
+            pinger.link_exception(_unhandled_greenlet_exception)
+            pinger.start()
+
+            greenlets.append(pinger)
+
+    except Exception as instance:
+        log.exception(instance)
+        return_code = 1
+
+    # wait here while the pingers do their job
+    halt_event.wait()
+
+    for entry in greenlets:
+        entry.join(timeout=3.0)
 
     log.info("program terminates return code {0}".format(return_code))
     return return_code

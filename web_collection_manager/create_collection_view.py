@@ -11,8 +11,8 @@ import flask
 
 from tools.greenlet_database_util import GetConnection
 from tools.collection import valid_collection_name
-from web_manager.connection_pool_view import ConnectionPoolView
-from web_manager.authenticator import authenticate
+from web_collection_manager.connection_pool_view import ConnectionPoolView
+from web_collection_manager.authenticator import authenticate
 
 class CreateCollectionError(Exception):
     pass

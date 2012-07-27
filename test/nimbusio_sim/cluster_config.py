@@ -35,7 +35,7 @@ class ClusterConfig(object):
         args = self.config
         self.base_ports = dict(
             web_server =                args.baseport, 
-            web_manager =               1 * args.nodecount + args.baseport, 
+            web_collection_manager =    1 * args.nodecount + args.baseport, 
             writer =                    2 * args.nodecount + args.baseport,
             writer_anti_entropy =       3 * args.nodecount + args.baseport,
             reader =                    4 * args.nodecount + args.baseport,
@@ -166,10 +166,10 @@ class ClusterConfig(object):
                 str(self.web_server_ports[node_index]), ),
            ( "NIMBUSIO_WEB_SERVER_PIPELINE_ADDRESS",
                 self.web_server_pipeline_addresses[node_index], ),
-           ( "NIMBUSIO_WEB_MANAGER_HOST",
+           ( "NIMBUSIO_WEB_COLLECTION_MANAGER_HOST",
                 self.ip, ),
-           ( "NIMBUSIO_WEB_MANAGER_PORT",
-                str(self.web_manager_ports[node_index]), ),
+           ( "NIMBUSIO_WEB_COLLECTION_MANAGER_PORT",
+                str(self.web_collection_manager_ports[node_index]), ),
            ( "NIMBUSIO_DATA_READER_ADDRESS", 
                 self.data_reader_addresses[node_index], ),
            ( "NIMBUSIO_DATA_READER_ANTI_ENTROPY_ADDRESS", 
@@ -444,8 +444,8 @@ class ClusterConfig(object):
                 for n in range(self.nodecount)]
 
     @property
-    def web_manager_ports(self):
-        return [n + self.base_ports['web_manager']
+    def web_collection_manager_ports(self):
+        return [n + self.base_ports['web_collection_manager']
                 for n in range(self.nodecount)]
 
     @property
@@ -454,9 +454,9 @@ class ClusterConfig(object):
                  for p in self.web_server_ports]
 
     @property
-    def web_manager_urls(self):
+    def web_collection_manager_urls(self):
         return [ 'http://%s:%d/' % ( self.ip, p, ) 
-                 for p in self.web_manager_ports]
+                 for p in self.web_collection_manager_ports]
 
     @property
     def event_publisher_pull_addresses(self):

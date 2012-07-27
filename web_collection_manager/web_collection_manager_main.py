@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-web_manager.py
+web_collection_manager_main.py
 
-web manager
+web collection manager
 """
 import logging
 import os
@@ -15,17 +15,17 @@ from tools.standard_logging import initialize_logging
 from tools.database_connection import central_database_name, \
     central_database_user
 
-from web_manager.connection_pool_view import ConnectionPoolView
-from web_manager import ping_view
-from web_manager import list_collections_view
-from web_manager import create_collection_view
-from web_manager import delete_collection_view
+from web_collection_manager.connection_pool_view import ConnectionPoolView
+from web_collection_manager import ping_view
+from web_collection_manager import list_collections_view
+from web_collection_manager import create_collection_view
+from web_collection_manager import delete_collection_view
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_log_path = "{0}/nimbusio_web_manager_{1}.log".format(
+_log_path = "{0}/nimbusio_web_collection_manager_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
-_management_host = os.environ['NIMBUSIO_WEB_MANAGER_HOST']
-_management_port = int(os.environ['NIMBUSIO_WEB_MANAGER_PORT'])
+_management_host = os.environ['NIMBUSIO_WEB_COLLECTION_MANAGER_HOST']
+_management_port = int(os.environ['NIMBUSIO_WEB_COLLECTION_MANAGER_PORT'])
 
 _min_database_pool_connections = 1
 _max_database_pool_connections = 5
@@ -43,7 +43,7 @@ _views = [ping_view,
           delete_collection_view, ]
 
 from flask import Flask
-app = Flask("web_manager")
+app = Flask("web_collection_manager")
 
 if not app.debug:
     initialize_logging(_log_path)

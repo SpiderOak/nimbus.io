@@ -234,11 +234,11 @@ def start_web_server(node_name, environment, profile):
         args, stdout=wsgi_log_file, stderr=subprocess.STDOUT, env=environment
     )
 
-def start_web_manager(node_name, environment, profile):
-    log = logging.getLogger("start_web_manager_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"web_manager")
+def start_web_collection_manager(node_name, environment, profile):
+    log = logging.getLogger("start_web_collection_manager_%s" % (node_name, ))
+    server_dir = identify_program_dir(u"web_collection_manager")
     server_path = os.path.join(
-        server_dir, "web_manager_main.py"
+        server_dir, "web_collection_manager_main.py"
     )
 
     args = [

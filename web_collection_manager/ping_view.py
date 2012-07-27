@@ -9,7 +9,7 @@ import logging
 
 import flask
 
-from web_manager.connection_pool_view import ConnectionPoolView
+from web_collection_manager.connection_pool_view import ConnectionPoolView
 
 rules = ["/ping", ]
 endpoint = "ping"

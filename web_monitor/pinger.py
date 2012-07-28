@@ -5,6 +5,7 @@ pinger.py
 A Greenlet that sends a ping request to a specified url
 it reports the results in the redis queue
 """
+import httplib
 import logging
 import re
 import time
@@ -12,19 +13,7 @@ import time
 import gevent
 import gevent.greenlet
 import gevent.queue
-
-import requests
-from requests.exceptions import RequestException
-
-
-_method_dispatch_table = {
-    "get" : requests.get,
-    "post" : requests.get,
-    "put" : requests.put,
-    "head" : requests.head,
-    "delete" : requests.delete,
-    "options" : requests.options,
-}
+import gevent.httplib
 
 class Pinger(gevent.greenlet.Greenlet):
     """
@@ -41,15 +30,11 @@ class Pinger(gevent.greenlet.Greenlet):
                               str(config_entry["port"])])
         self._log = logging.getLogger("pinger_{0}".format(self._key))
 
-        path = config_entry["path"]
-        path = (path[1:] if path[0] == "/" else path)
-        self._url = "http://{0}:{1}/{2}".format(config_entry["address"],
-                                               config_entry["port"],
-                                               path)
+        self._path = config_entry["path"]
+        self._address = config_entry["address"]
+        self._port = int(config_entry["port"])
 
-        # if we've got a bad method, let's blow up here, before we start the
-        # greenlet
-        self._method = _method_dispatch_table[config_entry["method"]]
+        self._method = config_entry["method"].upper()
 
         self._host = config_entry["host"]
         self._expected_status = config_entry["expected-status"]
@@ -65,46 +50,57 @@ class Pinger(gevent.greenlet.Greenlet):
         self._log.info("joining")
         gevent.greenlet.Greenlet.join(self, timeout)
 
+    def _ping(self):
+        status = "ok"
+        response = None
+        connection = httplib.HTTPConnection(self._address, 
+                                            self._port)
+        with gevent.Timeout(self._timeout_seconds, False):
+
+            try:
+                connection.request(self._method, self._path)
+                response = connection.getresponse()
+                body = response.read()
+            except gevent.httplib.RequestFailed, instance:
+                status = "RequestFailed {0}".format(instance.message)
+            except Exception, instance:
+                self._log.exception("_ping {0}".format(type(instance)))
+                status = "{0} {1}".format(instance.__class__.__name__,
+                                          instance)
+        connection.close()
+
+        if status == "ok":
+            if response is None:
+                status = "timeout"
+            elif response.status != self._expected_status:
+                status = "status_code error: expected {0} got {1}".format(
+                        response.status, self._expected_status)
+            elif self._body_test.match(body) is None:
+                status = "unmatched body '{0}'".format(body)
+
+        if status != self._prev_status:
+            self._log.info("status changes from {0} to {1}".format(
+                self._prev_status, status))
+
+            status_dict = {
+                "reachable" : status == "ok",
+                "timestamp" : time.time()
+            }
+
+            self._redis_queue.put( (self._key, status_dict, ) )
+            self._prev_status = status
+
     def _run(self):
-        self._log.info("pinging {0} {1} every {2} seconds".format(
-            self._host, self._url, self._polling_interval)) 
+        self._log.info("pinging {0} {1}:{2} every {3} seconds".format(
+            self._host, self._address, self._port, self._polling_interval)) 
 
         self._log.debug("start halt_event loop")
         while not self._halt_event.is_set():
 
-            status = "ok"
-            response = None
-            with gevent.Timeout(self._timeout_seconds, False):
-                try:
-                    response = self._method(self._url)
-                except RequestException, instance:
-                    status = "request exception {0} {1}".format(
-                        instance.__class__.__name__, instance)
-                # request doesn't handle urllib3 errors
-                except Exception, instance:
-                    status = "exception {0} {1}".format(
-                        instance.__class__.__name__, instance)
-            
-            if status == "ok":
-                if response is None:
-                    status = "timeout"
-                elif response.status_code != self._expected_status:
-                    status = "status_code error: expected {0} got {1}".format(
-                            response.status_code, self._expected_status)
-                elif self._body_test.match(response.text) is None:
-                    status = "unmatched body {0}".format(response.text)
-
-            if status != self._prev_status:
-                self._log.info("status changes from {0} to {1}".format(
-                    self._prev_status, status))
-
-                status_dict = {
-                    "reachable" : status == "ok",
-                    "timestamp" : time.time()
-                }
-
-                self._redis_queue.put( (self._key, status_dict, ) )
-                self._prev_status = status
+            try:
+                self._ping()
+            except Exception, instance:
+                self._log.exception("_run {0}".format(type(instance)))
 
             self._halt_event.wait(self._polling_interval)
 

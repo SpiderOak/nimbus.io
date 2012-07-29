@@ -21,7 +21,7 @@ class PingView(ConnectionPoolView):
         log = logging.getLogger("PingView")
         log.debug("responding to ping")
 
-        return flask.Response(status=200)
+        return "ok"
 
 view_function = PingView.as_view(endpoint)
 

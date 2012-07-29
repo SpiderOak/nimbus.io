@@ -263,7 +263,8 @@ class Application(object):
 
     def _respond_to_ping(self, _req, _match_object):
         self._log.debug("_respond_to_ping")
-        response = Response(status=200, content_type=None)
+        response = Response(status=200, content_type="text/plain")
+        response.body_file.write("ok")
         return response
 
     def _list_collections(self, req, match_object):

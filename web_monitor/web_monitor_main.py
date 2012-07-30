@@ -61,6 +61,7 @@ from web_monitor.pinger import Pinger
 _log_path = \
     "{0}/nimbusio_web_monitor.log".format(os.environ["NIMBUSIO_LOG_DIR"])
 _polling_interval = 3.0
+_return_code = 0
 
 def _handle_sigterm(halt_event):
     halt_event.set()
@@ -72,11 +73,28 @@ def _unhandled_greenlet_exception(greenlet_object):
     except Exception:
         log.exception(str(greenlet_object))
 
+def _redis_exception_closure(halt_event):
+    global _return_code
+
+    def __redis_sink_exception_handler(greenlet_object):
+        global _return_code
+
+        log = logging.getLogger("__redis_sink_exception_handler")
+        try:
+            greenlet_object.get()
+        except Exception:
+            log.exception(str(greenlet_object))
+        _return_code = 1
+        halt_event.set()
+
+    return __redis_sink_exception_handler
+
 def main():
     """
     main processing module
     """
-    return_code = 0
+    global _return_code
+
     initialize_logging(_log_path)
     log = logging.getLogger("main")
 
@@ -94,7 +112,7 @@ def main():
             config = json.load(input_file)
 
         redis_sink = RedisSink(halt_event, redis_queue)
-        redis_sink.link_exception(_unhandled_greenlet_exception)
+        redis_sink.link_exception(_redis_exception_closure(halt_event))
         redis_sink.start()
 
         greenlets.append(redis_sink)
@@ -112,7 +130,7 @@ def main():
 
     except Exception as instance:
         log.exception(instance)
-        return_code = 1
+        _return_code = 1
 
     # wait here while the pingers do their job
     halt_event.wait()
@@ -120,8 +138,8 @@ def main():
     for entry in greenlets:
         entry.join(timeout=3.0)
 
-    log.info("program terminates return code {0}".format(return_code))
-    return return_code
+    log.info("program terminates return code {0}".format(_return_code))
+    return _return_code
 
 if __name__ == "__main__":
     sys.exit(main())

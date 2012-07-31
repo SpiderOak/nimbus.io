@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-A Greenlet to watch the web_server internals
+A Greenlet to watch the web_writer internal
 """
 import logging
 
@@ -13,11 +13,11 @@ class Watcher(Greenlet):
     """
     A Greenlet to watch web server internals
     """
-    def __init__(self, stats, reader_clients, event_push_client):
+    def __init__(self, stats, writer_clients, event_push_client):
         Greenlet.__init__(self)
         self._log = logging.getLogger(str(self))
         self._stats = stats
-        self._reader_clients = reader_clients
+        self._writer_clients = writer_clients
         self._event_push_client = event_push_client
         self._halt_event = Event()
 
@@ -26,16 +26,18 @@ class Watcher(Greenlet):
 
         while not self._halt_event.is_set():
 
-            reader_info = list()
-            for client in self._reader_clients:
-                reader_info.append(client.queue_size)
+            writer_info = list()
+            for client in self._writer_clients:
+                writer_info.append(client.queue_size)
 
-            self._log.info("retrieves: %(retrieves)s" % self._stats)
+            self._log.info(
+                "archives: %(archives)s;" % self._stats)
+
             self._event_push_client.info(
-                "web-server-stats",
-                "web server stats",
+                "web-writer-stats",
+                "web writer stats",
                 stats=self._stats,
-                reader=reader_info
+                writer=writer_info
             )
             self._halt_event.wait(_interval)
 

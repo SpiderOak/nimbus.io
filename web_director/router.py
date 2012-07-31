@@ -6,6 +6,7 @@ from collections import deque
 import gevent
 from gevent.coros import RLock as Lock
 from gevent.event import Event
+import httplib
 
 import psycopg2
 
@@ -22,6 +23,7 @@ COLLECTION_CACHE_SIZE = 500000
 
 NIMBUS_IO_SERVICE_DOMAIN = os.environ['NIMBUS_IO_SERVICE_DOMAIN']
 NIMBUSIO_WEB_SERVER_PORT = int(os.environ['NIMBUSIO_WEB_SERVER_PORT'])
+NIMBUSIO_WEB_WRITER_PORT = int(os.environ['NIMBUSIO_WEB_WRITER_PORT'])
 NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = \
     os.environ['NIMBUSIO_MANAGEMENT_API_REQUEST_DEST']
 
@@ -171,14 +173,17 @@ class Router(object):
         return info
 
     @staticmethod
-    def _reject(code, reason):
+    def _reject(code, reason=None):
         "return a go away response"
         log = logging.getLogger("reject")
-        response = "%d %s" % (code, reason, )
-        log.debug("reject:" + response)
-        return dict(close = response)
+        http_error_str = httplib.responses.get(code, "unknown")
+        log.debug("reject: %d %s %r" % (code, http_error_str, reason, ))
+        if reason is None:
+            reason = http_error_str
+        return { 'close': 'HTTP/1.0 %d %s\r\n\r\n%s' % ( 
+                  code, http_error_str, reason, ) }
 
-    def route(self, hostname):
+    def route(self, hostname, method, path, _query_string):
         """
         route a to a host in the appropriate cluster, using simple round-robin
         among the hosts in a cluster
@@ -187,8 +192,10 @@ class Router(object):
 
         self.init_complete.wait()
 
-        if not hostname.endswith(self.service_domain):
-            return self._reject(404, "Not found")
+        # TODO: be able to handle http requests from http 1.0 clients w/o a
+        # host header to at least the website, if nothing else.
+        if hostname is None or (not hostname.endswith(self.service_domain)):
+            return self._reject(httplib.NOT_FOUND)
 
         if hostname == self.service_domain:
             # this is not a request specific to any particular collection
@@ -200,21 +207,27 @@ class Router(object):
                 (target, ))
             return dict(remote = target)
 
+        # determine if the request is a read or write
+        if method in ('POST', 'DELETE', 'PUT', 'PATCH', ):
+            dest_port = NIMBUSIO_WEB_WRITER_PORT
+        elif method in ('HEAD', 'GET', ):
+            dest_port = NIMBUSIO_WEB_SERVER_PORT
+        else:
+            self._reject(httplib.BAD_REQUEST, "Unknown method")
 
         collection = self._parse_collection(hostname)
         if collection is None:
-            self._reject(404, "Collection not found")
+            self._reject(httplib.NOT_FOUND, "No such collection")
 
         hosts = self._hosts_for_collection(collection)
         if hosts:
-            # simple round robin rouding
             hosts.rotate(1)
             target = hosts[0]
-            log.debug("routing connection to %s to backend host %s" % 
-                (hostname, target, ))
+            log.debug("routing %s of %s:%s to %s:%d" % 
+                (method, hostname, path, target, dest_port))
             return dict(remote = "%s:%d" % (target, self.dest_port, ))
         elif hosts is None:
-            self._reject(404, "Collection not found")
+            self._reject(httplib.NOT_FOUND, "No such collection")
 
         # no hosts currently available (hosts is an empty list, presumably)
         gevent.sleep(RETRY_DELAY)

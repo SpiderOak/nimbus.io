@@ -97,7 +97,8 @@ class Router(object):
         self.conn = None
         self.dblock = Lock()
         self.service_domain = NIMBUS_IO_SERVICE_DOMAIN
-        self.dest_port = NIMBUSIO_WEB_SERVER_PORT
+        self.read_dest_port = NIMBUSIO_WEB_SERVER_PORT
+        self.write_dest_port = NIMBUSIO_WEB_WRITER_PORT
         self.known_clusters = dict()
         self.known_collections = LRUCache(COLLECTION_CACHE_SIZE) 
         self.management_api_request_dest_hosts = \
@@ -209,9 +210,9 @@ class Router(object):
 
         # determine if the request is a read or write
         if method in ('POST', 'DELETE', 'PUT', 'PATCH', ):
-            dest_port = NIMBUSIO_WEB_WRITER_PORT
+            dest_port = self.write_dest_port
         elif method in ('HEAD', 'GET', ):
-            dest_port = NIMBUSIO_WEB_SERVER_PORT
+            dest_port = self.read_dest_port
         else:
             self._reject(httplib.BAD_REQUEST, "Unknown method")
 
@@ -225,10 +226,10 @@ class Router(object):
             target = hosts[0]
             log.debug("routing %s of %s:%s to %s:%d" % 
                 (method, hostname, path, target, dest_port))
-            return dict(remote = "%s:%d" % (target, self.dest_port, ))
+            return dict(remote = "%s:%d" % (target, dest_port, ))
         elif hosts is None:
             self._reject(httplib.NOT_FOUND, "No such collection")
 
         # no hosts currently available (hosts is an empty list, presumably)
         gevent.sleep(RETRY_DELAY)
-        return self._reject(500, "Retry later")
+        return self._reject(httplib.SERVICE_UNAVAILABLE, "Retry later")

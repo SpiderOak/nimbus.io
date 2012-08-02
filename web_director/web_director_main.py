@@ -28,8 +28,10 @@ gevent_psycopg2.monkey_patch()
 import traceback
 import logging
 import os
+import re
 
-from http_parser.pyparser import HttpParser
+#from http_parser.pyparser import HttpParser
+from http_parser.parser import HttpParser
 
 from tools.standard_logging import initialize_logging
 
@@ -41,6 +43,7 @@ MAX_HEADER_LENGTH = 8192
 LOG_PATH = "%s/nimbusio_web_director.log" % (os.environ["NIMBUSIO_LOG_DIR"], )
 
 _ROUTER = None
+_HOST_PORT_REGEXP = re.compile("^(.*):(\d+)$")
 
 def proxy(data):
     """
@@ -72,10 +75,19 @@ def proxy(data):
         return None
 
     headers = parser.get_headers()
+
+    # the hostname may be in the form of hostname:port, in which case we want
+    # to discard the port, and route just on hostname
+    route_host = headers.get('HOST', None)
+    if route_host:
+        match = _HOST_PORT_REGEXP.match(route_host)
+        if match:
+            route_host = match.group(1)
+
     try:
         log.debug("Routing %r" % ( parser.get_url(), ))
         return _ROUTER.route(
-            headers.get('HOST', None),
+            route_host,
             parser.get_method(),
             parser.get_path(),
             parser.get_query_string())

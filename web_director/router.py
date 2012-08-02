@@ -103,6 +103,7 @@ class Router(object):
         self.known_collections = LRUCache(COLLECTION_CACHE_SIZE) 
         self.management_api_request_dest_hosts = \
             deque(NIMBUSIO_MANAGEMENT_API_REQUEST_DEST.strip().split())
+        self.request_counter = 0
 
     def init(self):
         #import logging
@@ -193,6 +194,12 @@ class Router(object):
 
         self.init_complete.wait()
 
+        self.request_counter += 1
+        request_num = self.request_counter
+
+        log.debug("request %d: host=%r, method=%r, path=%r, query=%r" % 
+            (request_num, hostname, method, path, _query_string, )) 
+
         # TODO: be able to handle http requests from http 1.0 clients w/o a
         # host header to at least the website, if nothing else.
         if hostname is None or (not hostname.endswith(self.service_domain)):
@@ -204,8 +211,8 @@ class Router(object):
             # in production, this might not matter.
             self.management_api_request_dest_hosts.rotate(1)
             target = self.management_api_request_dest_hosts[0]
-            log.debug("routing management request to backend host %s" %
-                (target, ))
+            log.debug("request %d to backend host %s" %
+                (request_num, target, ))
             return dict(remote = target)
 
         # determine if the request is a read or write
@@ -224,8 +231,8 @@ class Router(object):
         if hosts:
             hosts.rotate(1)
             target = hosts[0]
-            log.debug("routing %s of %s:%s to %s:%d" % 
-                (method, hostname, path, target, dest_port))
+            log.debug("request %d to backend host %s port %d" %
+                (request_num, target, dest_port, ))
             return dict(remote = "%s:%d" % (target, dest_port, ))
         elif hosts is None:
             self._reject(httplib.NOT_FOUND, "No such collection")

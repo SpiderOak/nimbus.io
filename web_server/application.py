@@ -28,8 +28,7 @@ from tools.data_definitions import create_timestamp, \
         segment_status_final
 
 from tools.collection import get_username_and_collection_id, \
-        get_collection_id, \
-        set_collection_versioning
+        get_collection_id
 from tools.zfec_segmenter import ZfecSegmenter
 
 from web_server.exceptions import SpaceAccountingServerDownError, \
@@ -44,7 +43,6 @@ from web_server.conjoined_manager import list_conjoined_archives, \
         list_upload_in_conjoined
 from web_server.url_discriminator import parse_url, \
         action_respond_to_ping, \
-        action_set_versioning, \
         action_list_versions, \
         action_space_usage, \
         action_list_keys, \
@@ -98,7 +96,6 @@ class Application(object):
 
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
-            action_set_versioning       : self._set_versioning,
             action_list_versions        : self._list_versions,
             action_space_usage          : self._collection_space_usage,
             action_list_keys            : self._list_keys,
@@ -142,33 +139,6 @@ class Application(object):
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
-
-    def _set_versioning(self, req, match_object):
-        collection_name = match_object.group("collection_name")
-        versioning = match_object.group("versioning").lower() == "true"
-
-        try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
-        except Exception, instance:
-            self._log.error("%s" % (instance, ))
-            raise exc.HTTPBadRequest()
-            
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
-            raise exc.HTTPUnauthorized()
-
-
-        set_collection_versioning(
-            self._central_connection, collection_name, versioning
-        )
-
-        return Response('OK')
 
     def _list_versions(self, req, match_object):
         collection_name = match_object.group("collection_name")

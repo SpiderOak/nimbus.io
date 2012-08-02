@@ -20,6 +20,7 @@ from web_collection_manager import ping_view
 from web_collection_manager import list_collections_view
 from web_collection_manager import create_collection_view
 from web_collection_manager import delete_collection_view
+from web_collection_manager import set_collection_attribute_view
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_web_collection_manager_{1}.log".format(
@@ -40,7 +41,8 @@ _database_credentials = {
 _views = [ping_view,
           list_collections_view, 
           create_collection_view,
-          delete_collection_view, ]
+          delete_collection_view, 
+          set_collection_attribute_view]
 
 from flask import Flask
 app = Flask("web_collection_manager")

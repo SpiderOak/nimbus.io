@@ -14,7 +14,6 @@ import re
 import os
 
 action_respond_to_ping = "respond-to-ping"
-action_set_versioning = "set-versioning"
 action_list_versions = "list-versions"
 action_space_usage = "space-usage"
 action_list_keys = "list-keys"
@@ -33,10 +32,6 @@ _ping_re = re.compile(
 
 _list_versions_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/\?versions(\&.*)?$"
-)
-
-_set_versioning_re = re.compile(
-    r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/\?versioning=(?P<versioning>(True|true|false|False))$"
 )
 
 _space_usage_re = re.compile(
@@ -80,13 +75,9 @@ _regex_by_method = {
         (_list_conjoined_re, action_list_conjoined, ),
         (_list_upload_in_conjoined_re, action_list_upload_in_conjoined, ),
     ],
-    "POST"  : [
-    ],
-    "PUT"   : [
-        (_set_versioning_re, action_set_versioning, ),
-    ],
-    "DELETE"  : [
-    ],
+    "POST"  : [ ],
+    "PUT"   : [ ],
+    "DELETE": [ ],
     "HEAD"  : [
         (_head_key_re, action_head_key, ),
     ],

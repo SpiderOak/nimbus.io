@@ -11,7 +11,7 @@ from  gevent.greenlet import Greenlet
 import  gevent.pool
 
 from tools.data_definitions import create_priority
-from web_server.exceptions import ConjoinedFailedError
+from web_writer.exceptions import ConjoinedFailedError
 
 
 _conjoined_timeout = 60.0 * 5.0
@@ -74,6 +74,68 @@ def list_conjoined_archives(
     conjoined_list = [_conjoined_list_entry._make(x) for x in result]
     
     return truncated, conjoined_list
+
+def start_conjoined_archive(
+    data_writers, unified_id, collection_id, key, timestamp
+):
+    """
+    start a new conjoined archive
+    """
+    log = logging.getLogger("start_conjoined_archive")
+
+    message = {
+        "message-type"              : "start-conjoined-archive",
+        "unified-id"                : unified_id,
+        "collection-id"             : collection_id,
+        "key"                       : key,
+        "timestamp-repr"            : repr(timestamp)
+    }
+
+    error_tag = ",".join([str(collection_id), key, str(unified_id), ])
+    log.info(error_tag)
+    _send_message_receive_reply(data_writers, message, error_tag)
+
+def abort_conjoined_archive(
+    data_writers, collection_id, key, unified_id, timestamp
+):
+    """
+    mark a conjoined archive as aborted
+    """
+    log = logging.getLogger("abort_conjoined_archive")
+
+    message = {
+        "message-type"              : "abort-conjoined-archive",
+        "collection-id"             : collection_id,
+        "key"                       : key,
+        "unified-id"                : unified_id,
+        "timestamp-repr"            : repr(timestamp)
+    }
+
+    error_tag = ",".join(
+        [str(collection_id), key, str(unified_id), ]
+    )
+    log.info(error_tag)
+    _send_message_receive_reply(data_writers, message, error_tag)
+
+def finish_conjoined_archive(
+    data_writers, collection_id, key, unified_id, timestamp
+):
+    """
+    finish a conjoined archive
+    """
+    log = logging.getLogger("finish_conjoined_archive")
+
+    message = {
+        "message-type"              : "finish-conjoined-archive",
+        "collection-id"             : collection_id,
+        "key"                       : key,
+        "unified-id"                : unified_id,
+        "timestamp-repr"            : repr(timestamp)
+    }
+
+    error_tag = ",".join([str(collection_id), key, str(unified_id), ])
+    log.info(error_tag)
+    _send_message_receive_reply(data_writers, message, error_tag)
 
 def list_upload_in_conjoined(connection, conjoined_identifier):
     """

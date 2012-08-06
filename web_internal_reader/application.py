@@ -12,10 +12,8 @@ retrieve:
 
 
 """
-from base64 import b64encode
 import logging
 import os
-import json
 from itertools import chain
 import re
 import urllib
@@ -26,10 +24,8 @@ from webob import exc
 from webob import Response
 
 from tools.data_definitions import create_timestamp, \
-        segment_status_final
+        block_size
 
-from tools.collection import get_username_and_collection_id, \
-        get_collection_id
 from tools.zfec_segmenter import ZfecSegmenter
 
 from web_internal_reader.exceptions import RetrieveFailedError
@@ -47,7 +43,7 @@ _min_segments = 8
 _max_segments = 10
 
 _retrieve_retry_interval = 120
-_range_re = re.compile("^bytes=(?P<lower-bound>\d+)-(?P<upper-bound>\d+)$"
+_range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d+)$")
 
 def _fix_timestamp(timestamp):
     return (None if timestamp is None else repr(timestamp))
@@ -55,19 +51,19 @@ def _fix_timestamp(timestamp):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
-def _parse_range_header(range_header)
+def _parse_range_header(range_header):
     """
     parse a header of the form Range: bytes=500-999
     """
     log = logging.getLogger("_parse_range_header")
-    match_object = range_re.match(range_header)
-    if match_object is NULL:
+    match_object = _range_re.match(range_header)
+    if match_object is None:
         error_message = "unparsable range header '{0}'".format(range_header)
         log.error(error_message)
         raise exc.HTTPServiceUnavailable(error_message)
 
-    lower_bound = int(match_object.group("lower-bound"))
-    upper_bound = int(match_object.group("upper-bound"))
+    lower_bound = int(match_object.group("lower_bound"))
+    upper_bound = int(match_object.group("upper_bound"))
 
     if lower_bound > upper_bound:
         error_message = "invalid range header '{0}'".format(range_header)
@@ -140,14 +136,28 @@ class Application(object):
         return response
 
     def _retrieve_key(self, req, match_object):
-        unified_id = int(match_object.group("unified-id"))
-        conjoined_part = int(match_object.group("conjoined-part"))
+        unified_id = int(match_object.group("unified_id"))
+        conjoined_part = int(match_object.group("conjoined_part"))
+        collection_id = int(match_object.group("collection_id"))
+        try:
+            key = urllib.unquote_plus(match_object.group("key"))
+            key = key.decode("utf-8")
+        except Exception, instance:
+            raise exc.HTTPServiceUnavailable(str(instance))
 
         slice_offset = 0
         slice_size = None
         if "range" in req.headers:
             slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
+
+        assert slice_offset % block_size == 0, slice_offset
+        block_offset = slice_offset / block_size
+        if slice_size is None:
+            block_count = None
+        else:
+            assert slice_size % block_size == 0, slice_size
+            block_count = slice_size / block_size
 
         connected_data_readers = _connected_clients(self.data_readers)
 
@@ -158,12 +168,11 @@ class Application(object):
 
         # TODO: retrieve from memcache, using unified_id and conjoined_part
 
-        description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
+        description = "retrieve: (%s) key=%r unified_id=%r-%r %r:%r" % (
+            collection_id,
             key,
-            version_id,
+            unified_id,
+            conjoined_part,
             slice_offset,
             slice_size
         )
@@ -175,11 +184,12 @@ class Application(object):
         retriever = Retriever(
             self._node_local_connection,
             self.data_readers,
-            collection_entry.collection_id,
+            collection_id,
             key,
-            version_id,
-            slice_offset,
-            slice_size,
+            unified_id,
+            conjoined_part,
+            block_offset,
+            block_count,
             _min_segments
         )
 
@@ -206,25 +216,22 @@ class Application(object):
                     segment_numbers = segments.keys()
                     encoded_segments = list()
                     zfec_padding_size = None
+
                     for segment_number in segment_numbers:
                         encoded_segment, zfec_padding_size = \
                                 segments[segment_number]
                         encoded_segments.append(encoded_segment)
+
                     data_list = segmenter.decode(
                         encoded_segments,
                         segment_numbers,
                         zfec_padding_size
                     )
-                    if sent == 0:
-                        data_list[0] = \
-                            data_list[0][retriever.offset_into_first_block:]
-                    if retriever.residue_from_last_block != 0:
-                        data_list[-1] = \
-                            data_list[-1][:-retriever.residue_from_last_block]
 
                     for data in data_list:
                         yield data
                         sent += len(data)
+
             except RetrieveFailedError, instance:
                 self._event_push_client.warn(
                     "retrieve-failed",
@@ -242,7 +249,7 @@ class Application(object):
             self._stats["retrieves"] -= 1
 
             self.accounting_client.retrieved(
-                collection_entry.collection_id,
+                collection_id,
                 create_timestamp(),
                 sent
             )

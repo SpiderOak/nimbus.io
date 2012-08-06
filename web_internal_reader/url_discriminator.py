@@ -16,9 +16,11 @@ _ping_re = re.compile(
     r"^http://.*/ping$"
 )
 
-_retrieve_key_re = re.compile(
-    r"^http(s?)://(?P<unified-id>\d+)/(?p<conjoined-part>\d+)$"
-)
+_retrieve_key_re = re.compile(r"""^http(s?)://
+                              (?P<unified_id>\d+)/
+                              (?P<conjoined_part>\d+)
+                              \?collection_id=(?P<collection_id>\d+)
+                              \&key=(?P<key>\S+)$""", re.VERBOSE)
 
 _regex_by_method = {
     "GET"   : [

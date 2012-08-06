@@ -1,0 +1,2 @@
+class RetrieveFailedError(Exception):
+    pass

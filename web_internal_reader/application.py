@@ -16,7 +16,6 @@ import logging
 import os
 from itertools import chain
 import re
-import urllib
 import time
 
 from webob.dec import wsgify
@@ -135,15 +134,18 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
+    def _get_params_from_memcache(self, unified_id, conjoined_part):
+        return None
+
+    def _get_params_from_database(self, unified_id, conjoined_part):
+        return self._node_local_connection.fetch_one("""
+            select collection_id, key from nimbusio_node.segment
+            where unified_id = %s and conjoined_part = %s,
+            limit 1""", [unified_id, conjoined_part, ])
+
     def _retrieve_key(self, req, match_object):
         unified_id = int(match_object.group("unified_id"))
         conjoined_part = int(match_object.group("conjoined_part"))
-        collection_id = int(match_object.group("collection_id"))
-        try:
-            key = urllib.unquote_plus(match_object.group("key"))
-            key = key.decode("utf-8")
-        except Exception, instance:
-            raise exc.HTTPServiceUnavailable(str(instance))
 
         slice_offset = 0
         slice_size = None
@@ -151,6 +153,7 @@ class Application(object):
             slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
 
+        # TODO: deal with offset and size not on block boundary
         assert slice_offset % block_size == 0, slice_offset
         block_offset = slice_offset / block_size
         if slice_size is None:
@@ -166,7 +169,15 @@ class Application(object):
                 len(connected_data_readers),
             ))
 
-        # TODO: retrieve from memcache, using unified_id and conjoined_part
+        result = self._get_params_from_memcache(unified_id, conjoined_part)
+        if result is None:
+            result = self._get_params_from_database(unified_id, conjoined_part)
+        if result is None:
+            error_message = "unknown unified-id {0} {1}".format(unified_id,
+                                                                conjoined_part)
+            self._log.error(error_message)
+            raise exc.HTTPServiceUnavailable(error_message)
+        collection_id, key = result
 
         description = "retrieve: (%s) key=%r unified_id=%r-%r %r:%r" % (
             collection_id,

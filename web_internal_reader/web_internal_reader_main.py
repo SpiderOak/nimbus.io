@@ -21,7 +21,6 @@ gevent_zeromq.monkey_patch()
 import logging
 import os
 import os.path
-import pickle
 import signal
 import sys
 
@@ -69,7 +68,6 @@ _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _stats = {
     "retrieves"   : 0,
 }
-_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
@@ -79,7 +77,6 @@ def _signal_handler_closure(halt_event):
 class WebInternalReader(object):
     def __init__(self):
         self._log = logging.getLogger("WebInternalReader")
-        authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
         self._cluster_row = get_cluster_row(self._central_connection)
@@ -155,12 +152,6 @@ class WebInternalReader(object):
             self._event_push_client
         )
 
-        id_translator_keys_path = os.environ.get(
-            "NIMBUS_IO_ID_TRANSLATION_KEYS", 
-            os.path.join(_repository_path, "id_translator_keys.pkl"))
-        with open(id_translator_keys_path, "r") as input_file:
-            id_translator_keys = pickle.load(input_file)
-
         self.application = Application(
             self._central_connection,
             self._node_local_connection,
@@ -171,7 +162,7 @@ class WebInternalReader(object):
             _stats
         )
         self.wsgi_server = WSGIServer(
-            (_web_reader_host, _web_reader_port), 
+            (_web_internal_reader_host, _web_internal_reader_port), 
             application=self.application,
             backlog=_wsgi_backlog
         )

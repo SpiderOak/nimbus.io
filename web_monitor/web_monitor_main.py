@@ -16,9 +16,6 @@ web_monitor_main.py
  - implements the timeouts via gevent.Timeout.  
    http://www.gevent.org/gevent.html#timeouts
 
- - uses Python "requests" library for the HTTP work.  
-   http://docs.python-requests.org/en/latest/index.html
-
  - Must call gevent monkey patch like this, 
    because it does not patch httplib by default: 
    gevent.monkey.patch_all(httplib=True)

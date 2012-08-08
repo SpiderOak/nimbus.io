@@ -18,7 +18,7 @@ class CommandLineError(Exception):
     pass
 
 _web_internal_reader_host = \
-    os.environ.get("NIMBUSIO_WEB_INTERNAL_READER_HOST", "localhost")
+    os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
 _web_internal_reader_port = \
     int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
 

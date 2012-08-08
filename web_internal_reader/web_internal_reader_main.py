@@ -46,7 +46,7 @@ from web_server.space_accounting_client import SpaceAccountingClient
 from web_internal_reader.watcher import Watcher
 from web_server.central_database_util import get_cluster_row
 
-_log_path = "%s/nimbusio_internal_reader_%s.log" % (
+_log_path = "%s/nimbusio_web_internal_reader_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
@@ -61,7 +61,7 @@ _space_accounting_server_address = \
 _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 _web_internal_reader_host = \
-    os.environ.get("NIMBUSIO_WEB_INTERNAL_READER_HOST", "localhost")
+    os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
 _web_internal_reader_port = \
     int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))

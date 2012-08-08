@@ -138,9 +138,9 @@ class Application(object):
         return None
 
     def _get_params_from_database(self, unified_id, conjoined_part):
-        return self._node_local_connection.fetch_one("""
+        return self._node_local_connection.fetch_one_row("""
             select collection_id, key from nimbusio_node.segment
-            where unified_id = %s and conjoined_part = %s,
+            where unified_id = %s and conjoined_part = %s
             limit 1""", [unified_id, conjoined_part, ])
 
     def _retrieve_key(self, req, match_object):

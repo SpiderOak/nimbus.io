@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-destroyer.py
+archiver.py
 
-A class that performs a destroy query on all data writers.
+A class that sends data segments to data writers.
 """
 import logging
 import os
@@ -12,78 +12,128 @@ import gevent
 import gevent.pool
 import gevent.queue
 
-from web_server.exceptions import DestroyFailedError
-
-from web_server.local_database_util import current_status_of_key, \
-        current_status_of_version
+from web_writer.exceptions import ArchiveFailedError
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _task_timeout = 60.0
 
-class Destroyer(object):
-    """Performs a destroy query on all data writers."""
+class Archiver(object):
+    """Sends data segments to data writers."""
     def __init__(
         self, 
-        node_local_connection,
-        data_writers,
+        data_writers, 
         collection_id, 
-        key,
-        unified_id_to_delete,
+        key, 
         unified_id,
-        timestamp        
+        timestamp, 
+        meta_dict, 
+        conjoined_part
     ):
-        self._log = logging.getLogger('Destroyer')
-        self._log.info('collection_id=%d, key=%r' % (collection_id, key, ))
-        self._node_local_connection = node_local_connection
+        self._log = logging.getLogger(
+            'Archiver(collection_id=%d, key=%r)' % (collection_id, key))
         self._data_writers = data_writers
         self._collection_id = collection_id
         self._key = key
-        self._unified_id_to_delete = unified_id_to_delete
         self._unified_id = unified_id
-        self.timestamp = timestamp
+        self._timestamp = timestamp
+        self._meta_dict = meta_dict
+        self._conjoined_part = conjoined_part
+        self._sequence_num = 0
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
 
     def _done_link(self, task):
         self._finished_tasks.put(task, block=True)
 
-    def destroy(self, timeout=None):
-        # TODO: find a non-blocking way to do this
-        if self._unified_id_to_delete is None:
-            status_rows = current_status_of_key(
-                self._node_local_connection, 
-                self._collection_id,
-                self._key
-            )
-        else:
-            status_rows = current_status_of_version(
-                self._node_local_connection, 
-                self._unified_id_to_delete
-            )
-
-        if len(status_rows) == 0:
-            raise DestroyFailedError("no status rows found")
-
-        file_size = sum([row.seg_file_size for row in status_rows])
-
-        for i, data_writer in enumerate(self._data_writers):
+    def archive_slice(self, segments, zfec_padding_size, timeout=None):
+        for i, segment in enumerate(segments):
             segment_num = i + 1
-            task = self._pending.spawn(
-                data_writer.destroy_key,
-                self._collection_id,
-                self._key,
-                self._unified_id_to_delete,
-                self._unified_id,
-                self.timestamp,
-                segment_num,
-                _local_node_name,
-            )
+            data_writer = self._data_writers[i]
+            if self._sequence_num == 0:
+                task = self._pending.spawn(
+                    data_writer.archive_key_start,
+                    self._collection_id,
+                    self._key,
+                    self._unified_id,
+                    self._timestamp,
+                    self._conjoined_part,
+                    segment_num,
+                    zfec_padding_size,
+                    self._sequence_num,
+                    segment,
+                    _local_node_name
+                )
+            else:
+                task = self._pending.spawn(
+                    data_writer.archive_key_next,
+                    self._collection_id,
+                    self._key,
+                    self._unified_id,
+                    self._timestamp,
+                    self._conjoined_part,
+                    segment_num,
+                    zfec_padding_size,
+                    self._sequence_num,
+                    segment,
+                    _local_node_name
+                )
             task.link(self._done_link)
             task.node_name = data_writer.node_name
 
         self._process_node_replies(timeout)
+        self._sequence_num += 1
 
-        return file_size
+    def archive_final(
+        self, 
+        file_size, 
+        file_adler32, 
+        file_md5,
+        segments, 
+        zfec_padding_size,
+        timeout=None
+    ):
+        for i, segment in enumerate(segments):
+            segment_num = i + 1
+            data_writer = self._data_writers[i]
+            if self._sequence_num == 0:
+                task = self._pending.spawn(
+                    data_writer.archive_key_entire,
+                    self._collection_id,
+                    self._key,
+                    self._unified_id,
+                    self._timestamp,
+                    self._conjoined_part,
+                    self._meta_dict,
+                    segment_num,
+                    zfec_padding_size,
+                    file_size,
+                    file_adler32,
+                    file_md5,
+                    segment,
+                    _local_node_name
+                )
+            else:
+                task = self._pending.spawn(
+                    data_writer.archive_key_final,
+                    self._collection_id,
+                    self._key,
+                    self._unified_id,
+                    self._timestamp,
+                    self._conjoined_part,
+                    self._meta_dict,
+                    segment_num,
+                    zfec_padding_size,
+                    self._sequence_num,
+                    file_size,
+                    file_adler32,
+                    file_md5,
+                    segment,
+                    _local_node_name
+                )
+            task.link(self._done_link)
+            task.node_name = data_writer.node_name
+
+        self._process_node_replies(timeout)
 
     def _process_node_replies(self, timeout):
         finished_count = 0
@@ -105,7 +155,7 @@ class Destroyer(object):
                             self._unified_id
                         )
                     self._log.error(error_message)
-                    raise DestroyFailedError(error_message)
+                    raise ArchiveFailedError(error_message)
 
                 self._log.warn("timeout waiting for completed task")
                 continue
@@ -164,5 +214,5 @@ class Destroyer(object):
                     self._unified_id
                 )
             self._log.error(error_message)
-            raise DestroyFailedError(error_message)
+            raise ArchiveFailedError(error_message)
 

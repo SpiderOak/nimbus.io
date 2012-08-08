@@ -31,7 +31,7 @@ class DataWriterHandoffClient(object):
     This class mimics a single GreenletResilientClient. 
     
     When doing an archive, if the clients for a node is disconnected, 
-    the web_server replaces it with a DataWriterHandoffClient which
+    the web_writer replaces it with a DataWriterHandoffClient which
     replicates the archive messages to two other nodes.
 
     These replicated messages will later be handed off to the destination node

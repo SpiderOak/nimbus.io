@@ -4,16 +4,12 @@ Receives HTTP requests and distributes data to backend processes using zeromq
 
 The web server uses gevent instead of the time queue event loop, so it has
 some special modules to use gevent.
-
-The web server has a GreenletResilientClient for each data reader.
-
-The resilient clients use Deliverator to deliver their messages.
 """
-from gevent import monkey
+from gevent.monkey import patch_all
 # you must use the latest gevent and have c-ares installed for this to work
 # with /etc/hosts 
 # hg clone https://bitbucket.org/denis/gevent
-monkey.patch_all()
+patch_all(httplib=True)
 
 import gevent_zeromq
 gevent_zeromq.monkey_patch()
@@ -32,33 +28,21 @@ import gevent
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
-from tools.greenlet_resilient_client import GreenletResilientClient
-from tools.greenlet_pull_server import GreenletPULLServer
-from tools.deliverator import Deliverator
 from tools.greenlet_push_client import GreenletPUSHClient
 from tools.database_connection import get_central_connection, \
         get_node_local_connection
 from tools.event_push_client import EventPushClient
 from tools.id_translator import InternalIDTranslator
-from tools.data_definitions import create_timestamp
 
 from web_server.application import Application
-from web_server.data_reader import DataReader
 from web_server.space_accounting_client import SpaceAccountingClient
 from web_server.sql_authenticator import SqlAuthenticator
-from web_server.watcher import Watcher
 from web_server.central_database_util import get_cluster_row
 
 _log_path = "%s/nimbusio_web_server_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
-_node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_client_tag = "web-server-%s" % (_local_node_name, )
-_web_server_pipeline_address = \
-    os.environ["NIMBUSIO_WEB_SERVER_PIPELINE_ADDRESS"]
-_data_reader_addresses = \
-    os.environ["NIMBUSIO_DATA_READER_ADDRESSES"].split()
 _space_accounting_server_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS"]
 _space_accounting_pipeline_address = \
@@ -66,9 +50,6 @@ _space_accounting_pipeline_address = \
 _web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
 _web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
-_stats = {
-    "retrieves"   : 0,
-}
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _signal_handler_closure(halt_event):
@@ -84,35 +65,8 @@ class WebServer(object):
         self._central_connection = get_central_connection()
         self._cluster_row = get_cluster_row(self._central_connection)
         self._node_local_connection = get_node_local_connection()
-        self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()
-
-        self._pull_server = GreenletPULLServer(
-            self._zeromq_context, 
-            _web_server_pipeline_address,
-            self._deliverator
-        )
-        self._pull_server.link_exception(self._unhandled_greenlet_exception)
-
-        self._data_reader_clients = list()
-        self._data_readers = list()
-        for node_name, address in zip(_node_names, _data_reader_addresses):
-            resilient_client = GreenletResilientClient(
-                self._zeromq_context, 
-                node_name,
-                address,
-                _client_tag,
-                _web_server_pipeline_address,
-                self._deliverator,
-                connect_messages=[]
-            )
-            resilient_client.link_exception(self._unhandled_greenlet_exception)
-            self._data_reader_clients.append(resilient_client)
-            data_reader = DataReader(
-                node_name, resilient_client
-            )
-            self._data_readers.append(data_reader)
 
         self._space_accounting_dealer_client = GreenletDealerClient(
             self._zeromq_context, 
@@ -140,21 +94,6 @@ class WebServer(object):
             "web-server"
         )
 
-        # message sent to data readers telling them the server
-        # is (re)starting, thereby invalidating any archvies or retrieved
-        # that are in progress for this node
-        timestamp = create_timestamp()
-        self._event_push_client.info("web-server-start",
-                                     "web server (re)start",
-                                     timestamp_repr=repr(timestamp),
-                                     source_node_name=_local_node_name)
-
-        self._watcher = Watcher(
-            _stats, 
-            self._data_reader_clients,
-            self._event_push_client
-        )
-
         id_translator_keys_path = os.environ.get(
             "NIMBUS_IO_ID_TRANSLATION_KEYS", 
             os.path.join(_repository_path, "id_translator_keys.pkl"))
@@ -172,11 +111,9 @@ class WebServer(object):
             self._node_local_connection,
             self._cluster_row,
             self._id_translator,
-            self._data_readers,
             authenticator,
             self._accounting_client,
-            self._event_push_client,
-            _stats
+            self._event_push_client
         )
         self.wsgi_server = WSGIServer(
             (_web_server_host, _web_server_port), 
@@ -186,10 +123,6 @@ class WebServer(object):
 
     def start(self):
         self._space_accounting_dealer_client.start()
-        self._pull_server.start()
-        self._watcher.start()
-        for client in self._data_reader_clients:
-            client.start()
         self.wsgi_server.start()
 
     def stop(self):
@@ -198,16 +131,8 @@ class WebServer(object):
         self._accounting_client.close()
         self._log.debug("killing greenlets")
         self._space_accounting_dealer_client.kill()
-        self._pull_server.kill()
-        self._watcher.kill()
-        for client in self._data_reader_clients:
-            client.kill()
         self._log.debug("joining greenlets")
         self._space_accounting_dealer_client.join()
-        self._pull_server.join()
-        self._watcher.join()
-        for client in self._data_reader_clients:
-            client.join()
         self._log.debug("closing zmq")
         self._event_push_client.close()
         self._zeromq_context.term()

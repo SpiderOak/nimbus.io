@@ -22,11 +22,9 @@ from web_collection_manager import create_collection_view
 from web_collection_manager import delete_collection_view
 from web_collection_manager import set_collection_attribute_view
 
-_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_log_path = "{0}/nimbusio_web_collection_manager_{1}.log".format(
-    os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
-_management_host = os.environ['NIMBUSIO_WEB_COLLECTION_MANAGER_HOST']
-_management_port = int(os.environ['NIMBUSIO_WEB_COLLECTION_MANAGER_PORT'])
+_log_path = os.path.join(os.environ["NIMBUSIO_LOG_DIR"], 
+                         "nimbusio_web_collection_manager.log")
+
 
 _min_database_pool_connections = 1
 _max_database_pool_connections = 5
@@ -63,12 +61,17 @@ for view in _views:
                          endpoint=view.endpoint, 
                          view_func=view.view_function)
 
-if __name__ == "__main__":
+def run_in_dev_mode():
+    management_host = os.environ['NIMBUSIO_WEB_COLLECTION_MANAGER_HOST']
+    management_port = int(os.environ['NIMBUSIO_WEB_COLLECTION_MANAGER_PORT'])
     log = logging.getLogger("__main__")
     log.info("program starts")
 
-    log.info("app.run(host={0}, port={1})".format(_management_host, 
-        str(_management_port)))
+    log.info("app.run(host={0}, port={1})".format(management_host, 
+        str(management_port)))
     app.run(host=_management_host, port=_management_port)
+
+if __name__ == "__main__":
+    run_in_dev_mode()
     
 

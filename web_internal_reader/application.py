@@ -27,6 +27,8 @@ from tools.data_definitions import create_timestamp, \
 
 from tools.zfec_segmenter import ZfecSegmenter
 
+from web_server.retriever import memcached_key_template
+
 from web_internal_reader.exceptions import RetrieveFailedError
 from web_internal_reader.retriever import Retriever
 from web_internal_reader.url_discriminator import parse_url, \
@@ -77,6 +79,7 @@ def _parse_range_header(range_header):
 class Application(object):
     def __init__(
         self, 
+        memcached_client,
         central_connection,
         node_local_connection,
         cluster_row,
@@ -86,6 +89,7 @@ class Application(object):
         stats
     ):
         self._log = logging.getLogger("Application")
+        self._memcached_client = memcached_client
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
         self._cluster_row = cluster_row
@@ -134,8 +138,12 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
-    def _get_params_from_memcache(self, unified_id, conjoined_part):
-        return None
+    def _get_params_from_memcache(self, unified_id, _conjoined_part):
+        """retrieve a cached tuple of (collection_id, key, )"""
+        memcached_key = \
+            memcached_key_template.format(unified_id)
+        self._log.debug("uncaching {0}".format(memcached_key))
+        return self._memcached_client.get(memcached_key)
 
     def _get_params_from_database(self, unified_id, conjoined_part):
         return self._node_local_connection.fetch_one_row("""
@@ -171,6 +179,8 @@ class Application(object):
 
         result = self._get_params_from_memcache(unified_id, conjoined_part)
         if result is None:
+            self._log.warn("cache miss unified-id {0} {1}".format(
+                unified_id, conjoined_part))
             result = self._get_params_from_database(unified_id, conjoined_part)
         if result is None:
             error_message = "unknown unified-id {0} {1}".format(unified_id,

@@ -26,6 +26,8 @@ from gevent.event import Event
 from gevent_zeromq import zmq
 import gevent
 
+import memcache
+
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
 from tools.greenlet_push_client import GreenletPUSHClient
@@ -51,6 +53,8 @@ _web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
 _web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+_memcached_nodes = ["{0}:{1}".format(_local_node_name, _memcached_port), ] 
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
@@ -60,6 +64,7 @@ def _signal_handler_closure(halt_event):
 class WebServer(object):
     def __init__(self):
         self._log = logging.getLogger("WebServer")
+        memcached_client = memcache.Client(_memcached_nodes)
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
@@ -107,6 +112,7 @@ class WebServer(object):
             id_translator_keys["hmac_size"]
         )
         self.application = Application(
+            memcached_client,
             self._central_connection,
             self._node_local_connection,
             self._cluster_row,

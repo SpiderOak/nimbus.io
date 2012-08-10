@@ -78,6 +78,7 @@ def _parse_range_header(range_header):
 class Application(object):
     def __init__(
         self, 
+        memcached_client,
         central_connection,
         node_local_connection,
         cluster_row,
@@ -87,6 +88,7 @@ class Application(object):
         event_push_client
     ):
         self._log = logging.getLogger("Application")
+        self._memcached_client = memcached_client
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
         self._cluster_row = cluster_row
@@ -352,6 +354,7 @@ class Application(object):
         self._log.info(description)
 
         retriever = Retriever(
+            self._memcached_client,
             self._node_local_connection,
             collection_entry.collection_id,
             key,
@@ -360,7 +363,16 @@ class Application(object):
             slice_size
         )
 
-        retrieve_generator = retriever.retrieve(_reply_timeout)
+        try:
+            retrieve_generator = retriever.retrieve(_reply_timeout)
+        except Exception, instance:
+            self._log.exception("retrieve_failed {0}".format(instance))
+            self._event_push_client.exception(
+                "unhandled_exception in retrieve",
+                str(instance),
+                exctype=instance.__class__.__name__
+            )
+            raise
 
         response = Response()
         response.app_iter = retrieve_generator

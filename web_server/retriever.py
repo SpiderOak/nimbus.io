@@ -18,6 +18,8 @@ from web_server.exceptions import RetrieveFailedError
 from web_server.local_database_util import current_status_of_key, \
     current_status_of_version
 
+memcached_key_template = "internal_read_{0}"
+
 _web_internal_reader_host = \
     os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
 _web_internal_reader_port = \
@@ -27,6 +29,7 @@ class Retriever(object):
     """retrieves data from web_internal_reader"""
     def __init__(
         self, 
+        memcached_client,
         node_local_connection,
         collection_id, 
         key, 
@@ -42,6 +45,7 @@ class Retriever(object):
             slice_offset,
             slice_size,
         ))
+        self._memcached_client = memcached_client
         self._node_local_connection = node_local_connection
         self._collection_id = collection_id
         self._key = key
@@ -97,6 +101,16 @@ class Retriever(object):
             raise RetrieveFailedError("key is not available %s %s" % (
                 self._collection_id, self._key,
             ))
+
+        try:
+            memcached_key = \
+                memcached_key_template.format(status_rows[0].seg_unified_id)
+            self._log.debug("caching {0}".format(memcached_key))
+            self._memcached_client.set(memcached_key, 
+                                       (self._collection_id, self._key, ))
+        except Exception, instance:
+            self._log.exception(instance)
+            raise
 
         # 2012-03-14 dougfort -- note that we are dealing wiht two different
         # types of 'size': 'raw' and 'zfec encoded'. 
@@ -198,10 +212,11 @@ class Retriever(object):
     def retrieve(self, timeout):
 
         http_connection = \
-            gevent.httplib.HTTPConnection(_web_internal_reader_host, \
+            gevent.httplib.HTTPConnection(_web_internal_reader_host,
                                           _web_internal_reader_port, 
                                           timeout=timeout)
 
+        self._log.debug("start status_rows loop")
         for entry in self._generate_status_rows():
 
             status_row, block_offset, block_count = entry
@@ -216,15 +231,12 @@ class Retriever(object):
                             str(status_row.seg_conjoined_part)])
             self._log.info("requesting {0}".format(uri))
 
-            try:
-                response = http_connection.request("GET", uri)
-            except Exception, instance:
-                self._log.exception(str(uri))
-                raise
-
-            # TODO: might be a good idea to buffer here
-            yield response.read()
-            response.close()
+            http_connection.request("GET", uri)
+            response = http_connection.getresponse()
+            if response is not None:
+                # TODO: might be a good idea to buffer here
+                yield response.read()
+                response.close()
 
         http_connection.close()
 

@@ -46,7 +46,7 @@ _reply_timeout = float(
 
 _retrieve_retry_interval = 120
 _content_type_json = "application/json"
-_range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d+)$")
+_range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _fix_timestamp(timestamp):
     return (None if timestamp is None else repr(timestamp))
@@ -63,15 +63,21 @@ def _parse_range_header(range_header):
         raise exc.HTTPServiceUnavailable(error_message)
 
     lower_bound = int(match_object.group("lower_bound"))
-    upper_bound = int(match_object.group("upper_bound"))
+    if len (match_object.group("upper_bound")) == 0:
+        upper_bound = None
+    else:
+        upper_bound = int(match_object.group("upper_bound"))
 
-    if lower_bound > upper_bound:
+    if upper_bound is not None and lower_bound > upper_bound:
         error_message = "invalid range header '{0}'".format(range_header)
         log.error(error_message)
         raise exc.HTTPServiceUnavailable(error_message)
 
     slice_offset = lower_bound
-    slice_size = upper_bound - lower_bound + 1
+    if upper_bound is None:
+        slice_size = None
+    else:
+        slice_size = upper_bound - lower_bound + 1
 
     return (slice_offset, slice_size, )
 

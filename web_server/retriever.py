@@ -64,14 +64,6 @@ class Retriever(object):
         # we find the last block
         self._last_block_in_slice_retrieved = False
 
-    @property
-    def offset_into_first_block(self):
-        return self._offset_into_first_block
-
-    @property
-    def residue_from_last_block(self):
-        return self._residue_from_last_block
-
     def _generate_status_rows(self):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
@@ -217,6 +209,7 @@ class Retriever(object):
                                           timeout=timeout)
 
         self._log.debug("start status_rows loop")
+        first_block = True
         for entry in self._generate_status_rows():
 
             status_row, block_offset, block_count = entry
@@ -231,12 +224,32 @@ class Retriever(object):
                             str(status_row.seg_conjoined_part)])
             self._log.info("requesting {0}".format(uri))
 
-            http_connection.request("GET", uri)
+            headers = {}
+            if block_offset > 0 and block_count is None:
+                headers["range"] = \
+                    "bytes={0}-".format(block_offset * block_size)
+            elif block_count is not None:
+                headers["range"] = \
+                    "bytes={0}-{1}".format(block_offset * block_size, 
+                                           block_count * block_size)
+                
+            http_connection.request("GET", uri, headers=headers)
             response = http_connection.getresponse()
             if response is not None:
+
                 # TODO: might be a good idea to buffer here
-                yield response.read()
+                data = response.read()
                 response.close()
+
+                if first_block:
+                    data = data[self._offset_into_first_block:]
+
+                if self._last_block_in_slice_retrieved:
+                    data = data[:-self._residue_from_last_block]
+
+                yield data
+
+            first_block = False
 
         http_connection.close()
 

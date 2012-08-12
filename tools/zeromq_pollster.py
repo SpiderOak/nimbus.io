@@ -9,6 +9,8 @@ import time
 
 import zmq
 
+from tools.zeromq_util import is_interrupted_system_call 
+
 class ZeroMQPollsterError(Exception):
     pass
 
@@ -90,9 +92,18 @@ class ZeroMQPollster(object):
         next_tasks = list()
         next_interval = time.time() + self._polling_interval
 
-        for active_socket, event_flags in self._poller.poll(
-            timeout=self._poll_timeout
-        ):
+        try:
+            result_list = self._poller.poll(timeout=self._poll_timeout)
+        except zmq.ZMQError, zmq_error:
+            if is_interrupted_system_call(zmq_error) and halt_event.is_set():
+                self._log.info("Interrupted with halt_event set: exiting")
+                for active_socket in self._active_sockets.keys():
+                    self._poller.unregister(active_socket)
+                self._active_sockets.clear()
+                return
+            raise
+
+        for active_socket, event_flags in result_list:
             if active_socket not in self._active_sockets:
                 self._log.warn("Ignoring unknown active_socket %s" % (
                     active_socket,

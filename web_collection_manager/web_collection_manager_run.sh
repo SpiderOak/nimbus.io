@@ -11,4 +11,4 @@ cd $PROG_DIR
 exec $GUNICORN \
     -b unix:${NIMBUSIO_SOCKET_DIR:?}/${NIMBUS_IO_RUN_PROGRAM_NAME:?}.sock \
     -w ${NIMBUSIO_WEBSERVICE_NUM_WORKERS:-4} \
-    ${NIMBUS_IO_RUN_PROGRAM_NAME:?}_main:app
+    ${NIMBUS_IO_RUN_PROGRAM_NAME:?}_main:app 2>&1

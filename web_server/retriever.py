@@ -188,11 +188,16 @@ class Retriever(object):
                            "cumulative_slice_size={1}, "
                            "current_file_offset={2}, "
                            "block_offset={3}, "
-                           "block_count={4}".format(cumulative_file_size,
-                                                    cumulative_slice_size,
-                                                    current_file_offset,
-                                                    block_offset,
-                                                    block_count))
+                           "block_count={4}, "
+                           "offset_into_first_block={5}, " 
+                           "residue_from_loast_block={6}".format(
+                           cumulative_file_size,
+                           cumulative_slice_size,
+                           current_file_offset,
+                           block_offset,
+                           block_count,
+                           self._offset_into_first_block,
+                           self._residue_from_last_block))
                     
             yield status_row, block_offset, block_count
 
@@ -231,7 +236,7 @@ class Retriever(object):
             elif block_count is not None:
                 headers["range"] = \
                     "bytes={0}-{1}".format(block_offset * block_size, 
-                                           block_count * block_size)
+                                           block_count * block_size - 1)
                 
             http_connection.request("GET", uri, headers=headers)
             response = http_connection.getresponse()

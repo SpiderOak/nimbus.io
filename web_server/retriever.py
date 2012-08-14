@@ -4,11 +4,11 @@ retriever.py
 
 A class that retrieves data from data readers.
 """
+import httplib
 import logging
 import os
 
 import gevent
-import gevent.httplib
 
 from tools.data_definitions import block_size, \
         segment_status_final, \
@@ -209,9 +209,9 @@ class Retriever(object):
     def retrieve(self, timeout):
 
         http_connection = \
-            gevent.httplib.HTTPConnection(_web_internal_reader_host,
-                                          _web_internal_reader_port, 
-                                          timeout=timeout)
+            httplib.HTTPConnection(_web_internal_reader_host,
+                                   _web_internal_reader_port, 
+                                   timeout=timeout)
 
         self._log.debug("start status_rows loop")
         first_block = True
@@ -229,30 +229,45 @@ class Retriever(object):
                             str(status_row.seg_conjoined_part)])
             self._log.info("requesting {0}".format(uri))
 
+            expected_status = httplib.OK
             headers = {}
             if block_offset > 0 and block_count is None:
                 headers["range"] = \
                     "bytes={0}-".format(block_offset * block_size)
+                expected_status = httplib.PARTIAL_CONTENT
             elif block_count is not None:
                 headers["range"] = \
-                    "bytes={0}-{1}".format(block_offset * block_size, 
-                                           block_count * block_size - 1)
+                    "bytes={0}-{1}".format(
+                        block_offset * block_size, 
+                        (block_offset + block_count) * block_size - 1)
+                expected_status = httplib.PARTIAL_CONTENT
                 
             http_connection.request("GET", uri, headers=headers)
             response = http_connection.getresponse()
-            if response is not None:
+            if response is None:
+                raise RetrieveFailedError("GET returns None {0}".format(uri))
 
-                # TODO: might be a good idea to buffer here
-                data = response.read()
-                response.close()
+            if response.status != expected_status:
+                message = "Invalid http status {0} {1} for {2}".format(
+                    response.status, response.reason, uri
+                    )
+                self._log.error(message)
+                raise RetrieveFailedError(message)
+                
+            # TODO: might be a good idea to buffer here
+            data = response.read()
+            response.close()
+            self._log.debug("retrieved {0} bytes".format(len(data)))
 
-                if first_block:
-                    data = data[self._offset_into_first_block:]
+            if first_block:
+                data = data[self._offset_into_first_block:]
 
-                if self._last_block_in_slice_retrieved:
-                    data = data[:-self._residue_from_last_block]
+            if self._last_block_in_slice_retrieved and \
+                self._residue_from_last_block > 0:
+                data = data[:-self._residue_from_last_block]
 
-                yield data
+            self._log.debug("yielding {0} bytes".format(len(data)))
+            yield data
 
             first_block = False
 

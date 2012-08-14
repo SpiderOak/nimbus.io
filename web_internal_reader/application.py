@@ -167,7 +167,6 @@ class Application(object):
             slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
 
-        # TODO: deal with offset and size not on block boundary
         assert slice_offset % block_size == 0, slice_offset
         block_offset = slice_offset / block_size
         if slice_size is None:
@@ -290,6 +289,7 @@ class Application(object):
             )
 
         response = Response()
+        response.status_int = (206 if "range" in req.headers else 200)
         response.app_iter = app_iterator(response)
         return  response
 

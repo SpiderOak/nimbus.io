@@ -381,6 +381,7 @@ class Application(object):
             raise
 
         response = Response()
+        response.status_int = (206 if "range" in req.headers else 200)
         response.app_iter = retrieve_generator
         return  response
 

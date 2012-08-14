@@ -242,10 +242,24 @@ class Retriever(object):
                         (block_offset + block_count) * block_size - 1)
                 expected_status = httplib.PARTIAL_CONTENT
                 
-            http_connection.request("GET", uri, headers=headers)
-            response = http_connection.getresponse()
+            try:
+                http_connection.request("GET", uri, headers=headers)
+                response = http_connection.getresponse()
+            except gevent.httplib.RequestFailed, instance:
+                message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
+                    instance.args, instance.message)
+                self._log.exception(message)
+                raise RetrieveFailedError(message)
+            except Exception, instance:
+                message = "GET failed {0} '{1}'".format(
+                    instance.__class__.__name__, instance)
+                self._log.exception(message)
+                raise RetrieveFailedError(message)
+                
             if response is None:
-                raise RetrieveFailedError("GET returns None {0}".format(uri))
+                message = "GET returns None {0}".format(uri)
+                self._log.error(message)
+                raise RetrieveFailedError(message)
 
             if response.status != expected_status:
                 message = "Invalid http status {0} {1} for {2}".format(

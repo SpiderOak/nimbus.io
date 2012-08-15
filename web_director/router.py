@@ -191,7 +191,7 @@ class Router(object):
         self.known_clusters[cluster_id] = info 
         return info
 
-    def check_availability(self, hosts, dest_port):
+    def check_availability(self, hosts, dest_port, _resolve_cache=dict()):
         "return set of hosts we think are available" 
         log = logging.getLogger("check_availability")
 
@@ -199,8 +199,14 @@ class Router(object):
         if not hosts:
             return available
 
-        redis_keys = [ REDIS_WEB_MONITOR_HASHKEY_FORMAT % (h, dest_port, )
-                       for h in hosts ]
+        addresses = []
+        for host in hosts:
+            if not host in _resolve_cache:
+                _resolve_cache[host] = socket.gethostbyname(host)
+            addresses.append(_resolve_cache[host])
+
+        redis_keys = [ REDIS_WEB_MONITOR_HASHKEY_FORMAT % (a, dest_port, )
+                       for a in addresses ]
 
         try:
             redis_values = self.redis.hmget(REDIS_WEB_MONITOR_HASH_NAME,
@@ -215,10 +221,17 @@ class Router(object):
         unknown = []
         for idx, val in enumerate(redis_values):
             if val is None:
-                unknown.append(redis_keys[idx])
-            status = json.loads(val)
-            if status["reachable"]:
-                available.add(hosts[idx])
+                unknown.append((hosts[idx], redis_keys[idx], ))
+                continue
+            try:
+                status = json.loads(val)
+            except Exception, err:
+                log.warn("cannot decode %s %s %s %r" % ( 
+                    REDIS_WEB_MONITOR_HASH_NAME, hosts[idx], 
+                    redis_keys[idx], val, ))
+            else:
+                if status["reachable"]:
+                    available.add(hosts[idx])
             
         if unknown:
             log.warn("no availability info in redis for hkeys: %s %r" % 

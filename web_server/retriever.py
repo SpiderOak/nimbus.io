@@ -7,6 +7,7 @@ A class that retrieves data from data readers.
 import httplib
 import logging
 import os
+import urllib2
 
 import gevent
 
@@ -52,6 +53,7 @@ class Retriever(object):
         self._version_id = version_id
         self._slice_offset = slice_offset
         self._slice_size = slice_size
+
         self._sequence = 0
                 
         # the amount to chop off the front of the first block
@@ -208,11 +210,6 @@ class Retriever(object):
 
     def retrieve(self, timeout):
 
-        http_connection = \
-            httplib.HTTPConnection(_web_internal_reader_host,
-                                   _web_internal_reader_port, 
-                                   timeout=timeout)
-
         self._log.debug("start status_rows loop")
         first_block = True
         for entry in self._generate_status_rows():
@@ -224,9 +221,11 @@ class Retriever(object):
                 status_row.seg_conjoined_part
             ))
 
-            uri = "/".join(["data", 
-                            str(status_row.seg_unified_id), 
-                            str(status_row.seg_conjoined_part)])
+            uri = "http://{0}:{1}/data/{2}/{3}".format(
+                _web_internal_reader_host,
+                _web_internal_reader_port,
+                status_row.seg_unified_id, 
+                status_row.seg_conjoined_part)
             self._log.info("requesting {0}".format(uri))
 
             expected_status = httplib.OK
@@ -242,9 +241,18 @@ class Retriever(object):
                         (block_offset + block_count) * block_size - 1)
                 expected_status = httplib.PARTIAL_CONTENT
                 
+            request = urllib2.Request(uri, headers=headers)
             try:
-                http_connection.request("GET", uri, headers=headers)
-                response = http_connection.getresponse()
+                response = urllib2.urlopen(request, timeout=timeout)
+            except urllib2.HTTPError, instance:
+                if instance.code == httplib.PARTIAL_CONTENT and \
+                expected_status ==  httplib.PARTIAL_CONTENT:
+                    response = instance
+                else:
+                    message = "urllib2.HTTPError '{0}' '{1}'".format(
+                        instance.code, instance)
+                    self._log.exception(message)
+                    raise RetrieveFailedError(message)
             except gevent.httplib.RequestFailed, instance:
                 message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
                     instance.args, instance.message)
@@ -261,13 +269,6 @@ class Retriever(object):
                 self._log.error(message)
                 raise RetrieveFailedError(message)
 
-            if response.status != expected_status:
-                message = "Invalid http status {0} {1} for {2}".format(
-                    response.status, response.reason, uri
-                    )
-                self._log.error(message)
-                raise RetrieveFailedError(message)
-                
             # TODO: might be a good idea to buffer here
             data = response.read()
             response.close()
@@ -284,6 +285,4 @@ class Retriever(object):
             yield data
 
             first_block = False
-
-        http_connection.close()
 

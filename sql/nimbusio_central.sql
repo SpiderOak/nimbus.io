@@ -39,7 +39,10 @@ create sequence customer_key_id_seq;
 create table customer_key(
    id int4 unique not null default nextval('nimbusio_central.customer_key_id_seq'),  
    customer_id int4 not null references nimbusio_central.customer(id),
-   key text unique not null
+   key text unique not null,
+   description text,
+   creation_time timestamp not null default now(),
+   deletion_time timestamp
 );
 
 create index customer_key_customer_idx on nimbusio_central.customer_key("customer_id");

@@ -9,7 +9,7 @@ from gevent.monkey import patch_all
 # you must use the latest gevent and have c-ares installed for this to work
 # with /etc/hosts 
 # hg clone https://bitbucket.org/denis/gevent
-patch_all(httplib=True)
+patch_all()
 
 import gevent_zeromq
 gevent_zeromq.monkey_patch()

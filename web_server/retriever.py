@@ -54,6 +54,8 @@ class Retriever(object):
         self._slice_offset = slice_offset
         self._slice_size = slice_size
 
+        self.total_file_size = 0
+
         self._sequence = 0
                 
         # the amount to chop off the front of the first block
@@ -66,7 +68,8 @@ class Retriever(object):
         # we find the last block
         self._last_block_in_slice_retrieved = False
 
-    def _generate_status_rows(self):
+
+    def _fetch_status_rows_from_database(self):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
         if self._version_id is None:
@@ -96,15 +99,24 @@ class Retriever(object):
                 self._collection_id, self._key,
             ))
 
+        return status_rows
+
+    def _cache_status_rows_in_memcached(self, status_rows):
+        memcached_key = \
+            memcached_key_template.format(status_rows[0].seg_unified_id)
+        cache_dict = {
+            "collection-id" : self._collection_id,
+            "key"           : self._key,
+            "status-rows"   : status_rows,
+        }
+        self._log.debug("caching {0}".format(memcached_key))
         try:
-            memcached_key = \
-                memcached_key_template.format(status_rows[0].seg_unified_id)
-            self._log.debug("caching {0}".format(memcached_key))
-            self._memcached_client.set(memcached_key, 
-                                       (self._collection_id, self._key, ))
+            self._memcached_client.set(memcached_key, cache_dict)
         except Exception, instance:
             self._log.exception(instance)
             raise
+
+    def _generate_status_rows(self, status_rows):
 
         # 2012-03-14 dougfort -- note that we are dealing wiht two different
         # types of 'size': 'raw' and 'zfec encoded'. 
@@ -209,10 +221,20 @@ class Retriever(object):
             block_count = None
 
     def retrieve(self, timeout):
+        try:
+            return self._retrieve(timeout)
+        except Exception, instance:
+            self._log.exception(instance)
+            raise RetrieveFailedError(instance)
+
+    def _retrieve(self, timeout):
+        status_rows = self._fetch_status_rows_from_database()
+        self._cache_status_rows_in_memcached(status_rows)
+        self.total_file_size = sum([r.seg_file_size for r in status_rows])
 
         self._log.debug("start status_rows loop")
         first_block = True
-        for entry in self._generate_status_rows():
+        for entry in self._generate_status_rows(status_rows):
 
             status_row, block_offset, block_count = entry
 
@@ -228,8 +250,10 @@ class Retriever(object):
                 status_row.seg_conjoined_part)
             self._log.info("requesting {0}".format(uri))
 
+            headers = {"x-nimbus-io-expected-content-length" : \
+                            str(status_row.seg_file_size)}
+
             expected_status = httplib.OK
-            headers = {}
             if block_offset > 0 and block_count is None:
                 headers["range"] = \
                     "bytes={0}-".format(block_offset * block_size)
@@ -242,6 +266,7 @@ class Retriever(object):
                 expected_status = httplib.PARTIAL_CONTENT
                 
             request = urllib2.Request(uri, headers=headers)
+            self._log.debug("start request")
             try:
                 response = urllib2.urlopen(request, timeout=timeout)
             except urllib2.HTTPError, instance:

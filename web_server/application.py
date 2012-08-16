@@ -5,6 +5,7 @@ The nimbus.io wsgi application
 
 """
 from base64 import b64encode
+import httplib
 import logging
 import os
 import re
@@ -79,7 +80,14 @@ def _parse_range_header(range_header):
     else:
         slice_size = upper_bound - lower_bound + 1
 
-    return (slice_offset, slice_size, )
+    return (lower_bound, upper_bound, slice_offset, slice_size, )
+
+def _content_range_header(lower_bound, upper_bound, total_file_size):
+    if upper_bound is None:
+        upper_bound = total_file_size - 1
+    return "bytes {0}-{1}/{2}".format(lower_bound, 
+                                      upper_bound, 
+                                      total_file_size)
 
 class Application(object):
     def __init__(
@@ -342,10 +350,12 @@ class Application(object):
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
+        lower_bound = 0
+        upper_bound = None
         slice_offset = 0
         slice_size = None
         if "range" in req.headers:
-            slice_offset, slice_size = \
+            lower_bound, upper_bound, slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
 
         description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
@@ -380,8 +390,19 @@ class Application(object):
             )
             raise
 
-        response = Response()
-        response.status_int = (206 if "range" in req.headers else 200)
+        response_headers = dict()
+        if "range" in req.headers:
+            status_int = httplib.PARTIAL_CONTENT
+            response_headers["Content-Range"] = \
+                _content_range_header(lower_bound,
+                                      upper_bound,
+                                      retriever.total_file_size)
+            response_headers["Content-Length"] = slice_size
+        else:
+            status_int = httplib.OK
+
+        response = Response(headers=response_headers)
+        response.status_int = status_int
         response.app_iter = retrieve_generator
         return  response
 

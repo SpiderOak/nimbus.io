@@ -12,6 +12,7 @@ retrieve:
 
 
 """
+import httplib
 import logging
 import os
 from itertools import chain
@@ -80,7 +81,14 @@ def _parse_range_header(range_header):
     else:
         slice_size = upper_bound - lower_bound + 1
 
-    return (slice_offset, slice_size, )
+    return (lower_bound, upper_bound, slice_offset, slice_size, )
+
+def _content_range_header(lower_bound, upper_bound, total_file_size):
+    if upper_bound is None:
+        upper_bound = total_file_size - 1
+    return "bytes {0}-{1}/{2}".format(lower_bound, 
+                                      upper_bound, 
+                                      total_file_size)
 
 class Application(object):
     def __init__(
@@ -149,7 +157,12 @@ class Application(object):
         memcached_key = \
             memcached_key_template.format(unified_id)
         self._log.debug("uncaching {0}".format(memcached_key))
-        return self._memcached_client.get(memcached_key)
+        cached_dict = self._memcached_client.get(memcached_key)
+
+        if cached_dict is None:
+            return None
+
+        return (cached_dict["collection-id"], cached_dict["key"], )
 
     def _get_params_from_database(self, unified_id, conjoined_part):
         return self._node_local_connection.fetch_one_row("""
@@ -161,11 +174,20 @@ class Application(object):
         unified_id = int(match_object.group("unified_id"))
         conjoined_part = int(match_object.group("conjoined_part"))
 
+        lower_bound = 0
+        upper_bound = None
         slice_offset = 0
         slice_size = None
+        total_file_size = None
         if "range" in req.headers:
-            slice_offset, slice_size = \
+            lower_bound, upper_bound, slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
+            if not "x-nimbus-io-expected-content-length" in req.headers:
+                message = "expected x-nimbus-io-expected-content-length header" 
+                self._log.error(message)
+                raise exc.HTTPBadRequest(message)
+            total_file_size = \
+                int(req.headers["x-nimbus-io-expected-content-length"])
 
         assert slice_offset % block_size == 0, slice_offset
         block_offset = slice_offset / block_size
@@ -288,8 +310,19 @@ class Application(object):
                 bytes_retrieved=sent
             )
 
-        response = Response()
-        response.status_int = (206 if "range" in req.headers else 200)
+        response_headers = dict()
+        if "range" in req.headers:
+            status_int = httplib.PARTIAL_CONTENT
+            response_headers["Content-Range"] = \
+                _content_range_header(lower_bound,
+                                      upper_bound,
+                                      total_file_size)
+            response_headers["Content-Length"] = slice_size
+        else:
+            status_int = httplib.OK
+
+        response = Response(headers=response_headers)
+        response.status_int = status_int
         response.app_iter = app_iterator(response)
         return  response
 

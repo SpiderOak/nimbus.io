@@ -7,6 +7,9 @@ import gevent
 from gevent.coros import RLock as Lock
 from gevent.event import Event
 import httplib
+from redis import StrictRedis, RedisError
+import socket
+import json
 
 import psycopg2
 
@@ -18,6 +21,7 @@ from tools.database_connection import retry_central_connection
 
 # how long to wait before returning an error message to avoid fast loops
 RETRY_DELAY = 1.0
+AVAILABILITY_TIMEOUT = 30.0
 
 COLLECTION_CACHE_SIZE = 500000
 
@@ -26,6 +30,13 @@ NIMBUSIO_WEB_SERVER_PORT = int(os.environ['NIMBUSIO_WEB_SERVER_PORT'])
 NIMBUSIO_WEB_WRITER_PORT = int(os.environ['NIMBUSIO_WEB_WRITER_PORT'])
 NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = \
     os.environ['NIMBUSIO_MANAGEMENT_API_REQUEST_DEST']
+
+REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.environ.get("REDIS_PORT", str(6379)))
+REDIS_DB = int(os.environ.get("REDIS_DB", str(0)))
+REDIS_WEB_MONITOR_HASH_NAME = "nimbus.io.web_monitor.{0}".format(
+    socket.gethostname())
+REDIS_WEB_MONITOR_HASHKEY_FORMAT = "%s:%s"
 
 def _supervise_db_interaction(bound_method):
     """
@@ -95,6 +106,7 @@ class Router(object):
     def __init__(self):
         self.init_complete = Event()
         self.conn = None
+        self.redis = None
         self.dblock = Lock()
         self.service_domain = NIMBUS_IO_SERVICE_DOMAIN
         self.read_dest_port = NIMBUSIO_WEB_SERVER_PORT
@@ -114,6 +126,11 @@ class Router(object):
         self.conn = retry_central_connection(
             isolation_level=psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
         log.info("init complete")
+
+        self.redis = StrictRedis(host = REDIS_HOST,
+                                 port = REDIS_PORT,
+                                 db = REDIS_DB)
+
         self.init_complete.set()
 
     def _parse_collection(self, hostname):
@@ -174,6 +191,56 @@ class Router(object):
         self.known_clusters[cluster_id] = info 
         return info
 
+    def check_availability(self, hosts, dest_port, _resolve_cache=dict()):
+        "return set of hosts we think are available" 
+        log = logging.getLogger("check_availability")
+
+        available = set()
+        if not hosts:
+            return available
+
+        addresses = []
+        for host in hosts:
+            if not host in _resolve_cache:
+                _resolve_cache[host] = socket.gethostbyname(host)
+            addresses.append(_resolve_cache[host])
+
+        redis_keys = [ REDIS_WEB_MONITOR_HASHKEY_FORMAT % (a, dest_port, )
+                       for a in addresses ]
+
+        try:
+            redis_values = self.redis.hmget(REDIS_WEB_MONITOR_HASH_NAME,
+                                            redis_keys)
+        except RedisError as err:
+            log.warn("redis error querying availability for %s: %r"
+                % ( REDIS_WEB_MONITOR_HASH_NAME, redis_keys, ))
+            # just consider everything available. it's the best we can do.
+            available.update(hosts)
+            return available
+
+        unknown = []
+        for idx, val in enumerate(redis_values):
+            if val is None:
+                unknown.append((hosts[idx], redis_keys[idx], ))
+                continue
+            try:
+                status = json.loads(val)
+            except Exception, err:
+                log.warn("cannot decode %s %s %s %r" % ( 
+                    REDIS_WEB_MONITOR_HASH_NAME, hosts[idx], 
+                    redis_keys[idx], val, ))
+            else:
+                if status["reachable"]:
+                    available.add(hosts[idx])
+            
+        if unknown:
+            log.warn("no availability info in redis for hkeys: %s %r" % 
+                ( REDIS_WEB_MONITOR_HASH_NAME, unknown, ))
+            if len(unknown) == len(hosts):
+                available.update(hosts)
+
+        return available
+
     @staticmethod
     def _reject(code, reason=None):
         "return a go away response"
@@ -185,7 +252,7 @@ class Router(object):
         return { 'close': 'HTTP/1.0 %d %s\r\n\r\n%s' % ( 
                   code, http_error_str, reason, ) }
 
-    def route(self, hostname, method, path, _query_string):
+    def route(self, hostname, method, path, _query_string, start=None):
         """
         route a to a host in the appropriate cluster, using simple round-robin
         among the hosts in a cluster
@@ -197,8 +264,9 @@ class Router(object):
         self.request_counter += 1
         request_num = self.request_counter
 
-        log.debug("request %d: host=%r, method=%r, path=%r, query=%r" % 
-            (request_num, hostname, method, path, _query_string, )) 
+        log.debug("request %d: host=%r, method=%r, path=%r, query=%r, start=%r" % 
+            (request_num, hostname, method, path, _query_string, start)) 
+
 
         # TODO: be able to handle http requests from http 1.0 clients w/o a
         # host header to at least the website, if nothing else.
@@ -228,15 +296,32 @@ class Router(object):
             self._reject(httplib.NOT_FOUND, "No such collection")
 
         hosts = self._hosts_for_collection(collection)
-        if hosts:
-            hosts.rotate(1)
-            target = hosts[0]
-            log.debug("request %d to backend host %s port %d" %
-                (request_num, target, dest_port, ))
-            return dict(remote = "%s:%d" % (target, dest_port, ))
-        elif hosts is None:
+
+        if hosts is None:
             self._reject(httplib.NOT_FOUND, "No such collection")
 
+        availability = self.check_availability(hosts, dest_port)    
+
+        # find an available host
+        for _ in xrange(len(hosts)):
+            hosts.rotate(1)
+            target = hosts[0]
+            if target in availability:
+                break
+        else:
+            # we never found an available host
+            now = time.time()
+            if start is None:
+                log.warn("Request %d No available service, waiting..." %
+                    (request_num, ))
+                start = now
+            if now - start > AVAILABILITY_TIMEOUT:
+                return self._reject(httplib.SERVICE_UNAVAILABLE, "Retry later")
+            gevent.sleep(RETRY_DELAY)
+            return self.route(hostname, method, path, _query_string, start)
+
+        log.debug("request %d to backend host %s port %d" %
+            (request_num, target, dest_port, ))
+        return dict(remote = "%s:%d" % (target, dest_port, ))
+
         # no hosts currently available (hosts is an empty list, presumably)
-        gevent.sleep(RETRY_DELAY)
-        return self._reject(httplib.SERVICE_UNAVAILABLE, "Retry later")

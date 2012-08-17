@@ -101,7 +101,10 @@ class CreateCollectionView(ConnectionPoolView):
             "creation-time" : creation_time.isoformat()} 
 
         # 2012-04-15 dougfort Ticket #12 - return 201 'created'
-        return flask.Response(json.dumps(collection_dict), status=201)
+        # 2012-08-16 dougfort Ticket #28 - set content_type
+        return flask.Response(json.dumps(collection_dict), 
+                                         status=201,
+                                         content_type="application/json")
 
 view_function = CreateCollectionView.as_view(endpoint)
 

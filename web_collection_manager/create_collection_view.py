@@ -102,9 +102,12 @@ class CreateCollectionView(ConnectionPoolView):
 
         # 2012-04-15 dougfort Ticket #12 - return 201 'created'
         # 2012-08-16 dougfort Ticket #28 - set content_type
-        return flask.Response(json.dumps(collection_dict), 
-                                         status=201,
-                                         content_type="application/json")
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        return flask.Response(json.dumps(collection_dict, 
+                                         sort_keys=True, 
+                                         indent=4), 
+                              status=201,
+                              content_type="application/json")
 
 view_function = CreateCollectionView.as_view(endpoint)
 

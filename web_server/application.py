@@ -222,7 +222,10 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(result_dict))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
         return response
 
     def _collection_space_usage(self, req, match_object):
@@ -254,7 +257,8 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(e))
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(usage))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(usage, sort_keys=True, indent=4))
         return response
 
     def _list_keys(self, req, match_object):
@@ -315,7 +319,10 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(result_dict))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True,
+                                            indent=4))
         return response
 
     def _retrieve_key(self, req, match_object):
@@ -442,7 +449,10 @@ class Application(object):
             raise exc.HTTPNotFound(req.url)
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(meta_dict))
+        # 2012-08-16 dougfort Ticket #29 - set format json for debuging
+        response.body_file.write(json.dumps(meta_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
         return response
 
     def _head_key(self, req, match_object):
@@ -570,7 +580,10 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(response_dict))
+        # 2012-08-16 dougfort Ticket #29 - set format json for debuging
+        response.body_file.write(json.dumps(response_dict, 
+                                            sort_keys=True,
+                                            indent=4))
         return response
 
     def _list_upload_in_conjoined(self, req, match_object):

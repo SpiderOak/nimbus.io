@@ -18,6 +18,9 @@ monkey.patch_all()
 import gevent_zeromq
 gevent_zeromq.monkey_patch()
 
+import gevent_psycopg2
+gevent_psycopg2.monkey_patch()
+
 import logging
 import os
 import os.path
@@ -98,11 +101,23 @@ class WebWriter(object):
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
-        self._cluster_row = get_cluster_row(self._central_connection)
+
+        # Ticket #25: must run database operation in a greenlet
+        greenlet =  gevent.Greenlet.spawn(get_cluster_row, 
+                                           self._central_connection)
+        greenlet.join()
+        self._cluster_row = greenlet.get()
+
+        greenlet =  gevent.Greenlet.spawn(_get_shard_id,
+                                          self._central_connection, 
+                                          self._cluster_row.id)
+
+        # Ticket #25: must run database operation in a greenlet
+        greenlet.join()
+        shard_id = greenlet.get()
+        self._unified_id_factory = UnifiedIDFactory(shard_id)
+
         self._node_local_connection = get_node_local_connection()
-        self._unified_id_factory = UnifiedIDFactory(
-            _get_shard_id(self._central_connection, self._cluster_row.id)
-        )
         self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()

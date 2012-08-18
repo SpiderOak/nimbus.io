@@ -47,9 +47,6 @@ _max_segments = 10
 _retrieve_retry_interval = 120
 _range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
-def _fix_timestamp(timestamp):
-    return (None if timestamp is None else repr(timestamp))
-
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 

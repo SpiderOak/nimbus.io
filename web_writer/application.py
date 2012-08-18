@@ -153,7 +153,6 @@ class Application(object):
     def __init__(
         self, 
         central_connection,
-        node_local_connection,
         cluster_row,
         unified_id_factory,
         id_translator,
@@ -165,7 +164,6 @@ class Application(object):
     ):
         self._log = logging.getLogger("Application")
         self._central_connection = central_connection
-        self._node_local_connection = node_local_connection
         self._cluster_row = cluster_row
         self._unified_id_factory = unified_id_factory
         self._id_translator = id_translator
@@ -446,7 +444,6 @@ class Application(object):
         timestamp = create_timestamp()
 
         destroyer = Destroyer(
-            self._node_local_connection,
             data_writers,
             collection_entry.collection_id,
             key,
@@ -456,7 +453,7 @@ class Application(object):
         )
 
         try:
-            size_deleted = destroyer.destroy(_reply_timeout)
+            destroyer.destroy(_reply_timeout)
         except DestroyFailedError, instance:            
             self._event_push_client.error(
                 "delete-failed-error",
@@ -471,11 +468,6 @@ class Application(object):
             response.retry_after = _archive_retry_interval
             return response
 
-        self.accounting_client.removed(
-            collection_entry.collection_id,
-            timestamp,
-            size_deleted
-        )
         return Response('OK')
 
     def _start_conjoined(self, req, match_object):

@@ -39,8 +39,7 @@ from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer
 from tools.deliverator import Deliverator
 from tools.greenlet_push_client import GreenletPUSHClient
-from tools.database_connection import get_central_connection, \
-        get_node_local_connection
+from tools.database_connection import get_central_connection
 from tools.event_push_client import EventPushClient
 from tools.unified_id_factory import UnifiedIDFactory
 from tools.id_translator import InternalIDTranslator
@@ -117,7 +116,6 @@ class WebWriter(object):
         shard_id = greenlet.get()
         self._unified_id_factory = UnifiedIDFactory(shard_id)
 
-        self._node_local_connection = get_node_local_connection()
         self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()
@@ -200,7 +198,6 @@ class WebWriter(object):
         )
         self.application = Application(
             self._central_connection,
-            self._node_local_connection,
             self._cluster_row,
             self._unified_id_factory,
             self._id_translator,
@@ -244,7 +241,6 @@ class WebWriter(object):
         self._zeromq_context.term()
         self._log.info("closing database connections")
         self._central_connection.close()
-        self._node_local_connection.close()
 
     def _unhandled_greenlet_exception(self, greenlet_object):
         try:

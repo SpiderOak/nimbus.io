@@ -24,7 +24,6 @@ class Destroyer(object):
     """Performs a destroy query on all data writers."""
     def __init__(
         self, 
-        node_local_connection,
         data_writers,
         collection_id, 
         key,
@@ -34,7 +33,6 @@ class Destroyer(object):
     ):
         self._log = logging.getLogger('Destroyer')
         self._log.info('collection_id=%d, key=%r' % (collection_id, key, ))
-        self._node_local_connection = node_local_connection
         self._data_writers = data_writers
         self._collection_id = collection_id
         self._key = key
@@ -48,24 +46,6 @@ class Destroyer(object):
         self._finished_tasks.put(task, block=True)
 
     def destroy(self, timeout=None):
-        # TODO: find a non-blocking way to do this
-        if self._unified_id_to_delete is None:
-            status_rows = current_status_of_key(
-                self._node_local_connection, 
-                self._collection_id,
-                self._key
-            )
-        else:
-            status_rows = current_status_of_version(
-                self._node_local_connection, 
-                self._unified_id_to_delete
-            )
-
-        if len(status_rows) == 0:
-            raise DestroyFailedError("no status rows found")
-
-        file_size = sum([row.seg_file_size for row in status_rows])
-
         for i, data_writer in enumerate(self._data_writers):
             segment_num = i + 1
             task = self._pending.spawn(
@@ -82,8 +62,6 @@ class Destroyer(object):
             task.node_name = data_writer.node_name
 
         self._process_node_replies(timeout)
-
-        return file_size
 
     def _process_node_replies(self, timeout):
         finished_count = 0

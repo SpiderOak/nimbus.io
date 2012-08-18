@@ -16,8 +16,6 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import segment_status_final
-
 from tools.collection import get_username_and_collection_id, \
         get_collection_id
 
@@ -25,7 +23,7 @@ from web_server.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
 from web_server.listmatcher import list_keys, list_versions
 from web_server.space_usage_getter import SpaceUsageGetter
-from web_server.stat_getter import StatGetter
+from web_server.stat_getter import get_last_modified_and_content_length
 from web_server.retriever import Retriever
 from web_server.meta_manager import retrieve_meta
 from web_server.conjoined_manager import list_conjoined_archives, \
@@ -397,6 +395,15 @@ class Application(object):
             )
             raise
 
+        last_modified, content_length = \
+            get_last_modified_and_content_length(self._node_local_connection,
+                                                 collection_entry.collection_id,
+                                                 key,
+                                                 version_id)
+
+        if last_modified is None or content_length is None:
+            raise exc.HTTPNotFound("Not Found: %r" % (key, ))
+
         response_headers = dict()
         if "range" in req.headers:
             status_int = httplib.PARTIAL_CONTENT
@@ -404,11 +411,13 @@ class Application(object):
                 _content_range_header(lower_bound,
                                       upper_bound,
                                       retriever.total_file_size)
-            response_headers["Content-Length"] = slice_size
+            content_length = slice_size
         else:
             status_int = httplib.OK
 
         response = Response(headers=response_headers)
+        response.last_modified = last_modified
+        response.content_length = content_length
         response.status_int = status_int
         response.app_iter = retrieve_generator
         return  response
@@ -496,21 +505,17 @@ class Application(object):
             version_id
         ))
 
-        getter = StatGetter(self._node_local_connection)
-        status_rows = getter.stat(
-            collection_entry.collection_id, key, version_id
-        )
-        if len(status_rows) == 0 or \
-           status_rows[0].seg_status != segment_status_final:
+        last_modified, content_length = \
+            get_last_modified_and_content_length(self._node_local_connection,
+                                                 collection_entry.collection_id,
+                                                 key,
+                                                 version_id)
+        if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)
-        response.content_length = sum([r.seg_file_size for r in status_rows])
-
-        if status_rows[0].con_create_timestamp is None:
-            response.content_md5 = b64encode(status_rows[0].seg_file_hash)
-        else:
-            response.content_md5 = None
+        response.last_modified = last_modified
+        response.content_length = content_length
 
         return response
 

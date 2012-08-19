@@ -33,28 +33,36 @@ from gevent.event import Event
 from gevent_zeromq import zmq
 import gevent
 
+import gdbpool.connection_pool
+
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
 from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer
 from tools.deliverator import Deliverator
 from tools.greenlet_push_client import GreenletPUSHClient
-from tools.database_connection import get_central_connection
+from tools.database_connection import get_central_database_dsn
 from tools.event_push_client import EventPushClient
 from tools.unified_id_factory import UnifiedIDFactory
 from tools.id_translator import InternalIDTranslator
-from tools.data_definitions import create_timestamp
+from tools.data_definitions import create_timestamp, \
+        cluster_row_template, \
+        node_row_template
 
-from web_server.sql_authenticator import SqlAuthenticator
-from web_server.central_database_util import get_cluster_row, get_node_rows
 from web_server.space_accounting_client import SpaceAccountingClient
 
 from web_writer.application import Application
 from web_writer.watcher import Watcher
+from web_writer.connection_pool_authenticator import \
+    ConnectionPoolAuthenticator
+
+class WebWriterError(Exception):
+    pass
 
 _log_path = "%s/nimbusio_web_writer_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
+_cluster_name = os.environ["NIMBUSIO_CLUSTER_NAME"]
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _client_tag = "web-writer-%s" % (_local_node_name, )
@@ -73,48 +81,86 @@ _stats = {
     "archives"    : 0,
 }
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_database_pool_size = 3 
+_database_pool_connection_lifetime = 600
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
         halt_event.set()
     return _signal_handler
 
-def _get_shard_id(central_connection, cluster_id):
+def _get_cluster_row_and_node_row(connection_pool):
     """
     use node_id as shard id
     """
-    for node_row in get_node_rows(central_connection, cluster_id):
+    log = logging.getLogger("_get_cluster_row_and_shard_id")
+    connection = connection_pool.get()
+
+    query = """select %s from nimbusio_central.cluster where name = %%s""" % (\
+        ",".join(cluster_row_template._fields), )
+
+    cursor = connection.cursor()
+    cursor.execute(query, [_cluster_name, ])
+    result = cursor.fetchone() # returns a dict
+    cursor.close()
+
+    if result is None:
+        error_message = "Unable to identify cluster {0}".format(_cluster_name)
+        log.error(error_message)
+        raise WebWriterError(error_message)
+
+    cluster_row = cluster_row_template(id=result["id"],
+                                       name=result["name"],
+                                       node_count=result["node_count"],
+                                       replication_level=\
+                                        result["replication_level"])
+
+    query = """select %s from nimbusio_central.node
+               where  cluster_id = %%s
+               order by node_number_in_cluster""" % (
+               ",".join(node_row_template._fields), )
+
+    cursor = connection.cursor()
+    cursor.execute(query, [cluster_row.id, ])
+    result = cursor.fetchall() # returns a sequence of dicts
+    cursor.close()
+
+    connection_pool.put(connection)
+
+    for row in result:
+        node_row = node_row_template(id=row["id"],
+                                     node_number_in_cluster=\
+                                        row["node_number_in_cluster"],
+                                     name=row["name"],
+                                     hostname=row["hostname"],
+                                     offline=row["offline"])
         if node_row.name == _local_node_name:
-            return node_row.id
+            return cluster_row, node_row
 
     # if we make it here, this cluster is misconfigured
-    raise ValueError(
-        "node name {0} is not in node rows for cluster {1}".format(
-            _local_node_name, cluster_id
-        )
-    )
+    error_message = "node name {0} is not in node cluster {1}".format(
+            _local_node_name, _cluster_name)
+    log.error(error_message)
+    raise WebWriterError(error_message)
 
 class WebWriter(object):
     def __init__(self):
         self._log = logging.getLogger("WebWriter")
-        authenticator = SqlAuthenticator()
 
-        self._central_connection = get_central_connection()
+        self._connection_pool = gdbpool.connection_pool.DBConnectionPool(
+            get_central_database_dsn(), 
+            pool_size=_database_pool_size, 
+            conn_lifetime=_database_pool_connection_lifetime)
 
-        # Ticket #25: must run database operation in a greenlet
-        greenlet =  gevent.Greenlet.spawn(get_cluster_row, 
-                                           self._central_connection)
-        greenlet.join()
-        self._cluster_row = greenlet.get()
-
-        greenlet =  gevent.Greenlet.spawn(_get_shard_id,
-                                          self._central_connection, 
-                                          self._cluster_row.id)
+        authenticator = ConnectionPoolAuthenticator(self._connection_pool)
 
         # Ticket #25: must run database operation in a greenlet
+        greenlet =  gevent.Greenlet.spawn(_get_cluster_row_and_node_row, 
+                                           self._connection_pool)
         greenlet.join()
-        shard_id = greenlet.get()
-        self._unified_id_factory = UnifiedIDFactory(shard_id)
+        self._cluster_row, node_row = greenlet.get()
+
+        self._unified_id_factory = UnifiedIDFactory(node_row.id)
 
         self._deliverator = Deliverator()
 
@@ -197,7 +243,6 @@ class WebWriter(object):
             id_translator_keys["hmac_size"]
         )
         self.application = Application(
-            self._central_connection,
             self._cluster_row,
             self._unified_id_factory,
             self._id_translator,
@@ -240,7 +285,6 @@ class WebWriter(object):
         self._event_push_client.close()
         self._zeromq_context.term()
         self._log.info("closing database connections")
-        self._central_connection.close()
 
     def _unhandled_greenlet_exception(self, greenlet_object):
         try:

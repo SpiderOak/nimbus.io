@@ -36,7 +36,6 @@ from tools.data_definitions import incoming_slice_size, \
         create_timestamp, \
         nimbus_meta_prefix
 
-from tools.collection import get_username_and_collection_id
 from tools.zfec_segmenter import ZfecSegmenter
 
 from web_writer.exceptions import ArchiveFailedError, \
@@ -152,7 +151,6 @@ def _send_archive_cancel(unified_id, conjoined_part, clients):
 class Application(object):
     def __init__(
         self, 
-        central_connection,
         cluster_row,
         unified_id_factory,
         id_translator,
@@ -163,7 +161,6 @@ class Application(object):
         stats
     ):
         self._log = logging.getLogger("Application")
-        self._central_connection = central_connection
         self._cluster_row = cluster_row
         self._unified_id_factory = unified_id_factory
         self._id_translator = id_translator
@@ -222,19 +219,14 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -397,19 +389,14 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -475,19 +462,14 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -565,19 +547,14 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -645,19 +622,14 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:

@@ -7,7 +7,6 @@ provide connections to the nimbus.io databases
 import os
 import logging
 import time
-import psycopg2
 
 import psycopg2
 import psycopg2.extensions
@@ -200,4 +199,22 @@ def get_node_local_connection():
                                database_password, 
                                database_host, 
                                database_port)
+
+def get_central_database_dsn():
+    """
+    return a Data Source Name (DSN) string for connecting to a database
+    - ``dbname`` -- database name (only in 'dsn')
+    - ``host`` -- host address (defaults to UNIX socket if not provided)
+    - ``port`` -- port number (defaults to 5432 if not provided)
+    - ``user`` -- user name used to authenticate
+    - ``password`` -- password used to authenticate
+    - ``sslmode`` -- SSL mode (see PostgreSQL documentation)
+    """
+    return " ".join([
+        "dbname={0}".format(central_database_name),
+        "host={0}".format(os.environ["NIMBUSIO_CENTRAL_DATABASE_HOST"]),
+        "port={0}".format(os.environ["NIMBUSIO_CENTRAL_DATABASE_PORT"]),
+        "user={0}".format(central_database_user),
+        "password={0}".format(os.environ["NIMBUSIO_CENTRAL_USER_PASSWORD"]),
+    ])
 

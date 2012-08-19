@@ -19,16 +19,16 @@ from webob import Response
 from tools.collection import get_username_and_collection_id, \
         get_collection_id
 
-from web_server.exceptions import SpaceAccountingServerDownError, \
+from web_public_reader.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
-from web_server.listmatcher import list_keys, list_versions
-from web_server.space_usage_getter import SpaceUsageGetter
-from web_server.stat_getter import get_last_modified_and_content_length
-from web_server.retriever import Retriever
-from web_server.meta_manager import retrieve_meta
-from web_server.conjoined_manager import list_conjoined_archives, \
+from web_public_reader.listmatcher import list_keys, list_versions
+from web_public_reader.space_usage_getter import SpaceUsageGetter
+from web_public_reader.stat_getter import get_last_modified_and_content_length
+from web_public_reader.retriever import Retriever
+from web_public_reader.meta_manager import retrieve_meta
+from web_public_reader.conjoined_manager import list_conjoined_archives, \
         list_upload_in_conjoined
-from web_server.url_discriminator import parse_url, \
+from web_public_reader.url_discriminator import parse_url, \
         action_respond_to_ping, \
         action_list_versions, \
         action_space_usage, \

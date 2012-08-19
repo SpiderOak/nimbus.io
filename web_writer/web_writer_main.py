@@ -46,9 +46,9 @@ from tools.unified_id_factory import UnifiedIDFactory
 from tools.id_translator import InternalIDTranslator
 from tools.data_definitions import create_timestamp
 
-from web_server.sql_authenticator import SqlAuthenticator
-from web_server.central_database_util import get_cluster_row, get_node_rows
-from web_server.space_accounting_client import SpaceAccountingClient
+from web_public_reader.sql_authenticator import SqlAuthenticator
+from web_public_reader.central_database_util import get_cluster_row, get_node_rows
+from web_public_reader.space_accounting_client import SpaceAccountingClient
 
 from web_writer.application import Application
 from web_writer.watcher import Watcher

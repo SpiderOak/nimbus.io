@@ -12,7 +12,7 @@ from tools.data_definitions import segment_row_template
 from tools.database_connection import get_central_connection
 from tools.sized_pickle import retrieve_sized_pickle
 
-from web_server.central_database_util import get_cluster_row, \
+from web_public_reader.central_database_util import get_cluster_row, \
         get_node_rows
 
 from anti_entropy.anti_entropy_util import anti_entropy_pre_audit

@@ -36,12 +36,12 @@ from tools.database_connection import get_central_connection, \
 from tools.event_push_client import EventPushClient
 from tools.id_translator import InternalIDTranslator
 
-from web_server.application import Application
-from web_server.space_accounting_client import SpaceAccountingClient
-from web_server.sql_authenticator import SqlAuthenticator
-from web_server.central_database_util import get_cluster_row
+from web_public_reader.application import Application
+from web_public_reader.space_accounting_client import SpaceAccountingClient
+from web_public_reader.sql_authenticator import SqlAuthenticator
+from web_public_reader.central_database_util import get_cluster_row
 
-_log_path = "%s/nimbusio_web_server_%s.log" % (
+_log_path = "%s/nimbusio_web_public_reader_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
@@ -49,8 +49,8 @@ _space_accounting_server_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS"]
 _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
-_web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
-_web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
+_web_public_reader_host = os.environ.get("NIMBUSIO_WEB_PUBLIC_READER_HOST", "")
+_web_public_reader_port = int(os.environ.get("NIMBUSIO_WEB_PUBLIC_READER_PORT", "8088"))
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
@@ -61,7 +61,7 @@ def _signal_handler_closure(halt_event):
         halt_event.set()
     return _signal_handler
 
-class WebServer(object):
+class WebPublicReaderServer(object):
     def __init__(self):
         self._log = logging.getLogger("WebServer")
         memcached_client = memcache.Client(_memcached_nodes)
@@ -122,7 +122,7 @@ class WebServer(object):
             self._event_push_client
         )
         self.wsgi_server = WSGIServer(
-            (_web_server_host, _web_server_port), 
+            (_web_public_reader_host, _web_public_reader_port), 
             application=self.application,
             backlog=_wsgi_backlog
         )
@@ -165,8 +165,8 @@ def main():
     gevent.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
 
     try:
-        web_server = WebServer()
-        web_server.start()
+        web_public_reader = WebPublicReaderServer()
+        web_public_reader.start()
     except Exception, instance:
         log.exception(str(instance))
         return -1
@@ -175,7 +175,7 @@ def main():
     log.info("halt_event set")
 
     try:
-        web_server.stop()
+        web_public_reader.stop()
     except Exception, instance:
         log.exception(str(instance))
         return -1

@@ -15,8 +15,8 @@ from tools.data_definitions import block_size, \
         segment_status_final, \
         segment_status_cancelled
 
-from web_server.exceptions import RetrieveFailedError
-from web_server.local_database_util import current_status_of_key, \
+from web_public_reader.exceptions import RetrieveFailedError
+from web_public_reader.local_database_util import current_status_of_key, \
     current_status_of_version
 
 memcached_key_template = "internal_read_{0}"

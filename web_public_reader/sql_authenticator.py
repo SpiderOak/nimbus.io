@@ -13,7 +13,7 @@ import urllib
 
 from tools.LRUCache import LRUCache
 from tools.customer import get_customer_key
-from web_server.util import sec_str_eq
+from web_public_reader.util import sec_str_eq
 
 _max_customer_key_cache_size = 10000
 _customer_key_cache_expiration_interval = 60.0 * 60.0 # 1 hour

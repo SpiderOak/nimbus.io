@@ -15,7 +15,7 @@ import zlib
 
 from tools.standard_logging import initialize_logging
 from tools.database_connection import get_node_local_connection
-from web_server.local_database_util import current_status_of_key
+from web_public_reader.local_database_util import current_status_of_key
 from tools.data_definitions import create_timestamp, \
     create_priority, \
     random_string

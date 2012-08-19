@@ -18,7 +18,7 @@ from tools.customer import purge_customer, \
         add_key_to_customer, \
         list_customer_keys
 
-from web_server.sql_authenticator import SqlAuthenticator
+from web_public_reader.sql_authenticator import SqlAuthenticator
 
 class MockRequest(object):
     pass

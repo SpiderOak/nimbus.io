@@ -12,7 +12,7 @@ import logging
 import time
 import urllib
 
-from web_server.util import sec_str_eq
+from web_public_reader.util import sec_str_eq
 
 _customer_key_template = namedtuple("CustomerKey", ["key_id", "key"])
 

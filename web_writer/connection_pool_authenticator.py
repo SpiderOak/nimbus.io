@@ -13,7 +13,7 @@ import time
 import urllib
 
 from tools.LRUCache import LRUCache
-from web_server.util import sec_str_eq
+from web_public_reader.util import sec_str_eq
 
 class AuthenticationError(Exception):
     pass

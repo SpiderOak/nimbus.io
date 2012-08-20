@@ -455,7 +455,13 @@ class Application(object):
             response.retry_after = _archive_retry_interval
             return response
 
-        return Response('OK')
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 
     def _start_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")

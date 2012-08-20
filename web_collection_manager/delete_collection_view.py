@@ -4,6 +4,7 @@ delete_collection_view.py
 
 A View to delete a collection for a user
 """
+import json
 import logging
 
 import flask
@@ -83,7 +84,13 @@ class DeleteCollectionView(ConnectionPoolView):
                 cursor.close()
                 connection.commit()
 
-        return flask.Response(status=200)
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        collection_dict = {"success" : True}
+        return flask.Response(json.dumps(collection_dict, 
+                                         sort_keys=True, 
+                                         indent=4), 
+                              status=200,
+                              content_type="application/json")
 
 view_function = DeleteCollectionView.as_view(endpoint)
 

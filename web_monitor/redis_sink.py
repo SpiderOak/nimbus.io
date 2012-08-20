@@ -52,9 +52,12 @@ class RedisSink(gevent.greenlet.Greenlet):
             except gevent.queue.Empty:
                 continue
 
+            # 2012-08-16 dougfort Ticket #29 - format json for debuging
             self._redis_connection.hset(_hash_name, 
                                         key, 
-                                        json.dumps(status_dict))
+                                        json.dumps(status_dict, 
+                                                   sort_keys=True,
+                                                   indent=4))
 
         self._log.debug("end halt_event loop")
 

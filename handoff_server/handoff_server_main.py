@@ -29,7 +29,7 @@ from tools.data_definitions import segment_row_template, \
         create_priority
 from tools.LRUCache import LRUCache
 
-from web_server.central_database_util import get_cluster_row, \
+from web_public_reader.central_database_util import get_cluster_row, \
         get_node_rows
 
 from handoff_server.pending_handoffs import PendingHandoffs

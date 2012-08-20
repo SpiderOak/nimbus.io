@@ -21,7 +21,6 @@ gevent_zeromq.monkey_patch()
 import logging
 import os
 import os.path
-import pickle
 import signal
 import sys
 
@@ -29,6 +28,8 @@ from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 from gevent_zeromq import zmq
 import gevent
+
+import memcache
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
@@ -39,47 +40,49 @@ from tools.greenlet_push_client import GreenletPUSHClient
 from tools.database_connection import get_central_connection, \
         get_node_local_connection
 from tools.event_push_client import EventPushClient
-from tools.id_translator import InternalIDTranslator
 from tools.data_definitions import create_timestamp
 
-from web_server.application import Application
-from web_server.data_reader import DataReader
+from web_internal_reader.application import Application
+from web_internal_reader.data_reader import DataReader
 from web_server.space_accounting_client import SpaceAccountingClient
-from web_server.sql_authenticator import SqlAuthenticator
-from web_server.watcher import Watcher
+from web_internal_reader.watcher import Watcher
 from web_server.central_database_util import get_cluster_row
 
-_log_path = "%s/nimbusio_web_server_%s.log" % (
+_log_path = "%s/nimbusio_web_internal_reader_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_client_tag = "web-server-%s" % (_local_node_name, )
-_web_server_pipeline_address = \
-    os.environ["NIMBUSIO_WEB_SERVER_PIPELINE_ADDRESS"]
+_client_tag = "web-internal-reader-%s" % (_local_node_name, )
+_web_internal_reader_pipeline_address = \
+    os.environ["NIMBUSIO_WEB_INTERNAL_READER_PIPELINE_ADDRESS"]
 _data_reader_addresses = \
     os.environ["NIMBUSIO_DATA_READER_ADDRESSES"].split()
 _space_accounting_server_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_SERVER_ADDRESS"]
 _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
-_web_server_host = os.environ.get("NIMBUSIO_WEB_SERVER_HOST", "")
-_web_server_port = int(os.environ.get("NIMBUSIO_WEB_SERVER_PORT", "8088"))
+_web_internal_reader_host = \
+    os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
+_web_internal_reader_port = \
+    int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _stats = {
     "retrieves"   : 0,
 }
-_repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+_memcached_nodes = ["{0}:{1}".format(_local_node_name, _memcached_port), ] 
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
         halt_event.set()
     return _signal_handler
 
-class WebServer(object):
+class WebInternalReader(object):
     def __init__(self):
-        self._log = logging.getLogger("WebServer")
-        authenticator = SqlAuthenticator()
+        self._log = logging.getLogger("WebInternalReader")
+
+        memcached_client = memcache.Client(_memcached_nodes)
 
         self._central_connection = get_central_connection()
         self._cluster_row = get_cluster_row(self._central_connection)
@@ -90,7 +93,7 @@ class WebServer(object):
 
         self._pull_server = GreenletPULLServer(
             self._zeromq_context, 
-            _web_server_pipeline_address,
+            _web_internal_reader_pipeline_address,
             self._deliverator
         )
         self._pull_server.link_exception(self._unhandled_greenlet_exception)
@@ -103,7 +106,7 @@ class WebServer(object):
                 node_name,
                 address,
                 _client_tag,
-                _web_server_pipeline_address,
+                _web_internal_reader_pipeline_address,
                 self._deliverator,
                 connect_messages=[]
             )
@@ -137,15 +140,15 @@ class WebServer(object):
 
         self._event_push_client = EventPushClient(
             self._zeromq_context,
-            "web-server"
+            "web-internal-reader"
         )
 
         # message sent to data readers telling them the server
         # is (re)starting, thereby invalidating any archvies or retrieved
         # that are in progress for this node
         timestamp = create_timestamp()
-        self._event_push_client.info("web-server-start",
-                                     "web server (re)start",
+        self._event_push_client.info("web-reader-start",
+                                     "web reader (re)start",
                                      timestamp_repr=repr(timestamp),
                                      source_node_name=_local_node_name)
 
@@ -155,31 +158,18 @@ class WebServer(object):
             self._event_push_client
         )
 
-        id_translator_keys_path = os.environ.get(
-            "NIMBUS_IO_ID_TRANSLATION_KEYS", 
-            os.path.join(_repository_path, "id_translator_keys.pkl"))
-        with open(id_translator_keys_path, "r") as input_file:
-            id_translator_keys = pickle.load(input_file)
-
-        self._id_translator = InternalIDTranslator(
-            id_translator_keys["key"],
-            id_translator_keys["hmac_key"], 
-            id_translator_keys["iv_key"],
-            id_translator_keys["hmac_size"]
-        )
         self.application = Application(
+            memcached_client,
             self._central_connection,
             self._node_local_connection,
             self._cluster_row,
-            self._id_translator,
             self._data_readers,
-            authenticator,
             self._accounting_client,
             self._event_push_client,
             _stats
         )
         self.wsgi_server = WSGIServer(
-            (_web_server_host, _web_server_port), 
+            (_web_internal_reader_host, _web_internal_reader_port), 
             application=self.application,
             backlog=_wsgi_backlog
         )
@@ -234,8 +224,8 @@ def main():
     gevent.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
 
     try:
-        web_server = WebServer()
-        web_server.start()
+        web_internal_reader = WebInternalReader()
+        web_internal_reader.start()
     except Exception, instance:
         log.exception(str(instance))
         return -1
@@ -244,7 +234,7 @@ def main():
     log.info("halt_event set")
 
     try:
-        web_server.stop()
+        web_internal_reader.stop()
     except Exception, instance:
         log.exception(str(instance))
         return -1

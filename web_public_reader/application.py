@@ -3,45 +3,32 @@ application.py
 
 The nimbus.io wsgi application
 
-for a write:
-at startup time, web server creates resilient_client to each node
-application:
-retrieve:
-  ResilientClient, deliver
-
-
-
 """
 from base64 import b64encode
+import httplib
 import logging
 import os
+import re
 import json
-from itertools import chain
 import urllib
-import time
 
 from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import create_timestamp, \
-        segment_status_final
-
 from tools.collection import get_username_and_collection_id, \
         get_collection_id
-from tools.zfec_segmenter import ZfecSegmenter
 
-from web_server.exceptions import SpaceAccountingServerDownError, \
-        SpaceUsageFailedError, \
-        RetrieveFailedError
-from web_server.listmatcher import list_keys, list_versions
-from web_server.space_usage_getter import SpaceUsageGetter
-from web_server.stat_getter import StatGetter
-from web_server.retriever import Retriever
-from web_server.meta_manager import retrieve_meta
-from web_server.conjoined_manager import list_conjoined_archives, \
+from web_public_reader.exceptions import SpaceAccountingServerDownError, \
+        SpaceUsageFailedError
+from web_public_reader.listmatcher import list_keys, list_versions
+from web_public_reader.space_usage_getter import SpaceUsageGetter
+from web_public_reader.stat_getter import get_last_modified_and_content_length
+from web_public_reader.retriever import Retriever
+from web_public_reader.meta_manager import retrieve_meta
+from web_public_reader.conjoined_manager import list_conjoined_archives, \
         list_upload_in_conjoined
-from web_server.url_discriminator import parse_url, \
+from web_public_reader.url_discriminator import parse_url, \
         action_respond_to_ping, \
         action_list_versions, \
         action_space_usage, \
@@ -52,47 +39,75 @@ from web_server.url_discriminator import parse_url, \
         action_list_conjoined, \
         action_list_upload_in_conjoined
 
-_node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
-_min_connected_clients = 8
-_min_segments = 8
-_max_segments = 10
 
 _retrieve_retry_interval = 120
 _content_type_json = "application/json"
+_range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _fix_timestamp(timestamp):
     return (None if timestamp is None else repr(timestamp))
 
-def _connected_clients(clients):
-    return [client for client in clients if client.connected]
+def _parse_range_header(range_header):
+    """
+    parse a header of the form Range: bytes=500-999
+    """
+    log = logging.getLogger("_parse_range_header")
+    match_object = _range_re.match(range_header)
+    if match_object is None:
+        error_message = "unparsable range header '{0}'".format(range_header)
+        log.error(error_message)
+        raise exc.HTTPServiceUnavailable(error_message)
+
+    lower_bound = int(match_object.group("lower_bound"))
+    if len (match_object.group("upper_bound")) == 0:
+        upper_bound = None
+    else:
+        upper_bound = int(match_object.group("upper_bound"))
+
+    if upper_bound is not None and lower_bound > upper_bound:
+        error_message = "invalid range header '{0}'".format(range_header)
+        log.error(error_message)
+        raise exc.HTTPServiceUnavailable(error_message)
+
+    slice_offset = lower_bound
+    if upper_bound is None:
+        slice_size = None
+    else:
+        slice_size = upper_bound - lower_bound + 1
+
+    return (lower_bound, upper_bound, slice_offset, slice_size, )
+
+def _content_range_header(lower_bound, upper_bound, total_file_size):
+    if upper_bound is None:
+        upper_bound = total_file_size - 1
+    return "bytes {0}-{1}/{2}".format(lower_bound, 
+                                      upper_bound, 
+                                      total_file_size)
 
 class Application(object):
     def __init__(
         self, 
+        memcached_client,
         central_connection,
         node_local_connection,
         cluster_row,
         id_translator,
-        data_readers,
         authenticator, 
         accounting_client,
-        event_push_client,
-        stats
+        event_push_client
     ):
         self._log = logging.getLogger("Application")
+        self._memcached_client = memcached_client
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
         self._cluster_row = cluster_row
         self._id_translator = id_translator
-        self.data_readers = data_readers
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
-        self._stats = stats
-
 
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
@@ -205,7 +220,10 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(result_dict))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
         return response
 
     def _collection_space_usage(self, req, match_object):
@@ -237,7 +255,8 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(e))
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(usage))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(usage, sort_keys=True, indent=4))
         return response
 
     def _list_keys(self, req, match_object):
@@ -298,7 +317,10 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(result_dict))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True,
+                                            indent=4))
         return response
 
     def _retrieve_key(self, req, match_object):
@@ -327,37 +349,19 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-
         version_id = None
         if "version_identifier" in req.GET:
             version_identifier = req.GET["version_identifier"]
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
+        lower_bound = 0
+        upper_bound = None
         slice_offset = 0
-        if "slice_offset" in req.GET:
-            slice_offset_str = req.GET["slice_offset"]
-            try:
-                slice_offset = int(slice_offset_str)
-            except ValueError:
-                self._log.error("invalid slice_offset %r" % (slice_offset_str))
-                raise exc.HTTPServiceUnavailable(str(instance))
-
         slice_size = None
-        if "slice_size" in req.GET:
-            slice_size_str = req.GET["slice_size"]
-            try:
-                slice_size = int(slice_size_str)
-            except ValueError:
-                self._log.error("invalid slice_size %r" % (slice_size_str))
-                raise exc.HTTPServiceUnavailable(str(instance))
-
-        connected_data_readers = _connected_clients(self.data_readers)
-
-        if len(connected_data_readers) < _min_connected_clients:
-            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
-                len(connected_data_readers),
-            ))
+        if "range" in req.headers:
+            lower_bound, upper_bound, slice_offset, slice_size = \
+                _parse_range_header(req.headers["range"])
 
         description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
             collection_entry.collection_id,
@@ -370,98 +374,52 @@ class Application(object):
         )
         self._log.info(description)
 
-        start_time = time.time()
-        self._stats["retrieves"] += 1
-
         retriever = Retriever(
+            self._memcached_client,
             self._node_local_connection,
-            self.data_readers,
             collection_entry.collection_id,
             key,
             version_id,
             slice_offset,
-            slice_size,
-            _min_segments
+            slice_size
         )
 
-        retrieved = retriever.retrieve(_reply_timeout)
-
         try:
-            first_segments = retrieved.next()
-        except RetrieveFailedError, instance:
-            self._log.error("retrieve failed: %s %s" % (
-                description, instance,
-            ))
-            self._event_push_client.warn(
-                "retrieve-failed",
-                "%s: %s" % (description, instance, )
+            retrieve_generator = retriever.retrieve(_reply_timeout)
+        except Exception, instance:
+            self._log.exception("retrieve_failed {0}".format(instance))
+            self._event_push_client.exception(
+                "unhandled_exception in retrieve",
+                str(instance),
+                exctype=instance.__class__.__name__
             )
-            self._stats["retrieves"] -= 1
-            return exc.HTTPNotFound(str(instance))
+            raise
 
-        def app_iterator(response):
-            segmenter = ZfecSegmenter( _min_segments, _max_segments)
-            sent = 0
-            try:
-                for segments in chain([first_segments], retrieved):
-                    segment_numbers = segments.keys()
-                    encoded_segments = list()
-                    zfec_padding_size = None
-                    for segment_number in segment_numbers:
-                        encoded_segment, zfec_padding_size = \
-                                segments[segment_number]
-                        encoded_segments.append(encoded_segment)
-                    data_list = segmenter.decode(
-                        encoded_segments,
-                        segment_numbers,
-                        zfec_padding_size
-                    )
-                    if sent == 0:
-                        data_list[0] = \
-                            data_list[0][retriever.offset_into_first_block:]
-                    if retriever.residue_from_last_block != 0:
-                        data_list[-1] = \
-                            data_list[-1][:-retriever.residue_from_last_block]
+        last_modified, content_length = \
+            get_last_modified_and_content_length(self._node_local_connection,
+                                                 collection_entry.collection_id,
+                                                 key,
+                                                 version_id)
 
-                    for data in data_list:
-                        yield data
-                        sent += len(data)
-            except RetrieveFailedError, instance:
-                self._event_push_client.warn(
-                    "retrieve-failed",
-                    "%s: %s" % (description, instance, )
-                )
-                self._log.error('retrieve failed: %s %s' % (
-                    description, instance
-                ))
-                self._stats["retrieves"] -= 1
-                response.status_int = 503
-                response.retry_after = _retrieve_retry_interval
-                return
+        if last_modified is None or content_length is None:
+            raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
-            end_time = time.time()
-            self._stats["retrieves"] -= 1
+        response_headers = dict()
+        if "range" in req.headers:
+            status_int = httplib.PARTIAL_CONTENT
+            response_headers["Content-Range"] = \
+                _content_range_header(lower_bound,
+                                      upper_bound,
+                                      retriever.total_file_size)
+            content_length = slice_size
+        else:
+            status_int = httplib.OK
 
-            self.accounting_client.retrieved(
-                collection_entry.collection_id,
-                create_timestamp(),
-                sent
-            )
-
-            self._event_push_client.info(
-                "retrieve-stats",
-                description,
-                start_time=start_time,
-                end_time=end_time,
-                bytes_retrieved=sent
-            )
-
-        # 2011-10-05 dougfort -- going thrpough this convoluted process 
-        # to return 503 if the app_iter fails. Instead of rasing an 
-        # exception that chokes the customer's retrieve
-        # IMO this really sucks 
-        response = Response()
-        response.app_iter = app_iterator(response)
+        response = Response(headers=response_headers)
+        response.last_modified = last_modified
+        response.content_length = content_length
+        response.status_int = status_int
+        response.app_iter = retrieve_generator
         return  response
 
     def _retrieve_meta(self, req, match_object):
@@ -500,7 +458,10 @@ class Application(object):
             raise exc.HTTPNotFound(req.url)
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(meta_dict))
+        # 2012-08-16 dougfort Ticket #29 - set format json for debuging
+        response.body_file.write(json.dumps(meta_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
         return response
 
     def _head_key(self, req, match_object):
@@ -544,21 +505,17 @@ class Application(object):
             version_id
         ))
 
-        getter = StatGetter(self._node_local_connection)
-        status_rows = getter.stat(
-            collection_entry.collection_id, key, version_id
-        )
-        if len(status_rows) == 0 or \
-           status_rows[0].seg_status != segment_status_final:
+        last_modified, content_length = \
+            get_last_modified_and_content_length(self._node_local_connection,
+                                                 collection_entry.collection_id,
+                                                 key,
+                                                 version_id)
+        if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         response = Response(status=200, content_type=None)
-        response.content_length = sum([r.seg_file_size for r in status_rows])
-
-        if status_rows[0].con_create_timestamp is None:
-            response.content_md5 = b64encode(status_rows[0].seg_file_hash)
-        else:
-            response.content_md5 = None
+        response.last_modified = last_modified
+        response.content_length = content_length
 
         return response
 
@@ -628,7 +585,10 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(response_dict))
+        # 2012-08-16 dougfort Ticket #29 - set format json for debuging
+        response.body_file.write(json.dumps(response_dict, 
+                                            sort_keys=True,
+                                            indent=4))
         return response
 
     def _list_upload_in_conjoined(self, req, match_object):

@@ -11,7 +11,7 @@ from  gevent.greenlet import Greenlet
 import  gevent.pool
 
 from tools.data_definitions import create_priority
-from web_server.exceptions import ConjoinedFailedError
+from web_public_reader.exceptions import ConjoinedFailedError
 
 
 _conjoined_timeout = 60.0 * 5.0

@@ -28,10 +28,10 @@ from tools.data_definitions import create_timestamp, \
         create_priority, \
         random_string
 from tools.database_connection import get_central_connection
-from web_server.central_database_util import get_cluster_row, \
+from web_public_reader.central_database_util import get_cluster_row, \
         get_node_rows
 
-from web_server.data_writer_handoff_client import \
+from web_public_reader.data_writer_handoff_client import \
         DataWriterHandoffClient
 
 from unit_tests.util import generate_key, \

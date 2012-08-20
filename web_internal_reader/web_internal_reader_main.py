@@ -29,6 +29,8 @@ from gevent.event import Event
 from gevent_zeromq import zmq
 import gevent
 
+import memcache
+
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
 from tools.greenlet_resilient_client import GreenletResilientClient
@@ -42,9 +44,9 @@ from tools.data_definitions import create_timestamp
 
 from web_internal_reader.application import Application
 from web_internal_reader.data_reader import DataReader
-from web_server.space_accounting_client import SpaceAccountingClient
+from web_public_reader.space_accounting_client import SpaceAccountingClient
 from web_internal_reader.watcher import Watcher
-from web_server.central_database_util import get_cluster_row
+from web_public_reader.central_database_util import get_cluster_row
 
 _log_path = "%s/nimbusio_web_internal_reader_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
@@ -68,6 +70,8 @@ _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _stats = {
     "retrieves"   : 0,
 }
+_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+_memcached_nodes = ["{0}:{1}".format(_local_node_name, _memcached_port), ] 
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
@@ -77,6 +81,8 @@ def _signal_handler_closure(halt_event):
 class WebInternalReader(object):
     def __init__(self):
         self._log = logging.getLogger("WebInternalReader")
+
+        memcached_client = memcache.Client(_memcached_nodes)
 
         self._central_connection = get_central_connection()
         self._cluster_row = get_cluster_row(self._central_connection)
@@ -134,7 +140,7 @@ class WebInternalReader(object):
 
         self._event_push_client = EventPushClient(
             self._zeromq_context,
-            "web-server"
+            "web-internal-reader"
         )
 
         # message sent to data readers telling them the server
@@ -153,6 +159,7 @@ class WebInternalReader(object):
         )
 
         self.application = Application(
+            memcached_client,
             self._central_connection,
             self._node_local_connection,
             self._cluster_row,

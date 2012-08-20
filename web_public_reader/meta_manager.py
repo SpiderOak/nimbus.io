@@ -6,7 +6,7 @@ functions for accessing meta data
 """
 from tools.data_definitions import segment_status_final
 
-from web_server.local_database_util import current_status_of_key, \
+from web_public_reader.local_database_util import current_status_of_key, \
         current_status_of_version
 
 _retrieve_meta_query = """

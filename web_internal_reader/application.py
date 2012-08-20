@@ -12,6 +12,7 @@ retrieve:
 
 
 """
+import httplib
 import logging
 import os
 from itertools import chain
@@ -26,6 +27,8 @@ from tools.data_definitions import create_timestamp, \
         block_size
 
 from tools.zfec_segmenter import ZfecSegmenter
+
+from web_public_reader.retriever import memcached_key_template
 
 from web_internal_reader.exceptions import RetrieveFailedError
 from web_internal_reader.retriever import Retriever
@@ -42,10 +45,7 @@ _min_segments = 8
 _max_segments = 10
 
 _retrieve_retry_interval = 120
-_range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d+)$")
-
-def _fix_timestamp(timestamp):
-    return (None if timestamp is None else repr(timestamp))
+_range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
@@ -62,21 +62,35 @@ def _parse_range_header(range_header):
         raise exc.HTTPServiceUnavailable(error_message)
 
     lower_bound = int(match_object.group("lower_bound"))
-    upper_bound = int(match_object.group("upper_bound"))
+    if len(match_object.group("upper_bound")) == 0:
+        upper_bound = None
+    else:
+        upper_bound = int(match_object.group("upper_bound"))
 
-    if lower_bound > upper_bound:
+    if upper_bound is not None and lower_bound > upper_bound:
         error_message = "invalid range header '{0}'".format(range_header)
         log.error(error_message)
         raise exc.HTTPServiceUnavailable(error_message)
 
     slice_offset = lower_bound
-    slice_size = upper_bound - lower_bound + 1
+    if upper_bound is None:
+        slice_size = None
+    else:
+        slice_size = upper_bound - lower_bound + 1
 
-    return (slice_offset, slice_size, )
+    return (lower_bound, upper_bound, slice_offset, slice_size, )
+
+def _content_range_header(lower_bound, upper_bound, total_file_size):
+    if upper_bound is None:
+        upper_bound = total_file_size - 1
+    return "bytes {0}-{1}/{2}".format(lower_bound, 
+                                      upper_bound, 
+                                      total_file_size)
 
 class Application(object):
     def __init__(
         self, 
+        memcached_client,
         central_connection,
         node_local_connection,
         cluster_row,
@@ -86,6 +100,7 @@ class Application(object):
         stats
     ):
         self._log = logging.getLogger("Application")
+        self._memcached_client = memcached_client
         self._central_connection = central_connection
         self._node_local_connection = node_local_connection
         self._cluster_row = cluster_row
@@ -134,8 +149,17 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
-    def _get_params_from_memcache(self, unified_id, conjoined_part):
-        return None
+    def _get_params_from_memcache(self, unified_id, _conjoined_part):
+        """retrieve a cached tuple of (collection_id, key, )"""
+        memcached_key = \
+            memcached_key_template.format(unified_id)
+        self._log.debug("uncaching {0}".format(memcached_key))
+        cached_dict = self._memcached_client.get(memcached_key)
+
+        if cached_dict is None:
+            return None
+
+        return (cached_dict["collection-id"], cached_dict["key"], )
 
     def _get_params_from_database(self, unified_id, conjoined_part):
         return self._node_local_connection.fetch_one_row("""
@@ -147,13 +171,21 @@ class Application(object):
         unified_id = int(match_object.group("unified_id"))
         conjoined_part = int(match_object.group("conjoined_part"))
 
+        lower_bound = 0
+        upper_bound = None
         slice_offset = 0
         slice_size = None
+        total_file_size = None
         if "range" in req.headers:
-            slice_offset, slice_size = \
+            lower_bound, upper_bound, slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
+            if not "x-nimbus-io-expected-content-length" in req.headers:
+                message = "expected x-nimbus-io-expected-content-length header" 
+                self._log.error(message)
+                raise exc.HTTPBadRequest(message)
+            total_file_size = \
+                int(req.headers["x-nimbus-io-expected-content-length"])
 
-        # TODO: deal with offset and size not on block boundary
         assert slice_offset % block_size == 0, slice_offset
         block_offset = slice_offset / block_size
         if slice_size is None:
@@ -171,6 +203,8 @@ class Application(object):
 
         result = self._get_params_from_memcache(unified_id, conjoined_part)
         if result is None:
+            self._log.warn("cache miss unified-id {0} {1}".format(
+                unified_id, conjoined_part))
             result = self._get_params_from_database(unified_id, conjoined_part)
         if result is None:
             error_message = "unknown unified-id {0} {1}".format(unified_id,
@@ -273,7 +307,19 @@ class Application(object):
                 bytes_retrieved=sent
             )
 
-        response = Response()
+        response_headers = dict()
+        if "range" in req.headers:
+            status_int = httplib.PARTIAL_CONTENT
+            response_headers["Content-Range"] = \
+                _content_range_header(lower_bound,
+                                      upper_bound,
+                                      total_file_size)
+            response_headers["Content-Length"] = slice_size
+        else:
+            status_int = httplib.OK
+
+        response = Response(headers=response_headers)
+        response.status_int = status_int
         response.app_iter = app_iterator(response)
         return  response
 

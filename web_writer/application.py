@@ -388,7 +388,10 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(response_dict))
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        response.body_file.write(json.dumps(response_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
         return response
 
     def _delete_key(self, req, match_object):
@@ -558,7 +561,10 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
-        response.body_file.write(json.dumps(conjoined_dict))
+        # 2012-08-16 dougfort Ticket #29 - set format json for debuging
+        response.body_file.write(json.dumps(conjoined_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
         return response
 
     def _finish_conjoined(self, req, match_object):

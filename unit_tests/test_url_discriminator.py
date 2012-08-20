@@ -8,7 +8,7 @@ import os
 import unittest
 
 from tools.standard_logging import initialize_logging
-from web_server.url_discriminator import parse_url, \
+from web_public_reader.url_discriminator import parse_url, \
         action_list_collections, \
         action_create_collection, \
         action_delete_collection, \

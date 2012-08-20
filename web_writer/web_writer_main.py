@@ -18,6 +18,9 @@ monkey.patch_all()
 import gevent_zeromq
 gevent_zeromq.monkey_patch()
 
+import gevent_psycopg2
+gevent_psycopg2.monkey_patch()
+
 import logging
 import os
 import os.path
@@ -43,9 +46,9 @@ from tools.unified_id_factory import UnifiedIDFactory
 from tools.id_translator import InternalIDTranslator
 from tools.data_definitions import create_timestamp
 
-from web_server.sql_authenticator import SqlAuthenticator
-from web_server.central_database_util import get_cluster_row, get_node_rows
-from web_server.space_accounting_client import SpaceAccountingClient
+from web_public_reader.sql_authenticator import SqlAuthenticator
+from web_public_reader.central_database_util import get_cluster_row, get_node_rows
+from web_public_reader.space_accounting_client import SpaceAccountingClient
 
 from web_writer.application import Application
 from web_writer.watcher import Watcher
@@ -98,11 +101,23 @@ class WebWriter(object):
         authenticator = SqlAuthenticator()
 
         self._central_connection = get_central_connection()
-        self._cluster_row = get_cluster_row(self._central_connection)
+
+        # Ticket #25: must run database operation in a greenlet
+        greenlet =  gevent.Greenlet.spawn(get_cluster_row, 
+                                           self._central_connection)
+        greenlet.join()
+        self._cluster_row = greenlet.get()
+
+        greenlet =  gevent.Greenlet.spawn(_get_shard_id,
+                                          self._central_connection, 
+                                          self._cluster_row.id)
+
+        # Ticket #25: must run database operation in a greenlet
+        greenlet.join()
+        shard_id = greenlet.get()
+        self._unified_id_factory = UnifiedIDFactory(shard_id)
+
         self._node_local_connection = get_node_local_connection()
-        self._unified_id_factory = UnifiedIDFactory(
-            _get_shard_id(self._central_connection, self._cluster_row.id)
-        )
         self._deliverator = Deliverator()
 
         self._zeromq_context = zmq.Context()

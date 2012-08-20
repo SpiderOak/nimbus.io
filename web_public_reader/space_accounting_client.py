@@ -6,7 +6,7 @@ Sends space accounting messages.
 """
 import logging
 
-from web_server.exceptions import SpaceUsageFailedError
+from web_public_reader.exceptions import SpaceUsageFailedError
 
 class SpaceAccountingClient(object):
     """Sends space accounting messages."""

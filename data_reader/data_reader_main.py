@@ -350,8 +350,8 @@ def _handle_retrieve_segment_sequence(state, message, _data):
     reply["result"] = "success"
     state["anti-entropy-server"].send_reply(reply, data=encoded_block_list)
 
-def _handle_web_server_start(_state, message, _data):
-    log = logging.getLogger("_handle_web_server_start")
+def _handle_web_reader_start(_state, message, _data):
+    log = logging.getLogger("_handle_web_reader_start")
     log.info("{0} {1} {2}".format(message["unified_id"], 
                                   message["timestamp_repr"],
                                   message["source_node_name"]))
@@ -360,7 +360,7 @@ _dispatch_table = {
     "retrieve-key-start"        : _handle_retrieve_key_start,
     "retrieve-key-next"         : _handle_retrieve_key_next,
     "retrieve-segment-sequence" : _handle_retrieve_segment_sequence, 
-    "web-server-start"          : _handle_web_server_start,
+    "web-reader-start"          : _handle_web_reader_start,
 }
 
 def _create_state():

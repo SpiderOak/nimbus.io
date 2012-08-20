@@ -53,7 +53,13 @@ class ListCollectionsView(ConnectionPoolView):
             {"name" : n, "versioning" : v, "creation-time" : t.isoformat()} \
             for (n, v, t) in collection_list]
 
-        return json.dumps(json_collections)
+        # 2012-08-16 dougfort Ticket #28 - set content_type
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        return flask.Response(json.dumps(json_collections, 
+                                         sort_keys=True, 
+                                         indent=4), 
+                              status=200,
+                              content_type="application/json")
 
 view_function = ListCollectionsView.as_view(endpoint)
 

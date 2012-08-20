@@ -49,7 +49,7 @@ from tools.data_definitions import create_timestamp, \
         cluster_row_template, \
         node_row_template
 
-from web_server.space_accounting_client import SpaceAccountingClient
+from web_public_reader.space_accounting_client import SpaceAccountingClient
 
 from web_writer.application import Application
 from web_writer.watcher import Watcher

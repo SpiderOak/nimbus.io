@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-A Greenlet to watch the web_server internals
+A Greenlet to watch the web_internal_reader internals
 """
 import logging
 

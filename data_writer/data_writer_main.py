@@ -36,7 +36,7 @@ from tools.database_connection import get_node_local_connection, \
 from tools.data_definitions import parse_timestamp_repr
 from tools.file_space import load_file_space_info, file_space_sanity_check
 
-from web_server.central_database_util import get_cluster_row, \
+from web_public_reader.central_database_util import get_cluster_row, \
         get_node_rows
 
 from data_writer.output_value_file import mark_value_files_as_closed

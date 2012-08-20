@@ -7,7 +7,7 @@ A class that performs a space_usage query.
 
 import gevent
 
-from web_server.exceptions import (
+from web_public_reader.exceptions import (
     AlreadyInProgress,
     SpaceUsageFailedError,
 )

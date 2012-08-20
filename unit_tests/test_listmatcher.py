@@ -14,7 +14,7 @@ except ImportError:
 
 from tools.database_connection import get_node_local_connection
 from tools.data_definition import create_timestamp
-from web_server.listmatcher import listmatch 
+from web_public_reader.listmatcher import listmatch 
 
 _node_name = "multi-node-01"
 os.environ["NIMBUSIO_NODE_NAME"] = _node_name

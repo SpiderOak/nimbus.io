@@ -28,7 +28,7 @@ from tools.data_definitions import create_timestamp, \
 
 from tools.zfec_segmenter import ZfecSegmenter
 
-from web_server.retriever import memcached_key_template
+from web_public_reader.retriever import memcached_key_template
 
 from web_internal_reader.exceptions import RetrieveFailedError
 from web_internal_reader.retriever import Retriever

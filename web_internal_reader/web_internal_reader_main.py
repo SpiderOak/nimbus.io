@@ -44,9 +44,9 @@ from tools.data_definitions import create_timestamp
 
 from web_internal_reader.application import Application
 from web_internal_reader.data_reader import DataReader
-from web_server.space_accounting_client import SpaceAccountingClient
+from web_public_reader.space_accounting_client import SpaceAccountingClient
 from web_internal_reader.watcher import Watcher
-from web_server.central_database_util import get_cluster_row
+from web_public_reader.central_database_util import get_cluster_row
 
 _log_path = "%s/nimbusio_web_internal_reader_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )

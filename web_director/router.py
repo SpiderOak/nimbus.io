@@ -26,7 +26,8 @@ AVAILABILITY_TIMEOUT = 30.0
 COLLECTION_CACHE_SIZE = 500000
 
 NIMBUS_IO_SERVICE_DOMAIN = os.environ['NIMBUS_IO_SERVICE_DOMAIN']
-NIMBUSIO_WEB_SERVER_PORT = int(os.environ['NIMBUSIO_WEB_SERVER_PORT'])
+NIMBUSIO_WEB_PUBLIC_READER_PORT = \
+    int(os.environ['NIMBUSIO_WEB_PUBLIC_READER_PORT'])
 NIMBUSIO_WEB_WRITER_PORT = int(os.environ['NIMBUSIO_WEB_WRITER_PORT'])
 NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = \
     os.environ['NIMBUSIO_MANAGEMENT_API_REQUEST_DEST']
@@ -109,7 +110,7 @@ class Router(object):
         self.redis = None
         self.dblock = Lock()
         self.service_domain = NIMBUS_IO_SERVICE_DOMAIN
-        self.read_dest_port = NIMBUSIO_WEB_SERVER_PORT
+        self.read_dest_port = NIMBUSIO_WEB_PUBLIC_READER_PORT
         self.write_dest_port = NIMBUSIO_WEB_WRITER_PORT
         self.known_clusters = dict()
         self.known_collections = LRUCache(COLLECTION_CACHE_SIZE) 

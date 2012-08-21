@@ -1,10 +1,8 @@
 import os
-from functools import wraps
 import time
 import logging
 from collections import deque
 import gevent
-from gevent.coros import RLock as Lock
 from gevent.event import AsyncResult
 import httplib
 from redis import StrictRedis, RedisError
@@ -93,34 +91,36 @@ class Router(object):
         return cluster_info['hosts']
 
     def _db_cluster_for_collection(self, collection):
-        # FIXME how do we handle null result here? do we just cache the null
-        # result?
-        row = self.conn.fetch_one_row(
+        async_result = self.central_conn_pool.run(
             "select cluster_id from nimbusio_central.collection where name=%s",
             [collection, ])
-        if row:
-            return row[0]
+
+        rows = async_result.get()
+
+        if rows:
+            return rows[0]['cluster_id']
 
     def _cluster_for_collection(self, collection, _retries=0):
         "return cluster ID for collection"
         if collection in self.known_collections:
             return self.known_collections[collection]
-        result = self._db_cluster_for_collection(collection,
-            cache_check_func = 
-                lambda: self.known_collections.get(collection, None))
-        self.known_collections[collection] = result
+        result = self._db_cluster_for_collection(collection)
+        if result:
+            self.known_collections[collection] = result
         return result
             
     def _db_cluster_info(self, cluster_id):
-        rows = self.conn.fetch_all_rows("""
+        async_result = self.central_conn_pool.run("""
             select name, hostname, node_number_in_cluster 
             from nimbusio_central.node 
             where cluster_id=%s 
             order by node_number_in_cluster""", 
             [cluster_id, ])
+
+        rows = async_result.get()
     
-        info = dict(rows = list(rows), 
-                    hosts = deque([r[1] for r in rows]))
+        info = dict(rows = rows, 
+                    hosts = deque([r['hostname'] for r in rows]))
 
         return info
 
@@ -129,8 +129,7 @@ class Router(object):
         if cluster_id in self.known_clusters:
             return self.known_clusters[cluster_id]
         
-        info = self._db_cluster_info(cluster_id, 
-            cache_check_func=lambda: self.known_clusters.get(cluster_id, None))
+        info = self._db_cluster_info(cluster_id)
         
         self.known_clusters[cluster_id] = info 
         return info
@@ -209,8 +208,9 @@ class Router(object):
         self.request_counter += 1
         request_num = self.request_counter
 
-        log.debug("request %d: host=%r, method=%r, path=%r, query=%r, start=%r" % 
-            (request_num, hostname, method, path, _query_string, start)) 
+        log.debug(
+            "request %d: host=%r, method=%r, path=%r, query=%r, start=%r" %
+            (request_num, hostname, method, path, _query_string, start))
 
 
         # TODO: be able to handle http requests from http 1.0 clients w/o a

@@ -5,16 +5,16 @@ import logging
 from collections import deque
 import gevent
 from gevent.coros import RLock as Lock
-from gevent.event import Event
+from gevent.event import AsyncResult
 import httplib
 from redis import StrictRedis, RedisError
 import socket
 import json
 
-import psycopg2
+from gdbpool.interaction_pool import DBInteractionPool
 
 from tools.LRUCache import LRUCache
-from tools.database_connection import retry_central_connection
+from tools.database_connection import get_central_database_dsn
 
 # LRUCache mapping names to integers is approximately 32m of memory per 100,000
 # entries
@@ -24,6 +24,8 @@ RETRY_DELAY = 1.0
 AVAILABILITY_TIMEOUT = 30.0
 
 COLLECTION_CACHE_SIZE = 500000
+CENTRAL_DB_POOL_SIZE = int(os.environ.get(
+    "NIMBUS_IO_CENTRAL_DB_POOL_SIZE", "5"))
 
 NIMBUS_IO_SERVICE_DOMAIN = os.environ['NIMBUS_IO_SERVICE_DOMAIN']
 NIMBUSIO_WEB_PUBLIC_READER_PORT = \
@@ -39,65 +41,6 @@ REDIS_WEB_MONITOR_HASH_NAME = "nimbus.io.web_monitor.{0}".format(
     socket.gethostname())
 REDIS_WEB_MONITOR_HASHKEY_FORMAT = "%s:%s"
 
-def _supervise_db_interaction(bound_method):
-    """
-    Decorator for methods of Router class (below) to manage locks and
-    reconnections to database
-    """
-    @wraps(bound_method)
-    def __supervise_db_interaction(instance, *args, **kwargs):
-        log = logging.getLogger("supervise_db")
-        lock = instance.dblock
-        retries = 0
-        start_time = time.time()
-
-        # it maybe that some other greenlet has got here first, and already
-        # updated our cache to include the item that we are querying. In some
-        # situations, such as when the database takes a few seconds to respond,
-        # or when the database is offline, there maybe many greenlets waiting,
-        # all to query the database for the same result.  To avoid this
-        # thundering herd of database hits of likely cached values, the caller
-        # may supply us with a cache check function.
-        cache_check_func = None
-        if 'cache_check_func' in kwargs:
-            cache_check_func = kwargs.pop('cache_check_func') 
-
-        while True:
-            if retries:
-                # do not retry too fast
-                time.sleep(1.0)
-            with lock:
-                conn_id = id(instance.conn)
-                try:
-                    if cache_check_func is not None:
-                        result = cache_check_func()
-                        if result:
-                            break
-                    result = bound_method(instance, *args, **kwargs)
-                    break
-                except psycopg2.OperationalError, err:
-                    log.warn("Database error %s %s (retry #%d)" % (
-                        getattr(err, "pgcode", '-'),
-                        getattr(err, "pgerror", '-'),
-                        retries, ))
-                    retries += 1
-                    # only let one greenlet be retrying the connection
-                    # only reconnect if some other greenlet hasn't already done
-                    # so.
-                    log.warn("replacing database connection %r" % (
-                        conn_id, ))
-                    try:
-                        if instance.conn is not None:
-                            instance.conn.close()
-                    except psycopg2.OperationalError, err2:
-                        pass
-                    instance.conn = retry_central_connection(
-                        isolation_level =
-                            psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-                    conn_id = id(instance.conn)
-        return result
-    return __supervise_db_interaction
-
 class Router(object):
     """
     Router object for assisting the proxy function (below.)
@@ -105,10 +48,9 @@ class Router(object):
     """
 
     def __init__(self):
-        self.init_complete = Event()
-        self.conn = None
+        self.init_complete = AsyncResult()
+        self.central_conn_pool = None
         self.redis = None
-        self.dblock = Lock()
         self.service_domain = NIMBUS_IO_SERVICE_DOMAIN
         self.read_dest_port = NIMBUSIO_WEB_PUBLIC_READER_PORT
         self.write_dest_port = NIMBUSIO_WEB_WRITER_PORT
@@ -121,18 +63,21 @@ class Router(object):
     def init(self):
         #import logging
         #import traceback
-        #from tools.database_connection import get_central_connection
         log = logging.getLogger("init")
         log.info("init start")
-        self.conn = retry_central_connection(
-            isolation_level=psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
-        log.info("init complete")
+
+        self.central_conn_pool = DBInteractionPool(
+            get_central_database_dsn(), 
+            pool_size = CENTRAL_DB_POOL_SIZE, 
+            do_log = True )
+
 
         self.redis = StrictRedis(host = REDIS_HOST,
                                  port = REDIS_PORT,
                                  db = REDIS_DB)
 
-        self.init_complete.set()
+        log.info("init complete")
+        self.init_complete.set(True)
 
     def _parse_collection(self, hostname):
         "return the Nimbus.io collection name from host name"
@@ -147,7 +92,6 @@ class Router(object):
         cluster_info = self._cluster_info(cluster_id)
         return cluster_info['hosts']
 
-    @_supervise_db_interaction
     def _db_cluster_for_collection(self, collection):
         # FIXME how do we handle null result here? do we just cache the null
         # result?
@@ -167,7 +111,6 @@ class Router(object):
         self.known_collections[collection] = result
         return result
             
-    @_supervise_db_interaction
     def _db_cluster_info(self, cluster_id):
         rows = self.conn.fetch_all_rows("""
             select name, hostname, node_number_in_cluster 
@@ -213,8 +156,8 @@ class Router(object):
             redis_values = self.redis.hmget(REDIS_WEB_MONITOR_HASH_NAME,
                                             redis_keys)
         except RedisError as err:
-            log.warn("redis error querying availability for %s: %r"
-                % ( REDIS_WEB_MONITOR_HASH_NAME, redis_keys, ))
+            log.warn("redis error querying availability for %s: %s, %r"
+                % ( REDIS_WEB_MONITOR_HASH_NAME, err, redis_keys, ))
             # just consider everything available. it's the best we can do.
             available.update(hosts)
             return available
@@ -237,6 +180,7 @@ class Router(object):
         if unknown:
             log.warn("no availability info in redis for hkeys: %s %r" % 
                 ( REDIS_WEB_MONITOR_HASH_NAME, unknown, ))
+            # if every host is unknown, just consider them all available
             if len(unknown) == len(hosts):
                 available.update(hosts)
 

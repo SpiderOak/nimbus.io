@@ -11,6 +11,7 @@ import flask
 
 from tools.greenlet_database_util import GetConnection
 from tools.collection import valid_collection_name
+from tools.data_definitions import http_timestamp_str
 from web_collection_manager.connection_pool_view import ConnectionPoolView
 from web_collection_manager.authenticator import authenticate
 
@@ -98,7 +99,7 @@ class CreateCollectionView(ConnectionPoolView):
         collection_dict = {
             "name" : collection_name,
             "versioning" : versioning,
-            "creation-time" : creation_time.isoformat()} 
+            "creation-time" : http_timestamp_str(creation_time)} 
 
         # 2012-04-15 dougfort Ticket #12 - return 201 'created'
         # 2012-08-16 dougfort Ticket #28 - set content_type

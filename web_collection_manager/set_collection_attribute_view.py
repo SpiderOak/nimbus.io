@@ -5,6 +5,7 @@ set_collection_attribute_view.py
 A View to to set an attribute of a collection for a user
 At present, the only attribute we recognize is 'versioning'
 """
+import json
 import logging
 
 import flask
@@ -73,7 +74,13 @@ class SetCollectionAttributeView(ConnectionPoolView):
             cursor.close()
             connection.commit()
 
-        return flask.Response(status=200)
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        collection_dict = {"success" : True}
+        return flask.Response(json.dumps(collection_dict, 
+                                         sort_keys=True, 
+                                         indent=4), 
+                              status=200,
+                              content_type="application/json")
 
 view_function = SetCollectionAttributeView.as_view(endpoint)
 

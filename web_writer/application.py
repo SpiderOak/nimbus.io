@@ -34,7 +34,8 @@ from tools.data_definitions import incoming_slice_size, \
         block_generator, \
         create_priority, \
         create_timestamp, \
-        nimbus_meta_prefix
+        nimbus_meta_prefix, \
+        http_timestamp_str
 
 from tools.zfec_segmenter import ZfecSegmenter
 
@@ -73,7 +74,7 @@ _archive_retry_interval = 120
 _content_type_json = "application/json"
 
 def _fix_timestamp(timestamp):
-    return (None if timestamp is None else repr(timestamp))
+    return (None if timestamp is None else http_timestamp_str(timestamp))
 
 def _build_meta_dict(req_get):
     """
@@ -537,7 +538,7 @@ class Application(object):
             "conjoined_identifier"      : \
                     self._id_translator.public_id(unified_id),
             "key"                       : key,
-            "create_timestamp"          : repr(timestamp)   
+            "create_timestamp"          : _fix_timestamp(timestamp)   
         }
 
         response = Response(content_type=_content_type_json)

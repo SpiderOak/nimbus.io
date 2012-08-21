@@ -9,7 +9,8 @@ from collections import namedtuple
 from tools.data_definitions import segment_status_active, \
     segment_status_cancelled, \
     segment_status_final, \
-    segment_status_tombstone
+    segment_status_tombstone, \
+    http_timestamp_str
 
 _keys_entry = namedtuple("KeysEntry", [
     "key", 
@@ -71,9 +72,9 @@ def list_keys(
         if row.status == segment_status_tombstone:
             continue
         key_list.append(
-            {"key" : row.key, 
+            {"key"                : row.key, 
              "version_identifier" : row.unified_id, 
-             "timestamp_repr" : repr(row.timestamp)}
+             "timestamp"          : http_timestamp_str(row.timestamp)}
         )
 
     if delimiter == "":
@@ -156,9 +157,9 @@ def list_versions(
             continue
 
         key_list.append(
-            {"key" : row.key, 
+            {"key"                : row.key, 
              "version_identifier" : row.unified_id, 
-             "timestamp_repr" : repr(row.timestamp)}
+             "timestamp"          : http_timestamp_str(row.timestamp)}
         )
 
     if delimiter == "":

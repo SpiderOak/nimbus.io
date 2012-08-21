@@ -4,7 +4,6 @@ application.py
 The nimbus.io wsgi application
 
 """
-from base64 import b64encode
 import httplib
 import logging
 import os
@@ -18,6 +17,7 @@ from webob import Response
 
 from tools.collection import get_username_and_collection_id, \
         get_collection_id
+from tools.data_definitions import http_timestamp_str
 
 from web_public_reader.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
@@ -48,7 +48,7 @@ _content_type_json = "application/json"
 _range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _fix_timestamp(timestamp):
-    return (None if timestamp is None else repr(timestamp))
+    return (None if timestamp is None else http_timestamp_str(timestamp))
 
 def _parse_range_header(range_header):
     """

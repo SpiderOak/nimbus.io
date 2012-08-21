@@ -10,6 +10,7 @@ import logging
 import flask
 
 from tools.greenlet_database_util import GetConnection
+from tools.data_definitions import http_timestamp_str
 from web_collection_manager.connection_pool_view import ConnectionPoolView
 from web_collection_manager.authenticator import authenticate
 
@@ -50,7 +51,9 @@ class ListCollectionsView(ConnectionPoolView):
 
         # json won't dump datetime
         json_collections = [
-            {"name" : n, "versioning" : v, "creation-time" : t.isoformat()} \
+            {"name" : n, 
+             "versioning" : v, 
+             "creation-time" : http_timestamp_str(t)} \
             for (n, v, t) in collection_list]
 
         # 2012-08-16 dougfort Ticket #28 - set content_type

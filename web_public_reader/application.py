@@ -6,6 +6,7 @@ The nimbus.io wsgi application
 """
 import httplib
 import logging
+import mimetypes
 import os
 import re
 import json
@@ -418,6 +419,17 @@ class Application(object):
         response = Response(headers=response_headers)
         response.last_modified = last_modified
         response.content_length = content_length
+
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        content_type, content_encoding = \
+            mimetypes.guess_type(key, strict=False)
+        if content_type is None:
+            response.content_type = "application/octet-stream"
+        else:
+            response.content_type = content_type
+        if content_encoding is not None:
+            response.content_encoding = content_encoding
+
         response.status_int = status_int
         response.app_iter = retrieve_generator
         return  response
@@ -516,6 +528,16 @@ class Application(object):
         response = Response(status=200, content_type=None)
         response.last_modified = last_modified
         response.content_length = content_length
+
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        content_type, content_encoding = \
+            mimetypes.guess_type(key, strict=False)
+        if content_type is None:
+            response.content_type = "application/octet-stream"
+        else:
+            response.content_type = content_type
+        if content_encoding is not None:
+            response.content_encoding = content_encoding
 
         return response
 

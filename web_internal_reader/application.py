@@ -14,6 +14,7 @@ retrieve:
 """
 import httplib
 import logging
+import mimetypes
 import os
 from itertools import chain
 import re
@@ -319,6 +320,10 @@ class Application(object):
             status_int = httplib.OK
 
         response = Response(headers=response_headers)
+        
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        response.content_type = "application/octet-stream"
+
         response.status_int = status_int
         response.app_iter = app_iterator(response)
         return  response

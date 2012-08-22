@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-connection_pool_authenticator.py
+intercation_pool_authenticator.py
 
 Authenticates requests
 """
@@ -35,28 +35,19 @@ def _string_to_sign(username, req):
         urllib.unquote_plus(req.path_qs),
     ))
 
-class ConnectionPoolAuthenticator(object):
-    def __init__(self, connection_pool):
-        self._log = logging.getLogger("ConnectionPoolAuthenticator")
-        self._connection_pool = connection_pool
+class InteractionPoolAuthenticator(object):
+    def __init__(self, interaction_pool):
+        self._log = logging.getLogger("InteractionPoolAuthenticator")
+        self._interaction_pool = interaction_pool
         self._customer_key_cache = LRUCache(_max_customer_key_cache_size)
 
     def authenticate(self, collection_name, req):
         """
         establish that this is a valid user and a valid collection
         return collection_entry if valid
-        returhn None if invalid
+        return None if invalid
         """
-        connection = self._connection_pool.get()
-        cursor = connection.cursor()
-        try:
-            return self._authenticate(cursor, collection_name, req)
-        finally:
-            cursor.close()
-            self._connection_pool.put(connection)
-
-    def _authenticate(self, cursor, collection_name, req):
-        cursor.execute("""
+        async_result = self._interaction_pool.run("""
             select nimbusio_central.collection.id, 
                    nimbusio_central.customer.username,
                    nimbusio_central.collection.versioning
@@ -68,13 +59,15 @@ class ConnectionPoolAuthenticator(object):
               and nimbusio_central.collection.deletion_time is null
               and nimbusio_central.customer.deletion_time is null
         """.strip(), [collection_name.lower(), ])
+        result_list = async_result.get()
 
-        result = cursor.fetchone() # returns a dict
-        if result is None:
+        if len(result_list) == 0:
             error_message = "collection name {0} not in database".format(
                 collection_name, )
             self._log.error(error_message)
             raise AuthenticationError(error_message)
+
+        result = result_list[0]
 
         collection_entry = _collection_entry_template(
             collection_name=collection_name,
@@ -124,18 +117,19 @@ class ConnectionPoolAuthenticator(object):
             # no cached key, or cache has expired
             # we could just select on id, but we want to make sure this key
             # belongs to this user
-            cursor.execute("""
+            async_result = self._interaction_pool.run("""
                 select key from nimbusio_central.customer_key
                 where customer_id = (select id from nimbusio_central.customer
                                      where username = %s)
                                      and id = %s
             """, [collection_entry.username, key_id, ])
-            result = cursor.fetchone()
-            if result is None:
+            result_list = async_result.get()
+            if len(result_list) == 0:
                 self._log.error("unknown user {0}".format(
                     collection_entry.username))
                 return None
 
+            result = result_list[0]
             key = result["key"]
             customer_key = _customer_key_template(key_id=key_id, key=key)
 

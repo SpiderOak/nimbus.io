@@ -18,7 +18,8 @@ from webob import Response
 
 from tools.collection import get_username_and_collection_id, \
         get_collection_id
-from tools.data_definitions import http_timestamp_str
+from tools.data_definitions import http_timestamp_str, \
+        parse_http_timestamp
 
 from web_public_reader.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
@@ -405,6 +406,40 @@ class Application(object):
         if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        content_type, content_encoding = \
+            mimetypes.guess_type(key, strict=False)
+
+        # Ticket #37 handle If-Modified-Since and If-Unmodified-Since headers
+
+        if "If-Modified-Since" in req.headers:
+            timestamp_str = req.headers["If-Modified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparsable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified < timestamp:
+                response = Response()
+                response.last_modified = last_modified
+                response.status_int = httplib.NOT_MODIFIED
+                return  response
+
+        if "If-Unmodified-Since" in req.headers:
+            timestamp_str = req.headers["If-Unmodified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparsable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified > timestamp:
+                response = Response()
+                response.last_modified = last_modified
+                response.status_int = httplib.PRECONDITION_FAILED
+                return  response
+
         response_headers = dict()
         if "range" in req.headers:
             status_int = httplib.PARTIAL_CONTENT
@@ -420,9 +455,6 @@ class Application(object):
         response.last_modified = last_modified
         response.content_length = content_length
 
-        # Ticket #31 Guess Content-Type and Content-Encoding
-        content_type, content_encoding = \
-            mimetypes.guess_type(key, strict=False)
         if content_type is None:
             response.content_type = "application/octet-stream"
         else:
@@ -525,7 +557,33 @@ class Application(object):
         if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
-        response = Response(status=200, content_type=None)
+        status = httplib.OK
+
+        # Ticket #37 handle If-Modified-Since and If-Unmodified-Since headers
+
+        if "If-Modified-Since" in req.headers:
+            timestamp_str = req.headers["If-Modified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified < timestamp:
+                status = httplib.NOT_MODIFIED
+
+        if "If-Unmodified-Since" in req.headers:
+            timestamp_str = req.headers["If-Unmodified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified > timestamp:
+                status = httplib.PRECONDITION_FAILED
+
+        response = Response(status=status, content_type=None)
         response.last_modified = last_modified
         response.content_length = content_length
 

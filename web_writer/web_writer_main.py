@@ -82,6 +82,7 @@ _stats = {
 }
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _database_pool_size = 3 
+_central_pool_name = "default"
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
@@ -97,7 +98,9 @@ def _get_cluster_row_and_node_row(interaction_pool):
     query = """select %s from nimbusio_central.cluster where name = %%s""" % (\
         ",".join(cluster_row_template._fields), )
 
-    async_result = interaction_pool.run(query, [_cluster_name, ])
+    async_result = interaction_pool.run(interaction=query, 
+                                        interaction_args=[_cluster_name, ],
+                                        pool=_central_pool_name) 
     result_list = async_result.get()
 
     if len(result_list) == 0:
@@ -117,7 +120,9 @@ def _get_cluster_row_and_node_row(interaction_pool):
                order by node_number_in_cluster""" % (
                ",".join(node_row_template._fields), )
 
-    async_result = interaction_pool.run(query, [cluster_row.id, ])
+    async_result = interaction_pool.run(interaction=query, 
+                                        interaction_args=[cluster_row.id, ],
+                                        pool=_central_pool_name) 
     result_list = async_result.get()
 
     for row in result_list:
@@ -142,8 +147,9 @@ class WebWriter(object):
 
         self._interaction_pool = gdbpool.interaction_pool.DBInteractionPool(
             get_central_database_dsn(), 
+            pool_name=_central_pool_name,
             pool_size=_database_pool_size, 
-            do_log=logging.getLogger("interaction_pool"))
+            do_log=True)
 
         authenticator = InteractionPoolAuthenticator(self._interaction_pool)
 

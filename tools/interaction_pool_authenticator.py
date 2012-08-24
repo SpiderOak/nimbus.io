@@ -12,6 +12,8 @@ import logging
 import time
 import urllib
 
+import gevent
+
 from tools.LRUCache import LRUCache
 from web_public_reader.util import sec_str_eq
 
@@ -26,6 +28,8 @@ _collection_entry_template = namedtuple(
     ["collection_name", "collection_id", "username", "versioning", ]
 )
 _customer_key_template = namedtuple("CustomerKey", ["key_id", "key"])
+_query_timeout = 60.0
+_central_pool_name = "default"
 
 def _string_to_sign(username, req):
     return '\n'.join((
@@ -47,8 +51,8 @@ class InteractionPoolAuthenticator(object):
         return collection_entry if valid
         return None if invalid
         """
-        async_result = self._interaction_pool.run("""
-            select nimbusio_central.collection.id, 
+        async_result = self._interaction_pool.run(
+            interaction="""select nimbusio_central.collection.id, 
                    nimbusio_central.customer.username,
                    nimbusio_central.collection.versioning
             from nimbusio_central.collection 
@@ -58,8 +62,14 @@ class InteractionPoolAuthenticator(object):
             where nimbusio_central.collection.name = %s
               and nimbusio_central.collection.deletion_time is null
               and nimbusio_central.customer.deletion_time is null
-        """.strip(), [collection_name.lower(), ])
-        result_list = async_result.get()
+        """.strip(), 
+        interaction_args=[collection_name.lower(), ],
+        pool=_central_pool_name)
+        try:
+            result_list = async_result.get(block=True, timeout=_query_timeout)
+        except Exception, instance:
+            self._log.exception("collection")
+            raise
 
         if len(result_list) == 0:
             error_message = "collection name {0} not in database".format(
@@ -117,13 +127,22 @@ class InteractionPoolAuthenticator(object):
             # no cached key, or cache has expired
             # we could just select on id, but we want to make sure this key
             # belongs to this user
-            async_result = self._interaction_pool.run("""
-                select key from nimbusio_central.customer_key
+            async_result = self._interaction_pool.run(
+                interaction="""select key from nimbusio_central.customer_key
                 where customer_id = (select id from nimbusio_central.customer
                                      where username = %s)
                                      and id = %s
-            """, [collection_entry.username, key_id, ])
-            result_list = async_result.get()
+                """, 
+                interaction_args=[collection_entry.username, key_id, ],
+                pool=_central_pool_name) 
+
+            try:
+                result_list = async_result.get(block=True, 
+                                               timeout=_query_timeout)
+            except Exception, instance:
+                self_log.exception("key")
+                raise
+
             if len(result_list) == 0:
                 self._log.error("unknown user {0}".format(
                     collection_entry.username))

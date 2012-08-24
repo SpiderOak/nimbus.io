@@ -16,8 +16,6 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.collection import get_username_and_collection_id, \
-        get_collection_id
 from tools.data_definitions import http_timestamp_str, \
         parse_http_timestamp
 
@@ -93,8 +91,7 @@ class Application(object):
     def __init__(
         self, 
         memcached_client,
-        central_connection,
-        node_local_connection,
+        local_interaction_pool,
         cluster_row,
         id_translator,
         authenticator, 
@@ -103,8 +100,7 @@ class Application(object):
     ):
         self._log = logging.getLogger("Application")
         self._memcached_client = memcached_client
-        self._central_connection = central_connection
-        self._node_local_connection = node_local_connection
+        self._interaction_pool = local_interaction_pool
         self._cluster_row = cluster_row
         self._id_translator = id_translator
         self._authenticator = authenticator
@@ -152,28 +148,24 @@ class Application(object):
             raise
 
     def _respond_to_ping(self, _req, _match_object):
-        self._log.debug("_respond_to_ping")
+        # self._log.debug("_respond_to_ping")
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
     def _list_versions(self, req, match_object):
         collection_name = match_object.group("collection_name")
+        self._log.debug("_list_versions")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -207,11 +199,9 @@ class Application(object):
                 kwargs
             )
         )
-        result_dict = list_versions(
-            self._node_local_connection,
-            collection_entry.collection_id, 
-            **kwargs
-        )
+        result_dict = list_versions(self._interaction_pool,
+                                    collection_entry.collection_id, 
+                                    **kwargs)
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -231,28 +221,26 @@ class Application(object):
     def _collection_space_usage(self, req, match_object):
         username = match_object.group("username")
         collection_name = match_object.group("collection_name")
+        self._log.debug("_collection_space_usage")
+
+        try:
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
+        except Exception, instance:
+            self._log.exception("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        if collection_entry is None:
+            raise exc.HTTPUnauthorized()
 
         self._log.info("_collection_space_usage: %r %r" % (
             username, collection_name
         ))
 
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            username,
-            req
-        )
-        if not authenticated:
-            raise exc.HTTPUnauthorized()
-
-        collection_id = get_collection_id(
-            self._central_connection, collection_name
-        )        
-        if collection_id is None:
-            raise exc.HTTPNotFound(collection_name)
-
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(collection_id, _reply_timeout)
+            usage = getter.get_space_usage(collection_entry.id, _reply_timeout)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
 
@@ -263,21 +251,17 @@ class Application(object):
 
     def _list_keys(self, req, match_object):
         collection_name = match_object.group("collection_name")
+        self._log.debug("_list_keys")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -304,11 +288,9 @@ class Application(object):
                 kwargs
             )
         )
-        result_dict = list_keys(
-            self._node_local_connection,
-            collection_entry.collection_id, 
-            **kwargs
-        )
+        result_dict = list_keys(self._interaction_pool,
+                                collection_entry.collection_id, 
+                                **kwargs)
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -328,21 +310,17 @@ class Application(object):
     def _retrieve_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        self._log.debug("_retrieve_key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -378,7 +356,7 @@ class Application(object):
 
         retriever = Retriever(
             self._memcached_client,
-            self._node_local_connection,
+            self._interaction_pool,
             collection_entry.collection_id,
             key,
             version_id,
@@ -398,7 +376,7 @@ class Application(object):
             raise
 
         last_modified, content_length = \
-            get_last_modified_and_content_length(self._node_local_connection,
+            get_last_modified_and_content_length(self._interaction_pool,
                                                  collection_entry.collection_id,
                                                  key,
                                                  version_id)
@@ -469,21 +447,17 @@ class Application(object):
     def _retrieve_meta(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        self._log.debug("_retrieve_meta")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -492,11 +466,9 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        meta_dict = retrieve_meta(
-            self._node_local_connection, 
-            collection_entry.collection_id, 
-            key
-        )
+        meta_dict = retrieve_meta(self._interaction_pool, 
+                                  collection_entry.collection_id, 
+                                  key)
 
         if meta_dict is None:
             raise exc.HTTPNotFound(req.url)
@@ -511,21 +483,17 @@ class Application(object):
     def _head_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        self._log.debug("_head_key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -550,7 +518,7 @@ class Application(object):
         ))
 
         last_modified, content_length = \
-            get_last_modified_and_content_length(self._node_local_connection,
+            get_last_modified_and_content_length(self._interaction_pool,
                                                  collection_entry.collection_id,
                                                  key,
                                                  version_id)
@@ -601,21 +569,18 @@ class Application(object):
 
     def _list_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
+        self._log.debug("_list_conjoined")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        self._log.debug("_list_conjoined after authenticator")
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -642,7 +607,7 @@ class Application(object):
         ))
 
         truncated, conjoined_entries = list_conjoined_archives(
-            self._node_local_connection,
+            self._interaction_pool,
             collection_entry.collection_id,
             **kwargs
         )
@@ -675,21 +640,17 @@ class Application(object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")
+        self._log.debug("_list_upload_in_conjoined")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_entry = \
+                self._authenticator.authenticate(collection_name,
+                                                 req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_entry is None:
             raise exc.HTTPUnauthorized()
 
         try:

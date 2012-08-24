@@ -31,7 +31,7 @@ class Retriever(object):
     def __init__(
         self, 
         memcached_client,
-        node_local_connection,
+        interaction_pool,
         collection_id, 
         key, 
         version_id,
@@ -47,7 +47,7 @@ class Retriever(object):
             slice_size,
         ))
         self._memcached_client = memcached_client
-        self._node_local_connection = node_local_connection
+        self._interaction_pool = interaction_pool
         self._collection_id = collection_id
         self._key = key
         self._version_id = version_id
@@ -73,15 +73,12 @@ class Retriever(object):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
         if self._version_id is None:
-            status_rows = current_status_of_key(
-                self._node_local_connection,
-                self._collection_id, 
-                self._key,
-            )
+            status_rows = current_status_of_key(self._interaction_pool,
+                                                self._collection_id, 
+                                                self._key)
         else:
-            status_rows = current_status_of_version(
-                self._node_local_connection, self._version_id
-            )
+            status_rows = current_status_of_version(self._interaction_pool, 
+                                                    self._version_id)
 
         if len(status_rows) == 0:
             raise RetrieveFailedError("key not found %s %s" % (

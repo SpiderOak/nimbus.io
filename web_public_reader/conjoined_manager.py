@@ -6,6 +6,7 @@ functions for conjoined archive data
 """
 import logging
 from collections import namedtuple
+import os
 
 from  gevent.greenlet import Greenlet
 import  gevent.pool
@@ -22,6 +23,7 @@ _conjoined_list_entry = namedtuple("ConjoinedListEntry", [
         "abort_timestamp",
         "complete_timestamp",]
 )
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
 class MessageGreenlet(Greenlet):
     """
@@ -39,13 +41,18 @@ class MessageGreenlet(Greenlet):
         reply, _data = delivery_channel.get()
         return reply
 
-def list_conjoined_archives(
-    connection, 
-    collection_id, 
-    max_conjoined=1000, 
-    key_marker="", 
-    conjoined_identifier_marker=0
-):
+def _make_conjoined_list_entry(row):
+    return _conjoined_list_entry(unified_id=row["unified_id"],
+                                 key=row["key"],
+                                 create_timestamp=row["create_timestamp"], 
+                                 abort_timestamp=row["abort_timestamp"],
+                                 complete_timestamp=row["complete_timestamp"])
+
+def list_conjoined_archives(interaction_pool, 
+                            collection_id, 
+                            max_conjoined=1000, 
+                            key_marker="", 
+                            conjoined_identifier_marker=0):
     """
     return a boolean for truncated and list of _conjoined_list_entry
     """
@@ -55,27 +62,28 @@ def list_conjoined_archives(
     request_count = max_conjoined + 1
     if len(key_marker) == 0:
         conjoined_identifier_marker = 0
-    result = connection.fetch_all_rows("""
-        select unified_id, key, create_timestamp, abort_timestamp, 
-        complete_timestamp from nimbusio_node.conjoined 
+    async_result = interaction_pool.run(
+        interaction="""select unified_id, key, create_timestamp, 
+        abort_timestamp, complete_timestamp from nimbusio_node.conjoined 
         where collection_id = %s and key > %s and unified_id > %s
         and delete_timestamp is null
         and handoff_node_id is null
         order by unified_id
         limit %s
-        """.strip(), [
-            collection_id, 
-            key_marker, 
-            conjoined_identifier_marker, 
-            request_count
-        ]
+        """.strip(), 
+        interaction_args=[collection_id, 
+                          key_marker, 
+                          conjoined_identifier_marker, 
+                          request_count],
+        pool=_local_node_name
     )
+    result = async_result.get()
     truncated = len(result) == request_count
-    conjoined_list = [_conjoined_list_entry._make(x) for x in result]
+    conjoined_list = [_make_conjoined_list_entry(x) for x in result]
     
     return truncated, conjoined_list
 
-def list_upload_in_conjoined(connection, conjoined_identifier):
+def list_upload_in_conjoined(interaction_pool, conjoined_identifier):
     """
     finish a conjoined archive
     """

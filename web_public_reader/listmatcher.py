@@ -4,6 +4,7 @@ listmatcher.py
 
 listmatch query.
 """
+import os
 
 from collections import namedtuple
 from tools.data_definitions import segment_status_active, \
@@ -26,15 +27,14 @@ _versions_entry = namedtuple("VersionsEntry", [
     "timestamp", 
     "file_tombstone_unified_id"]
 )
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
-def list_keys(
-    connection, 
-    collection_id, 
-    prefix="", 
-    max_keys=1000, 
-    delimiter="",
-    marker=""
-):
+def list_keys(interaction_pool, 
+              collection_id, 
+              prefix="", 
+              max_keys=1000, 
+              delimiter="",
+              marker=""):
     """
     get the most recent row (highest timestamp) for each matching key
     exclude tombstones
@@ -42,8 +42,8 @@ def list_keys(
     # ask for one more than max_keys, so we can tell if we are truncated
     max_keys = int(max_keys)
     request_count = max_keys + 1
-    result = connection.fetch_all_rows(
-        """
+    async_result = interaction_pool.run(
+        interaction="""
         select seg.key, seg.unified_id, seg.status, seg.timestamp
         from nimbusio_node.conjoined con right join nimbusio_node.segment seg 
         on con.unified_id = seg.unified_id
@@ -56,25 +56,28 @@ def list_keys(
         order by seg.key asc, seg.timestamp desc
         limit %s
         """.strip(),
-        [collection_id, "%s%%" % prefix, marker, request_count, ]
+        interaction_args=[collection_id, "%s%%" % prefix, 
+                          marker, 
+                          request_count, ],
+        pool=_local_node_name,
     )
+    result = async_result.get()
 
     truncated = len(result) == request_count
     key_list = list()
     prev_key = None
-    for raw_row in result[:max_keys]:
-        row = _keys_entry._make(raw_row)
-        if row.key == prev_key:
+    for row in result[:max_keys]:
+        if row["key"] == prev_key:
             continue
-        if row.status in [segment_status_active, segment_status_cancelled, ]:
+        if row["status"] in [segment_status_active, segment_status_cancelled]:
             continue
-        prev_key = row.key
-        if row.status == segment_status_tombstone:
+        prev_key = row["key"]
+        if row["status"] == segment_status_tombstone:
             continue
         key_list.append(
-            {"key"                : row.key, 
-             "version_identifier" : row.unified_id, 
-             "timestamp"          : http_timestamp_str(row.timestamp)}
+            {"key"                : row["key"], 
+             "version_identifier" : row["unified_id"], 
+             "timestamp"          : http_timestamp_str(row["timestamp"])}
         )
 
     if delimiter == "":
@@ -89,15 +92,13 @@ def list_keys(
 
     return {"prefixes" : list(prefix_set), "truncated" : truncated}
 
-def list_versions(
-    connection, 
-    collection_id, 
-    prefix="", 
-    max_keys=1000, 
-    delimiter="",
-    key_marker="",
-    version_id_marker_str=""
-):
+def list_versions(interaction_pool, 
+                  collection_id, 
+                  prefix="", 
+                  max_keys=1000, 
+                  delimiter="",
+                  key_marker="",
+                  version_id_marker_str=""):
     """
     get the most recent row (highest timestamp) for each matching key
     and version, exclude tombstones
@@ -110,8 +111,8 @@ def list_versions(
     except ValueError:
         version_id_marker = 0
 
-    result = connection.fetch_all_rows(
-        """
+    async_result = interaction_pool.run(
+        interaction="""
         select seg.key, seg.unified_id, seg.status, seg.timestamp, 
             seg.file_tombstone_unified_id
         from nimbusio_node.conjoined con right join nimbusio_node.segment seg
@@ -126,40 +127,42 @@ def list_versions(
         order by seg.key asc, seg.timestamp desc
         limit %s
         """.strip(),
-        [collection_id, 
-         "%s%%" % prefix, 
-         key_marker, 
-         version_id_marker, 
-         request_count, ]
+        interaction_args=[collection_id, 
+                          "%s%%" % prefix, 
+                          key_marker, 
+                          version_id_marker, 
+                          request_count, ],
+        pool=_local_node_name,
     )
+
+    result = async_result.get()
 
     truncated = len(result) == request_count
     key_list = list()
     tombstone_key = None
     tombstone_unified_id = None
-    for raw_row in result[:max_keys]:
-        row = _versions_entry._make(raw_row)
-        if tombstone_key is not None and row.key == tombstone_key:
+    for row in result[:max_keys]:
+        if tombstone_key is not None and row["key"] == tombstone_key:
             continue
         if tombstone_unified_id is not None and \
-           row.file_tombstone_unified_id == tombstone_unified_id:
+           row["file_tombstone_unified_id"] == tombstone_unified_id:
             tombstone_unified_id = None
             continue
-        if row.status == segment_status_tombstone:
-            if row.file_tombstone_unified_id is None:
-                tombstone_key = row.key
+        if row["status"] == segment_status_tombstone:
+            if row["file_tombstone_unified_id"] is None:
+                tombstone_key = row["key"]
                 tombstone_unified_id = None
             else:
                 tombstone_key = None
-                tombstone_unified_id = row.file_tombstone_unified_id
+                tombstone_unified_id = row["file_tombstone_unified_id"]
             continue 
-        if row.status in [segment_status_active, segment_status_cancelled, ]:
+        if row["status"] in [segment_status_active, segment_status_cancelled]:
             continue
 
         key_list.append(
-            {"key"                : row.key, 
-             "version_identifier" : row.unified_id, 
-             "timestamp"          : http_timestamp_str(row.timestamp)}
+            {"key"                : row["key"], 
+             "version_identifier" : row["unified_id"], 
+             "timestamp"          : http_timestamp_str(row["timestamp"])}
         )
 
     if delimiter == "":

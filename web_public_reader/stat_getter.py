@@ -11,18 +11,18 @@ from tools.data_definitions import segment_status_final
 from web_public_reader.local_database_util import current_status_of_key, \
         current_status_of_version
 
-def get_last_modified_and_content_length(node_local_connection,
+def get_last_modified_and_content_length(interaction_pool,
                                          collection_id, 
                                          key, 
                                          version_id=None):
 
     log = logging.getLogger("get_last_modified_and_content_length")
     if version_id is None:
-        status_rows = current_status_of_key(node_local_connection,
+        status_rows = current_status_of_key(interaction_pool,
                                             collection_id,
                                             key)
     else:
-        status_rows = current_status_of_version(node_local_connection,
+        status_rows = current_status_of_version(interaction_pool,
                                                 version_id)
 
     last_modified = None

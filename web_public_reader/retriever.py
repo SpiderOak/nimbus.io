@@ -73,7 +73,8 @@ class Retriever(object):
                                                 self._key)
         else:
             status_rows = current_status_of_version(self._interaction_pool, 
-                                                    self._version_id)
+                                                    self._version_id,
+                                                    self._key)
 
         if len(status_rows) == 0:
             raise RetrieveFailedError("key not found %s %s" % (

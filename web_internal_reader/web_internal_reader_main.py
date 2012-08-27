@@ -70,8 +70,9 @@ _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _stats = {
     "retrieves"   : 0,
 }
+_memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
 _memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
-_memcached_nodes = ["{0}:{1}".format(_local_node_name, _memcached_port), ] 
+_memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):

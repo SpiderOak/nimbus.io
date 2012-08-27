@@ -19,12 +19,13 @@ from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.local_database_util import current_status_of_key, \
     current_status_of_version
 
-memcached_key_template = "internal_read_{0}"
+memcached_key_template = "internal_read_{0}_{1}"
 
 _web_internal_reader_host = \
     os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
 _web_internal_reader_port = \
     int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
+_nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
 
 class Retriever(object):
     """retrieves data from web_internal_reader"""
@@ -96,7 +97,8 @@ class Retriever(object):
 
     def _cache_status_rows_in_memcached(self, status_rows):
         memcached_key = \
-            memcached_key_template.format(status_rows[0].seg_unified_id)
+            memcached_key_template.format(
+                _nimbusio_node_name, status_rows[0].seg_unified_id)
         cache_dict = {
             "collection-id" : self._collection_id,
             "key"           : self._key,

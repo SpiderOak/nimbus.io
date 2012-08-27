@@ -41,6 +41,7 @@ _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
+_nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
@@ -153,7 +154,8 @@ class Application(object):
     def _get_params_from_memcache(self, unified_id, _conjoined_part):
         """retrieve a cached tuple of (collection_id, key, )"""
         memcached_key = \
-            memcached_key_template.format(unified_id)
+            memcached_key_template.format(
+                _nimbusio_node_name, unified_id)
         self._log.debug("uncaching {0}".format(memcached_key))
         cached_dict = self._memcached_client.get(memcached_key)
 

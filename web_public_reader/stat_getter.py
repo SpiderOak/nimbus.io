@@ -25,6 +25,18 @@ def get_last_modified_and_content_length(interaction_pool,
         status_rows = current_status_of_version(interaction_pool,
                                                 version_id)
 
+    last_modified, content_length = \
+        last_modified_and_content_length_from_status_rows(status_rows)
+
+    log.debug("collection_id={0}, key={1}, version_id={2}, last_modified={3}, " 
+              "content_length={4}".format(collection_id, 
+                                          key,
+                                          version_id,
+                                          last_modified,
+                                          content_length))
+    return last_modified, content_length
+
+def last_modified_and_content_length_from_status_rows(status_rows):
     last_modified = None
     content_length = None
     if len(status_rows) > 0 and \
@@ -39,12 +51,6 @@ def get_last_modified_and_content_length(interaction_pool,
             else:
                 content_length += status_row.seg_file_size
 
-    log.debug("collection_id={0}, key={1}, version_id={2}, last_modified={3}, " 
-              "content_length={4}".format(collection_id, 
-                                          key,
-                                          version_id,
-                                          last_modified,
-                                          content_length))
     
     return last_modified, content_length
 

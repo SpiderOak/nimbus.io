@@ -39,13 +39,6 @@ class Retriever(object):
         slice_size
     ):
         self._log = logging.getLogger("Retriever")
-        self._log.info("{0}, {1}, {2}, {3}, {4}".format(
-            collection_id, 
-            key, 
-            version_id,
-            slice_offset,
-            slice_size,
-        ))
         self._memcached_client = memcached_client
         self._interaction_pool = interaction_pool
         self._collection_id = collection_id
@@ -53,6 +46,8 @@ class Retriever(object):
         self._version_id = version_id
         self._slice_offset = slice_offset
         self._slice_size = slice_size
+
+        self.status_rows = self._fetch_status_rows_from_database()
 
         self.total_file_size = 0
 
@@ -225,13 +220,12 @@ class Retriever(object):
             raise RetrieveFailedError(instance)
 
     def _retrieve(self, timeout):
-        status_rows = self._fetch_status_rows_from_database()
-        self._cache_status_rows_in_memcached(status_rows)
-        self.total_file_size = sum([r.seg_file_size for r in status_rows])
+        self._cache_status_rows_in_memcached(self.status_rows)
+        self.total_file_size = sum([r.seg_file_size for r in self.status_rows])
 
         self._log.debug("start status_rows loop")
         first_block = True
-        for entry in self._generate_status_rows(status_rows):
+        for entry in self._generate_status_rows(self.status_rows):
 
             status_row, block_offset, block_count = entry
 

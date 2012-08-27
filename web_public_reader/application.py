@@ -23,7 +23,9 @@ from web_public_reader.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
 from web_public_reader.space_usage_getter import SpaceUsageGetter
-from web_public_reader.stat_getter import get_last_modified_and_content_length
+from web_public_reader.stat_getter import \
+    get_last_modified_and_content_length, \
+    last_modified_and_content_length_from_status_rows
 from web_public_reader.retriever import Retriever
 from web_public_reader.meta_manager import retrieve_meta
 from web_public_reader.conjoined_manager import list_conjoined_archives, \
@@ -376,10 +378,8 @@ class Application(object):
             raise
 
         last_modified, content_length = \
-            get_last_modified_and_content_length(self._interaction_pool,
-                                                 collection_entry.collection_id,
-                                                 key,
-                                                 version_id)
+            last_modified_and_content_length_from_status_rows(
+                retriever.status_rows)
 
         if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))

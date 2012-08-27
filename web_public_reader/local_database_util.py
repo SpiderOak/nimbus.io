@@ -27,7 +27,7 @@ _key_query = """
     seg.file_size, seg.file_hash
     from nimbusio_node.conjoined con right outer join nimbusio_node.segment seg 
     on con.unified_id = seg.unified_id 
-    where seg.collection_id = %s and seg.key=%s 
+    where seg.collection_id = %s and seg.key=%s
     and seg.handoff_node_id is null
     and con.handoff_node_id is null
     order by seg.unified_id desc, seg.conjoined_part asc;
@@ -39,7 +39,7 @@ _version_query = """
     seg.file_size, seg.file_hash
     from nimbusio_node.conjoined con right outer join nimbusio_node.segment seg 
     on con.unified_id = seg.unified_id 
-    where seg.unified_id = %s 
+    where seg.key = %s and seg.unified_id = %s 
     and seg.handoff_node_id is null
     and con.handoff_node_id is null
     order by seg.conjoined_part asc;
@@ -82,7 +82,7 @@ def current_status_of_key(interaction_pool, collection_id, key):
     
     return status_rows
 
-def current_status_of_version(interaction_pool, version_id):
+def current_status_of_version(interaction_pool, version_id, key):
     """
     retrieve the conjoined row (if any) and most current related
     segment_rows for this version_id
@@ -91,7 +91,7 @@ def current_status_of_version(interaction_pool, version_id):
     """
     log = logging.getLogger("current_status_of_version")
     async_result = interaction_pool.run(interaction=_version_query, 
-                                        interaction_args=[version_id, ],
+                                        interaction_args=[key, version_id, ],
                                         pool=_local_node_name)
     result = async_result.get()
     status_rows = [_construct_row(raw_row) for raw_row in result]

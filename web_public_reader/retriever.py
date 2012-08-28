@@ -4,6 +4,7 @@ retriever.py
 
 A class that retrieves data from data readers.
 """
+from base64 import b64encode
 import httplib
 import logging
 import os
@@ -97,19 +98,32 @@ class Retriever(object):
 
     def _cache_status_rows_in_memcached(self, status_rows):
         memcached_key = \
-            memcached_key_template.format(
-                _nimbusio_node_name, status_rows[0].seg_unified_id)
+            memcached_key_template.format(_nimbusio_node_name, 
+                                          status_rows[0].seg_unified_id)
+
+        # See Ticket #40, comment 1 - pickle won't handle namedtuple
+        # so we convert to dict()
+        cached_status_rows = [row._asdict() for row in status_rows]
+
+        # pickle also won't handle the md5 digest, so we encode
+        for row in cached_status_rows:
+            row["seg_file_hash"] = b64encode(row["seg_file_hash"]) 
+
         cache_dict = {
             "collection-id" : self._collection_id,
             "key"           : self._key,
-            "status-rows"   : status_rows,
+            "status-rows"   : cached_status_rows,
         }
+
         self._log.debug("caching {0}".format(memcached_key))
         try:
-            self._memcached_client.set(memcached_key, cache_dict)
+            successful = self._memcached_client.set(memcached_key, cache_dict)
         except Exception, instance:
             self._log.exception(instance)
             raise
+
+        if not successful:
+            self._log.warn("memcached set failed {0}".format(memcached_key))
 
     def _generate_status_rows(self, status_rows):
 

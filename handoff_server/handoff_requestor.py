@@ -2,60 +2,106 @@
 """
 handoff_requestor.py
 
-class HandoffRequestor
-
-A time queue action to periodically query the other handoff servers to 
-see if their node has any handoffs for us.
+a class that sends a 'request-handoffs' message to all active handoff
+servers
 """
 import logging
 import os
-import time
 
+import gevent
+from gevent.greenlet import Greenlet
+from gevent_zeromq import zmq
+
+from tools.zeromq_util import prepare_ipc_path
 from tools.data_definitions import create_timestamp
 
-handoff_polling_interval = float(os.environ.get(
-    "NIMBUSIO_HANDOFF_POLLING_INTERVAL", str(15.0 * 60.0)
-))
-_delay_interval = 5.0
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+_timeout_seconds = 60.0
 
-class HandoffRequestor(object):
+class HandoffRequestor(Greenlet):
     """
-    A time queue action to periodically query the other handoff servers to 
-    see if their node has any handoffs for us.
+    zmq_context
+        zeromq context
+
+    addresses
+        the address of every handoff_server except ourselves
+
+    local_node_id
+        the database id of the node row for our local node
+
+    client_tag
+        A unique identifier for our client, to be included in every message
+
+    client_address
+        the address our socket binds to. Sent to the remote server in every
+        message
+
+    halt_event:
+        Event object, set when it's time to halt
     """
-    def __init__(self, state, local_node_name):
+    def __init__(self, zmq_context, addresses, local_node_id, halt_event):
+        Greenlet.__init__(self)
         self._log = logging.getLogger("HandoffRequestor")
-        self._state = state
-        self._local_node_name = local_node_name
-        self._local_node_id = state["node-id-dict"][local_node_name]
 
-    @classmethod
-    def next_run(cls):
-        return time.time() + handoff_polling_interval
+        self._req_sockets = list()
+        for address in addresses:
+            req_socket = zmq_context.socket(zmq.REP)
 
-    def run(self, halt_event):
+            # we need a valid path for IPC sockets
+            if address.startswith("ipc://"):
+                prepare_ipc_path(address)
+
+            self._log.info("connecting to {0}".format(address))
+            req_socket.connect(address)
+
+            self._req_sockets.append(req_socket)
+
+        self._local_node_id = local_node_id
+        self._halt_event = halt_event
+
+    def join(self, timeout=3.0):
         """
-        send 'request-handoffs' to all remote handoff servers
+        Clean up and wait for the greenlet to shut down
         """
+        self._log.debug("joining")
+        Greenlet.join(self, timeout)
+        for req_socket in self._req_sockets:
+            req_socket.close()
+        self._log.debug("join complete")
 
-        if halt_event.is_set():
-            return
-
-        if len(self._state["pending-handoffs"]) > 0:
-            # run again later
-            return [(self.run, time.time() + _delay_interval, )]
-
+    def _run(self):
         self._log.debug("sending handoff requests")
 
         message = {
             "message-type"              : "request-handoffs",
+            "message-id"                : uuid.uuid1().hex,
+            "client-tag"                : self._client_tag,
+            "client-address"            : self._client_address,
             "request-timestamp-repr"    : repr(create_timestamp()),
-            "node-name"                 : self._local_node_name,
+            "node-name"                 : _local_node_name,
             "node-id"                   : self._local_node_id,
         }
 
-        for handoff_server_client in self._state["handoff-server-clients"]:
-            handoff_server_client.queue_message_for_send(message)
-        
-        return [(self.run, self.next_run(), )]
+        # send the message to everyone
+        for req_socket in self._req_sockets:
+            if self._halt_event.is_set():
+                return
+            req_socket.send_json(message)
+
+        # wait for ack
+        for index, req_socket in enumerate(self._req_sockets):
+            if self._halt_event.is_set():
+                return
+            reply = None
+            with gevent.Timeout(_timeout_seconds, False):
+                reply = req_socket.recv_json() 
+            req_socket.close()
+            if reply is None:
+                self._log.error(
+                    "handoff_server #{0} has not ackknowledged".format(index))
+                continue
+                    
+            assert reply["accepted"] 
+
+        self._req_sockets = list()
 

@@ -18,8 +18,7 @@ def unhandled_greenlet_exception_closure(event_push_client):
                                              str(instance))
             log.exception(error_message)
             event_push_client.exception(unhandled_exception_topic,
-                                        error_message,
-                                        instance)
+                                        error_message)
         else:
             log.error("unexpected reault {0}".format(result))
     return _report_exception

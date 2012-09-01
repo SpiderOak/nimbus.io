@@ -7,6 +7,8 @@ servers
 """
 import logging
 import os
+import time
+import uuid
 
 import gevent
 from gevent.greenlet import Greenlet
@@ -16,7 +18,7 @@ from tools.zeromq_util import prepare_ipc_path
 from tools.data_definitions import create_timestamp
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_timeout_seconds = 60.0
+_timeout_seconds = 15.0
 
 class HandoffRequestor(Greenlet):
     """
@@ -39,13 +41,19 @@ class HandoffRequestor(Greenlet):
     halt_event:
         Event object, set when it's time to halt
     """
-    def __init__(self, zmq_context, addresses, local_node_id, halt_event):
+    def __init__(self, 
+                 zmq_context, 
+                 addresses, 
+                 local_node_id, 
+                 client_tag,
+                 client_address,
+                 halt_event):
         Greenlet.__init__(self)
         self._log = logging.getLogger("HandoffRequestor")
 
         self._req_sockets = list()
         for address in addresses:
-            req_socket = zmq_context.socket(zmq.REP)
+            req_socket = zmq_context.socket(zmq.REQ)
 
             # we need a valid path for IPC sockets
             if address.startswith("ipc://"):
@@ -57,17 +65,9 @@ class HandoffRequestor(Greenlet):
             self._req_sockets.append(req_socket)
 
         self._local_node_id = local_node_id
+        self._client_tag = client_tag
+        self._client_address = client_address
         self._halt_event = halt_event
-
-    def join(self, timeout=3.0):
-        """
-        Clean up and wait for the greenlet to shut down
-        """
-        self._log.debug("joining")
-        Greenlet.join(self, timeout)
-        for req_socket in self._req_sockets:
-            req_socket.close()
-        self._log.debug("join complete")
 
     def _run(self):
         self._log.debug("sending handoff requests")
@@ -90,15 +90,27 @@ class HandoffRequestor(Greenlet):
 
         # wait for ack
         for index, req_socket in enumerate(self._req_sockets):
+            start_time = time.time()
+            reply = None
+            while not self._halt_event.is_set():
+                try:
+                    reply = req_socket.recv_json(zmq.NOBLOCK)
+                except zmq.ZMQError, instance:
+                    if instance.errno == zmq.EAGAIN:
+                        elapsed_time = time.time() - start_time
+                        if elapsed_time < _timeout_seconds:
+                            self._halt_event.wait(1.0)
+                            continue
+                        break
+                    raise
+                else:
+                    break
+            req_socket.close()
             if self._halt_event.is_set():
                 return
-            reply = None
-            with gevent.Timeout(_timeout_seconds, False):
-                reply = req_socket.recv_json() 
-            req_socket.close()
             if reply is None:
                 self._log.error(
-                    "handoff_server #{0} has not ackknowledged".format(index))
+                    "handoff_server #{0} has not acknowledged".format(index))
                 continue
                     
             assert reply["accepted"] 

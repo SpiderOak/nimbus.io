@@ -124,7 +124,7 @@ def _setup(zmq_context, event_push_client, halt_event):
             
     push_client_dict = dict()
     for address in remote_handoff_server_addresses:
-        push_client = zmq_context(zmq.PUSH)
+        push_client = zmq_context.socket(zmq.PUSH)
         push_client.connect(address)
         push_client_dict[address] = push_client
 
@@ -147,8 +147,9 @@ def _setup(zmq_context, event_push_client, halt_event):
     handoff_requestor.link_exception(
         unhandled_greenlet_exception_closure(event_push_client))
     handoff_requestor.start()
+    active_group.add(handoff_requestor)
 
-    return handoff_requestor, active_group, push_client_dict
+    return active_group, [rep_server, pull_server, ], push_client_dict
 
 def main():
     """
@@ -168,7 +169,7 @@ def main():
     event_push_client = EventPushClient(zmq_context, "handoff_server")
 
     try:
-        handoff_requestor, active_group, push_client_dict = \
+        active_group, socket_greenlets, push_client_dict = \
             _setup(zmq_context, event_push_client, halt_event)
     except Exception:
         log.exception("exception during setup")
@@ -177,14 +178,16 @@ def main():
     log.info("program started")
     event_push_client.info("program-start", "handoff_server starts")
 
-    log.info("waiting handoff requests to be sent")
-    handoff_requestor.join()
-
     # wait here while the servers process messages
     halt_event.wait()
 
     log.info("halt_event set, program terminating")
 
+    # zmq_contexct_term() will sit forever unless we close every socket
+    for socket_greenlet in socket_greenlets:
+        socket_greenlet.join()
+
+    active_group.kill()
     active_group.join(timeout=3.0)
 
     for push_client in push_client_dict.values():

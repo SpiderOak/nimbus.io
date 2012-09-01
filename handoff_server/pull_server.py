@@ -61,8 +61,13 @@ class PULLServer(Greenlet):
 
     def _run(self):
         while not self._halt_event.is_set():
-            control = self._pull_socket.recv_json()
-
+            try:
+                control = self._pull_socket.recv_json(zmq.NOBLOCK)
+            except zmq.ZMQError, instance:
+                if instance.errno == zmq.EAGAIN:
+                    self._halt_event.wait(1.0)
+                    continue
+                raise
             body = []
             while self._pull_socket.rcvmore:
                 body.append(self._pull_socket.recv())

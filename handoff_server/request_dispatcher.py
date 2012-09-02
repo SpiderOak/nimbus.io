@@ -9,6 +9,8 @@ import logging
 from gevent.greenlet import Greenlet
 from gevent.pool import Group
 
+from gevent_zeromq import zmq
+
 from tools.unhandled_greenlet_exception import \
     unhandled_greenlet_exception_closure
 
@@ -16,6 +18,9 @@ from handoff_server.handoffs_for_node import HandoffsForNode
 
 class RequestDispatcher(Greenlet):
     """
+    zmq_context
+        zeromq context
+
     interaction_pool
         pool of database connections
 
@@ -32,6 +37,7 @@ class RequestDispatcher(Greenlet):
         Event object, set when it's time to halt
     """
     def __init__(self, 
+                 zmq_context,
                  interaction_pool, 
                  event_push_client,
                  request_queue, 
@@ -41,6 +47,7 @@ class RequestDispatcher(Greenlet):
 
         self._log = logging.getLogger("RequestDispatcher")
 
+        self._zmq_context = zmq_context
         self._interaction_pool = interaction_pool
         self._event_push_client = event_push_client
         self._request_queue = request_queue
@@ -69,12 +76,13 @@ class RequestDispatcher(Greenlet):
                 continue
 
             if message.control["client-address"] not in self._push_client_dict:
-                error_message = "unknown client-address {0}".format(
-                    message.control)
-                self._event_push_client.error("handoff-request-error",
-                                              error_message)
-                self._log.error(error_message)
-                continue
+                push_client = self._zmq_context.socket(zmq.PUSH)
+                self._log.info("connecting to {0}".format(
+                    message.control["client-address"]))
+                push_client.connect(message.control["client-address"])
+                self._push_client_dict[message.control["client-address"]] = \
+                    push_client
+
             push_client = \
                 self._push_client_dict[message.control["client-address"]]
 

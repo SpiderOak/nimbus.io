@@ -53,6 +53,7 @@ class REPServer(Greenlet):
         self._log.debug("join complete")
 
     def _run(self):
+        ping_count = 0
         while not self._halt_event.is_set():
             try:
                 control = self._rep_socket.recv_json(zmq.NOBLOCK)
@@ -71,10 +72,14 @@ class REPServer(Greenlet):
                 body = body[0]
 
             message = message_format(ident=None, control=control, body=body)
-            self._log.debug("received: %s" % (message.control, ))
 
             # ack is sufficient rely to ping
-            if message.control["message-type"] != "ping":
+            if message.control["message-type"] == "ping":
+                ping_count += 1
+                if ping_count % 100 == 0:
+                    self._log.debug("{0} pings".format(ping_count))
+            else:
+                self._log.debug("received: %s" % (message.control, ))
                 self._request_queue.put(message)
 
             ack_message = {

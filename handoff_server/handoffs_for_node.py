@@ -39,7 +39,7 @@ def _retrieve_conjoined_handoffs_for_node(interaction_pool, node_id):
 def _retrieve_segment_handoffs_for_node(interaction_pool, node_id):
     query = """
         select * from nimbusio_node.segment 
-        where handoff_node_id = %%s
+        where handoff_node_id = %s
         order by timestamp desc
     """
 
@@ -102,14 +102,15 @@ class HandoffsForNode(Greenlet):
 
     def _run(self):
         self._log.debug("node {0} {1}".format(
-            self._message["node-name"], 
-            self._message["request-timestamp-repr"]))
+            self._message.control["node-name"], 
+            self._message.control["request-timestamp-repr"]))
 
         reply = {
             "self._message-type"    : "request-handoffs-reply",
-            "client-tag"            : self._message["client-tag"],
-            "self._message-id"      : self._message["message-id"],
-            "request-timestamp-repr": self._message["request-timestamp-repr"],
+            "client-tag"            : self._message.control["client-tag"],
+            "self._message-id"      : self._message.control["message-id"],
+            "request-timestamp-repr": \
+                self._message.control["request-timestamp-repr"],
             "node-name"             : _local_node_name,
             "conjoined-count"       : None,
             "segment-count"         : None,
@@ -117,7 +118,7 @@ class HandoffsForNode(Greenlet):
             "error-self._message"   : None,
         }
 
-        node_id = self._message["node-id"]
+        node_id = self._message.control["node-id"]
         try:
             conjoined_rows = \
                 _retrieve_conjoined_handoffs_for_node(self._interaction_pool,
@@ -130,7 +131,7 @@ class HandoffsForNode(Greenlet):
             self._event_push_client.exception(
                 "_retrieve_handoffs_for_node", str(instance))  
             reply["result"] = "exception"
-            reply["error-self._message"] = str(instance)
+            reply["error-message"] = str(instance)
             self._push_client.send_json(reply)
             return
 

@@ -50,9 +50,9 @@ _handoff_server_addresses = \
     os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
 _handoff_server_pipeline_address = \
     os.environ["NIMBUSIO_HANDOFF_SERVER_PIPELINE_ADDRESS"]
-_central_database_pool_size = 3 
+_central_database_pool_size = 1 
 _central_pool_name = "default"
-_local_database_pool_size = 3 
+_local_database_pool_size = 1 
 
 def _handle_sigterm(halt_event):
     halt_event.set()
@@ -123,12 +123,8 @@ def _setup(zmq_context, event_push_client, halt_event):
             remote_handoff_server_addresses.append(address)
             
     push_client_dict = dict()
-    for address in remote_handoff_server_addresses:
-        push_client = zmq_context.socket(zmq.PUSH)
-        push_client.connect(address)
-        push_client_dict[address] = push_client
-
-    request_dispatcher = RequestDispatcher(interaction_pool, 
+    request_dispatcher = RequestDispatcher(zmq_context,
+                                           interaction_pool, 
                                            event_push_client,
                                            incoming_request_queue, 
                                            push_client_dict,

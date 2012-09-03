@@ -36,8 +36,9 @@ class PULLServer(Greenlet):
     """
     def __init__(self, context, address, reply_queue, halt_event):
         Greenlet.__init__(self)
+        self._name = "PULLServer"
 
-        self._log = logging.getLogger("PULLServer")
+        self._log = logging.getLogger(self._name)
 
         # we need a valid path for IPC sockets
         if address.startswith("ipc://"):
@@ -49,6 +50,9 @@ class PULLServer(Greenlet):
 
         self._reply_queue = reply_queue
         self._halt_event = halt_event
+
+    def __str__(self):
+        return self._name
 
     def join(self, timeout=3.0):
         """

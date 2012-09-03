@@ -83,14 +83,18 @@ class HandoffsForNode(Greenlet):
                  push_client,
                  halt_event):
         Greenlet.__init__(self)
+        self._name = "HandoffsForNode"
 
-        self._log = logging.getLogger("HandoffsForNode")
+        self._log = logging.getLogger(self._name)
 
         self._interaction_pool = interaction_pool
         self._event_push_client = event_push_client
         self._message = message
         self._push_client = push_client
         self._halt_event = halt_event
+
+    def __str__(self):
+        return self._name
 
     def join(self, timeout=3.0):
         """
@@ -106,7 +110,7 @@ class HandoffsForNode(Greenlet):
             self._message.control["request-timestamp-repr"]))
 
         reply = {
-            "self._message-type"    : "request-handoffs-reply",
+            "message-type"          : "request-handoffs-reply",
             "client-tag"            : self._message.control["client-tag"],
             "self._message-id"      : self._message.control["message-id"],
             "request-timestamp-repr": \

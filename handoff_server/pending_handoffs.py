@@ -8,6 +8,8 @@ unified_id
 import heapq
 import logging
 
+from gevent.coros import RLock
+
 class PendingHandoffs(object):
     """
     a container to hold the pending handoffs for a node, ordered by
@@ -18,11 +20,13 @@ class PendingHandoffs(object):
         self._list = list()
         self._dict = dict()
         heapq.heapify(self._list)
+        self._lock = RLock()
 
     def push(self, incoming_segment_row, source_node_name):
         """
         add the segment row, with its source
         """
+        self._lock.acquire()
         handoff_key = (incoming_segment_row.unified_id, 
                        incoming_segment_row.conjoined_part, )
         if handoff_key in self._dict:
@@ -46,14 +50,19 @@ class PendingHandoffs(object):
             self._dict[handoff_key] = (
                 incoming_segment_row, [source_node_name, ], 
             )            
+        self._lock.release()
 
     def pop(self):
         """
         return a tuple of the oldest segment row with a list of its sources
         raise IndexError if there is none
         """
-        handoff_key = heapq.heappop(self._list)
-        return self._dict.pop(handoff_key)
+        self._lock.acquire()
+        try:
+            handoff_key = heapq.heappop(self._list)
+            return self._dict.pop(handoff_key)
+        finally:
+            self._lock.release()
 
     def __len__(self):
         return len(self._list)

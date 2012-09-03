@@ -28,8 +28,9 @@ class REPServer(Greenlet):
     """
     def __init__(self, zmq_context, address, request_queue, halt_event):
         Greenlet.__init__(self)
+        self._name = "REPServer"
 
-        self._log = logging.getLogger("REPServer")
+        self._log = logging.getLogger(self._name)
 
         # we need a valid path for IPC sockets
         if address.startswith("ipc://"):
@@ -42,6 +43,9 @@ class REPServer(Greenlet):
         self._request_queue = request_queue
 
         self._halt_event = halt_event
+
+    def __str__(self):
+        return self._name
 
     def join(self, timeout=3.0):
         """

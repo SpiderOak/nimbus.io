@@ -35,6 +35,7 @@ from handoff_server.pull_server import PULLServer
 from handoff_server.rep_server import REPServer
 from handoff_server.handoff_requestor import HandoffRequestor
 from handoff_server.request_dispatcher import RequestDispatcher
+from handoff_server.reply_dispatcher import ReplyDispatcher
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_handoff_server_%s.log" % (
@@ -105,6 +106,15 @@ def _setup(zmq_context, event_push_client, halt_event):
         unhandled_greenlet_exception_closure(event_push_client))
     pull_server.start()
     active_group.add(pull_server)
+
+    reply_dispatcher = ReplyDispatcher(interaction_pool,
+                                       event_push_client,
+                                       incoming_reply_queue,
+                                       halt_event)
+    reply_dispatcher.link_exception(
+        unhandled_greenlet_exception_closure(event_push_client))
+    reply_dispatcher.start()
+    active_group.add(reply_dispatcher)
 
     incoming_request_queue = Queue()
 

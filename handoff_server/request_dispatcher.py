@@ -44,8 +44,9 @@ class RequestDispatcher(Greenlet):
                  push_client_dict,
                  halt_event):
         Greenlet.__init__(self)
+        self._name = "RequestDispatcher"
 
-        self._log = logging.getLogger("RequestDispatcher")
+        self._log = logging.getLogger(self._name)
 
         self._zmq_context = zmq_context
         self._interaction_pool = interaction_pool
@@ -54,6 +55,9 @@ class RequestDispatcher(Greenlet):
         self._push_client_dict = push_client_dict
         self._halt_event = halt_event
         self._active_greenlets = Group()
+
+    def __str__(self):
+        return self._name
 
     def join(self, timeout=3.0):
         """

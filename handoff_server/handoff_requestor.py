@@ -49,7 +49,8 @@ class HandoffRequestor(Greenlet):
                  client_address,
                  halt_event):
         Greenlet.__init__(self)
-        self._log = logging.getLogger("HandoffRequestor")
+        self._name = "HandoffRequestor"
+        self._log = logging.getLogger(self._name)
 
         self._req_sockets = list()
         for address in addresses:
@@ -68,6 +69,9 @@ class HandoffRequestor(Greenlet):
         self._client_tag = client_tag
         self._client_address = client_address
         self._halt_event = halt_event
+
+    def __str__(self):
+        return self._name
 
     def _run(self):
         self._log.debug("sending handoff requests")

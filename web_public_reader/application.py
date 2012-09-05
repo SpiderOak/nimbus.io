@@ -45,7 +45,6 @@ _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
 
-_retrieve_retry_interval = 120
 _content_type_json = "application/json"
 _range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
@@ -366,8 +365,11 @@ class Application(object):
             slice_size
         )
 
+        response_headers = dict()
+        response = Response(headers=response_headers)
+
         try:
-            retrieve_generator = retriever.retrieve(_reply_timeout)
+            retrieve_generator = retriever.retrieve(response, _reply_timeout)
         except Exception, instance:
             self._log.exception("retrieve_failed {0}".format(instance))
             self._event_push_client.exception(
@@ -399,7 +401,6 @@ class Application(object):
                     "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
-                response = Response()
                 response.last_modified = last_modified
                 response.status_int = httplib.NOT_MODIFIED
                 return  response
@@ -413,12 +414,10 @@ class Application(object):
                     "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
-                response = Response()
                 response.last_modified = last_modified
                 response.status_int = httplib.PRECONDITION_FAILED
                 return  response
 
-        response_headers = dict()
         if "range" in req.headers:
             status_int = httplib.PARTIAL_CONTENT
             response_headers["Content-Range"] = \
@@ -429,7 +428,6 @@ class Application(object):
         else:
             status_int = httplib.OK
 
-        response = Response(headers=response_headers)
         response.last_modified = last_modified
         response.content_length = content_length
 

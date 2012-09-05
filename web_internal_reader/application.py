@@ -14,7 +14,6 @@ retrieve:
 """
 import httplib
 import logging
-import mimetypes
 import os
 from itertools import chain
 import re
@@ -46,7 +45,6 @@ _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
 
-_retrieve_retry_interval = 120
 _range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _connected_clients(clients):
@@ -290,7 +288,6 @@ class Application(object):
                 ))
                 self._stats["retrieves"] -= 1
                 response.status_int = 503
-                response.retry_after = _retrieve_retry_interval
                 return
 
             end_time = time.time()

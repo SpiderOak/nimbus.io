@@ -27,6 +27,7 @@ _web_internal_reader_host = \
 _web_internal_reader_port = \
     int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
 _nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
+_retrieve_retry_interval = 120
 
 class Retriever(object):
     """retrieves data from web_internal_reader"""
@@ -229,14 +230,16 @@ class Retriever(object):
             block_offset = 0
             block_count = None
 
-    def retrieve(self, timeout):
+    def retrieve(self, response, timeout):
         try:
-            return self._retrieve(timeout)
+            return self._retrieve(response, timeout)
         except Exception, instance:
             self._log.exception(instance)
+            response.status_int = httplib.SERVICE_UNAVAILABLE
+            response.retry_after = _retrieve_retry_interval
             raise RetrieveFailedError(instance)
 
-    def _retrieve(self, timeout):
+    def _retrieve(self, response, timeout):
         self._cache_status_rows_in_memcached(self.status_rows)
         self.total_file_size = sum([r.seg_file_size for r in self.status_rows])
 
@@ -276,35 +279,43 @@ class Retriever(object):
             request = urllib2.Request(uri, headers=headers)
             self._log.debug("start request")
             try:
-                response = urllib2.urlopen(request, timeout=timeout)
+                urllib_response = urllib2.urlopen(request, timeout=timeout)
             except urllib2.HTTPError, instance:
                 if instance.code == httplib.PARTIAL_CONTENT and \
                 expected_status ==  httplib.PARTIAL_CONTENT:
-                    response = instance
+                    urllib_response = instance
                 else:
                     message = "urllib2.HTTPError '{0}' '{1}'".format(
                         instance.code, instance)
                     self._log.exception(message)
-                    raise RetrieveFailedError(message)
+                    response.status_int = httplib.SERVICE_UNAVAILABLE
+                    response.retry_after = _retrieve_retry_interval
+                    raise StopIteration()
             except gevent.httplib.RequestFailed, instance:
                 message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
                     instance.args, instance.message)
                 self._log.exception(message)
-                raise RetrieveFailedError(message)
+                response.status_int = httplib.SERVICE_UNAVAILABLE
+                response.retry_after = _retrieve_retry_interval
+                raise StopIteration()
             except Exception, instance:
                 message = "GET failed {0} '{1}'".format(
                     instance.__class__.__name__, instance)
                 self._log.exception(message)
-                raise RetrieveFailedError(message)
+                response.status_int = httplib.SERVICE_UNAVAILABLE
+                response.retry_after = _retrieve_retry_interval
+                raise StopIteration()
                 
-            if response is None:
+            if urllib_response is None:
                 message = "GET returns None {0}".format(uri)
                 self._log.error(message)
-                raise RetrieveFailedError(message)
+                response.status_int = httplib.SERVICE_UNAVAILABLE
+                response.retry_after = _retrieve_retry_interval
+                raise StopIteration()
 
             # TODO: might be a good idea to buffer here
-            data = response.read()
-            response.close()
+            data = urllib_response.read()
+            urllib_response.close()
             self._log.debug("retrieved {0} bytes".format(len(data)))
 
             if first_block:

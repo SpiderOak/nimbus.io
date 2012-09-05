@@ -4,6 +4,7 @@ handoffs_for_node.py
 
 query thedatabase to locate handoffs for a specific node
 """
+import datetime
 import logging
 import os
 import pickle
@@ -20,7 +21,6 @@ def _retrieve_conjoined_handoffs_for_node(interaction_pool, node_id):
         where handoff_node_id = %s
         order by unified_id
     """
-
     async_result = \
         interaction_pool.run(interaction=query, 
                              interaction_args=[node_id, ],
@@ -32,7 +32,9 @@ def _retrieve_conjoined_handoffs_for_node(interaction_pool, node_id):
         # bytea columns come out of the database as buffer objects
         if row["combined_hash"] is not None: 
             row["combined_hash"] = str(row["combined_hash"])
-        conjoined_row_list.append(row)
+        # row is of type psycopg2.extras.RealDictRow
+        # we want something we can pickle
+        conjoined_row_list.append(dict(row.items()))
 
     return conjoined_row_list
 
@@ -42,7 +44,6 @@ def _retrieve_segment_handoffs_for_node(interaction_pool, node_id):
         where handoff_node_id = %s
         order by timestamp desc
     """
-
     async_result = \
         interaction_pool.run(interaction=query, 
                              interaction_args=[node_id, ],
@@ -54,10 +55,11 @@ def _retrieve_segment_handoffs_for_node(interaction_pool, node_id):
         # bytea columns come out of the database as buffer objects
         if row["file_hash"] is not None: 
             row["file_hash"] = str(row["file_hash"])
-        segment_row_list.append(row)
+        # row is of type psycopg2.extras.RealDictRow
+        # we want something we can pickle
+        segment_row_list.append(dict(row.items()))
 
     return segment_row_list
-
 
 class HandoffsForNode(Greenlet):
     """
@@ -112,21 +114,21 @@ class HandoffsForNode(Greenlet):
         reply = {
             "message-type"          : "request-handoffs-reply",
             "client-tag"            : self._message.control["client-tag"],
-            "self._message-id"      : self._message.control["message-id"],
+            "message-id"            : self._message.control["message-id"],
             "request-timestamp-repr": \
                 self._message.control["request-timestamp-repr"],
             "node-name"             : _local_node_name,
             "conjoined-count"       : None,
             "segment-count"         : None,
             "result"                : None,
-            "error-self._message"   : None,
+            "error-message"         : None,
         }
 
         node_id = self._message.control["node-id"]
         try:
             conjoined_rows = \
                 _retrieve_conjoined_handoffs_for_node(self._interaction_pool,
-                                                      node_id )
+                                                      node_id)
             segment_rows = \
                 _retrieve_segment_handoffs_for_node(self._interaction_pool, 
                                                     node_id)
@@ -139,8 +141,6 @@ class HandoffsForNode(Greenlet):
             self._push_client.send_json(reply)
             return
 
-        reply["result"] = "success"
-
         reply["conjoined-count"] = len(conjoined_rows)
         reply["segment-count"] = len(segment_rows)
         self._log.debug("found {0} conjoined, {0} segments".format(
@@ -149,8 +149,18 @@ class HandoffsForNode(Greenlet):
         data_dict = dict()
         data_dict["conjoined"] = conjoined_rows
         data_dict["segment"] = segment_rows
-        data = pickle.dumps(data_dict)
-            
-        self._push_client.send_json(reply, zmq.SNDMORE)
-        self._push_client.send(data)
+
+        try:
+            data = pickle.dumps(data_dict)
+        except Exception, instance:
+            error_message = "{0}".format(instance)
+            self._log.exception(error_message)
+            self._event_push_client.exception("pickle handoffs", error_message)
+            reply["result"] = "exception"
+            reply["error-message"] = error_message
+            self._push_client.send_json(reply)
+        else:
+            reply["result"] = "success"
+            self._push_client.send_json(reply, zmq.SNDMORE)
+            self._push_client.send(data)
 

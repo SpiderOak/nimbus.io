@@ -10,7 +10,7 @@ from tools.event_push_client import unhandled_exception_topic
 
 def unhandled_greenlet_exception_closure(event_push_client):
     def _report_exception(greenlet_object):
-        log = logging.getLogger("unhandled_greenlent_exception")
+        log = logging.getLogger("unhandled_greenlet_exception")
         error_message = "{0} {1} {2}".format(
             str(greenlet_object),
             greenlet_object.exception.__class__.__name__,

@@ -113,7 +113,7 @@ class ReplyDispatcher(Greenlet):
             return
 
         try:
-            data_dict = pickle.loads(message.data)
+            data_dict = pickle.loads(message.body)
         except Exception, instance:
             error_message = "unable to load handoffs from {0} {1}".format(
                 message.control["node-name"], str(instance))
@@ -122,7 +122,7 @@ class ReplyDispatcher(Greenlet):
             self._log.exception(error_message)
             return
 
-        source_node_name = message["node-name"]
+        source_node_name = message.control["node-name"]
 
         segment_count  = 0
         already_seen_count = 0

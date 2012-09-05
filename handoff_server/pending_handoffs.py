@@ -27,21 +27,20 @@ class PendingHandoffs(object):
         add the segment row, with its source
         """
         self._lock.acquire()
-        handoff_key = (incoming_segment_row.unified_id, 
-                       incoming_segment_row.conjoined_part, )
+        handoff_key = (incoming_segment_row["unified_id"], 
+                       incoming_segment_row["conjoined_part"], )
         if handoff_key in self._dict:
             segment_row, source_node_names = self._dict[handoff_key]
-            assert incoming_segment_row.collection_id == \
-                segment_row.collection_id, (
+            assert incoming_segment_row["collection_id"] == \
+                segment_row["collection_id"], (
                 incoming_segment_row, segment_row,
             )
-            assert incoming_segment_row.key == segment_row.key, (
+            assert incoming_segment_row["key"] == segment_row["key"], (
                 incoming_segment_row, segment_row,
             )
             if source_node_name in source_node_names:
-                self._log.warn("duplicate: %s %s" % (
-                    incoming_segment_row, source_node_name,
-                ))
+                self._log.warn("duplicate: {0} {1}".format(
+                    incoming_segment_row, source_node_name))
             else:
                 source_node_names.append(source_node_name)
                 assert len(source_node_names) <= 2

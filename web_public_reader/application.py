@@ -151,6 +151,8 @@ class Application(object):
 
     def _respond_to_ping(self, _req, _match_object):
         # self._log.debug("_respond_to_ping")
+        # Ticket #44 We don't send Connection: close here
+        # because this is an internal URI
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
@@ -214,6 +216,8 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
@@ -247,6 +251,8 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(e))
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(usage, sort_keys=True, indent=4))
         return response
@@ -303,6 +309,8 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True,
@@ -400,6 +408,8 @@ class Application(object):
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 response = Response()
+                # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+                response.headers["Connection"] = "close"
                 response.last_modified = last_modified
                 response.status_int = httplib.NOT_MODIFIED
                 return  response
@@ -414,6 +424,8 @@ class Application(object):
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 response = Response()
+                # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+                response.headers["Connection"] = "close"
                 response.last_modified = last_modified
                 response.status_int = httplib.PRECONDITION_FAILED
                 return  response
@@ -430,6 +442,8 @@ class Application(object):
             status_int = httplib.OK
 
         response = Response(headers=response_headers)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.last_modified = last_modified
         response.content_length = content_length
 
@@ -474,6 +488,8 @@ class Application(object):
             raise exc.HTTPNotFound(req.url)
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(meta_dict, 
                                             sort_keys=True, 
@@ -552,6 +568,8 @@ class Application(object):
                 status = httplib.PRECONDITION_FAILED
 
         response = Response(status=status, content_type=None)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.last_modified = last_modified
         response.content_length = content_length
 
@@ -630,6 +648,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True,

@@ -211,6 +211,8 @@ class Application(object):
 
     def _respond_to_ping(self, _req, _match_object):
         self._log.debug("_respond_to_ping")
+        # Ticket #44 we don't send 'Connection: close' here because
+        # this is an internal URI
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
@@ -336,6 +338,8 @@ class Application(object):
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             self._stats["archives"] -= 1
             return response
@@ -354,6 +358,8 @@ class Application(object):
                 unified_id, conjoined_part, self._data_writer_clients
             )
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             self._stats["archives"] -= 1
             return response
         
@@ -379,6 +385,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True, 
@@ -453,12 +461,16 @@ class Application(object):
             # 2009-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
@@ -521,6 +533,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -532,6 +546,8 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
         conjoined_dict = {
@@ -542,6 +558,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(conjoined_dict, 
                                             sort_keys=True, 
@@ -608,6 +626,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -619,9 +639,19 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
-        return  Response()
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 
     def _abort_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -683,6 +713,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -694,7 +726,17 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
-        return  Response()
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 

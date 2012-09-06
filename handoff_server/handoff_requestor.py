@@ -7,18 +7,16 @@ servers
 """
 import logging
 import os
-import time
 import uuid
 
 import gevent
 from gevent.greenlet import Greenlet
-from gevent_zeromq import zmq
 
-from tools.zeromq_util import prepare_ipc_path
 from tools.data_definitions import create_timestamp
 
+from handoff_server.req_socket import ReqSocket, ReqSocketAckTimeOut
+
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
-_timeout_seconds = 15.0
 
 class HandoffRequestor(Greenlet):
     """
@@ -54,15 +52,7 @@ class HandoffRequestor(Greenlet):
 
         self._req_sockets = list()
         for address in addresses:
-            req_socket = zmq_context.socket(zmq.REQ)
-
-            # we need a valid path for IPC sockets
-            if address.startswith("ipc://"):
-                prepare_ipc_path(address)
-
-            self._log.info("connecting to {0}".format(address))
-            req_socket.connect(address)
-
+            req_socket = ReqSocket(zmq_context, address, halt_event)
             self._req_sockets.append(req_socket)
 
         self._local_node_id = local_node_id
@@ -90,34 +80,19 @@ class HandoffRequestor(Greenlet):
         for req_socket in self._req_sockets:
             if self._halt_event.is_set():
                 return
-            req_socket.send_json(message)
+            req_socket.send(message)
 
         # wait for ack
-        for index, req_socket in enumerate(self._req_sockets):
-            start_time = time.time()
-            reply = None
-            while not self._halt_event.is_set():
-                try:
-                    reply = req_socket.recv_json(zmq.NOBLOCK)
-                except zmq.ZMQError, instance:
-                    if instance.errno == zmq.EAGAIN:
-                        elapsed_time = time.time() - start_time
-                        if elapsed_time < _timeout_seconds:
-                            self._halt_event.wait(1.0)
-                            continue
-                        break
-                    raise
-                else:
-                    break
-            req_socket.close()
+        for req_socket in self._req_sockets:
             if self._halt_event.is_set():
                 return
-            if reply is None:
-                self._log.error(
-                    "handoff_server #{0} has not acknowledged".format(index))
+            try:
+                req_socket.wait_for_ack()
+            except ReqSocketAckTimeOut, instance:
+                self._log.error("timeout waiting ack {0} {1}".format(
+                    str(req_socket), str(instance)))
                 continue
-                    
-            assert reply["accepted"] 
+            req_socket.close()
 
         self._req_sockets = list()
 

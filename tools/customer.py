@@ -9,7 +9,8 @@ from collections import namedtuple
 import re
 
 from tools.data_definitions import random_string
-from tools.collection import create_default_collection
+from tools.collection import compute_default_collection_name, \
+    valid_collection_name
 
 _max_username_size = 60
 
@@ -56,7 +57,7 @@ def create_customer(connection, username, versioning):
     connection.execute("""
         insert into nimbusio_central.customer (username) values (%s)
     """, [username, ])
-    create_default_collection(connection, username, versioning)
+    _create_default_collection(connection, username, versioning)
 
 def add_key_to_customer(connection, username):
     """
@@ -83,22 +84,37 @@ def list_customer_keys(connection, username):
                              where username = %s)
     """, [username, ])
 
-def get_customer_key(connection, username, key_id):
+def _create_default_collection(connection, username, versioning):
     """
-    retrieve a specific key for the customer
+    create the customer's default collection, based on username
     """
-    # we could just select on id, but we want to make sure this key
-    # belongs to this user
-    result = connection.fetch_one_row("""
-        select key from nimbusio_central.customer_key
-        where customer_id = (select id from nimbusio_central.customer
-                             where username = %s)
-        and id = %s
-    """, [username, key_id, ])
+    collection_name = compute_default_collection_name(username)
+    return _create_collection(connection, 
+                              username, 
+                              collection_name, 
+                              versioning)
 
-    if result is None:
-        return None
 
-    ( key, ) = result
-    return _customer_key_template(key_id=key_id, key=key)
+def _create_collection(connection, username, collection_name, versioning):
+    """
+    create a collection for the customer
+    """
+    assert valid_collection_name(collection_name)
+
+    # XXX: for now just select a cluster at random to assign the collection to.
+    # the real management API code needs more sophisticated cluster selection.
+    (creation_time, ) = connection.fetch_one_row("""
+        insert into nimbusio_central.collection
+        (name, customer_id, cluster_id, versioning)
+        values (%s, 
+                (select id from nimbusio_central.customer where username = %s),
+                (select id from nimbusio_central.cluster 
+                 order by random() limit 1),
+                %s)
+        returning creation_time
+    """, [collection_name, username, versioning, ]
+    )
+
+    return creation_time
+
 

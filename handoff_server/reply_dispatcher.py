@@ -10,6 +10,7 @@ import pickle
 from gevent.greenlet import Greenlet
 
 from handoff_server.pending_handoffs import PendingHandoffs
+from handoff_server.req_socket import ReqSocket
 
 _min_handoff_replies = 9
 
@@ -48,6 +49,9 @@ class ReplyDispatcher(Greenlet):
         self._pending_handoffs = PendingHandoffs()
         self._handoff_reply_count = 0
         self._handoff_replies_already_seen = set()
+
+        self._reader_socket_dict = dict()
+        self._writer_socket_dict = dict()
 
         self._dispatch_table = {
             "request-handoffs-reply" : self._handle_request_handoffs_reply,
@@ -145,5 +149,92 @@ class ReplyDispatcher(Greenlet):
             self._handoff_reply_count, _min_handoff_replies))
 
         if self._handoff_reply_count == _min_handoff_replies:
-            self._log.info("starting segment handoffs")
+            self._log.info("found {0} segment handoffs".format(
+                len(self._pending_handoffs)))
+            self._start_handoff()
+
+    def _start_handoff(self):
+        try:
+            segment_row, source_node_names = \
+                    self._pending_handoffs.pop()
+        except IndexError:
+            self._log.debug("_start_handoffs: no handoffs found")
+            return
+
+        if segment_row["status"] == segment_status_final:
+            self._start_forwarder_coroutine(segment_row, source_node_names)
+            return
+
+        if segment_row["status"] == segment_status_tombstone:
+            self._send_delete_message(segment_row, source_node_names)
+            return
+
+        error_message = \
+            "unknown segment status '{0}' ({1}) {2} part={3}".format
+            segment_row["status"],
+            segment_row["collection_id"],
+            segment_row["key"],
+            segment_row["conjoined_part"]))
+        self._log.error(error_message)
+        self._event_push_client.error("handoff-start-error",
+                                      error_message)
+
+
+    def _start_forwarder_coroutine(self, segment_row, source_node_names):
+        # we pick the first source name, because it's easy, and because,
+        # since that source responded to us first, it might have better 
+        # response
+        # TODO: switch over to the second source on error
+        source_node_name = source_node_names[0]
+        reader_client = self._state["reader-client-dict"][source_node_name]
+
+        description = "start handoff from %s to %s (%s) %r part=%s" % (
+            source_node_name,
+            self._local_node_name,
+            segment_row.collection_id,
+            segment_row.key,
+            segment_row.conjoined_part
+        )
+        self._log.info(description)
+
+        self._state["event-push-client"].info(
+            "handoff-start",
+            description,
+            backup_source=source_node_name,
+            collection_id=segment_row.collection_id,
+            key=segment_row.key,
+            timestamp_repr=repr(segment_row.timestamp)
+        )
+        
+        self._state["forwarder"] = forwarder_coroutine(
+            self._state["node-name-dict"],
+            segment_row, 
+            source_node_names, 
+            self._state["writer-client-dict"][self._local_node_name], 
+            reader_client
+        )
+        self._state["forwarder"].next()
+
+    def _send_delete_message(self, segment_row, source_node_names):
+        source_node_name = source_node_names[0]
+        message = {
+            "message-type"          : "destroy-key",
+            "priority"              : create_priority(),
+            "collection-id"         : segment_row.collection_id,
+            "key"                   : segment_row.key,
+            "unified-id-to-delete"  : segment_row.file_tombstone_unified_id,
+            "unified-id"            : segment_row.unified_id,
+            "timestamp-repr"        : repr(segment_row.timestamp),
+            "segment-num"           : segment_row.segment_num,
+            "source-node-name"      : \
+                self._state["node-name-dict"][segment_row.source_node_id],
+            "handoff-node-name"     : None,
+        }
+        writer_client = \
+                self._state["writer-client-dict"][self._local_node_name]
+
+        writer_client.queue_message_for_send(message, data=None)
+
+        self._state["active-deletes"][segment_row.unified_id] = \
+                source_node_names
 

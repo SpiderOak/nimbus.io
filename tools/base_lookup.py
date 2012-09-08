@@ -1,0 +1,71 @@
+# -*- coding: utf-8 -*-
+"""
+base_lookup.py
+
+See Ticket #45 Cache records from nimbus.io central database in memcached
+
+This is a base class for table lookups, wrapping common functionality
+"""
+import logging
+
+_memcached_key_template = "nimbusio_central_{0}_by_{1}_{2}" 
+_expiration_time_in_seconds = 24 * 60 * 60 # expiration of 1 day
+
+class BaseLookup(object):
+    """
+    See Ticket #45 Cache records from nimbus.io central database in memcached
+
+    This is a base class for table lookups, wrapping common functionality
+    """
+    def __init__(self, 
+                 memcached_client, 
+                 table_name, 
+                 lookup_field_name, 
+                 database_lookup_function):
+
+        self._name = table_name
+        self._log = logging.getLogger(self._name)
+
+        self._memcached_client = memcached_client
+        self._table_name = table_name
+        self._lookup_field_name = lookup_field_name
+        self._database_lookup_function = database_lookup_function
+
+    def __str__(self):
+        return self._name
+
+    def __get_value__(self, lookup_field_value):
+        """
+        retrieve a dict of column data from memcached, or database
+        raise KeyError if not found
+        """
+        result = self.get(lookup_field_value)
+        if result is None:
+            raise KeyError("No data for {0}".format(lookup_field_value))
+        return result
+
+    def get(self, lookup_field_value):
+        """
+        retrieve a dict of column data from memcached, or database
+        return None if not found
+        """
+        memcached_key = _memcached_key_template.format(self._table_name,
+                                                     self._lookup_field_name,
+                                                     lookup_field_value)
+
+        cached_dict = self._memcachedd_client.get(memcached_key)
+        if cached_dict is not None:
+            return cached_dict
+
+        # cache miss, try the database
+        database_dict = self._database_lookup_function(lookup_field_value)
+
+        if database_dict is not None:
+            success = \
+                self._memcached_client.put(memcached_key, 
+                                           database_dict, 
+                                           time=expiration_time_in_seconds)
+            assert success
+
+        return database_dict
+

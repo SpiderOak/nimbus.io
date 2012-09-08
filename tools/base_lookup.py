@@ -53,7 +53,7 @@ class BaseLookup(object):
                                                      self._lookup_field_name,
                                                      lookup_field_value)
 
-        cached_dict = self._memcachedd_client.get(memcached_key)
+        cached_dict = self._memcached_client.get(memcached_key)
         if cached_dict is not None:
             return cached_dict
 
@@ -64,7 +64,7 @@ class BaseLookup(object):
             success = \
                 self._memcached_client.put(memcached_key, 
                                            database_dict, 
-                                           time=expiration_time_in_seconds)
+                                           time=_expiration_time_in_seconds)
             assert success
 
         return database_dict

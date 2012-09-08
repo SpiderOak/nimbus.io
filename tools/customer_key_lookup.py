@@ -27,7 +27,7 @@ def _lookup_function_closure(interaction_pool):
         try:
             result_list = async_result.get(block=True, 
                                            timeout=_query_timeout)
-        except Exception, instance:
+        except Exception:
             log.exception(lookup_field_value)
             raise
 

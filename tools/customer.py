@@ -15,7 +15,6 @@ from tools.collection import compute_default_collection_name, \
 _max_username_size = 60
 
 _username_re = re.compile(r'[a-z0-9][a-z0-9-]*[a-z0-9]$')
-_customer_key_template = namedtuple("CustomerKey", ["key_id", "key"])
 
 def _generate_key():
     """generate a key string"""

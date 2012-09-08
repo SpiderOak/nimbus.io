@@ -14,7 +14,7 @@ from tools.data_definitions import http_timestamp_str
 
 _query_timeout = 60.0
 _central_pool_name = "default"
-_query = "select * from nimbusio_central.customer_key id = %s"
+_query = "select * from nimbusio_central.customer_key where id = %s"
 _timestamp_columns = set(["creation_time", "deletion_time", ])
 
 def _lookup_function_closure(interaction_pool):

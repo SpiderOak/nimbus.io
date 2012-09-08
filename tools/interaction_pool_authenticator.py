@@ -14,20 +14,17 @@ import urllib
 
 import gevent
 
-from tools.LRUCache import LRUCache
+from tools.customer_key_lookup import CustomerKeyLookup
+
 from web_public_reader.util import sec_str_eq
 
 class AuthenticationError(Exception):
     pass
 
-_max_customer_key_cache_size = 10000
-_customer_key_cache_expiration_interval = 60.0 * 60.0 # 1 hour
-
 _collection_entry_template = namedtuple(
     "CollectionEntry",
     ["collection_name", "collection_id", "username", "versioning", ]
 )
-_customer_key_template = namedtuple("CustomerKey", ["key_id", "key"])
 _query_timeout = 60.0
 _central_pool_name = "default"
 
@@ -40,10 +37,11 @@ def _string_to_sign(username, req):
     ))
 
 class InteractionPoolAuthenticator(object):
-    def __init__(self, interaction_pool):
+    def __init__(self, memcached_client, interaction_pool):
         self._log = logging.getLogger("InteractionPoolAuthenticator")
         self._interaction_pool = interaction_pool
-        self._customer_key_cache = LRUCache(_max_customer_key_cache_size)
+        self._customer_key_lookup = CustomerKeyLookup(memcached_client,
+                                                      interaction_pool)
 
     def authenticate(self, collection_name, req):
         """
@@ -112,45 +110,10 @@ class InteractionPoolAuthenticator(object):
                 instance, key_id))
             return None
     
-        customer_key = None
-        # test for cached authentification
-        if collection_entry.username in self._customer_key_cache:
-            cached_customer_key, auth_expiration_time = \
-                    self._customer_key_cache[collection_entry.username]
-            if key_id == cached_customer_key.key_id:
-                if time.time() > auth_expiration_time:
-                    del self._customer_key_cache[collection_entry.username]
-                else:
-                    customer_key = cached_customer_key
-
-        if customer_key is None:
-            # no cached key, or cache has expired
-            # we could just select on id, but we want to make sure this key
-            # belongs to this user
-            async_result = self._interaction_pool.run(
-                interaction="""select key from nimbusio_central.customer_key
-                where customer_id = (select id from nimbusio_central.customer
-                                     where username = %s)
-                                     and id = %s
-                """, 
-                interaction_args=[collection_entry.username, key_id, ],
-                pool=_central_pool_name) 
-
-            try:
-                result_list = async_result.get(block=True, 
-                                               timeout=_query_timeout)
-            except Exception, instance:
-                self_log.exception("key")
-                raise
-
-            if len(result_list) == 0:
-                self._log.error("unknown user {0}".format(
-                    collection_entry.username))
-                return None
-
-            result = result_list[0]
-            key = result["key"]
-            customer_key = _customer_key_template(key_id=key_id, key=key)
+        customer_key_dict = self._customer_key_lookup.get(key_id) 
+        if customer_key_dict is None:
+            self._log.error("unknown customer key {0}".format(key_id))
+            return None
 
         try:
             string_to_sign = _string_to_sign(collection_entry.username, req)
@@ -180,7 +143,7 @@ class InteractionPoolAuthenticator(object):
                 timestamp, instance))
             return None
 
-        expected = hmac.new(str(customer_key.key), 
+        expected = hmac.new(str(customer_key_dict["key"]), 
                             string_to_sign, 
                             hashlib.sha256).digest()
 
@@ -189,12 +152,6 @@ class InteractionPoolAuthenticator(object):
                 collection_entry.username, string_to_sign
             ))
             return None
-
-        # cache the authentication results with an expiration time
-        self._customer_key_cache[collection_entry.username] = (
-            customer_key, 
-            time.time() + _customer_key_cache_expiration_interval,
-        )
 
         return collection_entry
 

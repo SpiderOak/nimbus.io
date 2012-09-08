@@ -55,17 +55,23 @@ class BaseLookup(object):
 
         cached_dict = self._memcached_client.get(memcached_key)
         if cached_dict is not None:
+            self._log.debug("cache hit {0}".format(memcached_key))
             return cached_dict
 
         # cache miss, try the database
+        self._log.debug("cache miss {0}".format(memcached_key))
         database_dict = self._database_lookup_function(lookup_field_value)
 
         if database_dict is not None:
+            self._log.debug("database hit {0}".format(memcached_key))
             success = \
-                self._memcached_client.put(memcached_key, 
+                self._memcached_client.set(memcached_key, 
                                            database_dict, 
                                            time=_expiration_time_in_seconds)
             assert success
+
+        if database_dict is None:
+            self._log.debug("database miss {0}".format(memcached_key))
 
         return database_dict
 

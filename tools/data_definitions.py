@@ -102,10 +102,14 @@ def create_timestamp():
 _http_timestamp_format = "%a, %d %b %Y %H:%M:%S GMT"
 
 def http_timestamp_str(timestamp):
+    if timestamp is None:
+        return ""
     return timestamp.strftime(_http_timestamp_format)
 
 def parse_http_timestamp(timestamp_str):
     # TODO: allow variant time formats
+    if len(timestamp_str) == 0:
+        return None
     return datetime.strptime(timestamp_str, _http_timestamp_format)
 
 def parse_timestamp_repr(timestamp_repr):

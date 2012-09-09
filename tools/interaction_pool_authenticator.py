@@ -5,7 +5,6 @@ intercation_pool_authenticator.py
 Authenticates requests
 """
 from binascii import a2b_hex
-from collections import namedtuple
 import hashlib
 import hmac
 import logging
@@ -14,19 +13,14 @@ import urllib
 
 import gevent
 
+from tools.collection_lookup import CollectionLookup
+from tools.customer_lookup import CustomerIdLookup
 from tools.customer_key_lookup import CustomerKeyLookup
 
 from web_public_reader.util import sec_str_eq
 
 class AuthenticationError(Exception):
     pass
-
-_collection_entry_template = namedtuple(
-    "CollectionEntry",
-    ["collection_name", "collection_id", "username", "versioning", ]
-)
-_query_timeout = 60.0
-_central_pool_name = "default"
 
 def _string_to_sign(username, req):
     return '\n'.join((
@@ -40,6 +34,10 @@ class InteractionPoolAuthenticator(object):
     def __init__(self, memcached_client, interaction_pool):
         self._log = logging.getLogger("InteractionPoolAuthenticator")
         self._interaction_pool = interaction_pool
+        self._collection_lookup = CollectionLookup(memcached_client,
+                                                   interaction_pool)
+        self._customer_lookup = CustomerIdLookup(memcached_client,
+                                                 interaction_pool)
         self._customer_key_lookup = CustomerKeyLookup(memcached_client,
                                                       interaction_pool)
 
@@ -49,40 +47,15 @@ class InteractionPoolAuthenticator(object):
         return collection_entry if valid
         return None if invalid
         """
-        async_result = self._interaction_pool.run(
-            interaction="""select nimbusio_central.collection.id, 
-                   nimbusio_central.customer.username,
-                   nimbusio_central.collection.versioning
-            from nimbusio_central.collection 
-            inner join nimbusio_central.customer
-            on (nimbusio_central.collection.customer_id =
-                                          nimbusio_central.customer.id)
-            where nimbusio_central.collection.name = %s
-              and nimbusio_central.collection.deletion_time is null
-              and nimbusio_central.customer.deletion_time is null
-        """.strip(), 
-        interaction_args=[collection_name.lower(), ],
-        pool=_central_pool_name)
-        try:
-            result_list = async_result.get(block=True, timeout=_query_timeout)
-        except Exception, instance:
-            self._log.exception("collection")
-            raise
+        collection_row = self._collection_lookup.get(collection_name.lower()) 
+        if collection_row is None:
+            self._log.error("unknown collection {0}".format(collection_name))
+            return None
 
-        if len(result_list) == 0:
-            error_message = "collection name {0} not in database".format(
-                collection_name, )
-            self._log.error(error_message)
-            raise AuthenticationError(error_message)
-
-        result = result_list[0]
-
-        collection_entry = _collection_entry_template(
-            collection_name=collection_name,
-            collection_id=result["id"],
-            username=result["username"],
-            versioning=result["versioning"]
-        )
+        customer_row = self._customer_lookup.get(collection_row["customer_id"]) 
+        if customer_row is None:
+            self._log.error("unknown customer {0}".format(collection_name))
+            return None
 
         try:
             auth_type, auth_string = req.authorization
@@ -110,16 +83,16 @@ class InteractionPoolAuthenticator(object):
                 instance, key_id))
             return None
     
-        customer_key_dict = self._customer_key_lookup.get(key_id) 
-        if customer_key_dict is None:
+        customer_key_row = self._customer_key_lookup.get(key_id) 
+        if customer_key_row is None:
             self._log.error("unknown customer key {0}".format(key_id))
             return None
 
         try:
-            string_to_sign = _string_to_sign(collection_entry.username, req)
+            string_to_sign = _string_to_sign(customer_row["username"], req)
         except Exception, instance:
             self._log.error("_string_to_sign failed {0} {1} {2}".format(
-                instance, collection_entry.username, req))
+                instance, customer_row["username"], req))
             return None
 
         try:
@@ -143,15 +116,15 @@ class InteractionPoolAuthenticator(object):
                 timestamp, instance))
             return None
 
-        expected = hmac.new(str(customer_key_dict["key"]), 
+        expected = hmac.new(str(customer_key_row["key"]), 
                             string_to_sign, 
                             hashlib.sha256).digest()
 
         if not sec_str_eq(signature, expected):
             self._log.error("signature comparison failed %r %r" % (
-                collection_entry.username, string_to_sign
+                customer_row["username"], string_to_sign
             ))
             return None
 
-        return collection_entry
+        return collection_row
 

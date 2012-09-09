@@ -159,14 +159,13 @@ class Application(object):
         self._log.debug("_list_versions")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -192,16 +191,13 @@ class Application(object):
                 kwargs["version_id_marker"]
             )
 
-        self._log.info(
-            "_list_versions: collection = (%s) username = %r %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                kwargs
-            )
-        )
+        self._log.info("_list_versions: collection = ({0}) {1} {2}".format(
+                collection_row["id"],
+                collection_row["name"],
+                kwargs))
+
         result_dict = list_versions(self._interaction_pool,
-                                    collection_entry.collection_id, 
+                                    collection_row["id"], 
                                     **kwargs)
 
         # translate version ids to the form we show to the public
@@ -220,28 +216,29 @@ class Application(object):
         return response
 
     def _collection_space_usage(self, req, match_object):
-        username = match_object.group("username")
+        # username = match_object.group("username")
         collection_name = match_object.group("collection_name")
         self._log.debug("_collection_space_usage")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
-        self._log.info("_collection_space_usage: %r %r" % (
-            username, collection_name
-        ))
+        self._log.info("space_usage: collection = ({0}) {1}".format(
+                collection_row["id"],
+                collection_row["name"]))
+
 
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(collection_entry.id, _reply_timeout)
+            usage = getter.get_space_usage(collection_row["id"], 
+                                           _reply_timeout)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
 
@@ -255,14 +252,13 @@ class Application(object):
         self._log.debug("_list_keys")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -282,15 +278,14 @@ class Application(object):
                 kwargs[variable_name] = variable_value
 
         self._log.info(
-            "_list_keys: collection = (%s) username = %r %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
+            "_list_keys: collection = ({0}) {1} {2}".format(
+                collection_row["id"],
+                collection_row["name"],
                 kwargs
             )
         )
         result_dict = list_keys(self._interaction_pool,
-                                collection_entry.collection_id, 
+                                collection_row["id"], 
                                 **kwargs)
 
         # translate version ids to the form we show to the public
@@ -314,14 +309,13 @@ class Application(object):
         self._log.debug("_retrieve_key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -344,21 +338,19 @@ class Application(object):
             lower_bound, upper_bound, slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
 
-        description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
+        description = "retrieve: ({0}){1} key={2} version={3} {4}:{5}".format(
+            collection_row["id"],
+            collection_row["name"],
             key,
             version_id,
             slice_offset,
-            slice_size
-        )
+            slice_size)
         self._log.info(description)
 
         retriever = Retriever(
             self._memcached_client,
             self._interaction_pool,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             version_id,
             slice_offset,
@@ -448,14 +440,13 @@ class Application(object):
         self._log.debug("_retrieve_meta")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -465,7 +456,7 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         meta_dict = retrieve_meta(self._interaction_pool, 
-                                  collection_entry.collection_id, 
+                                  collection_row["id"], 
                                   key)
 
         if meta_dict is None:
@@ -484,14 +475,13 @@ class Application(object):
         self._log.debug("_head_key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -507,17 +497,15 @@ class Application(object):
             version_id = self._id_translator.internal_id(version_identifier)
 
         self._log.info(
-            "head_key: collection = (%s) %r username = %r key = %r %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "head_key: collection = ({0}) {1} key = {2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            version_id
-        ))
+            version_id))
 
         last_modified, content_length = \
             get_last_modified_and_content_length(self._interaction_pool,
-                                                 collection_entry.collection_id,
+                                                 collection_row["id"],
                                                  key,
                                                  version_id)
         if last_modified is None or content_length is None:
@@ -570,15 +558,13 @@ class Application(object):
         self._log.debug("_list_conjoined")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        self._log.debug("_list_conjoined after authenticator")
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -597,16 +583,14 @@ class Application(object):
                 kwargs[variable_name] = variable_value
 
         self._log.info(
-            "list_conjoined: collection = (%s) %r username = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
-            kwargs,
-        ))
+            "list_conjoined: collection = ({0}) {1} {2}".format(
+            collection_row["id"], 
+            collection_row["name"],
+            kwargs,))
 
         truncated, conjoined_entries = list_conjoined_archives(
             self._interaction_pool,
-            collection_entry.collection_id,
+            collection_row["id"],
             **kwargs
         )
 
@@ -641,14 +625,13 @@ class Application(object):
         self._log.debug("_list_upload_in_conjoined")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -659,11 +642,10 @@ class Application(object):
 
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
-        self._log.info("list_upload: collection = (%s) %r %r key=%r %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+        self._log.info(
+            "list_upload: collection = ({0}) {1} key={2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 

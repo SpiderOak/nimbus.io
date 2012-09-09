@@ -220,14 +220,13 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -258,14 +257,11 @@ class Application(object):
 
         start_time = time.time()
         self._stats["archives"] += 1
-        description = \
-                "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
+        description = "archive: collection=({0}){1} key={2}, size={3}".format(
+            collection_row["id"],
+            collection_row["name"],
             key, 
-            req.content_length
-        )
+            req.content_length)
         self._log.info(description)
 
         meta_dict = _build_meta_dict(req.GET)
@@ -297,7 +293,7 @@ class Application(object):
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             unified_id,
             timestamp,
@@ -390,7 +386,7 @@ class Application(object):
             raise exc.HTTPBadRequest(error_message)
 
         self.accounting_client.added(
-            collection_entry.collection_id,
+            collection_row["id"],
             timestamp,
             file_size
         )
@@ -419,14 +415,13 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -443,14 +438,11 @@ class Application(object):
                 version_identifier
             )
 
-        description = \
-            "_delete_key: (%s) %r %r key = %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                key,
-                unified_id_to_delete
-            )
+        description = "_delete_key: ({0}) {1} key = {2} {3}".format(
+            collection_row["id"],
+            collection_row["name"],
+            key,
+            unified_id_to_delete)
         self._log.info(description)
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -462,7 +454,7 @@ class Application(object):
 
         destroyer = Destroyer(
             data_writers,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             unified_id_to_delete,
             unified_id,
@@ -498,14 +490,13 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -515,12 +506,10 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         self._log.info(
-            "start_conjoined: collection = (%s) %r username = %r key = %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
-            key
-        ))
+            "start_conjoined: collection = ({0}) {1} key = {2}".format(
+            collection_row["id"], 
+            collection_row["name"],
+            key))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -535,7 +524,7 @@ class Application(object):
             start_conjoined_archive(
                 data_writers,
                 unified_id,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 timestamp
             )
@@ -583,14 +572,13 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -602,13 +590,11 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "finish_conjoined: collection = (%s) %r %r key = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "finish_conjoined: collection = ({0}) {1} key = {2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -621,7 +607,7 @@ class Application(object):
         try:
             finish_conjoined_archive(
                 data_writers,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 unified_id,
                 timestamp
@@ -658,14 +644,13 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -677,13 +662,11 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "abort_conjoined: collection = (%s) %r %r key = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "abort_conjoined: collection = ({0}) {1} key = {3} {4}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -696,7 +679,7 @@ class Application(object):
         try:
             abort_conjoined_archive(
                 data_writers,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 unified_id,
                 timestamp

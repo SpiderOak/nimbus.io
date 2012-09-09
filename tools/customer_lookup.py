@@ -9,6 +9,8 @@ with rows cached in memcache
 """
 import logging
 
+import psycopg2.extras
+
 from tools.base_lookup import BaseLookup
 from tools.data_definitions import http_timestamp_str
 
@@ -21,6 +23,23 @@ _id_query =       """select * from nimbusio_central.customer
                      where id = %s
                      and deletion_time is null"""
 _timestamp_columns = set(["creation_time", "deletion_time", ])
+
+def _process_result_list(result_list):
+    if len(result_list) == 0:
+        return None
+
+    assert len(result_list) == 1
+
+    result = result_list[0]
+    
+    return_result = dict()
+    for key, value in result.items():
+        if key in _timestamp_columns:
+            return_result[key] = http_timestamp_str(value)
+        else:
+            return_result[key] = value
+
+    return return_result
 
 def _lookup_function_closure(interaction_pool, query):
     def __lookup_function(lookup_field_value):
@@ -36,38 +55,38 @@ def _lookup_function_closure(interaction_pool, query):
             log.exception(lookup_field_value)
             raise
 
-        if len(result_list) == 0:
-            return None
-
-        assert len(result_list) == 1
-
-        result = result_list[0]
-        
-        return_result = dict()
-        for key, value in result.items():
-            if key in _timestamp_columns:
-                return_result[key] = http_timestamp_str(value)
-            else:
-                return_result[key] = value
-
-        return return_result
+        return _process_result_list(result_list)
 
     return __lookup_function
 
-class CustomerUsernameLookup(BaseLookup):
+def _connection_lookup_function_closure(connection, query):
+    def __lookup_function(lookup_field_value):
+        log = logging.getLogger("CustomerLookup")
+        
+        cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        cursor.execute(query, [lookup_field_value, ])
+        result_list = cursor.fetchall()
+        cursor.close()
+
+        return _process_result_list(result_list)
+
+    return __lookup_function
+
+class CustomerUsernameConnectionLookup(BaseLookup):
     """
     See Ticket #45 Cache records from nimbus.io central database in memcache
 
     Provide read-only access to the nimbusio_central.customer table
     with rows cached in memcache
     """
-    def __init__(self, memcached_client, interaction_pool):
-        lookup_function = _lookup_function_closure(interaction_pool,
-                                                   _username_query)
-        super(CustomerUsernameLookup, self).__init__(memcached_client,
-                                                      "customer",
-                                                      "username",
-                                                      lookup_function)
+    def __init__(self, memcached_client, connection):
+        lookup_function = _connection_lookup_function_closure(connection,
+                                                              _username_query)
+        super(CustomerUsernameConnectionLookup, self).__init__(
+            memcached_client,
+            "customer",
+            "username",
+            lookup_function)
 
 class CustomerIdLookup(BaseLookup):
     """
@@ -83,5 +102,4 @@ class CustomerIdLookup(BaseLookup):
                                                "customer",
                                                "id",
                                                lookup_function)
-
 

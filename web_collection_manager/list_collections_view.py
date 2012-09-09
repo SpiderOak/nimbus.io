@@ -11,6 +11,8 @@ import flask
 
 from tools.greenlet_database_util import GetConnection
 from tools.data_definitions import http_timestamp_str
+from tools.customer_key_lookup import CustomerKeyConnectionLookup
+
 from web_collection_manager.connection_pool_view import ConnectionPoolView
 from web_collection_manager.authenticator import authenticate
 
@@ -41,7 +43,11 @@ class ListCollectionsView(ConnectionPoolView):
         log.info("user_name = {0}".format(username))
 
         with GetConnection(self.connection_pool) as connection:
-            authenticated = authenticate(connection,
+
+            customer_key_lookup = \
+                CustomerKeyConnectionLookup(self.memcached_client,
+                                            connection)
+            authenticated = authenticate(customer_key_lookup,
                                          username,
                                          flask.request)
             if not authenticated:

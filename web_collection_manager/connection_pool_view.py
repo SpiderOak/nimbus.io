@@ -10,4 +10,5 @@ import flask.views
 
 class ConnectionPoolView(flask.views.View):
     connection_pool = None
+    memcached_client = None
 

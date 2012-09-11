@@ -12,6 +12,8 @@ import os.path
 import re
 import time
 
+memcached_central_key_template = "nimbusio_central_{0}_by_{1}_{2}" 
+
 # our internal message format
 message_format = namedtuple("Message", "ident control body")
 

@@ -54,6 +54,7 @@ create table collection (
     customer_id int4 not null references nimbusio_central.customer(id),
     cluster_id int4 not null references nimbusio_central.cluster(id),
     versioning bool not null default false,
+    access_control text,
     creation_time timestamp not null default 'now',
     deletion_time timestamp
 );

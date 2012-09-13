@@ -61,6 +61,7 @@ def terminate_subprocess(process):
         _, stderr_data = process.communicate()
     else:
         log.warn("process is already terminated")
+        stderr_data = ""
 
     if process.returncode != 0:
         log.error("process ({0}) {1}".format(process.returncode,

@@ -6,7 +6,9 @@ Ticket #43 Implement access_control properties for collections
 
 This tests the logic in using the JSON access_control file
 """
+import logging
 from collections import namedtuple
+import sys
 try:
     import unittest2 as unittest
 except ImportError:
@@ -30,9 +32,9 @@ from tools.collection_access_control import check_access_control, \
 
 # represents a WebOb request
 _mock_request = namedtuple("MockRequest",
-                           ["method", "path", "headers", "remote_addr"])
+                           ["method", "url", "headers", "remote_addr"])
 _default_request = \
-    _mock_request(method=None, path=None, headers={}, remote_addr=None)
+    _mock_request(method=None, url=None, headers={}, remote_addr=None)
 
 _test_case = namedtuple("TestCase", 
                         ["access_type", 
@@ -163,15 +165,15 @@ _test_cases = [
     # with allow_unauth_write
     _test_case(access_type=write_access,
                request=_default_request._replace(
-                    path="/example.com/private/index.html",
+                    url="http://example.com/private/index.html",
                     headers={"Referer" : "http://example.com/myapp/login"}),  
                access_control={
                     allow_unauth_write : True,
                     unauth_referrer_whitelist : ["example.com"], 
-                    locations : {
-                        "prefix" : "example.com/private",
+                    locations : [{
+                        "prefix" : "private",
                         allow_unauth_write : False,
-                        unauth_referrer_whitelist : []}}, 
+                        unauth_referrer_whitelist : []}]}, 
                expected_result=access_forbidden),
 
     # test 'locations' override increasing permissions
@@ -179,18 +181,27 @@ _test_cases = [
     # 2) remote_addr outside the range
     _test_case(access_type=read_access,
                request=_default_request._replace(
-                    path="/example.com/public/index.html",
+                    url="http://example.com/public/index.html",
                     remote_addr="192.168.2.200"),  
                access_control={
                     allow_unauth_read : True,
                     ipv4_whitelist : ["192.168.1.0/24"],
-                    locations : {
-                        "regexp" : "^.*/public/.*$",
+                    locations : [{
+                        "regexp" : "^public/.*$",
                         allow_unauth_write : True,
-                        ipv4_whitelist : []}}, 
+                        ipv4_whitelist : []}]}, 
                expected_result=access_allowed),
 
 ]
+
+def _initialize_logging_to_stderr():
+    from tools.standard_logging import _log_format_template
+    log_level = logging.DEBUG
+    handler = logging.StreamHandler(stream=sys.stderr)
+    formatter = logging.Formatter(_log_format_template)
+    handler.setFormatter(formatter)
+    logging.root.addHandler(handler)
+    logging.root.setLevel(log_level)
 
 class TestCollectionAccessControl(unittest.TestCase):
     """
@@ -208,5 +219,6 @@ class TestCollectionAccessControl(unittest.TestCase):
                                 index+1, test_case.expected_result, result))
 
 if __name__ == "__main__":
+    _initialize_logging_to_stderr()
     unittest.main()
 

@@ -17,11 +17,18 @@ from tools.collection_access_control import check_access_control, \
     write_access, \
     list_access, \
     delete_access, \
+    allow_unauth_read, \
+    allow_unauth_write, \
+    allow_unauth_list, \
+    allow_unauth_delete, \
+    ipv4_whitelist, \
+    unauth_referrer_whitelist, \
+    locations, \
     access_allowed, \
     access_requires_password_authentication, \
     access_forbidden
 
-# represetns a WebOb request
+# represents a WebOb request
 _mock_request = namedtuple("MockRequest",
                            ["method", "path", "headers", "remote_addr"])
 _default_request = \
@@ -43,8 +50,146 @@ _test_cases = [
     # test read access with allow_unauth_read set
     _test_case(access_type=read_access,
                request=_default_request,  
-               access_control={"allow_unauth_read_access" : True}, 
+               access_control={allow_unauth_read : True}, 
                expected_result=access_allowed),
+
+    # test write access with allow_unauth_write set
+    _test_case(access_type=write_access,
+               request=_default_request,  
+               access_control={allow_unauth_write : True}, 
+               expected_result=access_allowed),
+
+    # test list access with allow_unauth_list set
+    _test_case(access_type=list_access,
+               request=_default_request,  
+               access_control={allow_unauth_list : True}, 
+               expected_result=access_allowed),
+
+    # test delete access with allow_unauth_delete set
+    _test_case(access_type=delete_access,
+               request=_default_request,  
+               access_control={allow_unauth_delete : True}, 
+               expected_result=access_allowed),
+
+    # test a single address ipv4 whitelist
+    # 1) remote_addr in the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(remote_addr="192.168.1.200"),  
+               access_control={ipv4_whitelist : ["192.168.1.200"]}, 
+               expected_result=access_requires_password_authentication),
+
+    # test a single address ipv4 whitelist
+    # 1) remote_addr outside the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(remote_addr="192.168.1.200"),  
+               access_control={ipv4_whitelist : ["192.168.1.201"]}, 
+               expected_result=access_forbidden),
+
+    # test an address range ipv4 whitelist
+    # 1) remote_addr in the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(remote_addr="192.168.1.200"),  
+               access_control={ipv4_whitelist : ["192.168.1.0/24"]}, 
+               expected_result=access_requires_password_authentication),
+
+    # test an address range ipv4 whitelist
+    # 2) remote_addr outside the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(remote_addr="192.168.2.200"),  
+               access_control={ipv4_whitelist : ["192.168.1.0/24"]}, 
+               expected_result=access_forbidden),
+
+    # test an address range ipv4 whitelist with allow_unauth_read
+    # 1) remote_addr in the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(remote_addr="192.168.1.200"),  
+               access_control={allow_unauth_read : True, 
+                               ipv4_whitelist : ["192.168.1.0/24"]}, 
+               expected_result=access_allowed),
+
+    # test an address range ipv4 whitelist with allow_unauth_read
+    # 2) remote_addr outside the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(remote_addr="192.168.2.200"),  
+               access_control={allow_unauth_read : True,
+                               ipv4_whitelist : ["192.168.1.0/24"]}, 
+               expected_result=access_forbidden),
+
+    # test an unauth_referrer whitelist, with no 'Referer' header
+    _test_case(access_type=read_access,
+               request=_default_request,
+               access_control={
+                    unauth_referrer_whitelist : ["example.com/myapp"]}, 
+               expected_result=access_forbidden),
+
+    # test an unauth_referrer whitelist with a valid 'Referer' header 
+    _test_case(access_type=read_access,
+               request=_default_request._replace(
+                    headers={"Referer" : "http://example.com/myapp/login"}),  
+               access_control={
+                    unauth_referrer_whitelist : ["example.com/myapp"]}, 
+               expected_result=access_requires_password_authentication),
+
+    # test an unauth_referrer whitelist with an invalid 'Referer' header 
+    _test_case(access_type=read_access,
+               request=_default_request._replace(
+                    headers={"Referer" : "http://example.com/other/login"}),  
+               access_control={
+                    unauth_referrer_whitelist : ["example.com/myapp"]}, 
+               expected_result=access_forbidden),
+
+    # test an unauth_referrer whitelist with a valid 'Referer' header 
+    # with allow_unauth_write
+    _test_case(access_type=write_access,
+               request=_default_request._replace(
+                    headers={"Referer" : "http://example.com/myapp/login"}),  
+               access_control={
+                    allow_unauth_write : True,
+                    unauth_referrer_whitelist : ["example.com/myapp"]}, 
+               expected_result=access_allowed),
+
+    # test an unauth_referrer whitelist with an invalid 'Referer' header 
+    # with allow_unauth_write
+    _test_case(access_type=write_access,
+               request=_default_request._replace(
+                    headers={"Referer" : "http://example.com/other/login"}),  
+               access_control={
+                    allow_unauth_write : True,
+                    unauth_referrer_whitelist : ["example.com/myapp"]}, 
+               expected_result=access_forbidden),
+
+    # test 'locations' override reducing permissions
+    # test an unauth_referrer whitelist with a valid 'Referer' header 
+    # with allow_unauth_write
+    _test_case(access_type=write_access,
+               request=_default_request._replace(
+                    path="/example.com/private/index.html",
+                    headers={"Referer" : "http://example.com/myapp/login"}),  
+               access_control={
+                    allow_unauth_write : True,
+                    unauth_referrer_whitelist : ["example.com"], 
+                    locations : {
+                        "prefix" : "example.com/private",
+                        allow_unauth_write : False,
+                        unauth_referrer_whitelist : []}}, 
+               expected_result=access_forbidden),
+
+    # test 'locations' override increasing permissions
+    # test an address range ipv4 whitelist with allow_unauth_read
+    # 2) remote_addr outside the range
+    _test_case(access_type=read_access,
+               request=_default_request._replace(
+                    path="/example.com/public/index.html",
+                    remote_addr="192.168.2.200"),  
+               access_control={
+                    allow_unauth_read : True,
+                    ipv4_whitelist : ["192.168.1.0/24"],
+                    locations : {
+                        "regexp" : "^.*/public/.*$",
+                        allow_unauth_write : True,
+                        ipv4_whitelist : []}}, 
+               expected_result=access_allowed),
+
 ]
 
 class TestCollectionAccessControl(unittest.TestCase):

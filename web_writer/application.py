@@ -17,6 +17,7 @@ archive:
 
 
 """
+from base64 import b64decode
 import logging
 import os
 import random
@@ -30,8 +31,7 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import incoming_slice_size, \
-        block_generator, \
+from tools.data_definitions import block_generator, \
         create_priority, \
         create_timestamp, \
         nimbus_meta_prefix, \
@@ -45,7 +45,7 @@ from web_writer.exceptions import ArchiveFailedError, \
 
 from web_writer.data_writer_handoff_client import DataWriterHandoffClient
 from web_writer.data_writer import DataWriter
-from web_writer.data_slicer import DataSlicer
+from web_writer.data_slicer import slice_generator
 from web_writer.archiver import Archiver
 from web_writer.destroyer import Destroyer
 from web_writer.conjoined_manager import start_conjoined_archive, \
@@ -241,10 +241,22 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        if req.content_length <= 0:
-            raise exc.HTTPForbidden(
-                "cannot archive: content_length = %s" % (req.content_length, )
-            ) 
+        # Ticket #39 Reject Requests with Inaccurate Content-Length or 
+        # Content-Md5 headers 
+
+        if not "content-length" in req.headers:
+            raise exc.HTTPLengthRequired()
+        try:
+            expected_content_length = int(req.headers["content-length"])
+        except ValueError:
+            error_message = "connot parse content-length {0}".format(
+                req.headers["content-length"])
+            self._log.error(error_message)
+            raise exc.HTTPBadRequest(error_message)
+
+        expected_md5 = None
+        if "content-md5" in req.headers:
+            expected_md5 = b64decode(req.headers["content-md5"])
 
         start_time = time.time()
         self._stats["archives"] += 1
@@ -295,6 +307,7 @@ class Application(object):
             conjoined_part
         )
         segmenter = ZfecSegmenter(_min_segments, len(data_writers))
+        actual_content_length = 0
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
@@ -304,9 +317,8 @@ class Application(object):
             # XXX refactor this loop. it's awkward because it needs to know
             # when any given slice is the last slice, so it works an iteration
             # behind, but sometimes sends an empty final slice.
-            for slice_item in DataSlicer(req.body_file,
-                                    incoming_slice_size,
-                                    req.content_length):
+            for slice_item in slice_generator(req.body_file):
+                actual_content_length += len(slice_item)
                 if segments:
                     archiver.archive_slice(
                         segments, zfec_padding_size, _reply_timeout
@@ -365,6 +377,23 @@ class Application(object):
         
         end_time = time.time()
         self._stats["archives"] -= 1
+
+        if actual_content_length != expected_content_length:
+            error_message = "actual content length {0} != expected {1}".format(
+                actual_content_length, expected_content_length)
+            self._log.error(error_message)
+            _send_archive_cancel(unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
+            raise exc.HTTPBadRequest(error_message)
+
+        if expected_md5 is not None and expected_md5 != file_md5.digest():
+            error_message = "body md5 does not match content-md5 header"
+            self._log.error(error_message)
+            _send_archive_cancel(unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
+            raise exc.HTTPBadRequest(error_message)
 
         self.accounting_client.added(
             collection_entry.collection_id,

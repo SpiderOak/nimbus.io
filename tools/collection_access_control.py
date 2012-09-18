@@ -11,6 +11,11 @@ from urlparse import urlparse
 
 import ipaddr
 
+class AccessControlError(Exception):
+    pass
+class InvalidAccessControl(AccessControlError):
+    pass
+
 read_access = 1
 write_access = 2
 list_access = 3
@@ -84,6 +89,16 @@ unauth_referrer_whitelist = "unauth_referrer_whitelist"
 #  "prefix": "/def"
 #}  
 locations = "locations"
+
+_top_level_keys = [allow_unauth_read,
+                   allow_unauth_write,
+                   allow_unauth_list,
+                   allow_unauth_delete,
+                   ipv4_whitelist,
+                   unauth_referrer_whitelist,
+                   locations]
+
+_max_access_control_json_length = 16 * 1024
 
 def _normalize_path(path):
     """
@@ -184,6 +199,57 @@ def _check_unauth_referrer_whitelist(raw_whitelist, headers):
             return True
             
     return False
+
+def cleanse_access_control(access_control_json):
+    """
+    access_control_json
+        raw text, presumably uploaded from a (possibly malicious) client
+
+    returns a tuple (access_control_dict, error_messages)
+        if successful error_messages will be None
+        if unsucessful, access_control_dict will be None and 
+                        error_messages will be a list of strings
+
+    Reject the input without parsing it if it is longer than some reasonable 
+    max length (maybe 16k.)
+
+    Load the user provided JSON into a Python variable via json.loads.
+
+    Explicitly pick specific terms out of the Python variable into a second 
+    Python variable. I.e. loop over the JSON explicitly looking for every term 
+    that we care about. Reject the request at this stage if the JSON contains 
+    terms we didn't look for, or if there are invalid values for terms, or 
+    invalid combinations of terms.
+
+    (The rejection should be a JSON response with success: false, and an 
+    error_messages array containing one or more strings describing errors.)
+
+    If all is well, save to our database JSON serialized from the 2nd Python 
+    data structure.
+
+    In other words, we save well formed JSON re-serialized from validated input
+    """
+    valid_dict = dict()
+    error_message_list = list()
+
+    if access_control_json is None:
+        return {}, None
+
+    if len(access_control_json) > _max_access_control_json_length:
+        error_message = \
+            "JSON text too large {0} bytes".format(len(access_control_json))
+        error_message_list.append(error_message)
+        return None, error_message_list
+
+    try:
+        raw_dict = json.loads(access_control_json)
+    except Exception, instance:
+        error_message = \
+            "Unable to parse access_control JSON {0}".format(instance)
+        error_message_list.append(error_message)
+        return None, error_message_list
+
+    return valid_dict, None
 
 def check_access_control(access_type, request, baseline_access_control):
     """

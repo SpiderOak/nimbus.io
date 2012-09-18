@@ -8,7 +8,8 @@ This is a base class for table lookups, wrapping common functionality
 """
 import logging
 
-_memcached_key_template = "nimbusio_central_{0}_by_{1}_{2}" 
+from tools.data_definitions import memcached_central_key_template
+
 _expiration_time_in_seconds = 24 * 60 * 60 # expiration of 1 day
 
 class BaseLookup(object):
@@ -49,9 +50,10 @@ class BaseLookup(object):
         retrieve a dict of column data from memcached, or database
         return None if not found
         """
-        memcached_key = _memcached_key_template.format(self._table_name,
-                                                     self._lookup_field_name,
-                                                     lookup_field_value)
+        memcached_key = \
+            memcached_central_key_template.format(self._table_name,
+                                                  self._lookup_field_name,
+                                                  lookup_field_value)
 
         cached_dict = self._memcached_client.get(memcached_key)
         if cached_dict is not None:

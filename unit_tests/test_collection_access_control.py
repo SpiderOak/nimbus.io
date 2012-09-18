@@ -6,8 +6,10 @@ Ticket #43 Implement access_control properties for collections
 
 This tests the logic in using the JSON access_control file
 """
+import json
 import logging
 from collections import namedtuple
+import re
 import sys
 try:
     import unittest2 as unittest
@@ -32,14 +34,27 @@ from tools.collection_access_control import cleanse_access_control, \
     access_forbidden
 
 _cleanse_test_case = namedtuple("CleanseTestCase",
-                                ["raw_data",
-                                 "access_control_dict",
-                                 "error_messages"])
+                                ["raw_data", "expected_dict", "error_re"])
 
 _cleanse_test_cases = [
     _cleanse_test_case(raw_data=None,
-                       access_control_dict=dict(),
-                       error_messages=None),
+                       expected_dict=dict(),
+                       error_re=None),
+    _cleanse_test_case(raw_data='a' * (16 * 1024 + 1),
+                       expected_dict=None,
+                       error_re=[re.compile("^.*too large.*$"), ]),
+    _cleanse_test_case(raw_data="[xxx",
+                       expected_dict=None,
+                       error_re=[re.compile("^.*Unable to parse.*$"), ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : 1.0, 
+                                            "allow_unauth_read" : "pork"}),
+                       expected_dict=None,
+                       error_re=[re.compile("^.*Expected bool.*$"), ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : 1.0,
+                                            "allow_unauth_read" : True}),
+                       expected_dict={version : 1.0,
+                                      allow_unauth_read : True},
+                       error_re=None),
 ]
 
 # represents a WebOb request
@@ -64,7 +79,8 @@ _check_test_cases = [
     # test read access with allow_unauth_read set
     _check_test_case(access_type=read_access,
                request=_default_request,  
-               access_control={allow_unauth_read : True}, 
+               access_control={version : 1.0, 
+                               allow_unauth_read : True}, 
                expected_result=access_allowed),
 
     # test write access with allow_unauth_write set
@@ -228,17 +244,33 @@ class TestCollectionAccessControl(unittest.TestCase):
             access_control_dict, error_messages = \
                 cleanse_access_control(test_case.raw_data)
             self.assertEqual(access_control_dict, 
-                             test_case.access_control_dict,
+                             test_case.expected_dict,
                              "Test #{0} expected {1} received {2}".format(
                                 index+1, 
-                                test_case.access_control_dict, 
-                                test_case.error_messages))
-            self.assertEqual(error_messages, 
-                             test_case.error_messages,
-                             "Test #{0} expected {1} received {2}".format(
+                                test_case.expected_dict, 
+                                access_control_dict))
+            if test_case.error_re is None:
+                self.assertTrue(error_messages is None,
+                                "Test #{0} unexpected error {1}".format(
+                                    index+1,
+                                    error_messages))
+            else:
+                self.assertTrue(error_messages is not None,
+                                "Test #{0} expect errors {0} got None".format(
+                                    index+1,
+                                    test_case.error_re))
+                match_count = 0
+                for error_re in test_case.error_re:
+                    for error_message in error_messages:
+                        match_object = error_re.match(error_message)
+                        if match_object is not None:
+                            match_count += 1
+                self.assertEqual(match_count, len(test_case.error_re), 
+                             "Test #{0} matched {1} expected {2} {3}".format(
                                 index+1, 
-                                test_case.error_messages, 
-                                test_case.error_messages))
+                                match_count, 
+                                len(test_case.error_re),
+                                str(error_messages)))
 
     def test_check_access_control(self):
         """

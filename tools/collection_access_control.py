@@ -5,6 +5,7 @@ collection_access_control.py
 Ticket #43 Implement access_control properties for collections
 """
 from copy import deepcopy
+import json
 import logging
 import re
 from urlparse import urlparse
@@ -12,6 +13,8 @@ from urlparse import urlparse
 import ipaddr
 
 class AccessControlError(Exception):
+    pass
+class AccessControlCleanseError(AccessControlError):
     pass
 class InvalidAccessControl(AccessControlError):
     pass
@@ -90,15 +93,35 @@ unauth_referrer_whitelist = "unauth_referrer_whitelist"
 #}  
 locations = "locations"
 
-_top_level_keys = [allow_unauth_read,
-                   allow_unauth_write,
-                   allow_unauth_list,
-                   allow_unauth_delete,
-                   ipv4_whitelist,
-                   unauth_referrer_whitelist,
-                   locations]
-
 _max_access_control_json_length = 16 * 1024
+
+def _cleanse_bool(entry):
+    if type(entry) in [bool, int]:
+        if entry:
+            return True
+        return False
+    raise AccessControlCleanseError(
+        "Expected bool got {0}".format(type(entry)))
+
+def _cleanse_ipv4_whitelist(entry):
+    raise AccessControlCleanseError("not ready yet")
+
+def _cleanse_unauth_referrer_whitelist(entry):
+    raise AccessControlCleanseError("not ready yet")
+
+def _cleanse_locations(entry):
+    raise AccessControlCleanseError("not ready yet")
+    
+
+_cleanse_dispatch_table = {
+    allow_unauth_read           : _cleanse_bool,
+    allow_unauth_write          : _cleanse_bool,
+    allow_unauth_list           : _cleanse_bool,
+    allow_unauth_delete         : _cleanse_bool,
+    ipv4_whitelist              : _cleanse_ipv4_whitelist,
+    unauth_referrer_whitelist   : _cleanse_unauth_referrer_whitelist,
+    locations                   : _cleanse_locations,
+}
 
 def _normalize_path(path):
     """
@@ -247,6 +270,26 @@ def cleanse_access_control(access_control_json):
         error_message = \
             "Unable to parse access_control JSON {0}".format(instance)
         error_message_list.append(error_message)
+        return None, error_message_list
+
+    for key, cleanse_function in _cleanse_dispatch_table.items():
+        try:
+            raw_entry = raw_dict.pop(key)
+        except KeyError:
+            continue
+
+        try:
+            entry = cleanse_function(raw_entry)
+        except AccessControlCleanseError, instance:
+            error_message_list.append(str(instance))
+        else:
+            valid_dict[key] = entry
+
+    if len(raw_dict) > 0:
+        error_message = "unidentified keys in upload"
+        error_message_list.append(error_message)
+
+    if len(error_message_list) > 0:
         return None, error_message_list
 
     return valid_dict, None

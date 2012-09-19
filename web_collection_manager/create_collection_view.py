@@ -11,6 +11,9 @@ import flask
 
 from tools.greenlet_database_util import GetConnection
 from tools.collection import valid_collection_name
+from tools.data_definitions import http_timestamp_str
+from tools.customer_key_lookup import CustomerKeyConnectionLookup
+
 from web_collection_manager.connection_pool_view import ConnectionPoolView
 from web_collection_manager.authenticator import authenticate
 
@@ -73,7 +76,11 @@ class CreateCollectionView(ConnectionPoolView):
         versioning = False
 
         with GetConnection(self.connection_pool) as connection:
-            authenticated = authenticate(connection,
+
+            customer_key_lookup = \
+                CustomerKeyConnectionLookup(self.memcached_client,
+                                            connection)
+            authenticated = authenticate(customer_key_lookup,
                                          username,
                                          flask.request)
             if not authenticated:
@@ -98,7 +105,7 @@ class CreateCollectionView(ConnectionPoolView):
         collection_dict = {
             "name" : collection_name,
             "versioning" : versioning,
-            "creation-time" : creation_time.isoformat()} 
+            "creation-time" : http_timestamp_str(creation_time)} 
 
         # 2012-04-15 dougfort Ticket #12 - return 201 'created'
         # 2012-08-16 dougfort Ticket #28 - set content_type

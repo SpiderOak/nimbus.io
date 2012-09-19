@@ -174,12 +174,19 @@ def get_central_connection():
     )
     return connection
 
+def _node_database_name(node_name):
+    return ".".join([node_database_name_prefix, node_name, ])
+
+def _node_database_user(node_name):
+    database_user = "_".join([node_database_user_prefix, node_name, ])
+    database_user = database_user.replace("-", "_")
+    return database_user
+
 def get_node_connection(
     node_name, database_password, database_host, database_port
 ):
-    database_name = ".".join([node_database_name_prefix, node_name, ])
-    database_user = "_".join([node_database_user_prefix, node_name, ])
-    database_user = database_user.replace("-", "_")
+    database_name = _node_database_name(node_name)
+    database_user = _node_database_user(node_name)
     connection = DatabaseConnection(
         database_name=database_name,
         database_user=database_user,
@@ -217,4 +224,44 @@ def get_central_database_dsn():
         "user={0}".format(central_database_user),
         "password={0}".format(os.environ["NIMBUSIO_CENTRAL_USER_PASSWORD"]),
     ])
+
+def get_node_database_dsn(node_name, 
+                          database_password, 
+                          database_host, 
+                          database_port):
+    """
+    return a Data Source Name (DSN) string for connecting to a database
+    - ``dbname`` -- database name (only in 'dsn')
+    - ``host`` -- host address (defaults to UNIX socket if not provided)
+    - ``port`` -- port number (defaults to 5432 if not provided)
+    - ``user`` -- user name used to authenticate
+    - ``password`` -- password used to authenticate
+    - ``sslmode`` -- SSL mode (see PostgreSQL documentation)
+    """
+    return " ".join([
+        "dbname={0}".format(_node_database_name(node_name)),
+        "host={0}".format(database_host),
+        "port={0}".format(database_port),
+        "user={0}".format(_node_database_user(node_name)),
+        "password={0}".format(database_password),
+    ])
+
+def get_node_local_database_dsn():
+    """
+    return a Data Source Name (DSN) string for connecting to a database
+    - ``dbname`` -- database name (only in 'dsn')
+    - ``host`` -- host address (defaults to UNIX socket if not provided)
+    - ``port`` -- port number (defaults to 5432 if not provided)
+    - ``user`` -- user name used to authenticate
+    - ``password`` -- password used to authenticate
+    - ``sslmode`` -- SSL mode (see PostgreSQL documentation)
+    """
+    node_name = os.environ["NIMBUSIO_NODE_NAME"]
+    database_password = os.environ['NIMBUSIO_NODE_USER_PASSWORD']
+    database_host = os.environ.get("NIMBUSIO_NODE_DATABASE_HOST", "localhost")
+    database_port = int(os.environ.get("NIMBUSIO_NODE_DATABASE_PORT", "5432"))
+    return get_node_database_dsn(node_name,
+                                 database_password,
+                                 database_host,
+                                 database_port)
 

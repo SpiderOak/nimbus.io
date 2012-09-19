@@ -4,6 +4,7 @@ retriever.py
 
 A class that retrieves data from data readers.
 """
+from base64 import b64encode
 import httplib
 import logging
 import os
@@ -19,19 +20,21 @@ from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.local_database_util import current_status_of_key, \
     current_status_of_version
 
-memcached_key_template = "internal_read_{0}"
+memcached_key_template = "internal_read_{0}_{1}"
 
 _web_internal_reader_host = \
     os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
 _web_internal_reader_port = \
     int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
+_nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
+_retrieve_retry_interval = 120
 
 class Retriever(object):
     """retrieves data from web_internal_reader"""
     def __init__(
         self, 
         memcached_client,
-        node_local_connection,
+        interaction_pool,
         collection_id, 
         key, 
         version_id,
@@ -39,20 +42,15 @@ class Retriever(object):
         slice_size
     ):
         self._log = logging.getLogger("Retriever")
-        self._log.info("{0}, {1}, {2}, {3}, {4}".format(
-            collection_id, 
-            key, 
-            version_id,
-            slice_offset,
-            slice_size,
-        ))
         self._memcached_client = memcached_client
-        self._node_local_connection = node_local_connection
+        self._interaction_pool = interaction_pool
         self._collection_id = collection_id
         self._key = key
         self._version_id = version_id
         self._slice_offset = slice_offset
         self._slice_size = slice_size
+
+        self.status_rows = self._fetch_status_rows_from_database()
 
         self.total_file_size = 0
 
@@ -73,15 +71,13 @@ class Retriever(object):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
         if self._version_id is None:
-            status_rows = current_status_of_key(
-                self._node_local_connection,
-                self._collection_id, 
-                self._key,
-            )
+            status_rows = current_status_of_key(self._interaction_pool,
+                                                self._collection_id, 
+                                                self._key)
         else:
-            status_rows = current_status_of_version(
-                self._node_local_connection, self._version_id
-            )
+            status_rows = current_status_of_version(self._interaction_pool, 
+                                                    self._version_id,
+                                                    self._key)
 
         if len(status_rows) == 0:
             raise RetrieveFailedError("key not found %s %s" % (
@@ -103,18 +99,32 @@ class Retriever(object):
 
     def _cache_status_rows_in_memcached(self, status_rows):
         memcached_key = \
-            memcached_key_template.format(status_rows[0].seg_unified_id)
+            memcached_key_template.format(_nimbusio_node_name, 
+                                          status_rows[0].seg_unified_id)
+
+        # See Ticket #40, comment 1 - pickle won't handle namedtuple
+        # so we convert to dict()
+        cached_status_rows = [row._asdict() for row in status_rows]
+
+        # pickle also won't handle the md5 digest, so we encode
+        for row in cached_status_rows:
+            row["seg_file_hash"] = b64encode(row["seg_file_hash"]) 
+
         cache_dict = {
             "collection-id" : self._collection_id,
             "key"           : self._key,
-            "status-rows"   : status_rows,
+            "status-rows"   : cached_status_rows,
         }
+
         self._log.debug("caching {0}".format(memcached_key))
         try:
-            self._memcached_client.set(memcached_key, cache_dict)
+            successful = self._memcached_client.set(memcached_key, cache_dict)
         except Exception, instance:
             self._log.exception(instance)
             raise
+
+        if not successful:
+            self._log.warn("memcached set failed {0}".format(memcached_key))
 
     def _generate_status_rows(self, status_rows):
 
@@ -220,21 +230,22 @@ class Retriever(object):
             block_offset = 0
             block_count = None
 
-    def retrieve(self, timeout):
+    def retrieve(self, response, timeout):
         try:
-            return self._retrieve(timeout)
+            return self._retrieve(response, timeout)
         except Exception, instance:
             self._log.exception(instance)
+            response.status_int = httplib.SERVICE_UNAVAILABLE
+            response.retry_after = _retrieve_retry_interval
             raise RetrieveFailedError(instance)
 
-    def _retrieve(self, timeout):
-        status_rows = self._fetch_status_rows_from_database()
-        self._cache_status_rows_in_memcached(status_rows)
-        self.total_file_size = sum([r.seg_file_size for r in status_rows])
+    def _retrieve(self, response, timeout):
+        self._cache_status_rows_in_memcached(self.status_rows)
+        self.total_file_size = sum([r.seg_file_size for r in self.status_rows])
 
         self._log.debug("start status_rows loop")
         first_block = True
-        for entry in self._generate_status_rows(status_rows):
+        for entry in self._generate_status_rows(self.status_rows):
 
             status_row, block_offset, block_count = entry
 
@@ -268,35 +279,43 @@ class Retriever(object):
             request = urllib2.Request(uri, headers=headers)
             self._log.debug("start request")
             try:
-                response = urllib2.urlopen(request, timeout=timeout)
+                urllib_response = urllib2.urlopen(request, timeout=timeout)
             except urllib2.HTTPError, instance:
                 if instance.code == httplib.PARTIAL_CONTENT and \
                 expected_status ==  httplib.PARTIAL_CONTENT:
-                    response = instance
+                    urllib_response = instance
                 else:
                     message = "urllib2.HTTPError '{0}' '{1}'".format(
                         instance.code, instance)
                     self._log.exception(message)
-                    raise RetrieveFailedError(message)
+                    response.status_int = httplib.SERVICE_UNAVAILABLE
+                    response.retry_after = _retrieve_retry_interval
+                    raise StopIteration()
             except gevent.httplib.RequestFailed, instance:
                 message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
                     instance.args, instance.message)
                 self._log.exception(message)
-                raise RetrieveFailedError(message)
+                response.status_int = httplib.SERVICE_UNAVAILABLE
+                response.retry_after = _retrieve_retry_interval
+                raise StopIteration()
             except Exception, instance:
                 message = "GET failed {0} '{1}'".format(
                     instance.__class__.__name__, instance)
                 self._log.exception(message)
-                raise RetrieveFailedError(message)
+                response.status_int = httplib.SERVICE_UNAVAILABLE
+                response.retry_after = _retrieve_retry_interval
+                raise StopIteration()
                 
-            if response is None:
+            if urllib_response is None:
                 message = "GET returns None {0}".format(uri)
                 self._log.error(message)
-                raise RetrieveFailedError(message)
+                response.status_int = httplib.SERVICE_UNAVAILABLE
+                response.retry_after = _retrieve_retry_interval
+                raise StopIteration()
 
             # TODO: might be a good idea to buffer here
-            data = response.read()
-            response.close()
+            data = urllib_response.read()
+            urllib_response.close()
             self._log.debug("retrieved {0} bytes".format(len(data)))
 
             if first_block:

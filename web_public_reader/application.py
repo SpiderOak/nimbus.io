@@ -4,9 +4,9 @@ application.py
 The nimbus.io wsgi application
 
 """
-from base64 import b64encode
 import httplib
 import logging
+import mimetypes
 import os
 import re
 import json
@@ -16,14 +16,16 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.collection import get_username_and_collection_id, \
-        get_collection_id
+from tools.data_definitions import http_timestamp_str, \
+        parse_http_timestamp
 
 from web_public_reader.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
 from web_public_reader.space_usage_getter import SpaceUsageGetter
-from web_public_reader.stat_getter import get_last_modified_and_content_length
+from web_public_reader.stat_getter import \
+    get_last_modified_and_content_length, \
+    last_modified_and_content_length_from_status_rows
 from web_public_reader.retriever import Retriever
 from web_public_reader.meta_manager import retrieve_meta
 from web_public_reader.conjoined_manager import list_conjoined_archives, \
@@ -43,12 +45,11 @@ _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
 
-_retrieve_retry_interval = 120
 _content_type_json = "application/json"
 _range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _fix_timestamp(timestamp):
-    return (None if timestamp is None else repr(timestamp))
+    return (None if timestamp is None else http_timestamp_str(timestamp))
 
 def _parse_range_header(range_header):
     """
@@ -91,8 +92,7 @@ class Application(object):
     def __init__(
         self, 
         memcached_client,
-        central_connection,
-        node_local_connection,
+        local_interaction_pool,
         cluster_row,
         id_translator,
         authenticator, 
@@ -101,8 +101,7 @@ class Application(object):
     ):
         self._log = logging.getLogger("Application")
         self._memcached_client = memcached_client
-        self._central_connection = central_connection
-        self._node_local_connection = node_local_connection
+        self._interaction_pool = local_interaction_pool
         self._cluster_row = cluster_row
         self._id_translator = id_translator
         self._authenticator = authenticator
@@ -150,28 +149,25 @@ class Application(object):
             raise
 
     def _respond_to_ping(self, _req, _match_object):
-        self._log.debug("_respond_to_ping")
+        # self._log.debug("_respond_to_ping")
+        # Ticket #44 We don't send Connection: close here
+        # because this is an internal URI
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
     def _list_versions(self, req, match_object):
         collection_name = match_object.group("collection_name")
+        self._log.debug("_list_versions")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -197,19 +193,14 @@ class Application(object):
                 kwargs["version_id_marker"]
             )
 
-        self._log.info(
-            "_list_versions: collection = (%s) username = %r %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                kwargs
-            )
-        )
-        result_dict = list_versions(
-            self._node_local_connection,
-            collection_entry.collection_id, 
-            **kwargs
-        )
+        self._log.info("_list_versions: collection = ({0}) {1} {2}".format(
+                collection_row["id"],
+                collection_row["name"],
+                kwargs))
+
+        result_dict = list_versions(self._interaction_pool,
+                                    collection_row["id"], 
+                                    **kwargs)
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -220,6 +211,8 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
@@ -227,55 +220,51 @@ class Application(object):
         return response
 
     def _collection_space_usage(self, req, match_object):
-        username = match_object.group("username")
+        # username = match_object.group("username")
         collection_name = match_object.group("collection_name")
+        self._log.debug("_collection_space_usage")
 
-        self._log.info("_collection_space_usage: %r %r" % (
-            username, collection_name
-        ))
-
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            username,
-            req
-        )
-        if not authenticated:
+        try:
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
+        except Exception, instance:
+            self._log.exception("%s" % (instance, ))
+            raise exc.HTTPBadRequest()
+            
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
-        collection_id = get_collection_id(
-            self._central_connection, collection_name
-        )        
-        if collection_id is None:
-            raise exc.HTTPNotFound(collection_name)
+        self._log.info("space_usage: collection = ({0}) {1}".format(
+                collection_row["id"],
+                collection_row["name"]))
+
 
         getter = SpaceUsageGetter(self.accounting_client)
         try:
-            usage = getter.get_space_usage(collection_id, _reply_timeout)
+            usage = getter.get_space_usage(collection_row["id"], 
+                                           _reply_timeout)
         except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
             raise exc.HTTPServiceUnavailable(str(e))
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(usage, sort_keys=True, indent=4))
         return response
 
     def _list_keys(self, req, match_object):
         collection_name = match_object.group("collection_name")
+        self._log.debug("_list_keys")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -295,18 +284,15 @@ class Application(object):
                 kwargs[variable_name] = variable_value
 
         self._log.info(
-            "_list_keys: collection = (%s) username = %r %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
+            "_list_keys: collection = ({0}) {1} {2}".format(
+                collection_row["id"],
+                collection_row["name"],
                 kwargs
             )
         )
-        result_dict = list_keys(
-            self._node_local_connection,
-            collection_entry.collection_id, 
-            **kwargs
-        )
+        result_dict = list_keys(self._interaction_pool,
+                                collection_row["id"], 
+                                **kwargs)
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -317,6 +303,8 @@ class Application(object):
                     )
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True,
@@ -326,21 +314,16 @@ class Application(object):
     def _retrieve_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        self._log.debug("_retrieve_key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -363,29 +346,30 @@ class Application(object):
             lower_bound, upper_bound, slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
 
-        description = "retrieve: (%s)%r %r key=%r version=%r %r:%r" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
+        description = "retrieve: ({0}){1} key={2} version={3} {4}:{5}".format(
+            collection_row["id"],
+            collection_row["name"],
             key,
             version_id,
             slice_offset,
-            slice_size
-        )
+            slice_size)
         self._log.info(description)
 
         retriever = Retriever(
             self._memcached_client,
-            self._node_local_connection,
-            collection_entry.collection_id,
+            self._interaction_pool,
+            collection_row["id"],
             key,
             version_id,
             slice_offset,
             slice_size
         )
 
+        response_headers = dict()
+        response = Response(headers=response_headers)
+
         try:
-            retrieve_generator = retriever.retrieve(_reply_timeout)
+            retrieve_generator = retriever.retrieve(response, _reply_timeout)
         except Exception, instance:
             self._log.exception("retrieve_failed {0}".format(instance))
             self._event_push_client.exception(
@@ -396,15 +380,48 @@ class Application(object):
             raise
 
         last_modified, content_length = \
-            get_last_modified_and_content_length(self._node_local_connection,
-                                                 collection_entry.collection_id,
-                                                 key,
-                                                 version_id)
+            last_modified_and_content_length_from_status_rows(
+                retriever.status_rows)
 
         if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
-        response_headers = dict()
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        content_type, content_encoding = \
+            mimetypes.guess_type(key, strict=False)
+
+        # Ticket #37 handle If-Modified-Since and If-Unmodified-Since headers
+
+        if "If-Modified-Since" in req.headers:
+            timestamp_str = req.headers["If-Modified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparsable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified < timestamp:
+                # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+                response.headers["Connection"] = "close"
+                response.last_modified = last_modified
+                response.status_int = httplib.NOT_MODIFIED
+                return  response
+
+        if "If-Unmodified-Since" in req.headers:
+            timestamp_str = req.headers["If-Unmodified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparsable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified > timestamp:
+                # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+                response.headers["Connection"] = "close"
+                response.last_modified = last_modified
+                response.status_int = httplib.PRECONDITION_FAILED
+                return  response
+
         if "range" in req.headers:
             status_int = httplib.PARTIAL_CONTENT
             response_headers["Content-Range"] = \
@@ -415,9 +432,18 @@ class Application(object):
         else:
             status_int = httplib.OK
 
-        response = Response(headers=response_headers)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.last_modified = last_modified
         response.content_length = content_length
+
+        if content_type is None:
+            response.content_type = "application/octet-stream"
+        else:
+            response.content_type = content_type
+        if content_encoding is not None:
+            response.content_encoding = content_encoding
+
         response.status_int = status_int
         response.app_iter = retrieve_generator
         return  response
@@ -425,21 +451,16 @@ class Application(object):
     def _retrieve_meta(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        self._log.debug("_retrieve_meta")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -448,16 +469,16 @@ class Application(object):
         except Exception, instance:
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        meta_dict = retrieve_meta(
-            self._node_local_connection, 
-            collection_entry.collection_id, 
-            key
-        )
+        meta_dict = retrieve_meta(self._interaction_pool, 
+                                  collection_row["id"], 
+                                  key)
 
         if meta_dict is None:
             raise exc.HTTPNotFound(req.url)
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(meta_dict, 
                                             sort_keys=True, 
@@ -467,21 +488,16 @@ class Application(object):
     def _head_key(self, req, match_object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
+        self._log.debug("_head_key")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -497,45 +513,76 @@ class Application(object):
             version_id = self._id_translator.internal_id(version_identifier)
 
         self._log.info(
-            "head_key: collection = (%s) %r username = %r key = %r %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "head_key: collection = ({0}) {1} key = {2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            version_id
-        ))
+            version_id))
 
         last_modified, content_length = \
-            get_last_modified_and_content_length(self._node_local_connection,
-                                                 collection_entry.collection_id,
+            get_last_modified_and_content_length(self._interaction_pool,
+                                                 collection_row["id"],
                                                  key,
                                                  version_id)
         if last_modified is None or content_length is None:
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
-        response = Response(status=200, content_type=None)
+        status = httplib.OK
+
+        # Ticket #37 handle If-Modified-Since and If-Unmodified-Since headers
+
+        if "If-Modified-Since" in req.headers:
+            timestamp_str = req.headers["If-Modified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified < timestamp:
+                status = httplib.NOT_MODIFIED
+
+        if "If-Unmodified-Since" in req.headers:
+            timestamp_str = req.headers["If-Unmodified-Since"]
+            try:
+                timestamp = parse_http_timestamp(timestamp_str)
+            except Exception, instance:
+                self._log.error(
+                    "unparable timestamp '{0}'".format(timestamp_str))
+                raise exc.HTTPServiceUnavailable(str(instance))
+            if last_modified > timestamp:
+                status = httplib.PRECONDITION_FAILED
+
+        response = Response(status=status, content_type=None)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.last_modified = last_modified
         response.content_length = content_length
+
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        content_type, content_encoding = \
+            mimetypes.guess_type(key, strict=False)
+        if content_type is None:
+            response.content_type = "application/octet-stream"
+        else:
+            response.content_type = content_type
+        if content_encoding is not None:
+            response.content_encoding = content_encoding
 
         return response
 
     def _list_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
+        self._log.debug("_list_conjoined")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         variable_names = [
@@ -554,16 +601,14 @@ class Application(object):
                 kwargs[variable_name] = variable_value
 
         self._log.info(
-            "list_conjoined: collection = (%s) %r username = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
-            kwargs,
-        ))
+            "list_conjoined: collection = ({0}) {1} {2}".format(
+            collection_row["id"], 
+            collection_row["name"],
+            kwargs,))
 
         truncated, conjoined_entries = list_conjoined_archives(
-            self._node_local_connection,
-            collection_entry.collection_id,
+            self._interaction_pool,
+            collection_row["id"],
             **kwargs
         )
 
@@ -585,6 +630,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True,
@@ -595,21 +642,16 @@ class Application(object):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")
+        self._log.debug("_list_upload_in_conjoined")
 
         try:
-            collection_entry = get_username_and_collection_id(
-                self._central_connection, collection_name
-            )
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
-            self._log.error("%s" % (instance, ))
+            self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        authenticated = self._authenticator.authenticate(
-            self._central_connection,
-            collection_entry.username,
-            req
-        )
-        if not authenticated:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -620,11 +662,10 @@ class Application(object):
 
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
-        self._log.info("list_upload: collection = (%s) %r %r key=%r %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+        self._log.info(
+            "list_upload: collection = ({0}) {1} key={2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 

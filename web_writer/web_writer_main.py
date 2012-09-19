@@ -21,6 +21,8 @@ gevent_zeromq.monkey_patch()
 import gevent_psycopg2
 gevent_psycopg2.monkey_patch()
 
+import memcache
+
 import logging
 import os
 import os.path
@@ -33,7 +35,7 @@ from gevent.event import Event
 from gevent_zeromq import zmq
 import gevent
 
-import gdbpool.connection_pool
+import gdbpool.interaction_pool
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
@@ -48,13 +50,13 @@ from tools.id_translator import InternalIDTranslator
 from tools.data_definitions import create_timestamp, \
         cluster_row_template, \
         node_row_template
+from tools.interaction_pool_authenticator import \
+    InteractionPoolAuthenticator
 
 from web_public_reader.space_accounting_client import SpaceAccountingClient
 
 from web_writer.application import Application
 from web_writer.watcher import Watcher
-from web_writer.connection_pool_authenticator import \
-    ConnectionPoolAuthenticator
 
 class WebWriterError(Exception):
     pass
@@ -81,34 +83,37 @@ _stats = {
     "archives"    : 0,
 }
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
+_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+_memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
 _database_pool_size = 3 
-_database_pool_connection_lifetime = 600
+_central_pool_name = "default"
 
 def _signal_handler_closure(halt_event):
     def _signal_handler(*_args):
         halt_event.set()
     return _signal_handler
 
-def _get_cluster_row_and_node_row(connection_pool):
+def _get_cluster_row_and_node_row(interaction_pool):
     """
     use node_id as shard id
     """
     log = logging.getLogger("_get_cluster_row_and_shard_id")
-    connection = connection_pool.get()
 
     query = """select %s from nimbusio_central.cluster where name = %%s""" % (\
         ",".join(cluster_row_template._fields), )
 
-    cursor = connection.cursor()
-    cursor.execute(query, [_cluster_name, ])
-    result = cursor.fetchone() # returns a dict
-    cursor.close()
+    async_result = interaction_pool.run(interaction=query, 
+                                        interaction_args=[_cluster_name, ],
+                                        pool=_central_pool_name) 
+    result_list = async_result.get()
 
-    if result is None:
+    if len(result_list) == 0:
         error_message = "Unable to identify cluster {0}".format(_cluster_name)
         log.error(error_message)
         raise WebWriterError(error_message)
 
+    result = result_list[0]
     cluster_row = cluster_row_template(id=result["id"],
                                        name=result["name"],
                                        node_count=result["node_count"],
@@ -120,14 +125,12 @@ def _get_cluster_row_and_node_row(connection_pool):
                order by node_number_in_cluster""" % (
                ",".join(node_row_template._fields), )
 
-    cursor = connection.cursor()
-    cursor.execute(query, [cluster_row.id, ])
-    result = cursor.fetchall() # returns a sequence of dicts
-    cursor.close()
+    async_result = interaction_pool.run(interaction=query, 
+                                        interaction_args=[cluster_row.id, ],
+                                        pool=_central_pool_name) 
+    result_list = async_result.get()
 
-    connection_pool.put(connection)
-
-    for row in result:
+    for row in result_list:
         node_row = node_row_template(id=row["id"],
                                      node_number_in_cluster=\
                                         row["node_number_in_cluster"],
@@ -146,17 +149,20 @@ def _get_cluster_row_and_node_row(connection_pool):
 class WebWriter(object):
     def __init__(self):
         self._log = logging.getLogger("WebWriter")
+        memcached_client = memcache.Client(_memcached_nodes)
 
-        self._connection_pool = gdbpool.connection_pool.DBConnectionPool(
+        self._interaction_pool = gdbpool.interaction_pool.DBInteractionPool(
             get_central_database_dsn(), 
+            pool_name=_central_pool_name,
             pool_size=_database_pool_size, 
-            conn_lifetime=_database_pool_connection_lifetime)
+            do_log=True)
 
-        authenticator = ConnectionPoolAuthenticator(self._connection_pool)
+        authenticator = InteractionPoolAuthenticator(memcached_client, 
+                                                     self._interaction_pool)
 
         # Ticket #25: must run database operation in a greenlet
         greenlet =  gevent.Greenlet.spawn(_get_cluster_row_and_node_row, 
-                                           self._connection_pool)
+                                           self._interaction_pool)
         greenlet.join()
         self._cluster_row, node_row = greenlet.get()
 

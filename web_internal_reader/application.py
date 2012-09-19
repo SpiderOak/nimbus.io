@@ -40,11 +40,11 @@ _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
     os.environ.get("NIMBUS_IO_REPLY_TIMEOUT",  str(5 * 60.0))
 )
+_nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
 _min_connected_clients = 8
 _min_segments = 8
 _max_segments = 10
 
-_retrieve_retry_interval = 120
 _range_re = re.compile("^bytes=(?P<lower_bound>\d+)-(?P<upper_bound>\d*)$")
 
 def _connected_clients(clients):
@@ -152,7 +152,8 @@ class Application(object):
     def _get_params_from_memcache(self, unified_id, _conjoined_part):
         """retrieve a cached tuple of (collection_id, key, )"""
         memcached_key = \
-            memcached_key_template.format(unified_id)
+            memcached_key_template.format(
+                _nimbusio_node_name, unified_id)
         self._log.debug("uncaching {0}".format(memcached_key))
         cached_dict = self._memcached_client.get(memcached_key)
 
@@ -287,7 +288,6 @@ class Application(object):
                 ))
                 self._stats["retrieves"] -= 1
                 response.status_int = 503
-                response.retry_after = _retrieve_retry_interval
                 return
 
             end_time = time.time()
@@ -319,6 +319,10 @@ class Application(object):
             status_int = httplib.OK
 
         response = Response(headers=response_headers)
+        
+        # Ticket #31 Guess Content-Type and Content-Encoding
+        response.content_type = "application/octet-stream"
+
         response.status_int = status_int
         response.app_iter = app_iterator(response)
         return  response

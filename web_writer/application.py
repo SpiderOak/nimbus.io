@@ -17,6 +17,7 @@ archive:
 
 
 """
+from base64 import b64decode
 import logging
 import os
 import random
@@ -30,11 +31,11 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import incoming_slice_size, \
-        block_generator, \
+from tools.data_definitions import block_generator, \
         create_priority, \
         create_timestamp, \
-        nimbus_meta_prefix
+        nimbus_meta_prefix, \
+        http_timestamp_str
 
 from tools.zfec_segmenter import ZfecSegmenter
 
@@ -44,7 +45,7 @@ from web_writer.exceptions import ArchiveFailedError, \
 
 from web_writer.data_writer_handoff_client import DataWriterHandoffClient
 from web_writer.data_writer import DataWriter
-from web_writer.data_slicer import DataSlicer
+from web_writer.data_slicer import slice_generator
 from web_writer.archiver import Archiver
 from web_writer.destroyer import Destroyer
 from web_writer.conjoined_manager import start_conjoined_archive, \
@@ -73,7 +74,7 @@ _archive_retry_interval = 120
 _content_type_json = "application/json"
 
 def _fix_timestamp(timestamp):
-    return (None if timestamp is None else repr(timestamp))
+    return (None if timestamp is None else http_timestamp_str(timestamp))
 
 def _build_meta_dict(req_get):
     """
@@ -210,6 +211,8 @@ class Application(object):
 
     def _respond_to_ping(self, _req, _match_object):
         self._log.debug("_respond_to_ping")
+        # Ticket #44 we don't send 'Connection: close' here because
+        # this is an internal URI
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
@@ -219,14 +222,13 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -238,21 +240,30 @@ class Application(object):
             ))
             raise exc.HTTPServiceUnavailable(str(instance))
 
-        if req.content_length <= 0:
-            raise exc.HTTPForbidden(
-                "cannot archive: content_length = %s" % (req.content_length, )
-            ) 
+        # Ticket #39 Reject Requests with Inaccurate Content-Length or 
+        # Content-Md5 headers 
+
+        if not "content-length" in req.headers:
+            raise exc.HTTPLengthRequired()
+        try:
+            expected_content_length = int(req.headers["content-length"])
+        except ValueError:
+            error_message = "connot parse content-length {0}".format(
+                req.headers["content-length"])
+            self._log.error(error_message)
+            raise exc.HTTPBadRequest(error_message)
+
+        expected_md5 = None
+        if "content-md5" in req.headers:
+            expected_md5 = b64decode(req.headers["content-md5"])
 
         start_time = time.time()
         self._stats["archives"] += 1
-        description = \
-                "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
+        description = "archive: collection=({0}){1} key={2}, size={3}".format(
+            collection_row["id"],
+            collection_row["name"],
             key, 
-            req.content_length
-        )
+            req.content_length)
         self._log.info(description)
 
         meta_dict = _build_meta_dict(req.GET)
@@ -284,7 +295,7 @@ class Application(object):
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             unified_id,
             timestamp,
@@ -292,6 +303,7 @@ class Application(object):
             conjoined_part
         )
         segmenter = ZfecSegmenter(_min_segments, len(data_writers))
+        actual_content_length = 0
         file_adler32 = zlib.adler32('')
         file_md5 = hashlib.md5()
         file_size = 0
@@ -301,9 +313,8 @@ class Application(object):
             # XXX refactor this loop. it's awkward because it needs to know
             # when any given slice is the last slice, so it works an iteration
             # behind, but sometimes sends an empty final slice.
-            for slice_item in DataSlicer(req.body_file,
-                                    incoming_slice_size,
-                                    req.content_length):
+            for slice_item in slice_generator(req.body_file):
+                actual_content_length += len(slice_item)
                 if segments:
                     archiver.archive_slice(
                         segments, zfec_padding_size, _reply_timeout
@@ -335,6 +346,8 @@ class Application(object):
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             self._stats["archives"] -= 1
             return response
@@ -353,14 +366,33 @@ class Application(object):
                 unified_id, conjoined_part, self._data_writer_clients
             )
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             self._stats["archives"] -= 1
             return response
         
         end_time = time.time()
         self._stats["archives"] -= 1
 
+        if actual_content_length != expected_content_length:
+            error_message = "actual content length {0} != expected {1}".format(
+                actual_content_length, expected_content_length)
+            self._log.error(error_message)
+            _send_archive_cancel(unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
+            raise exc.HTTPBadRequest(error_message)
+
+        if expected_md5 is not None and expected_md5 != file_md5.digest():
+            error_message = "body md5 does not match content-md5 header"
+            self._log.error(error_message)
+            _send_archive_cancel(unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
+            raise exc.HTTPBadRequest(error_message)
+
         self.accounting_client.added(
-            collection_entry.collection_id,
+            collection_row["id"],
             timestamp,
             file_size
         )
@@ -378,6 +410,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True, 
@@ -389,14 +423,13 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -413,14 +446,11 @@ class Application(object):
                 version_identifier
             )
 
-        description = \
-            "_delete_key: (%s) %r %r key = %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                key,
-                unified_id_to_delete
-            )
+        description = "_delete_key: ({0}) {1} key = {2} {3}".format(
+            collection_row["id"],
+            collection_row["name"],
+            key,
+            unified_id_to_delete)
         self._log.info(description)
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -432,7 +462,7 @@ class Application(object):
 
         destroyer = Destroyer(
             data_writers,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             unified_id_to_delete,
             unified_id,
@@ -452,12 +482,16 @@ class Application(object):
             # 2009-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
@@ -468,14 +502,13 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -485,12 +518,10 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         self._log.info(
-            "start_conjoined: collection = (%s) %r username = %r key = %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
-            key
-        ))
+            "start_conjoined: collection = ({0}) {1} key = {2}".format(
+            collection_row["id"], 
+            collection_row["name"],
+            key))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -505,7 +536,7 @@ class Application(object):
             start_conjoined_archive(
                 data_writers,
                 unified_id,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 timestamp
             )
@@ -520,6 +551,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -531,16 +564,20 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
         conjoined_dict = {
             "conjoined_identifier"      : \
                     self._id_translator.public_id(unified_id),
             "key"                       : key,
-            "create_timestamp"          : repr(timestamp)   
+            "create_timestamp"          : _fix_timestamp(timestamp)   
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(conjoined_dict, 
                                             sort_keys=True, 
@@ -553,14 +590,13 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -572,13 +608,11 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "finish_conjoined: collection = (%s) %r %r key = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "finish_conjoined: collection = ({0}) {1} key = {2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -591,7 +625,7 @@ class Application(object):
         try:
             finish_conjoined_archive(
                 data_writers,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 unified_id,
                 timestamp
@@ -607,6 +641,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -618,9 +654,19 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
-        return  Response()
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 
     def _abort_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -628,14 +674,13 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = \
-                self._authenticator.authenticate(collection_name,
-                                                 req)
+            collection_row = self._authenticator.authenticate(collection_name,
+                                                              req)
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
+        if collection_row is None:
             raise exc.HTTPUnauthorized()
 
         try:
@@ -647,13 +692,11 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "abort_conjoined: collection = (%s) %r %r key = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "abort_conjoined: collection = ({0}) {1} key = {3} {4}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -666,7 +709,7 @@ class Application(object):
         try:
             abort_conjoined_archive(
                 data_writers,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 unified_id,
                 timestamp
@@ -682,6 +725,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -693,7 +738,17 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
-        return  Response()
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 

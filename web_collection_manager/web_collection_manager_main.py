@@ -7,9 +7,9 @@ web collection manager
 import logging
 import os
 
-import psycopg2
-import psycopg2.extensions
 from psycopg2.pool import ThreadedConnectionPool
+
+import memcache
 
 from tools.standard_logging import initialize_logging
 from tools.database_connection import central_database_name, \
@@ -36,6 +36,10 @@ _database_credentials = {
     "port"      : os.environ["NIMBUSIO_CENTRAL_DATABASE_PORT"],
 }
 
+_memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
+_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+_memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
+
 _views = [ping_view,
           list_collections_view, 
           create_collection_view,
@@ -53,6 +57,7 @@ ConnectionPoolView.connection_pool = \
     ThreadedConnectionPool(_min_database_pool_connections,
                            _max_database_pool_connections,
                            **_database_credentials)
+ConnectionPoolView.memcached_client = memcache.Client(_memcached_nodes)
 
 for view in _views:
     app.logger.info("loading {0}".format(view.endpoint))
@@ -69,7 +74,7 @@ def run_in_dev_mode():
 
     log.info("app.run(host={0}, port={1})".format(management_host, 
         str(management_port)))
-    app.run(host=_management_host, port=_management_port)
+    app.run(host=management_host, port=management_port)
 
 if __name__ == "__main__":
     run_in_dev_mode()

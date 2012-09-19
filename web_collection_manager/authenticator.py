@@ -5,7 +5,6 @@ authenticator.py
 Authenticates requestuests
 """
 from binascii import a2b_hex
-from collections import namedtuple
 import hashlib
 import hmac
 import logging
@@ -13,30 +12,6 @@ import time
 import urllib
 
 from web_public_reader.util import sec_str_eq
-
-_customer_key_template = namedtuple("CustomerKey", ["key_id", "key"])
-
-def _get_customer_key(connection, username, key_id):
-    """
-    retrieve a specific key for the customer
-    """
-    # we could just select on id, but we want to make sure this key
-    # belongs to this user
-    cursor = connection.cursor()
-    cursor.execute("""
-        select key from nimbusio_central.customer_key
-        where customer_id = (select id from nimbusio_central.customer
-                             where username = %s)
-        and id = %s
-        """, [username, key_id, ])
-    result = cursor.fetchone()
-    cursor.close()
-
-    if result is None:
-        return None
-
-    ( key, ) = result
-    return _customer_key_template(key_id=key_id, key=key)
 
 def _string_to_sign(username, request):
     # we want the path and the query string
@@ -50,7 +25,7 @@ def _string_to_sign(username, request):
                       request.headers['x-nimbus-io-timestamp'],
                       urllib.unquote_plus(path_qs), ])
 
-def authenticate(connection, username, request):
+def authenticate(customer_key_lookup, username, request):
     """
     authenticate user request
     """
@@ -81,9 +56,9 @@ def authenticate(connection, username, request):
             instance, key_id))
         return False
 
-    customer_key = _get_customer_key(connection, username, key_id)
-    if customer_key is None:
-        log.error("unknown user %r" % (username, ))
+    customer_key_row = customer_key_lookup.get(key_id)
+    if customer_key_row is None:
+        log.error("unknown customer key {0}".format(key_id))
         return False
 
     try:
@@ -114,9 +89,9 @@ def authenticate(connection, username, request):
             timestamp, instance))
         return False
 
-    expected = hmac.new(
-        customer_key.key, string_to_sign, hashlib.sha256
-    ).digest()
+    expected = hmac.new(str(customer_key_row["key"]), 
+                        string_to_sign, 
+                        hashlib.sha256).digest()
 
     if not sec_str_eq(signature, expected):
         log.error("signature comparison failed %r %r" % (

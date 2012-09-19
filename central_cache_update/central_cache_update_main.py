@@ -114,7 +114,7 @@ def _process_one_event(memcached_client, expected_sequence, topic, meta, data):
         log.error(message)
         expected_sequence[topic] = None
 
-    table_name, raw_data = data.split("\n")
+    table_name, uuid, raw_data = data.split("\n", 2)
     try:
         event_data = \
             pickle.loads(zlib.decompress(base64.b64decode(raw_data)))

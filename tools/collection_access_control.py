@@ -28,6 +28,8 @@ access_allowed = 1
 access_requires_password_authentication = 2
 access_forbidden = 3
 
+version = "version"
+
 #if True, GET and HEAD requests for objects do not
 #require authentication
 allow_unauth_read = "allow_unauth_read"
@@ -93,7 +95,17 @@ unauth_referrer_whitelist = "unauth_referrer_whitelist"
 #}  
 locations = "locations"
 
+_current_version = "1.0"
 _max_access_control_json_length = 16 * 1024
+
+def _cleanse_version(entry):
+    if type(entry) not in [str, unicode]:
+        raise AccessControlCleanseError("invalid version type {0}".format(
+            type(version)))
+    version_str = entry.encode("utf-8")
+    if version_str == _current_version:
+        return version_str
+    raise AccessControlCleanseError("unknown version {0}".format(version_str))
 
 def _cleanse_bool(entry):
     if type(entry) in [bool, int]:
@@ -114,6 +126,7 @@ def _cleanse_locations(entry):
     
 
 _cleanse_dispatch_table = {
+    version                     : _cleanse_version,
     allow_unauth_read           : _cleanse_bool,
     allow_unauth_write          : _cleanse_bool,
     allow_unauth_list           : _cleanse_bool,
@@ -322,6 +335,12 @@ def check_access_control(access_type, request, baseline_access_control):
     if len(baseline_access_control) == 0:
         log.debug("access_control is empty")
         return access_requires_password_authentication
+
+    # if the access_control data is not a known version, something is wrong
+    if not version in baseline_access_control or \
+        baseline_access_control[version] != _current_version:
+        log.error("invalid version {0}".format(baseline_access_control))
+        return access_forbidden
 
     if locations in baseline_access_control:
         access_control = _apply_location_modifications(baseline_access_control,

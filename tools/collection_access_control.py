@@ -116,14 +116,51 @@ def _cleanse_bool(entry):
         "Expected bool got {0}".format(type(entry)))
 
 def _cleanse_ipv4_whitelist(entry):
-    raise AccessControlCleanseError("not ready yet")
+    if entry is None:
+        return None
+    if type(entry) is not list:
+        raise AccessControlCleanseError(
+            "invalid ipv4_whitelist type {0}".format(type(entry)))
+
+    ipv4_whitelist = list()
+    for raw_element in entry:
+        if type(raw_element) not in [str, unicode]:
+            raise AccessControlCleanseError(
+                "invalid ipv4_whitelist entry type {0}".format(
+                    type(raw_element)))
+       
+        try:
+            netblock = ipaddr.IPv4Network(raw_element)
+        except ipaddr.AddressValueError, instance:
+            raise AccessControlCleanseError(
+                "invalid ipv4_whitelist address {0} {0}".format(
+                    raw_element, instance))
+
+        ipv4_whitelist.append(str(netblock))
+        
+    return ipv4_whitelist
 
 def _cleanse_unauth_referrer_whitelist(entry):
-    raise AccessControlCleanseError("not ready yet")
+    if entry is None:
+        return None
+    if type(entry) is not list:
+        raise AccessControlCleanseError(
+            "invalid unauth_referrer_whitelist type {0}".format(type(entry)))
 
-def _cleanse_locations(entry):
-    raise AccessControlCleanseError("not ready yet")
-    
+    unauth_referrer_whitelist = list()
+    for raw_element in entry:
+        if type(raw_element) not in [str, unicode]:
+            raise AccessControlCleanseError(
+                "invalid unauth_referrer_whitelist entry type {0}".format(
+                    type(raw_element)))
+        # TODO: maybe we need to exclude some types of characters here
+        unauth_referrer_whitelist.append(raw_element.encode("utf-8"))
+
+    return unauth_referrer_whitelist
+
+# we use _cleanse_dispatch_table in _cleanse_locations
+# then we add _cleanse_locations to _cleanse_dispatch_table
+# this is not recursive because 'locations' is not in 'valid_location_entries'
 
 _cleanse_dispatch_table = {
     version                     : _cleanse_version,
@@ -133,8 +170,65 @@ _cleanse_dispatch_table = {
     allow_unauth_delete         : _cleanse_bool,
     ipv4_whitelist              : _cleanse_ipv4_whitelist,
     unauth_referrer_whitelist   : _cleanse_unauth_referrer_whitelist,
-    locations                   : _cleanse_locations,
 }
+
+def _cleanse_locations(entry):
+    valid_location_entries = set([allow_unauth_read,
+                                  allow_unauth_write,
+                                  allow_unauth_delete,
+                                  ipv4_whitelist, 
+                                  unauth_referrer_whitelist])
+    if entry is None:
+        return None
+    if type(entry) is not list:
+        raise AccessControlCleanseError(
+            "invalid locations type {0}".format(type(entry)))
+
+    locations = list()
+    for raw_element in entry:
+        if type(raw_element) is not dict:
+            raise AccessControlCleanseError(
+                "invalid locations entry type {0}".format(type(raw_element)))
+
+        element = dict()
+        # the keys in the raw element should be either 'prefix', 'regexp', or
+        # a valid location entry
+        for raw_key in raw_element.keys():
+            if type(raw_key) not in [str, unicode]:
+                raise AccessControlCleanseError(
+                    "invalid locations entry key type {0}".format(type(raw_key)
+                    ))
+            key = raw_key.encode("utf-8")
+            if key in ["prefix", "regexp", ]:
+                raw_value = raw_element[key]
+                if type(raw_value) not in [str, unicode]:
+                    raise AccessControlCleanseError(
+                        "invalid locations prefix type {0}".format(
+                        type(raw_value)))
+
+                # TODO: maybe we need to exclude some types of characters here
+                value = raw_value.encode("utf-8")
+
+                if key == "regexp":
+                    try:
+                        re.compile(value)
+                    except Exception, instance:
+                        raise AccessControlCleanseError(
+                            "invalid locations regexp {0} {1}".format(
+                            value, instance))
+
+                element[key] = value
+            elif key not in valid_location_entries:
+                raise AccessControlCleanseError(
+                    "invalid locations entry key {0}".format(key))
+            else:
+                raw_value = raw_element[key]
+                element[key] = _cleanse_dispatch_table[key](raw_value)
+        locations.append(element)
+
+    return locations
+
+_cleanse_dispatch_table[locations] = _cleanse_locations
 
 def _normalize_path(path):
     """
@@ -236,14 +330,15 @@ def _check_unauth_referrer_whitelist(raw_whitelist, headers):
             
     return False
 
-def cleanse_access_control(access_control_json):
+def cleanse_access_control(raw_access_control):
     """
-    access_control_json
+    raw_access_control
         raw text, presumably uploaded from a (possibly malicious) client
 
-    returns a tuple (access_control_dict, error_messages)
-        if successful error_messages will be None
-        if unsucessful, access_control_dict will be None and 
+    returns a tuple (access_control, error_messages)
+        if successful acccess_control will be a JSON string
+                      error_messages will be None
+        if unsucessful, access_control will be None and 
                         error_messages will be a list of strings
 
     Reject the input without parsing it if it is longer than some reasonable 
@@ -268,17 +363,17 @@ def cleanse_access_control(access_control_json):
     valid_dict = dict()
     error_message_list = list()
 
-    if access_control_json is None:
-        return {}, None
+    if raw_access_control is None:
+        return None, None
 
-    if len(access_control_json) > _max_access_control_json_length:
+    if len(raw_access_control) > _max_access_control_json_length:
         error_message = \
-            "JSON text too large {0} bytes".format(len(access_control_json))
+            "JSON text too large {0} bytes".format(len(raw_access_control))
         error_message_list.append(error_message)
         return None, error_message_list
 
     try:
-        raw_dict = json.loads(access_control_json)
+        raw_dict = json.loads(raw_access_control)
     except Exception, instance:
         error_message = \
             "Unable to parse access_control JSON {0}".format(instance)
@@ -305,7 +400,7 @@ def cleanse_access_control(access_control_json):
     if len(error_message_list) > 0:
         return None, error_message_list
 
-    return valid_dict, None
+    return json.dumps(valid_dict), None
 
 def check_access_control(access_type, request, baseline_access_control):
     """

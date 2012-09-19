@@ -39,7 +39,7 @@ _cleanse_test_case = namedtuple("CleanseTestCase",
 
 _cleanse_test_cases = [
     _cleanse_test_case(raw_data=None,
-                       expected_dict=dict(),
+                       expected_dict=None,
                        error_re=None),
     _cleanse_test_case(raw_data='a' * (16 * 1024 + 1),
                        expected_dict=None,
@@ -56,9 +56,125 @@ _cleanse_test_cases = [
                        expected_dict={version : "1.0",
                                       allow_unauth_read : True},
                        error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "ipv4_whitelist" : None}),
+                       expected_dict={version : "1.0",
+                                      ipv4_whitelist : None},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "ipv4_whitelist" : "clam"}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                            "^.*invalid ipv4_whitelist type.*$"), ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "ipv4_whitelist" : []}),
+                       expected_dict={version : "1.0",
+                                      ipv4_whitelist : []},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "ipv4_whitelist" : [42]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                            "^.*invalid ipv4_whitelist entry type.*$"), ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "ipv4_whitelist" : ["clam"]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                            "^.*invalid ipv4_whitelist address.*$"), ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "ipv4_whitelist" : \
+                                                ["192.168.1.102"]}),
+                       expected_dict={version : "1.0",
+                                      ipv4_whitelist : ["192.168.1.102/32"]},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "unauth_referrer_whitelist" : \
+                                                None}),
+                       expected_dict={version : "1.0",
+                                      unauth_referrer_whitelist : None},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "unauth_referrer_whitelist" : \
+                                                "clam"}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                            "^.*invalid unauth_referrer_whitelist type.*$") ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "unauth_referrer_whitelist" : []}),
+                       expected_dict={version : "1.0",
+                                      unauth_referrer_whitelist : []},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "unauth_referrer_whitelist" : \
+                                                [42]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                            "^.*invalid unauth_referrer_whitelist entry type.*$"), ]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "unauth_referrer_whitelist" : \
+                                                ["example.com/myapp"]}),
+                       expected_dict={version : "1.0",
+                                      unauth_referrer_whitelist : \
+                                      ["example.com/myapp"]},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "locations" : None}),
+                       expected_dict={version : "1.0",
+                                      locations : None},
+                       error_re=None),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "locations" : "clam"}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*invalid locations type.*$")]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "locations" : ["clam"]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*invalid locations entry type.*$")]),
+
+    # JSON converts 42 to string
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "locations" : [{42 : "clam"}]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*invalid locations entry key.*$")]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "0.0",
+                                            "locations" : [{"prefix" : 42}]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*invalid locations prefix type.*$")]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "locations" : [{"regexp" : "["}]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*invalid locations regexp.*$")]),
+    _cleanse_test_case(raw_data=json.dumps({"version" : "1.0",
+                                            "locations" : \
+                                                [{"prefix" : "aaa",
+                                                  locations : []}]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*invalid locations entry key.*$")]),
+    _cleanse_test_case(raw_data=json.dumps(
+        {"version" : "1.0",
+         "locations" : [{"prefix" : "aaa",
+                         "allow_unauth_read" : "pork"}]}),
+                       expected_dict=None,
+                       error_re=[re.compile(
+                        "^.*Expected bool.*$")]),
+    _cleanse_test_case(raw_data=json.dumps(
+        {"version" : "1.0",
+         "locations" : [{"prefix" : "aaa",
+                         "allow_unauth_read" : False}]}),
+                       expected_dict={version : "1.0",
+                                      locations : [
+                                        {"prefix" : "aaa",
+                                         allow_unauth_read : False}]},
+                       error_re=None),
 ]
 
-# represents a WebOb request
+# represents a WebOb request`
 _mock_request = namedtuple("MockRequest",
                            ["method", "url", "headers", "remote_addr"])
 _default_request = \
@@ -254,8 +370,12 @@ class TestCollectionAccessControl(unittest.TestCase):
         test producing a safe access_control dict from possibly malicious data
         """
         for index, test_case in enumerate(_cleanse_test_cases):
-            access_control_dict, error_messages = \
+            access_control, error_messages = \
                 cleanse_access_control(test_case.raw_data)
+            if access_control is None:
+                access_control_dict = None
+            else:
+                access_control_dict = json.loads(access_control)
             self.assertEqual(access_control_dict, 
                              test_case.expected_dict,
                              "Test #{0} expected {1} received {2}".format(
@@ -279,10 +399,11 @@ class TestCollectionAccessControl(unittest.TestCase):
                         if match_object is not None:
                             match_count += 1
                 self.assertEqual(match_count, len(test_case.error_re), 
-                             "Test #{0} matched {1} expected {2} {3}".format(
+                             "Test #{0} matched {1} expected {2} {3} {4}".format(
                                 index+1, 
                                 match_count, 
                                 len(test_case.error_re),
+                                [r.pattern for r in test_case.error_re],
                                 str(error_messages)))
 
     def test_check_access_control(self):

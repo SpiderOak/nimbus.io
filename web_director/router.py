@@ -43,7 +43,7 @@ REDIS_WEB_MONITOR_HASHKEY_FORMAT = "%s:%s"
 
 MEMCACHED_HOST = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
 MEMCACHED_PORT = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
-MEMCACHED_NODES = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
+MEMCACHED_NODES = ["{0}:{1}".format(MEMCACHED_HOST, MEMCACHED_PORT), ]
 
 
 class Router(object):
@@ -62,6 +62,8 @@ class Router(object):
         self.known_clusters = dict()
         self.management_api_request_dest_hosts = \
             deque(NIMBUSIO_MANAGEMENT_API_REQUEST_DEST.strip().split())
+        self.memcached_client = None
+        self.collection_lookup = None
         self.request_counter = 0
 
     def init(self):
@@ -80,7 +82,7 @@ class Router(object):
                                  port = REDIS_PORT,
                                  db = REDIS_DB)
 
-        self.memcached_client = memcache.Client(_MEMCACHED_NODES)
+        self.memcached_client = memcache.Client(MEMCACHED_NODES)
 
         self.collection_lookup = CollectionLookup(self.memcached_client,
                                                   self.central_conn_pool)

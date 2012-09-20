@@ -36,6 +36,9 @@ from tools.data_definitions import block_generator, \
         create_timestamp, \
         nimbus_meta_prefix, \
         http_timestamp_str
+from tools.collection_access_control import write_access, delete_access
+from tools.interaction_pool_authenticator import AccessUnauthorized, \
+        AccessForbidden
 
 from tools.zfec_segmenter import ZfecSegmenter
 
@@ -222,15 +225,20 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 write_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -423,15 +431,20 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 delete_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -502,15 +515,20 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 write_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -590,15 +608,20 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 write_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -674,15 +697,20 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 write_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")

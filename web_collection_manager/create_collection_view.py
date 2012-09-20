@@ -4,6 +4,7 @@ create_collection_view.py
 
 A View to create a collection for a user
 """
+import httplib
 import json
 import logging
 
@@ -13,6 +14,7 @@ from tools.greenlet_database_util import GetConnection
 from tools.collection import valid_collection_name
 from tools.data_definitions import http_timestamp_str
 from tools.customer_key_lookup import CustomerKeyConnectionLookup
+from tools.collection_access_control import cleanse_access_control
 
 from web_collection_manager.connection_pool_view import ConnectionPoolView
 from web_collection_manager.authenticator import authenticate
@@ -23,42 +25,28 @@ class CreateCollectionError(Exception):
 rules = ["/customers/<username>/collections", ]
 endpoint = "create_collection"
 
-def _create_collection(cursor, username, collection_name, versioning):
+def _create_collection(cursor, 
+                       username, 
+                       collection_name, 
+                       versioning, 
+                       access_control):
     """
     create a collection for the customer
     """
-    log = logging.getLogger("_create_collection")
     assert valid_collection_name(collection_name)
-
-    # if the collecton already exists, use it
-    cursor.execute("""
-        select id, creation_time, deletion_time 
-        from nimbusio_central.collection
-        where name = %s""", [collection_name, ])
-    result = cursor.fetchone()
-
-    if result is not None:
-        (row_id, creation_time, deletion_time) = result
-        if deletion_time is None:
-            return creation_time
-        error_message = \
-            "A deleted collection (id={0}) exists with this name {1}".format(
-                row_id, collection_name)
-        log.error(error_message)
-        raise CreateCollectionError(error_message)
 
     # XXX: for now just select a cluster at random to assign the collection to.
     # the real management API code needs more sophisticated cluster selection.
     cursor.execute("""
         insert into nimbusio_central.collection
-        (name, customer_id, cluster_id, versioning)
+        (name, customer_id, cluster_id, versioning, access_control)
         values (%s, 
                 (select id from nimbusio_central.customer where username = %s),
                 (select id from nimbusio_central.cluster 
                  order by random() limit 1),
                 %s)
         returning creation_time
-    """, [collection_name, username, versioning, ])
+    """, [collection_name, username, versioning, access_control])
     (creation_time, ) = cursor.fetchone()
 
     return creation_time
@@ -74,6 +62,21 @@ class CreateCollectionView(ConnectionPoolView):
 
         collection_name = flask.request.args["name"]
         versioning = False
+
+        # Ticket # 43 Implement access_control properties for collections
+        if flask.request.headers['Content-Type'] == 'application/json':
+            access_control, error_list = \
+                cleanse_access_control(flask.request.data)
+            if error_list is not None:
+                result_dict = {"success"    : False,
+                               "error_list" : error_list, }
+                return flask.Response(json.dumps(result_dict, 
+                                                 sort_keys=True, 
+                                                 indent=4), 
+                                      status=httplib.BAD_REQUEST,
+                                      content_type="application/json")
+        else:
+            access_control = None
 
         with GetConnection(self.connection_pool) as connection:
 
@@ -92,7 +95,8 @@ class CreateCollectionView(ConnectionPoolView):
                 creation_time = _create_collection(cursor, 
                                                    username, 
                                                    collection_name, 
-                                                   versioning)
+                                                   versioning,
+                                                   access_control)
             except Exception:
                 cursor.close()
                 connection.rollback()
@@ -113,7 +117,7 @@ class CreateCollectionView(ConnectionPoolView):
         return flask.Response(json.dumps(collection_dict, 
                                          sort_keys=True, 
                                          indent=4), 
-                              status=201,
+                              status=httplib.CREATED,
                               content_type="application/json")
 
 view_function = CreateCollectionView.as_view(endpoint)

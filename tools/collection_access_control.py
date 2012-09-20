@@ -427,7 +427,7 @@ def check_access_control(access_type, request, baseline_access_control):
     log = logging.getLogger("check_access_control")
 
     # if no special access control is specified, we must authenticate
-    if len(baseline_access_control) == 0:
+    if baseline_access_control is None or len(baseline_access_control) == 0:
         log.debug("access_control is empty")
         return access_requires_password_authentication
 

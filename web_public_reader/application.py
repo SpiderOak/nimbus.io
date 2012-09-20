@@ -18,6 +18,9 @@ from webob import Response
 
 from tools.data_definitions import http_timestamp_str, \
         parse_http_timestamp
+from tools.collection_access_control import read_access, list_access
+from tools.interaction_pool_authenticator import AccessUnauthorized, \
+        AccessForbidden
 
 from web_public_reader.exceptions import SpaceAccountingServerDownError, \
         SpaceUsageFailedError
@@ -161,15 +164,20 @@ class Application(object):
         self._log.debug("_list_versions")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 list_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         variable_names = [
             "prefix",
             "max_keys",
@@ -225,15 +233,20 @@ class Application(object):
         self._log.debug("_collection_space_usage")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 None,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         self._log.info("space_usage: collection = ({0}) {1}".format(
                 collection_row["id"],
                 collection_row["name"]))
@@ -258,15 +271,20 @@ class Application(object):
         self._log.debug("_list_keys")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 list_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         variable_names = [
             "prefix",
             "max_keys",
@@ -317,15 +335,20 @@ class Application(object):
         self._log.debug("_retrieve_key")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 read_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -454,15 +477,20 @@ class Application(object):
         self._log.debug("_retrieve_meta")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 None,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -491,15 +519,20 @@ class Application(object):
         self._log.debug("_head_key")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 read_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -576,15 +609,20 @@ class Application(object):
         self._log.debug("_list_conjoined")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 list_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         variable_names = [
             "max_conjoined",
             "key_marker",
@@ -645,15 +683,20 @@ class Application(object):
         self._log.debug("_list_upload_in_conjoined")
 
         try:
-            collection_row = self._authenticator.authenticate(collection_name,
-                                                              req)
+            collection_row = \
+                self._authenticator.authenticate(collection_name,
+                                                 list_access,
+                                                 req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_row is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")

@@ -8,11 +8,13 @@ import httplib
 from redis import StrictRedis, RedisError
 import socket
 import json
+import memcache
 
 from gdbpool.interaction_pool import DBInteractionPool
 
 from tools.LRUCache import LRUCache
 from tools.database_connection import get_central_database_dsn
+from tools.collection_lookup import CollectionLookup
 
 # LRUCache mapping names to integers is approximately 32m of memory per 100,000
 # entries
@@ -39,6 +41,11 @@ REDIS_WEB_MONITOR_HASH_NAME = "nimbus.io.web_monitor.{0}".format(
     socket.gethostname())
 REDIS_WEB_MONITOR_HASHKEY_FORMAT = "%s:%s"
 
+MEMCACHED_HOST = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
+MEMCACHED_PORT = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+MEMCACHED_NODES = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
+
+
 class Router(object):
     """
     Router object for assisting the proxy function (below.)
@@ -53,7 +60,6 @@ class Router(object):
         self.read_dest_port = NIMBUSIO_WEB_PUBLIC_READER_PORT
         self.write_dest_port = NIMBUSIO_WEB_WRITER_PORT
         self.known_clusters = dict()
-        self.known_collections = LRUCache(COLLECTION_CACHE_SIZE) 
         self.management_api_request_dest_hosts = \
             deque(NIMBUSIO_MANAGEMENT_API_REQUEST_DEST.strip().split())
         self.request_counter = 0
@@ -74,13 +80,18 @@ class Router(object):
                                  port = REDIS_PORT,
                                  db = REDIS_DB)
 
+        self.memcached_client = memcache.Client(_MEMCACHED_NODES)
+
+        self.collection_lookup = CollectionLookup(self.memcached_client,
+                                                  self.central_conn_pool)
+
         log.info("init complete")
         self.init_complete.set(True)
 
     def _parse_collection(self, hostname):
         "return the Nimbus.io collection name from host name"
         offset = -1 * ( len(self.service_domain) + 1 )
-        return hostname[:offset]
+        return hostname[:offset].lower()
 
     def _hosts_for_collection(self, collection):
         "return a list of hosts for this collection"
@@ -90,24 +101,13 @@ class Router(object):
         cluster_info = self._cluster_info(cluster_id)
         return cluster_info['hosts']
 
-    def _db_cluster_for_collection(self, collection):
-        async_result = self.central_conn_pool.run(
-            "select cluster_id from nimbusio_central.collection where name=%s",
-            [collection, ])
-
-        rows = async_result.get()
-
-        if rows:
-            return rows[0]['cluster_id']
-
     def _cluster_for_collection(self, collection, _retries=0):
         "return cluster ID for collection"
-        if collection in self.known_collections:
-            return self.known_collections[collection]
-        result = self._db_cluster_for_collection(collection)
-        if result:
-            self.known_collections[collection] = result
-        return result
+
+        collection_row = self.collection_lookup.get(collection)
+        if not collection_row:
+            return None
+        return collection_row['cluster_id']
             
     def _db_cluster_info(self, cluster_id):
         async_result = self.central_conn_pool.run("""

@@ -402,7 +402,7 @@ def cleanse_access_control(raw_access_control):
 
     return json.dumps(valid_dict), None
 
-def check_access_control(access_type, request, baseline_access_control):
+def check_access_control(access_type, request, baseline_access_control_json):
     """
     return an integer result
         * access_allowed
@@ -427,7 +427,18 @@ def check_access_control(access_type, request, baseline_access_control):
     log = logging.getLogger("check_access_control")
 
     # if no special access control is specified, we must authenticate
-    if baseline_access_control is None or len(baseline_access_control) == 0:
+    if baseline_access_control_json is None:
+        log.debug("access_control is None")
+        return access_requires_password_authentication
+
+    try:
+        baseline_access_control = json.loads(baseline_access_control_json)
+    except Exception, instance:
+        log.error("Unable to parse access_control JSON {0}".format(
+            instance))
+        return access_forbidden
+
+    if len(baseline_access_control) == 0:
         log.debug("access_control is empty")
         return access_requires_password_authentication
 

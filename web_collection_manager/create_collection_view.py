@@ -21,6 +21,8 @@ from web_collection_manager.authenticator import authenticate
 
 class CreateCollectionError(Exception):
     pass
+class DuplicateCollection(CreateCollectionError):
+    pass
 
 rules = ["/customers/<username>/collections", ]
 endpoint = "create_collection"
@@ -34,6 +36,11 @@ def _create_collection(cursor,
     create a collection for the customer
     """
     assert valid_collection_name(collection_name)
+    cursor.execute("""select count(id) from nimbusio_central.collection
+                      where name = %s""", [collection_name, ])
+    (count, ) = cursor.fetchone()
+    if count != 0:
+        raise DuplicateCollection(collection_name)
 
     # XXX: for now just select a cluster at random to assign the collection to.
     # the real management API code needs more sophisticated cluster selection.
@@ -44,6 +51,7 @@ def _create_collection(cursor,
                 (select id from nimbusio_central.customer where username = %s),
                 (select id from nimbusio_central.cluster 
                  order by random() limit 1),
+                %s,
                 %s)
         returning creation_time
     """, [collection_name, username, versioning, access_control])
@@ -64,7 +72,8 @@ class CreateCollectionView(ConnectionPoolView):
         versioning = False
 
         # Ticket # 43 Implement access_control properties for collections
-        if flask.request.headers['Content-Type'] == 'application/json':
+        if "Content-Type" in flask.request.headers and \
+            flask.request.headers['Content-Type'] == 'application/json':
             access_control, error_list = \
                 cleanse_access_control(flask.request.data)
             if error_list is not None:
@@ -97,10 +106,25 @@ class CreateCollectionView(ConnectionPoolView):
                                                    collection_name, 
                                                    versioning,
                                                    access_control)
+            except DuplicateCollection:
+                cursor.close()
+                connection.rollback()
+                log.error("duplicate collection name '{0}'".format(
+                    collection_name))
+                collection_dict = {
+                    "name"          : collection_name,
+                    "error-message" : "duplicate collection name"} 
+                return flask.Response(json.dumps(collection_dict, 
+                                                 sort_keys=True, 
+                                                 indent=4), 
+                                      status=httplib.CONFLICT,
+                                      content_type="application/json")
+
             except Exception:
                 cursor.close()
                 connection.rollback()
                 raise
+
             else:
                 cursor.close()
                 connection.commit()

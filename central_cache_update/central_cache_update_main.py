@@ -48,13 +48,14 @@ def _process_collection_event(memcached_client, event_data):
         log.error("unknown event {0}".format(event_data))
         return
 
-    lookup_field = "id"
-    key = memcached_central_key_template.format(
-        "collection", 
-        lookup_field, 
-        event_data["old"][lookup_field])
-    result = memcached_client.delete(key)
-    log.info("delete {0} result = {1}".format(key, result))
+    lookup_fields = ["id", "name", ]
+    for lookup_field in lookup_fields:
+        key = memcached_central_key_template.format(
+            "collection", 
+            lookup_field, 
+            event_data["old"][lookup_field])
+        result = memcached_client.delete(key)
+        log.info("delete {0} result = {1}".format(key, result))
 
 def _process_customer_event(memcached_client, event_data):
     log = logging.getLogger("_process_customer_event")

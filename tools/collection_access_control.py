@@ -265,7 +265,7 @@ def _apply_location_modifications(baseline_access_control, url):
                 break
         elif "regexp" in location:
             regexp = re.compile(location["regexp"], flags=re.IGNORECASE)
-            log.debug("matching {0} {1}".format(path, regexp))
+            log.debug("matching {0} {1}".format(path, regexp.pattern))
             match_object = regexp.match(path)
             if match_object is not None:
                 log.debug("match {0}".format(location))

@@ -21,6 +21,8 @@ from web_collection_manager.authenticator import authenticate
 
 class CreateCollectionError(Exception):
     pass
+class InvalidCollectionName(CreateCollectionError):
+    pass
 class DuplicateCollection(CreateCollectionError):
     pass
 
@@ -35,7 +37,6 @@ def _create_collection(cursor,
     """
     create a collection for the customer
     """
-    assert valid_collection_name(collection_name)
     cursor.execute("""select count(id) from nimbusio_central.collection
                       where name = %s""", [collection_name, ])
     (count, ) = cursor.fetchone()
@@ -69,6 +70,19 @@ class CreateCollectionView(ConnectionPoolView):
         assert flask.request.args["action"] == "create", flask.request.args
 
         collection_name = flask.request.args["name"]
+        if not valid_collection_name(collection_name):
+            # Ticket #48 Creating collection incorrectly handles 
+            # creating colliding collections
+            log.error("invalid collection name '{0}'".format(
+                collection_name))
+            collection_dict = {
+                "name"           : collection_name,
+                "error-messages" : ["Invalid Name"]} 
+            return flask.Response(json.dumps(collection_dict, 
+                                             sort_keys=True, 
+                                             indent=4), 
+                                  status=httplib.CONFLICT,
+                                  content_type="application/json")
         versioning = False
 
         # Ticket # 43 Implement access_control properties for collections
@@ -109,11 +123,13 @@ class CreateCollectionView(ConnectionPoolView):
             except DuplicateCollection:
                 cursor.close()
                 connection.rollback()
+                # Ticket #48 Creating collection incorrectly handles 
+                # creating colliding collections
                 log.error("duplicate collection name '{0}'".format(
                     collection_name))
                 collection_dict = {
-                    "name"          : collection_name,
-                    "error-message" : "duplicate collection name"} 
+                    "name"           : collection_name,
+                    "error-messages" : ["Invalid Name"]} 
                 return flask.Response(json.dumps(collection_dict, 
                                                  sort_keys=True, 
                                                  indent=4), 

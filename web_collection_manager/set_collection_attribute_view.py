@@ -63,7 +63,7 @@ def _set_collection_access_control(cursor, collection_name, _value):
             return httplib.BAD_REQUEST, result_dict
 
     cursor.execute("""update nimbusio_central.collection
-                   set sccess_control = %s
+                   set access_control = %s
                    where name = %s""", [access_control, collection_name, ])
 
     collection_dict = {"success" : True}

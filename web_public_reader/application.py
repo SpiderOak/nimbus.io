@@ -23,7 +23,8 @@ from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
 
 from web_public_reader.exceptions import SpaceAccountingServerDownError, \
-        SpaceUsageFailedError
+        SpaceUsageFailedError, \
+        RetrieveFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
 from web_public_reader.space_usage_getter import SpaceUsageGetter
 from web_public_reader.stat_getter import \
@@ -393,6 +394,11 @@ class Application(object):
 
         try:
             retrieve_generator = retriever.retrieve(response, _reply_timeout)
+        except RetrieveFailedError, instance:
+            self._log.error("retrieve failed: %s %s" % (
+                description, instance,
+            ))
+            return exc.HTTPNotFound(str(instance))
         except Exception, instance:
             self._log.exception("retrieve_failed {0}".format(instance))
             self._event_push_client.exception(

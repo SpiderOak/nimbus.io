@@ -57,6 +57,17 @@ def _process_collection_event(memcached_client, event_data):
         result = memcached_client.delete(key)
         log.info("delete {0} result = {1}".format(key, result))
 
+    # deleted collections have their name changed to have __deleted__$id__ at
+    # the front so that they do not conflict with future collections.  in order
+    # to clear caches even when we have mass updates.
+    name = event_data['old']['name']
+    if name.startswith("__deleted__"):
+        undecorated_name = name[name.rindex("_") + 1:]
+        key = memcached_central_key_template.format(
+            "collection", "name", undecorated_name)
+        result = memcached_client.delete(key)
+        log.info("delete {0} result = {1}".format(key, result))
+
 def _process_customer_event(memcached_client, event_data):
     log = logging.getLogger("_process_customer_event")
     if event_data["event"] != "UPDATE":

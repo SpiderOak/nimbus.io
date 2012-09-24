@@ -30,7 +30,7 @@ rules = ["/customers/<username>/collections", ]
 endpoint = "create_collection"
 
 def _create_collection(cursor, 
-                       username, 
+                       customer_id, 
                        collection_name, 
                        versioning, 
                        access_control):
@@ -49,13 +49,13 @@ def _create_collection(cursor,
         insert into nimbusio_central.collection
         (name, customer_id, cluster_id, versioning, access_control)
         values (%s, 
-                (select id from nimbusio_central.customer where username = %s),
+                %s,
                 (select id from nimbusio_central.cluster 
                  order by random() limit 1),
                 %s,
                 %s)
         returning creation_time
-    """, [collection_name, username, versioning, access_control])
+    """, [collection_name, customer_id, versioning, access_control])
     (creation_time, ) = cursor.fetchone()
 
     return creation_time
@@ -106,17 +106,17 @@ class CreateCollectionView(ConnectionPoolView):
             customer_key_lookup = \
                 CustomerKeyConnectionLookup(self.memcached_client,
                                             connection)
-            authenticated = authenticate(customer_key_lookup,
-                                         username,
-                                         flask.request)
-            if not authenticated:
-                flask.abort(401)
+            customer_id = authenticate(customer_key_lookup,
+                                       username,
+                                       flask.request)
+            if customer_id is None:
+                flask.abort(httplib.UNAUTHORIZED)
 
             cursor = connection.cursor()
             cursor.execute("begin")
             try:
                 creation_time = _create_collection(cursor, 
-                                                   username, 
+                                                   customer_id, 
                                                    collection_name, 
                                                    versioning,
                                                    access_control)

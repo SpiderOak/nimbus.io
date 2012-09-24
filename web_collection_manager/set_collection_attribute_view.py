@@ -21,7 +21,7 @@ from web_collection_manager.authenticator import authenticate
 rules = ["/customers/<username>/collections/<collection_name>", ]
 endpoint = "set_collection_attribute"
 
-def _set_collection_versioning(cursor, collection_name, value):
+def _set_collection_versioning(cursor, customer_id, collection_name, value):
     """
     set the versioning attribute of the collection
     """
@@ -39,12 +39,25 @@ def _set_collection_versioning(cursor, collection_name, value):
 
     cursor.execute("""update nimbusio_central.collection
                    set versioning = %s
-                   where name = %s""", [versioning, collection_name, ])
+                   where customer_id = %s and name = %s""", 
+                   [versioning, customer_id, collection_name, ])
+
+    # Ticket #49 collection manager allows authenticated users to set 
+    # versioning property on collections they don't own
+    if cursor.rowcount == 0:
+        log.error(
+            "attempt to set version on unknown collection {0} {1}".format(
+                customer_id, collection_name))
+        collection_dict = {"success" : False}
+        return httplib.FORBIDDEN, collection_dict
 
     collection_dict = {"success" : True}
     return httplib.OK, collection_dict
 
-def _set_collection_access_control(cursor, collection_name, _value):
+def _set_collection_access_control(cursor, 
+                                   customer_id, 
+                                   collection_name, 
+                                   _value):
     """
     set the access_control attribute of the collection
     """
@@ -64,7 +77,17 @@ def _set_collection_access_control(cursor, collection_name, _value):
 
     cursor.execute("""update nimbusio_central.collection
                    set access_control = %s
-                   where name = %s""", [access_control, collection_name, ])
+                   where customer_id = %s and name = %s""", 
+                   [access_control, collection_name, ])
+
+    # Ticket #49 collection manager allows authenticated users to set 
+    # versioning property on collections they don't own
+    if cursor.rowcount == 0:
+        log.error(
+            "attempt to set access_control on unknown collection {0} {1}".format(
+                customer_id, collection_name))
+        collection_dict = {"success" : False}
+        return httplib.FORBIDDEN, collection_dict
 
     collection_dict = {"success" : True}
     return httplib.OK, collection_dict
@@ -86,10 +109,10 @@ class SetCollectionAttributeView(ConnectionPoolView):
             customer_key_lookup = \
                 CustomerKeyConnectionLookup(self.memcached_client,
                                             connection)
-            authenticated = authenticate(customer_key_lookup,
-                                         username,
-                                         flask.request)
-            if not authenticated:
+            customer_id = authenticate(customer_key_lookup,
+                                       username,
+                                       flask.request)
+            if customer_id is None:
                 flask.abort(httplib.UNAUTHORIZED)
 
             cursor = connection.cursor()
@@ -112,6 +135,7 @@ class SetCollectionAttributeView(ConnectionPoolView):
                 try:
                     status, result_dict = \
                         _dispatch_table[key](cursor, 
+                                             customer_id,
                                              collection_name, 
                                              flask.request.args[key])
                 except Exception:

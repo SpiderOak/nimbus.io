@@ -4,6 +4,7 @@ list_collections_view.py
 
 A View to list collections for a user
 """
+import httplib
 import json
 import logging
 
@@ -19,17 +20,15 @@ from web_collection_manager.authenticator import authenticate
 rules = ["/customers/<username>/collections", ]
 endpoint = "list_collections"
 
-def _list_collections(connection, username):
+def _list_collections(connection, customer_id):
     """
     list all collections for the customer, for all clusters
     """
     cursor = connection.cursor()
     cursor.execute("""
         select name, versioning, creation_time from nimbusio_central.collection   
-        where customer_id = (select id from nimbusio_central.customer 
-                                       where username = %s) 
-        and deletion_time is null
-        """, [username, ])
+        where customer_id = %s and deletion_time is null
+        """, [customer_id, ])
     result = cursor.fetchall()
     cursor.close()
 
@@ -47,13 +46,13 @@ class ListCollectionsView(ConnectionPoolView):
             customer_key_lookup = \
                 CustomerKeyConnectionLookup(self.memcached_client,
                                             connection)
-            authenticated = authenticate(customer_key_lookup,
-                                         username,
-                                         flask.request)
-            if not authenticated:
-                flask.abort(401)
+            customer_id = authenticate(customer_key_lookup,
+                                       username,
+                                       flask.request)
+            if not customer_id is None:
+                flask.abort(httplib.UNAUTHORIZED)
 
-            collection_list = _list_collections(connection, username)
+            collection_list = _list_collections(connection, customer_id)
 
         # json won't dump datetime
         json_collections = [
@@ -67,7 +66,7 @@ class ListCollectionsView(ConnectionPoolView):
         return flask.Response(json.dumps(json_collections, 
                                          sort_keys=True, 
                                          indent=4), 
-                              status=200,
+                              status=httplib.OK,
                               content_type="application/json")
 
 view_function = ListCollectionsView.as_view(endpoint)

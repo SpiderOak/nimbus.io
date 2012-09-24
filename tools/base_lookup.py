@@ -70,7 +70,10 @@ class BaseLookup(object):
                 self._memcached_client.set(memcached_key, 
                                            database_dict, 
                                            time=_expiration_time_in_seconds)
-            assert success
+            if not success:
+                self._log.error(
+                    "self._memcached_client.set({0}...) returned {1}".format(
+                        memcached_key, success))
 
         if database_dict is None:
             self._log.debug("database miss {0}".format(memcached_key))

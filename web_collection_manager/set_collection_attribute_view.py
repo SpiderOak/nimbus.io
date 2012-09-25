@@ -78,7 +78,7 @@ def _set_collection_access_control(cursor,
     cursor.execute("""update nimbusio_central.collection
                    set access_control = %s
                    where customer_id = %s and name = %s""", 
-                   [access_control, collection_name, ])
+                   [access_control, customer_id, collection_name, ])
 
     # Ticket #49 collection manager allows authenticated users to set 
     # versioning property on collections they don't own

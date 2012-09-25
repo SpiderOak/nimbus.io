@@ -92,15 +92,15 @@ class DeleteCollectionView(ConnectionPoolView):
                 connection.rollback()
                 raise
 
-        cursor.close()
+            cursor.close()
 
-        # Ticket #39 collection manager allows authenticated users to set 
-        # versioning property on collections they don't own
-        if not deleted:
-            connection.rollback()
-            flask.abort(httplib.FORBIDDEN)
+            # Ticket #39 collection manager allows authenticated users to set 
+            # versioning property on collections they don't own
+            if not deleted:
+                connection.rollback()
+                flask.abort(httplib.FORBIDDEN)
 
-        connection.commit()
+            connection.commit()
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         collection_dict = {"success" : True}

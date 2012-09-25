@@ -49,7 +49,7 @@ class ListCollectionsView(ConnectionPoolView):
             customer_id = authenticate(customer_key_lookup,
                                        username,
                                        flask.request)
-            if not customer_id is None:
+            if customer_id is None:
                 flask.abort(httplib.UNAUTHORIZED)
 
             collection_list = _list_collections(connection, customer_id)

@@ -379,20 +379,20 @@ class Application(object):
             slice_size)
         self._log.info(description)
 
-        retriever = Retriever(
-            self._memcached_client,
-            self._interaction_pool,
-            collection_row["id"],
-            key,
-            version_id,
-            slice_offset,
-            slice_size
-        )
-
         response_headers = dict()
         response = Response(headers=response_headers)
 
         try:
+            retriever = Retriever(
+                self._memcached_client,
+                self._interaction_pool,
+                collection_row["id"],
+                key,
+                version_id,
+                slice_offset,
+                slice_size
+            )
+
             retrieve_generator = retriever.retrieve(response, _reply_timeout)
         except RetrieveFailedError, instance:
             self._log.error("retrieve failed: %s %s" % (

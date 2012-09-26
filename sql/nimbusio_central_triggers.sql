@@ -6,6 +6,7 @@ CREATE OR REPLACE FUNCTION notify_cache_update() RETURNS TRIGGER AS $$
     import cPickle
     import zlib
     import base64
+    import uuid
 
     payload = dict(
         event = TD['event'],
@@ -30,7 +31,8 @@ CREATE OR REPLACE FUNCTION notify_cache_update() RETURNS TRIGGER AS $$
         binary_payload = base64.b64encode(
             zlib.compress(cPickle.dumps(payload)))
 
-    topic = "%s.%s\n" % ( TD['table_schema'], TD['table_name'], )
+    header = "%s.%s\n%s\n" % (
+        TD['table_schema'], TD['table_name'], str(uuid.uuid4()), )
 
     # get query plan
     if "notify_cache_update_plan" in SD:
@@ -42,7 +44,7 @@ CREATE OR REPLACE FUNCTION notify_cache_update() RETURNS TRIGGER AS $$
         SD["notify_cache_update_plan"] = notify_cache_update_plan
 
     res = plpy.execute(notify_cache_update_plan,
-        [ "nimbusio_central_cache_update", topic, binary_payload, ])
+        [ "nimbusio_central_cache_update", header, binary_payload, ])
 
 $$ LANGUAGE plpythonu;
          

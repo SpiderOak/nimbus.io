@@ -36,6 +36,9 @@ from tools.data_definitions import block_generator, \
         create_timestamp, \
         nimbus_meta_prefix, \
         http_timestamp_str
+from tools.collection_access_control import write_access, delete_access
+from tools.interaction_pool_authenticator import AccessUnauthorized, \
+        AccessForbidden
 
 from tools.zfec_segmenter import ZfecSegmenter
 
@@ -211,6 +214,8 @@ class Application(object):
 
     def _respond_to_ping(self, _req, _match_object):
         self._log.debug("_respond_to_ping")
+        # Ticket #44 we don't send 'Connection: close' here because
+        # this is an internal URI
         response = Response(status=200, content_type="text/plain")
         response.body_file.write("ok")
         return response
@@ -220,16 +225,20 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
+            collection_row = \
                 self._authenticator.authenticate(collection_name,
+                                                 write_access,
                                                  req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -258,14 +267,11 @@ class Application(object):
 
         start_time = time.time()
         self._stats["archives"] += 1
-        description = \
-                "archive: collection=(%s)%r customer=%r key=%r, size=%s" % (
-            collection_entry.collection_id,
-            collection_entry.collection_name,
-            collection_entry.username,
+        description = "archive: collection=({0}){1} key={2}, size={3}".format(
+            collection_row["id"],
+            collection_row["name"],
             key, 
-            req.content_length
-        )
+            req.content_length)
         self._log.info(description)
 
         meta_dict = _build_meta_dict(req.GET)
@@ -297,7 +303,7 @@ class Application(object):
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             unified_id,
             timestamp,
@@ -348,6 +354,8 @@ class Application(object):
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             self._stats["archives"] -= 1
             return response
@@ -366,6 +374,8 @@ class Application(object):
                 unified_id, conjoined_part, self._data_writer_clients
             )
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             self._stats["archives"] -= 1
             return response
         
@@ -390,7 +400,7 @@ class Application(object):
             raise exc.HTTPBadRequest(error_message)
 
         self.accounting_client.added(
-            collection_entry.collection_id,
+            collection_row["id"],
             timestamp,
             file_size
         )
@@ -408,6 +418,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True, 
@@ -419,16 +431,20 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
+            collection_row = \
                 self._authenticator.authenticate(collection_name,
+                                                 delete_access,
                                                  req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -443,14 +459,11 @@ class Application(object):
                 version_identifier
             )
 
-        description = \
-            "_delete_key: (%s) %r %r key = %r %s" % (
-                collection_entry.collection_id,
-                collection_entry.collection_name,
-                collection_entry.username,
-                key,
-                unified_id_to_delete
-            )
+        description = "_delete_key: ({0}) {1} key = {2} {3}".format(
+            collection_row["id"],
+            collection_row["name"],
+            key,
+            unified_id_to_delete)
         self._log.info(description)
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -462,7 +475,7 @@ class Application(object):
 
         destroyer = Destroyer(
             data_writers,
-            collection_entry.collection_id,
+            collection_row["id"],
             key,
             unified_id_to_delete,
             unified_id,
@@ -482,12 +495,16 @@ class Application(object):
             # 2009-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
@@ -498,16 +515,20 @@ class Application(object):
         key = match_object.group("key")
 
         try:
-            collection_entry = \
+            collection_row = \
                 self._authenticator.authenticate(collection_name,
+                                                 write_access,
                                                  req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -515,12 +536,10 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         self._log.info(
-            "start_conjoined: collection = (%s) %r username = %r key = %r" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
-            key
-        ))
+            "start_conjoined: collection = ({0}) {1} key = {2}".format(
+            collection_row["id"], 
+            collection_row["name"],
+            key))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -535,7 +554,7 @@ class Application(object):
             start_conjoined_archive(
                 data_writers,
                 unified_id,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 timestamp
             )
@@ -550,6 +569,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -561,6 +582,8 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
         conjoined_dict = {
@@ -571,6 +594,8 @@ class Application(object):
         }
 
         response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
         # 2012-08-16 dougfort Ticket #29 - set format json for debuging
         response.body_file.write(json.dumps(conjoined_dict, 
                                             sort_keys=True, 
@@ -583,16 +608,20 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = \
+            collection_row = \
                 self._authenticator.authenticate(collection_name,
+                                                 write_access,
                                                  req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -602,13 +631,11 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "finish_conjoined: collection = (%s) %r %r key = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "finish_conjoined: collection = ({0}) {1} key = {2} {3}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -621,7 +648,7 @@ class Application(object):
         try:
             finish_conjoined_archive(
                 data_writers,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 unified_id,
                 timestamp
@@ -637,6 +664,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -648,9 +677,19 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
-        return  Response()
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 
     def _abort_conjoined(self, req, match_object):
         collection_name = match_object.group("collection_name")
@@ -658,16 +697,20 @@ class Application(object):
         conjoined_identifier = match_object.group("conjoined_identifier")
 
         try:
-            collection_entry = \
+            collection_row = \
                 self._authenticator.authenticate(collection_name,
+                                                 write_access,
                                                  req)
+        except AccessForbidden, instance:
+            self._log.error("forbidden {0}".format(instance))
+            raise exc.HTTPForbidden()
+        except AccessUnauthorized, instance:
+            self._log.error("unauthorized {0}".format(instance))
+            raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
-        if collection_entry is None:
-            raise exc.HTTPUnauthorized()
-
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
@@ -677,13 +720,11 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "abort_conjoined: collection = (%s) %r %r key = %r %s" % (
-            collection_entry.collection_id, 
-            collection_entry.collection_name,
-            collection_entry.username,
+            "abort_conjoined: collection = ({0}) {1} key = {3} {4}".format(
+            collection_row["id"], 
+            collection_row["name"],
             key,
-            unified_id
-        ))
+            unified_id))
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -696,7 +737,7 @@ class Application(object):
         try:
             abort_conjoined_archive(
                 data_writers,
-                collection_entry.collection_id,
+                collection_row["id"],
                 key,
                 unified_id,
                 timestamp
@@ -712,6 +753,8 @@ class Application(object):
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
@@ -723,7 +766,17 @@ class Application(object):
                 unified_id, instance, 
             ))
             response = Response(status=500, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
             return response
 
-        return  Response()
+        # Ticket #33 Make Nimbus.io API responses consistently JSON
+        result_dict = {"success" : True}
+        response = Response(content_type=_content_type_json)
+        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+        response.headers["Connection"] = "close"
+        response.body_file.write(json.dumps(result_dict, 
+                                            sort_keys=True, 
+                                            indent=4))
+        return response
 

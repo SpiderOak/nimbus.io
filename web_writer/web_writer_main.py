@@ -21,6 +21,8 @@ gevent_zeromq.monkey_patch()
 import gevent_psycopg2
 gevent_psycopg2.monkey_patch()
 
+import memcache
+
 import logging
 import os
 import os.path
@@ -81,6 +83,9 @@ _stats = {
     "archives"    : 0,
 }
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+_memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
+_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
+_memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
 _database_pool_size = 3 
 _central_pool_name = "default"
 
@@ -144,6 +149,7 @@ def _get_cluster_row_and_node_row(interaction_pool):
 class WebWriter(object):
     def __init__(self):
         self._log = logging.getLogger("WebWriter")
+        memcached_client = memcache.Client(_memcached_nodes)
 
         self._interaction_pool = gdbpool.interaction_pool.DBInteractionPool(
             get_central_database_dsn(), 
@@ -151,7 +157,8 @@ class WebWriter(object):
             pool_size=_database_pool_size, 
             do_log=True)
 
-        authenticator = InteractionPoolAuthenticator(self._interaction_pool)
+        authenticator = InteractionPoolAuthenticator(memcached_client, 
+                                                     self._interaction_pool)
 
         # Ticket #25: must run database operation in a greenlet
         greenlet =  gevent.Greenlet.spawn(_get_cluster_row_and_node_row, 

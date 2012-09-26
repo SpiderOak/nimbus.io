@@ -382,7 +382,13 @@ class Application(object):
         response_headers = dict()
         response = Response(headers=response_headers)
 
+        response_headers = dict()
+        response = Response(headers=response_headers)
+
         try:
+<<<<<<< HEAD
+            retrieve_generator = retriever.retrieve(response, _reply_timeout)
+=======
             retriever = Retriever(
                 self._memcached_client,
                 self._interaction_pool,
@@ -399,6 +405,7 @@ class Application(object):
                 description, instance,
             ))
             return exc.HTTPNotFound(str(instance))
+>>>>>>> ticket-50-list-collections
         except Exception, instance:
             self._log.exception("retrieve_failed {0}".format(instance))
             self._event_push_client.exception(
@@ -430,8 +437,11 @@ class Application(object):
                     "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
+<<<<<<< HEAD
+=======
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
                 response.headers["Connection"] = "close"
+>>>>>>> ticket-50-list-collections
                 response.last_modified = last_modified
                 response.status_int = httplib.NOT_MODIFIED
                 return  response
@@ -445,8 +455,11 @@ class Application(object):
                     "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
+<<<<<<< HEAD
+=======
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
                 response.headers["Connection"] = "close"
+>>>>>>> ticket-50-list-collections
                 response.last_modified = last_modified
                 response.status_int = httplib.PRECONDITION_FAILED
                 return  response
@@ -461,8 +474,11 @@ class Application(object):
         else:
             status_int = httplib.OK
 
+<<<<<<< HEAD
+=======
         # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
         response.headers["Connection"] = "close"
+>>>>>>> ticket-50-list-collections
         response.last_modified = last_modified
         response.content_length = content_length
 

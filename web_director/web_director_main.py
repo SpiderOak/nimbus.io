@@ -22,9 +22,6 @@ does not implement several of the needed capabilities including:
 
 import gevent
 
-import gevent_psycopg2
-gevent_psycopg2.monkey_patch()
-
 import traceback
 import logging
 import os

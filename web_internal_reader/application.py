@@ -247,10 +247,6 @@ class Application(object):
             self._log.error("retrieve failed: %s %s" % (
                 description, instance,
             ))
-            self._event_push_client.warn(
-                "retrieve-failed",
-                "%s: %s" % (description, instance, )
-            )
             self._stats["retrieves"] -= 1
             return exc.HTTPNotFound(str(instance))
 

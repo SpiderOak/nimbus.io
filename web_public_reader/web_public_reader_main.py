@@ -47,6 +47,9 @@ from tools.data_definitions import cluster_row_template
 from web_public_reader.application import Application
 from web_public_reader.space_accounting_client import SpaceAccountingClient
 
+class WebPublicReaderError(Exception):
+    pass
+
 _log_path = "%s/nimbusio_web_public_reader_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], os.environ["NIMBUSIO_NODE_NAME"], )
 
@@ -57,14 +60,15 @@ _space_accounting_server_address = \
 _space_accounting_pipeline_address = \
     os.environ["NIMBUSIO_SPACE_ACCOUNTING_PIPELINE_ADDRESS"]
 _web_public_reader_host = os.environ.get("NIMBUSIO_WEB_PUBLIC_READER_HOST", "")
-_web_public_reader_port = int(os.environ.get("NIMBUSIO_WEB_PUBLIC_READER_PORT", "8088"))
+_web_public_reader_port = \
+    int(os.environ.get("NIMBUSIO_WEB_PUBLIC_READER_PORT", "8088"))
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
 _memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
 _memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
 _central_database_pool_size = 3 
-_central_pool_name="default"
+_central_pool_name = "default"
 _local_database_pool_size = 3 
 
 def _signal_handler_closure(halt_event):
@@ -90,7 +94,7 @@ def _get_cluster_row(interaction_pool):
     if len(result_list) == 0:
         error_message = "Unable to identify cluster {0}".format(_cluster_name)
         log.error(error_message)
-        raise WebWriterError(error_message)
+        raise WebPublicReaderError(error_message)
 
     result = result_list[0]
     return cluster_row_template(id=result["id"],
@@ -122,7 +126,8 @@ class WebPublicReaderServer(object):
         self._cluster_row = greenlet.get()
 
         authenticator = \
-            InteractionPoolAuthenticator(self._interaction_pool)
+            InteractionPoolAuthenticator(memcached_client, 
+                                         self._interaction_pool)
 
         self._zeromq_context = zmq.Context()
 

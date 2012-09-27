@@ -42,10 +42,6 @@ _log_path = u"%s/nimbusio_handoff_server_%s.log" % (
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name,
 )
 _node_names = os.environ["NIMBUSIO_NODE_NAME_SEQ"].split()
-_data_reader_addresses = \
-    os.environ["NIMBUSIO_DATA_READER_ADDRESSES"].split()
-_data_writer_addresses = \
-    os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"].split()
 _client_tag = "handoff_server-%s" % (_local_node_name, )
 _handoff_server_addresses = \
     os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"].split()
@@ -107,9 +103,11 @@ def _setup(zmq_context, event_push_client, halt_event):
     pull_server.start()
     active_group.add(pull_server)
 
-    reply_dispatcher = ReplyDispatcher(interaction_pool,
+    reply_dispatcher = ReplyDispatcher(zmq_context,
+                                       interaction_pool,
                                        event_push_client,
                                        incoming_reply_queue,
+                                       node_dict,
                                        halt_event)
     reply_dispatcher.link_exception(
         unhandled_greenlet_exception_closure(event_push_client))

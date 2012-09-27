@@ -43,8 +43,14 @@ class ReqSocket(object):
     def close(self):
         self._socket.close()
 
-    def send(self, message):
-        self._socket.send_json(message)
+    def send(self, message, data=None):
+        if data is None:
+            self._socket.send_json(message)
+        else:
+            self._socket.send_json(message, zmq.SNDMORE)
+            for data_segment in data[:-1]:
+                self._socket.send(data_segment, zmq.SNDMORE)
+            self._socket.send(data_segment[-1])
 
     def wait_for_ack(self):
         """

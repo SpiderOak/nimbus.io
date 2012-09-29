@@ -152,8 +152,10 @@ def _setup(zmq_context, event_push_client, halt_event):
         unhandled_greenlet_exception_closure(event_push_client))
     handoff_requestor.start()
     active_group.add(handoff_requestor)
+    
+    socket_greenlets = [rep_server, pull_server, reply_dispatcher, ]
 
-    return active_group, [rep_server, pull_server, ], push_client_dict
+    return active_group, socket_greenlets, push_client_dict
 
 def main():
     """

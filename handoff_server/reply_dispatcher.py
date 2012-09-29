@@ -110,6 +110,10 @@ class ReplyDispatcher(Greenlet):
         """
         self._log.debug("joining")
         Greenlet.join(self, timeout)
+        for req_socket in self._reader_socket_dict.values():
+            req_socket.close()
+        for req_socket in self._writer_socket_dict.values():
+            req_socket.close()
         self._log.debug("join complete")
 
     def _run(self):
@@ -161,6 +165,8 @@ class ReplyDispatcher(Greenlet):
             message.control["segment-count"], 
             message.control["request-timestamp-repr"]))
 
+        self._handoff_reply_count += 1
+
         if message.control["result"] != "success":
             error_message = \
                 "request-handoffs failed on node {0} {1} {2}".format(
@@ -205,8 +211,6 @@ class ReplyDispatcher(Greenlet):
                 already_seen_count))
         if segment_count > 0:
             self._log.info("pushed {0} handoff segments".format(segment_count))
-        
-        self._handoff_reply_count += 1
         self._log.info("{0} handoff replies out of {1}".format(
             self._handoff_reply_count, _min_handoff_replies))
 
@@ -390,14 +394,14 @@ class ReplyDispatcher(Greenlet):
         if not source_node_name in self._reader_socket_dict:
             self._reader_socket_dict[source_node_name] = \
                 ReqSocket(self._zmq_context,
-                          source_node_name,
+                          self._reader_address_dict[source_node_name],
                           self._halt_event)
         reader_socket = self._reader_socket_dict[source_node_name]
         writer_socket = self._writer_socket_dict[_local_node_name]
 
         description = "start handoff from %s to %s (%s) %r part=%s" % (
             source_node_name,
-            self._local_node_name,
+            _local_node_name,
             segment_row["collection_id"],
             segment_row["key"],
             segment_row["conjoined_part"]

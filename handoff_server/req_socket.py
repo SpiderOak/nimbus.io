@@ -6,6 +6,7 @@ wrap a zeromq REQ socket, with check for ack
 """
 import logging
 import time
+import uuid
 
 from gevent_zeromq import zmq
 
@@ -44,6 +45,20 @@ class ReqSocket(object):
         self._socket.close()
 
     def send(self, message, data=None):
+        """
+        send a message immediately to zeromq 
+
+        message
+            a dict, suitable for transmission as JSON
+            if message does not include 'message-id', this function will supply
+            it
+
+        data
+            either None, or a sequence of binary data segments
+        """
+        if not "message-id" in message:
+            message["message-id"] = uuid.uuid1().hex
+        
         if data is None:
             self._socket.send_json(message)
         else:
@@ -75,6 +90,6 @@ class ReqSocket(object):
                     raise ReqSocketAckTimeOut(error_message)
                 raise
             else:
-                assert reply["accepted"] 
+                assert reply["accepted"], str(reply)
                 return
 

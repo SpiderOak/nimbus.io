@@ -281,6 +281,9 @@ class Retriever(object):
             try:
                 urllib_response = urllib2.urlopen(request, timeout=timeout)
             except urllib2.HTTPError, instance:
+                if instance.code == httplib.NOT_FOUND:
+                    response.status_int = httplib.NOT_FOUND
+                    raise StopIteration()
                 if instance.code == httplib.PARTIAL_CONTENT and \
                 expected_status ==  httplib.PARTIAL_CONTENT:
                     urllib_response = instance

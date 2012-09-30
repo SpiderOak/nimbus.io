@@ -23,7 +23,12 @@ class ReqSocket(object):
     """
     wrap a zeromq REQ socket, with check for ack
     """
-    def __init__(self, zmq_context, address, halt_event):
+    def __init__(self, 
+                 zmq_context, 
+                 address, 
+                 client_tag, 
+                 client_address, 
+                 halt_event):
         self._name = address
         self._log = logging.getLogger(self._name)
 
@@ -36,6 +41,8 @@ class ReqSocket(object):
         self._log.info("connecting to {0}".format(address))
         self._socket.connect(address)
 
+        self._client_tag = client_tag
+        self._client_address = client_address
         self._halt_event = halt_event
 
     def __str__(self):
@@ -58,6 +65,10 @@ class ReqSocket(object):
         """
         if not "message-id" in message:
             message["message-id"] = uuid.uuid1().hex
+        if not "client-tag" in message:
+            message["client-tag"] = self._client_tag
+        if not "client-address" in message:
+            message["client-address"] = self._client_address
         
         if data is None:
             self._socket.send_json(message)

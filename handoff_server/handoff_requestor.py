@@ -52,7 +52,11 @@ class HandoffRequestor(Greenlet):
 
         self._req_sockets = list()
         for address in addresses:
-            req_socket = ReqSocket(zmq_context, address, halt_event)
+            req_socket = ReqSocket(zmq_context,
+                                   address, 
+                                   client_tag, 
+                                   client_address,
+                                   halt_event)
             self._req_sockets.append(req_socket)
 
         self._local_node_id = local_node_id

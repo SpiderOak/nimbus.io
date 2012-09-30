@@ -108,6 +108,8 @@ def _setup(zmq_context, event_push_client, halt_event):
                                        event_push_client,
                                        incoming_reply_queue,
                                        node_dict,
+                                       _client_tag,
+                                       _handoff_server_pipeline_address,
                                        halt_event)
     reply_dispatcher.link_exception(
         unhandled_greenlet_exception_closure(event_push_client))

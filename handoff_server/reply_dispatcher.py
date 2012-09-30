@@ -47,6 +47,13 @@ class ReplyDispatcher(Greenlet):
         a dict cross referencing node names and node ids
         in both directions
 
+    client_tag
+        A unique identifier for our client, to be included in every message
+
+    client_address
+        the address our socket binds to. Sent to the remote server in every
+        message
+
     halt_event:
         Event object, set when it's time to halt
     """
@@ -56,6 +63,8 @@ class ReplyDispatcher(Greenlet):
                  event_push_client,
                  reply_queue, 
                  node_dict,
+                 client_tag,
+                 client_address,
                  halt_event):
         Greenlet.__init__(self)
         self._name = "ReplyDispatcher"
@@ -67,6 +76,8 @@ class ReplyDispatcher(Greenlet):
         self._event_push_client = event_push_client
         self._reply_queue = reply_queue
         self._node_dict = node_dict
+        self._client_tag = client_tag
+        self._client_address = client_address
         self._halt_event = halt_event
 
         self._pending_handoffs = PendingHandoffs()
@@ -84,6 +95,8 @@ class ReplyDispatcher(Greenlet):
         self._writer_socket_dict[_local_node_name] = \
             ReqSocket(self._zmq_context,
                       self._writer_address_dict[_local_node_name],
+                      self._client_tag,
+                      self._client_address,
                       self._halt_event)
         self._forwarder = None
         self._active_deletes = dict()
@@ -118,7 +131,7 @@ class ReplyDispatcher(Greenlet):
 
     def _run(self):
         while not self._halt_event.is_set():
-            message = self._reply_queue.get()
+            message, data = self._reply_queue.get()
             if not message.control["message-type"] in self._dispatch_table:
                 error_message = "unidentified message-type {0}".format(
                     message.control)
@@ -129,7 +142,7 @@ class ReplyDispatcher(Greenlet):
 
             try:
                 self._dispatch_table[message.control["message-type"]](
-                    message)
+                    message, data)
             except Exception, instance:
                 error_message = "exception during {0} {1}".format(
                     message.control["message-type"], str(instance))
@@ -144,6 +157,8 @@ class ReplyDispatcher(Greenlet):
                 self._writer_socket_dict[node_name] = \
                     ReqSocket(self._zmq_context,
                               self._writer_address_dict[node_name],
+                              self._client_tag,
+                              self._client_address,
                               self._halt_event)
             req_socket = self._writer_socket_dict[node_name]
             req_socket.send(message)
@@ -156,7 +171,7 @@ class ReplyDispatcher(Greenlet):
                     str(req_socket), str(instance)))
                 del(self._writer_socket_dict[node_name])
 
-    def _handle_request_handoffs_reply(self, message):
+    def _handle_request_handoffs_reply(self, message, _data):
         self._log.info(
             "node {0} {1} conjoined-count={2} segment-count={3} {4}".format(
             message.control["node-name"], 
@@ -395,6 +410,8 @@ class ReplyDispatcher(Greenlet):
             self._reader_socket_dict[source_node_name] = \
                 ReqSocket(self._zmq_context,
                           self._reader_address_dict[source_node_name],
+                          self._client_tag,
+                          self._client_address,
                           self._halt_event)
         reader_socket = self._reader_socket_dict[source_node_name]
         writer_socket = self._writer_socket_dict[_local_node_name]
@@ -440,6 +457,6 @@ class ReplyDispatcher(Greenlet):
                 self._node_dict[segment_row["source_node_id"]],
             "handoff-node-name"     : None,
         }
-        self._send_message(source_node_names, message)
+        self._send_message(source_node_name, message)
         self._active_deletes[segment_row["unified_id"]] = source_node_names
 

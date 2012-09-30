@@ -11,7 +11,6 @@ from  gevent.greenlet import Greenlet
 from gevent_zeromq import zmq
 
 from tools.zeromq_util import prepare_ipc_path
-from tools.data_definitions import message_format
 
 class PULLServer(Greenlet):
     """
@@ -83,7 +82,6 @@ class PULLServer(Greenlet):
             elif len(body) == 1:
                 body = body[0]
 
-            message = message_format(ident=None, control=control, body=body)
-            self._log.debug("received: %s" % (message.control, ))
-            self._reply_queue.put(message)
+            self._log.debug("received: %s" % (control, ))
+            self._reply_queue.put((control, body, ))
 

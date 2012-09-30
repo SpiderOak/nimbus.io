@@ -117,12 +117,9 @@ def _process_one_request(rep_socket, db_controller_push_socket):
 
     if request["message-type"] in _dispatch_table:
         _dispatch_table[request["message-type"]](request)
-        ack_message["accepted"] = True
-    elif not ("client-tag" in request and "client-address" in request):
-        log.error("receive: invalid message '{0}'".format(request))
-        ack_message["accepted"] = False
     else:
         push_request_to_db_controller = True
+    ack_message["accepted"] = True
 
     rep_socket.send_json(ack_message)
 

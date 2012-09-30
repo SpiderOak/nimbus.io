@@ -88,7 +88,9 @@ class DatabaseConnection(object):
         """run a statement"""
         cursor = self._connection.cursor()
         cursor.execute(query, *args)
+        rowcount = cursor.rowcount
         cursor.close()
+        return rowcount
         
     def execute_and_return_id(self, query, *args):
         """

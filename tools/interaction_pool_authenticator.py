@@ -113,6 +113,14 @@ class InteractionPoolAuthenticator(object):
             self._log.error(error_message)
             raise AccessUnauthorized(error_message)
 
+        # IRC chat 09-29-2012 Alan points out a user could send us any key
+        if customer_key_row["customer_id"] != collection_row["customer_id"]:
+            error_message = \
+                "customer_id in customer key {0} != collection {1}".format(
+                    customer_key_row["customer_id"], collection_row["customer_id"])
+            self._log.error(error_message)
+            raise AccessUnauthorized(error_message)
+
         try:
             string_to_sign = _string_to_sign(customer_row["username"], req)
         except Exception, instance:

@@ -131,7 +131,7 @@ class ReplyDispatcher(Greenlet):
 
     def _run(self):
         while not self._halt_event.is_set():
-            message, data = self._reply_queue.get()
+            message = self._reply_queue.get()
             if not message.control["message-type"] in self._dispatch_table:
                 error_message = "unidentified message-type {0}".format(
                     message.control)
@@ -142,7 +142,7 @@ class ReplyDispatcher(Greenlet):
 
             try:
                 self._dispatch_table[message.control["message-type"]](
-                    message, data)
+                    message)
             except Exception, instance:
                 error_message = "exception during {0} {1}".format(
                     message.control["message-type"], str(instance))
@@ -171,7 +171,7 @@ class ReplyDispatcher(Greenlet):
                     str(req_socket), str(instance)))
                 del(self._writer_socket_dict[node_name])
 
-    def _handle_request_handoffs_reply(self, message, _data):
+    def _handle_request_handoffs_reply(self, message):
         self._log.info(
             "node {0} {1} conjoined-count={2} segment-count={3} {4}".format(
             message.control["node-name"], 
@@ -234,36 +234,36 @@ class ReplyDispatcher(Greenlet):
                 len(self._pending_handoffs)))
             self._start_handoff()
 
-    def _handle_retrieve_key_reply(self, message, data):
+    def _handle_retrieve_key_reply(self, message):
         # 2012-02-05 dougfort -- handle a race condition where we pick up a segment
         # to be handed off after we have purged it, because the message was 
         # in transit
-        if message["result"] == "no-sequence-rows":
-            self._log.debug("no-sequence-rows, assuming already purged {0}".format(
-                message))
+        if message.control["result"] == "no-sequence-rows":
+            self._log.debug("assuming already purged {0}".format(
+                message.control))
             self._forwarder = None
             return
 
-        if message["result"] != "success":
+        if message.control["result"] != "success":
             error_message = "%s failed (%s) %s %s" % (
-                message["message-type"], 
-                message["result"], 
-                message["error-message"], 
+                message.control["message-type"], 
+                message.control["result"], 
+                message.control["error-message"], 
                 message,
             )
             self._log.error(error_message)
             raise HandoffError(error_message)
 
-        self._forwarder.send((message, data, ))
+        self._forwarder.send((message.control, message.body, ))
 
-    def _handle_archive_reply(self, message, _data):
+    def _handle_archive_reply(self, message):
         #TODO: we need to squawk about this somehow
-        if message["result"] != "success":
+        if message.control["result"] != "success":
             error_message = "%s failed (%s) %s %s" % (
-                message["message-type"], 
-                message["result"], 
-                message["error-message"], 
-                message,
+                message.control["message-type"], 
+                message.control["result"], 
+                message.control["error-message"], 
+                message.control,
             )
             self._log.error(error_message)
             raise HandoffError(error_message)
@@ -304,35 +304,23 @@ class ReplyDispatcher(Greenlet):
 
         self._forwarder = None
 
-        self._dispatch_table = {
-            "request-handoffs-reply" : self._handle_request_handoffs_reply,
-            "retrieve-key-reply" : self._handle_retrieve_key_reply,
-            "archive-key-start-reply" : self._handle_archive_reply,
-            "archive-key-next-reply" : self._handle_archive_reply,
-            "archive-key-final-reply" : self._handle_archive_reply,
-            "destroy-key-reply" : self._handle_destroy_key_reply,
-            "purge-handoff-conjoined-reply" : \
-                self._handle_purge_handoff_conjoined_reply,
-            "purge-handoff-segment-reply"   : \
-                self._handle_purge_handoff_segment_reply,
-        }
-
-    def _handle_destroy_key_reply(self, message, _data):
+    def _handle_destroy_key_reply(self, message):
         #TODO: we need to squawk about this somehow
-        if message["result"] != "success":
+        if message.control["result"] != "success":
             error_message = "%s failed (%s) %s %s" % (
-                message["message-type"], 
-                message["result"], 
-                message["error-message"], 
+                message.control["message-type"], 
+                message.control["result"], 
+                message.control["error-message"], 
                 message,
             )
             self._log.error(error_message)
             raise HandoffError(error_message)
 
         try:
-            source_node_names = self._active_deletes.pop(message["unified-id"])
+            source_node_names = \
+                self._active_deletes.pop(message.control["unified-id"])
         except KeyError:
-            self._log.error("unknown reply %s" % (message["unified-id"], ))
+            self._log.error("unknown reply %s" % (message.control["unified-id"], ))
             return
 
         # purge the handoff source(s)
@@ -345,30 +333,30 @@ class ReplyDispatcher(Greenlet):
         }
         self._send_message(source_node_names, message)
 
-    def _handle_purge_handoff_conjoined_reply(self, message, _data):
+    def _handle_purge_handoff_conjoined_reply(self, message):
         #TODO: we need to squawk about this somehow
-        if message["result"] == "success":
+        if message.control["result"] == "success":
             self._log.debug("purge-key successful")
         else:
             self._log.error("%s failed (%s) %s %s" % (
-                message["message-type"], 
-                message["result"], 
-                message["error-message"], 
-                message,
+                message.control["message-type"], 
+                message.control["result"], 
+                message.control["error-message"], 
+                message.control,
             ))
             # we don't give up here, because the handoff has succeeded 
             # at this point we're just cleaning up
 
-    def _handle_purge_handoff_segment_reply(self, message, _data):
+    def _handle_purge_handoff_segment_reply(self, message):
         #TODO: we need to squawk about this somehow
-        if message["result"] == "success":
+        if message.control["result"] == "success":
             self._log.debug("purge-key successful")
         else:
             self._log.error("%s failed (%s) %s %s" % (
-                message["message-type"], 
-                message["result"], 
-                message["error-message"], 
-                message,
+                message.control["message-type"], 
+                message.control["result"], 
+                message.control["error-message"], 
+                message.control,
             ))
             # we don't give up here, because the handoff has succeeded 
             # at this point we're just cleaning up

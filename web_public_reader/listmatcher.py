@@ -145,7 +145,7 @@ def list_versions(interaction_pool,
         if tombstone_key is not None and row["key"] == tombstone_key:
             continue
         if tombstone_unified_id is not None and \
-           row["file_tombstone_unified_id"] == tombstone_unified_id:
+           row["unified_id"] == tombstone_unified_id:
             tombstone_unified_id = None
             continue
         if row["status"] == segment_status_tombstone:

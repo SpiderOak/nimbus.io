@@ -70,6 +70,7 @@ def _handle_archive_key_entire(state, message, data):
     reply = {
         "message-type"  : "archive-key-final-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
@@ -173,6 +174,7 @@ def _handle_archive_key_start(state, message, data):
     reply = {
         "message-type"  : "archive-key-start-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
@@ -268,6 +270,7 @@ def _handle_archive_key_next(state, message, data):
     reply = {
         "message-type"  : "archive-key-next-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
@@ -346,6 +349,7 @@ def _handle_archive_key_final(state, message, data):
     reply = {
         "message-type"  : "archive-key-final-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : None,
         "error-message" : None,
@@ -462,6 +466,7 @@ def _handle_destroy_key(state, message, _data):
     reply = {
         "message-type"  : "destroy-key-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "unified-id"    : message["unified-id"],
         "result"        : "success",
@@ -484,6 +489,7 @@ def _handle_purge_handoff_conjoined(state, message, _data):
     reply = {
         "message-type"  : "purge-handoff-conjoined-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : "success",
         "error-message" : None,
@@ -507,6 +513,7 @@ def _handle_purge_handoff_segment(state, message, _data):
     reply = {
         "message-type"  : "purge-handoff-segment-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "unified-id"    : message["unified-id"], 
         "conjoined-part": message["conjoined-part"], 
@@ -544,6 +551,7 @@ def _handle_start_conjoined_archive(state, message, _data):
     reply = {
         "message-type"  : "start-conjoined-archive-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : "success",
         "error-message" : None,
@@ -578,6 +586,7 @@ def _handle_abort_conjoined_archive(state, message, _data):
     reply = {
         "message-type"  : "abort-conjoined-archive-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : "success",
         "error-message" : None,
@@ -612,6 +621,7 @@ def _handle_finish_conjoined_archive(state, message, _data):
     reply = {
         "message-type"  : "finish-conjoined-archive-reply",
         "client-tag"    : message["client-tag"],
+        "client-address": message["client-address"],
         "message-id"    : message["message-id"],
         "result"        : "success",
         "error-message" : None,

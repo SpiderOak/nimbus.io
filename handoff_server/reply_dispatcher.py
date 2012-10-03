@@ -291,6 +291,8 @@ class ReplyDispatcher(Greenlet):
                 key=segment_row["key"],
                 timestamp_repr=repr(segment_row["timestamp"])
             )
+
+            self._start_handoff()
             
             # purge the handoff source(s)
             message = {
@@ -301,8 +303,6 @@ class ReplyDispatcher(Greenlet):
                 "handoff-node-id"   : segment_row["handoff_node_id"]
             }
             self._send_message(source_node_names, message)
-
-        self._forwarder = None
 
     def _handle_destroy_key_reply(self, message):
         #TODO: we need to squawk about this somehow
@@ -363,11 +363,14 @@ class ReplyDispatcher(Greenlet):
 
     def _start_handoff(self):
         try:
-            segment_row, source_node_names = \
-                    self._pending_handoffs.pop()
+            segment_row, source_node_names = self._pending_handoffs.pop()
         except IndexError:
             self._log.debug("_start_handoffs: no handoffs found")
             return
+
+        self._log.debug(
+            "_start_handoff segment_row = {0} source_node_names = {1}".format(
+                segment_row, source_node_names))
 
         if segment_row["status"] == segment_status_final:
             self._start_forwarder_coroutine(segment_row, source_node_names)
@@ -445,6 +448,13 @@ class ReplyDispatcher(Greenlet):
                 self._node_dict[segment_row["source_node_id"]],
             "handoff-node-name"     : None,
         }
-        self._send_message(source_node_name, message)
+        writer_socket = self._writer_socket_dict[_local_node_name]
+        writer_socket.send(message, data=None)
+        try:
+            writer_socket.wait_for_ack()
+        except ReqSocketAckTimeOut, instance:
+            log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
+                                                       str(instance)))
+            raise
         self._active_deletes[segment_row["unified_id"]] = source_node_names
 

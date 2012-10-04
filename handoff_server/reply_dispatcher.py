@@ -327,7 +327,7 @@ class ReplyDispatcher(Greenlet):
         message = {
             "message-type"      : "purge-handoff-segment",
             "priority"          : create_priority(),
-            "unified-id"        : message["unified-id"],
+            "unified-id"        : message.control["unified-id"],
             "conjoined-part"    : 0,
             "handoff-node-id"   : self._node_dict[_local_node_name],
         }

@@ -49,6 +49,7 @@ def list_keys(interaction_pool,
         on con.unified_id = seg.unified_id
         where (con.create_timestamp is null 
             or con.complete_timestamp is not null)
+        and con.delete_timestamp is null
         and seg.collection_id = %s
         and seg.handoff_node_id is null
         and seg.key like %s
@@ -119,6 +120,7 @@ def list_versions(interaction_pool,
         on con.unified_id = seg.unified_id
         where (con.create_timestamp is null 
             or con.complete_timestamp is not null)
+        and con.delete_timestamp is null
         and seg.collection_id = %s
         and seg.handoff_node_id is null
         and seg.key like %s

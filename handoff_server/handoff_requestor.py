@@ -16,7 +16,6 @@ from gevent.greenlet import Greenlet
 from tools.data_definitions import create_timestamp
 
 from handoff_server.req_socket import ReqSocket, ReqSocketReplyTimeOut
-from handoff_server.pending_handoffs import PendingHandoffs
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
@@ -41,6 +40,9 @@ class HandoffRequestor(Greenlet):
         the address our socket binds to. Sent to the remote server in every
         message
 
+    pending_handoffs
+        a queue of pending handoffs
+
     halt_event:
         Event object, set when it's time to halt
     """
@@ -51,6 +53,7 @@ class HandoffRequestor(Greenlet):
                  local_node_id, 
                  client_tag,
                  client_address,
+                 pending_handoffs,
                  halt_event):
         Greenlet.__init__(self)
         self._name = "HandoffRequestor"
@@ -69,8 +72,8 @@ class HandoffRequestor(Greenlet):
         self._local_node_id = local_node_id
         self._client_tag = client_tag
         self._client_address = client_address
+        self._pending_handoffs = pending_handoffs
         self._halt_event = halt_event
-        self._pending_handoffs = PendingHandoffs()
 
     def __str__(self):
         return self._name

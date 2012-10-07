@@ -38,6 +38,9 @@ class HandoffManager(Greenlet):
     event_push_client
         client for event notification
 
+    pending_handoffs
+        an ordered queue of segments rows and supporting information
+
     reply_queue
         queue for incoming reply messages
 
@@ -59,6 +62,7 @@ class HandoffManager(Greenlet):
                  zmq_context,
                  interaction_pool, 
                  event_push_client,
+                 pending_handoffs,
                  reply_queue, 
                  node_dict,
                  client_tag,
@@ -72,6 +76,7 @@ class HandoffManager(Greenlet):
         self._zmq_context = zmq_context
         self._interaction_pool = interaction_pool
         self._event_push_client = event_push_client
+        self._pending_handoffs = pending_handoffs
         self._reply_queue = reply_queue
         self._node_dict = node_dict
         self._client_tag = client_tag
@@ -94,6 +99,7 @@ class HandoffManager(Greenlet):
                       self._halt_event)
         self._forwarder = None
         self._active_deletes = dict()
+        self._handoff_complete = True
 
         self._dispatch_table = {
             "retrieve-key-reply" : self._handle_retrieve_key_reply,
@@ -134,17 +140,17 @@ class HandoffManager(Greenlet):
            
             if duplicate:
                 # purge the handoff source
-                message = {
+                purge_request = {
                     "message-type"      : "purge-handoff-segment",
                     "priority"          : create_priority(),
                     "unified-id"        : segment_row["unified_id"],
                     "conjoined-part"    : segment_row["conjoined_part"],
                     "handoff-node-id"   : segment_row["handoff_node_id"]
                 }
-                self._send_message(source_node_name, message)
+                self._send_message(source_node_name, purge_request)
                 continue
 
-            self._start_handoff(segment_row, source_node_name, duplicate)
+            self._start_handoff(segment_row, source_node_name)
             self._handoff_complete = False
 
             while not self._halt_event.is_set() and not self._handoff_complete:
@@ -313,7 +319,7 @@ class HandoffManager(Greenlet):
             # we don't give up here, because the handoff has succeeded 
             # at this point we're just cleaning up
 
-    def _start_handoff(self, segment_row, source_node_name, duplicate):
+    def _start_handoff(self, segment_row, source_node_name):
         self._log.debug(
             "_start_handoff segment_row = {0} source_node_name = {1}".format(
                 segment_row, source_node_name))
@@ -393,8 +399,8 @@ class HandoffManager(Greenlet):
         try:
             writer_socket.wait_for_ack()
         except ReqSocketAckTimeOut, instance:
-            log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
-                                                       str(instance)))
+            self._log.error("timeout waiting ack {0} {1}".format(
+                str(writer_socket), str(instance)))
             raise
         self._active_deletes[segment_row["unified_id"]] = source_node_name
 

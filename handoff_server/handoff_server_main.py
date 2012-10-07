@@ -33,6 +33,7 @@ from tools.unhandled_greenlet_exception import \
 
 from handoff_server.pull_server import PULLServer
 from handoff_server.rep_server import REPServer
+from handoff_server.pending_handoffs import PendingHandoffs
 from handoff_server.handoff_requestor import HandoffRequestor
 from handoff_server.handoff_manager import HandoffManager
 
@@ -102,24 +103,10 @@ def _setup(zmq_context, event_push_client, halt_event):
     pull_server.start()
     active_group.add(pull_server)
 
-    reply_dispatcher = ReplyDispatcher(zmq_context,
-                                       interaction_pool,
-                                       event_push_client,
-                                       incoming_reply_queue,
-                                       node_dict,
-                                       _client_tag,
-                                       _handoff_server_pipeline_address,
-                                       halt_event)
-    reply_dispatcher.link_exception(
-        unhandled_greenlet_exception_closure(event_push_client))
-    reply_dispatcher.start()
-    active_group.add(reply_dispatcher)
-
-    incoming_request_queue = Queue()
-
     rep_server = REPServer(zmq_context, 
+                           interaction_pool,
+                           event_push_client,
                            _handoff_server_addresses[local_node_index],
-                           incoming_request_queue,
                            halt_event)
     rep_server.link_exception(
         unhandled_greenlet_exception_closure(event_push_client))
@@ -131,32 +118,38 @@ def _setup(zmq_context, event_push_client, halt_event):
         if index != local_node_index:
             remote_handoff_server_addresses.append(address)
             
-    push_client_dict = dict()
-    request_dispatcher = RequestDispatcher(zmq_context,
-                                           interaction_pool, 
-                                           event_push_client,
-                                           incoming_request_queue, 
-                                           push_client_dict,
-                                           halt_event)
-    request_dispatcher.link_exception(
-        unhandled_greenlet_exception_closure(event_push_client))
-    request_dispatcher.start()
-    active_group.add(request_dispatcher)
+    pending_handoffs = PendingHandoffs()
 
     handoff_requestor = HandoffRequestor(zmq_context, 
+                                         event_push_client,
                                          remote_handoff_server_addresses,
                                          local_node_id,
                                          _client_tag,
                                          _handoff_server_pipeline_address,
+                                         pending_handoffs,
                                          halt_event)
     handoff_requestor.link_exception(
         unhandled_greenlet_exception_closure(event_push_client))
     handoff_requestor.start()
     active_group.add(handoff_requestor)
     
-    socket_greenlets = [rep_server, pull_server, reply_dispatcher, ]
+    handoff_manager = HandoffManager(zmq_context,
+                                     interaction_pool,
+                                     event_push_client,
+                                     pending_handoffs,
+                                     incoming_reply_queue,
+                                     node_dict,
+                                     _client_tag,
+                                     _handoff_server_pipeline_address,
+                                     halt_event)
+    handoff_manager.link_exception(
+        unhandled_greenlet_exception_closure(event_push_client))
+    handoff_manager.start()
+    active_group.add(handoff_manager)
 
-    return active_group, socket_greenlets, push_client_dict
+    socket_greenlets = [rep_server, pull_server, handoff_manager, ]
+
+    return active_group, socket_greenlets
 
 def main():
     """
@@ -176,8 +169,9 @@ def main():
     event_push_client = EventPushClient(zmq_context, "handoff_server")
 
     try:
-        active_group, socket_greenlets, push_client_dict = \
-            _setup(zmq_context, event_push_client, halt_event)
+        active_group, socket_greenlets = _setup(zmq_context, 
+                                                event_push_client, 
+                                                halt_event)
     except Exception:
         log.exception("exception during setup")
         return 1
@@ -196,9 +190,6 @@ def main():
 
     active_group.kill()
     active_group.join(timeout=3.0)
-
-    for push_client in push_client_dict.values():
-        push_client.close()
 
     event_push_client.close()
     zmq_context.term()

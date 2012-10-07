@@ -17,7 +17,7 @@ class ReqSocketError(Exception):
     pass
 class ReqSocketReplyTimeOut(ReqSocketError):
     pass
-class ReqSocketAckTimeOut(ReqSocketReplyTimeout):
+class ReqSocketAckTimeOut(ReqSocketReplyTimeOut):
     pass
 
 _reply_timeout_seconds = 120.0
@@ -82,7 +82,7 @@ class ReqSocket(object):
                 self._socket.send(data_segment, zmq.SNDMORE)
             self._socket.send(data[-1])
 
-    def wait_for_reply(selfi, timeout=_reply_timeout_seconds):
+    def wait_for_reply(self, timeout=_reply_timeout_seconds):
         """
         return when ack is received
         raise ReqSocketReplyTimeout if reply is not received

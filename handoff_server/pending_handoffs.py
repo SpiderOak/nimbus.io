@@ -21,45 +21,56 @@ class PendingHandoffs(object):
         self._dict = dict()
         heapq.heapify(self._list)
         self._lock = RLock()
+        self._segments_already_seen = set()
 
     def push(self, incoming_segment_row, source_node_name):
         """
         add the segment row, with its source
         """
-        self._lock.acquire()
-        handoff_key = (incoming_segment_row["unified_id"], 
+        # we want to identify duplicate segments and send them along
+        # so the handoff_manager can send a purge request to the 
+        # source node
+        segment_key = (incoming_segment_row["unified_id"], 
                        incoming_segment_row["conjoined_part"], )
-        if handoff_key in self._dict:
-            segment_row, source_node_names = self._dict[handoff_key]
-            assert incoming_segment_row["collection_id"] == \
-                segment_row["collection_id"], (
-                incoming_segment_row, segment_row,
-            )
-            assert incoming_segment_row["key"] == segment_row["key"], (
-                incoming_segment_row, segment_row,
-            )
-            if source_node_name in source_node_names:
-                self._log.warn("duplicate: {0} {1}".format(
-                    incoming_segment_row, source_node_name))
-            else:
-                source_node_names.append(source_node_name)
-                assert len(source_node_names) <= 2
+        if segment_key in self._segments_already_seen:
+            duplicate = True
         else:
-            heapq.heappush(self._list, handoff_key)
-            self._dict[handoff_key] = (
-                incoming_segment_row, [source_node_name, ], 
-            )            
+            duplicate = False
+            self._segments_already_seen.add(segment_key)
+
+        self._lock.acquire()
+
+        # we may, or may not, have two instances of a segment in the
+        # pending queue at the same time (one a duplicate). 
+        # We want to give each a unique key
+        instance_count = 1
+        entry_key = (incoming_segment_row["unified_id"], 
+                     incoming_segment_row["conjoined_part"], 
+                     instance_count, )
+        while entry_key in self._dict:
+            instance_count += 1
+            entry_key = (incoming_segment_row["unified_id"], 
+                         incoming_segment_row["conjoined_part"], 
+                         instance_count, )
+
+
+        heapq.heappush(self._list, entry_key)
+        self._dict[entry_key] = (incoming_segment_row, 
+                                 source_node_name, 
+                                 duplicate, )
+
         self._lock.release()
 
     def pop(self):
         """
-        return a tuple of the oldest segment row with a list of its sources
+        return a tuple of (segment_row, source_node_name, duplicate)
+        where duplicate will be False for the first instance of the segment
         raise IndexError if there is none
         """
         self._lock.acquire()
         try:
-            handoff_key = heapq.heappop(self._list)
-            return self._dict.pop(handoff_key)
+            entry_key = heapq.heappop(self._list)
+            return self._dict.pop(entry_key)
         finally:
             self._lock.release()
 

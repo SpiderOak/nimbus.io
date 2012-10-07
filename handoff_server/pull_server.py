@@ -83,7 +83,7 @@ class PULLServer(Greenlet):
             elif len(body) == 1:
                 body = body[0]
 
-            self._log.debug("received: %s" % (control, ))
+            self._log.debug("received: {0}".format(control))
             message = message_format(ident=None, control=control, body=body)
             self._reply_queue.put(message)
 

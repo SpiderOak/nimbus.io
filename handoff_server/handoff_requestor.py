@@ -7,6 +7,7 @@ servers
 """
 import logging
 import os
+import pickle
 import uuid
 
 import gevent
@@ -14,7 +15,8 @@ from gevent.greenlet import Greenlet
 
 from tools.data_definitions import create_timestamp
 
-from handoff_server.req_socket import ReqSocket, ReqSocketAckTimeOut
+from handoff_server.req_socket import ReqSocket, ReqSocketReplyTimeOut
+from handoff_server.pending_handoffs import PendingHandoffs
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
@@ -22,6 +24,9 @@ class HandoffRequestor(Greenlet):
     """
     zmq_context
         zeromq context
+
+    event_push_client
+        client for event notification
 
     addresses
         the address of every handoff_server except ourselves
@@ -41,6 +46,7 @@ class HandoffRequestor(Greenlet):
     """
     def __init__(self, 
                  zmq_context, 
+                 event_push_client,
                  addresses, 
                  local_node_id, 
                  client_tag,
@@ -58,11 +64,13 @@ class HandoffRequestor(Greenlet):
                                    client_address,
                                    halt_event)
             self._req_sockets.append(req_socket)
+        self._event_push_client = event_push_client
 
         self._local_node_id = local_node_id
         self._client_tag = client_tag
         self._client_address = client_address
         self._halt_event = halt_event
+        self._pending_handoffs = PendingHandoffs()
 
     def __str__(self):
         return self._name
@@ -86,17 +94,60 @@ class HandoffRequestor(Greenlet):
                 return
             req_socket.send(message)
 
-        # wait for ack
         for req_socket in self._req_sockets:
             if self._halt_event.is_set():
                 return
             try:
-                req_socket.wait_for_ack()
-            except ReqSocketAckTimeOut, instance:
-                self._log.error("timeout waiting ack {0} {1}".format(
+                message = req_socket.wait_for_reply()
+            except ReqSocketReplyTimeOut, instance:
+                self._log.error("timeout waiting reply {0} {1}".format(
                     str(req_socket), str(instance)))
                 continue
             req_socket.close()
+            self._handle_request_handoffs_reply(message)
 
         self._req_sockets = list()
+
+    def _handle_request_handoffs_reply(self, message):
+        self._log.info(
+            "node {0} {1} conjoined-count={2} segment-count={3} {4}".format(
+            message.control["node-name"], 
+            message.control["result"], 
+            message.control["conjoined-count"], 
+            message.control["segment-count"], 
+            message.control["request-timestamp-repr"]))
+
+        if message.control["result"] != "success":
+            error_message = \
+                "request-handoffs failed on node {0} {1} {2}".format(
+                message.control["node-name"], 
+                message.control["result"], 
+                message.control["error-message"])
+            self._event_push_client.error("handoff-reply-error",
+                                          error_message)
+            self._log.error(error_message)
+            return
+
+        if message.control["conjoined-count"] == 0 and \
+            message.control["segment-count"] == 0:
+            self._log.info("no handoffs from {0}".format(
+                message.control["node-name"]))
+            return
+
+        try:
+            data_dict = pickle.loads(message.body)
+        except Exception, instance:
+            error_message = "unable to load handoffs from {0} {1}".format(
+                message.control["node-name"], str(instance))
+            self._event_push_client.exception("handoff-reply-error",
+                                              error_message)
+            self._log.exception(error_message)
+            return
+
+        source_node_name = message.control["node-name"]
+
+        for segment_row in data_dict["segment"]:
+            self._pending_handoffs.push(segment_row, source_node_name)
+        self._log.info("pushed {0} handoff segments".format(
+            len(data_dict["segment"])))
 

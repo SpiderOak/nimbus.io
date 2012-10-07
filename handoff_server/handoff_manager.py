@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-reply_dispatcher.py
+handoff_manager.py
 
-a class that dispatches queued replies to messages
+a class that manages segment handoffs
 """
 import logging
-import pickle
 import os
 
 from gevent.greenlet import Greenlet
@@ -14,7 +13,6 @@ from tools.data_definitions import segment_status_final, \
         segment_status_tombstone, \
         create_priority
 
-from handoff_server.pending_handoffs import PendingHandoffs
 from handoff_server.req_socket import ReqSocket, ReqSocketAckTimeOut
 from handoff_server.forwarder_coroutine import forwarder_coroutine
 
@@ -29,7 +27,7 @@ _data_writer_addresses = \
     os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"].split()
 _min_handoff_replies = 9
 
-class ReplyDispatcher(Greenlet):
+class HandoffManager(Greenlet):
     """
     zmq_context
         zeromq context
@@ -67,7 +65,7 @@ class ReplyDispatcher(Greenlet):
                  client_address,
                  halt_event):
         Greenlet.__init__(self)
-        self._name = "ReplyDispatcher"
+        self._name = "HandoffManager"
 
         self._log = logging.getLogger(self._name)
 
@@ -79,10 +77,6 @@ class ReplyDispatcher(Greenlet):
         self._client_tag = client_tag
         self._client_address = client_address
         self._halt_event = halt_event
-
-        self._pending_handoffs = PendingHandoffs()
-        self._handoff_reply_count = 0
-        self._handoff_replies_already_seen = set()
 
         self._reader_address_dict = \
             dict(zip(_node_names, _data_reader_addresses))
@@ -102,7 +96,6 @@ class ReplyDispatcher(Greenlet):
         self._active_deletes = dict()
 
         self._dispatch_table = {
-            "request-handoffs-reply" : self._handle_request_handoffs_reply,
             "retrieve-key-reply" : self._handle_retrieve_key_reply,
             "archive-key-start-reply" : self._handle_archive_reply,
             "archive-key-next-reply" : self._handle_archive_reply,
@@ -131,108 +124,67 @@ class ReplyDispatcher(Greenlet):
 
     def _run(self):
         while not self._halt_event.is_set():
-            message = self._reply_queue.get()
-            if not message.control["message-type"] in self._dispatch_table:
-                error_message = "unidentified message-type {0}".format(
-                    message.control)
-                self._event_push_client.error("handoff-reply-error",
-                                              error_message)
-                self._log.error(error_message)
+            try:
+                entry = self._pending_handoffs.pop()
+            except IndexError:
+                self._halt_event.wait(1.0)
                 continue
 
-            try:
-                self._dispatch_table[message.control["message-type"]](
-                    message)
-            except Exception, instance:
-                error_message = "exception during {0} {1}".format(
-                    message.control["message-type"], str(instance))
-                self._event_push_client.exception("handoff-reply-error",
-                                              error_message)
-                self._log.exception(error_message)
+            segment_row, source_node_name, duplicate = entry
+           
+            if duplicate:
+                # purge the handoff source
+                message = {
+                    "message-type"      : "purge-handoff-segment",
+                    "priority"          : create_priority(),
+                    "unified-id"        : segment_row["unified_id"],
+                    "conjoined-part"    : segment_row["conjoined_part"],
+                    "handoff-node-id"   : segment_row["handoff_node_id"]
+                }
+                self._send_message(source_node_name, message)
                 continue
 
-    def _send_message(self, node_names, message):
-        for node_name in node_names:
-            if not node_name in self._writer_socket_dict:
-                self._writer_socket_dict[node_name] = \
-                    ReqSocket(self._zmq_context,
-                              self._writer_address_dict[node_name],
-                              self._client_tag,
-                              self._client_address,
-                              self._halt_event)
-            req_socket = self._writer_socket_dict[node_name]
-            req_socket.send(message)
-        for node_name in node_names:
-            req_socket = self._writer_socket_dict[node_name]
-            try:
-                req_socket.wait_for_ack()
-            except ReqSocketAckTimeOut, instance:
-                self._log.error("timeout waiting ack {0} {1}".format(
-                    str(req_socket), str(instance)))
-                del(self._writer_socket_dict[node_name])
+            self._start_handoff(segment_row, source_node_name, duplicate)
+            self._handoff_complete = False
 
-    def _handle_request_handoffs_reply(self, message):
-        self._log.info(
-            "node {0} {1} conjoined-count={2} segment-count={3} {4}".format(
-            message.control["node-name"], 
-            message.control["result"], 
-            message.control["conjoined-count"], 
-            message.control["segment-count"], 
-            message.control["request-timestamp-repr"]))
+            while not self._halt_event.is_set() and not self._handoff_complete:
+                message = self._reply_queue.get()
+                if not message.control["message-type"] in self._dispatch_table:
+                    error_message = "unidentified message-type {0}".format(
+                        message.control)
+                    self._event_push_client.error("handoff-reply-error",
+                                                  error_message)
+                    self._log.error(error_message)
+                    continue
 
-        self._handoff_reply_count += 1
+                try:
+                    self._dispatch_table[message.control["message-type"]](
+                        message)
+                except Exception, instance:
+                    error_message = "exception during {0} {1}".format(
+                        message.control["message-type"], str(instance))
+                    self._event_push_client.exception("handoff-reply-error",
+                                                  error_message)
+                    self._log.exception(error_message)
+                    continue
 
-        if message.control["result"] != "success":
-            error_message = \
-                "request-handoffs failed on node {0} {1} {2}".format(
-                message.control["node-name"], 
-                message.control["result"], 
-                message.control["error-message"])
-            self._event_push_client.error("handoff-reply-error",
-                                          error_message)
-            self._log.error(error_message)
-            return
+    def _send_message(self, node_name, message):
+        if not node_name in self._writer_socket_dict:
+            self._writer_socket_dict[node_name] = \
+                ReqSocket(self._zmq_context,
+                          self._writer_address_dict[node_name],
+                          self._client_tag,
+                          self._client_address,
+                          self._halt_event)
+        req_socket = self._writer_socket_dict[node_name]
 
-        if message.control["conjoined-count"] == 0 and \
-            message.control["segment-count"] == 0:
-            self._log.info("no handoffs from {0}".format(
-                message.control["node-name"]))
-            return
-
+        req_socket.send(message)
         try:
-            data_dict = pickle.loads(message.body)
-        except Exception, instance:
-            error_message = "unable to load handoffs from {0} {1}".format(
-                message.control["node-name"], str(instance))
-            self._event_push_client.exception("handoff-reply-error",
-                                              error_message)
-            self._log.exception(error_message)
-            return
-
-        source_node_name = message.control["node-name"]
-
-        segment_count  = 0
-        already_seen_count = 0
-        for segment_row in data_dict["segment"]:
-            cache_key = (segment_row["id"], source_node_name, )
-            if cache_key in self._handoff_replies_already_seen:
-                already_seen_count += 1
-                continue
-            self._handoff_replies_already_seen.add(cache_key)
-            self._pending_handoffs.push(segment_row, source_node_name)
-            segment_count += 1
-        if already_seen_count > 0:
-            self._log.info("ignored {0} handoff segments: already seen".format(
-                already_seen_count))
-        if segment_count > 0:
-            self._log.info("pushed {0} handoff segments".format(segment_count))
-        self._log.info("{0} handoff replies out of {1}".format(
-            self._handoff_reply_count, _min_handoff_replies))
-
-        if self._handoff_reply_count == _min_handoff_replies:
-            self._log.info("found {0} segment handoffs".format(
-                len(self._pending_handoffs)))
-            self._start_handoff()
+            req_socket.wait_for_ack()
+        except ReqSocketAckTimeOut, instance:
+            self._log.error("timeout waiting ack {0} {1}".format(
+                str(req_socket), str(instance)))
+            del(self._writer_socket_dict[node_name])
 
     def _handle_retrieve_key_reply(self, message):
         # 2012-02-05 dougfort -- handle a race condition where we pick up a segment
@@ -273,7 +225,7 @@ class ReplyDispatcher(Greenlet):
         if result is not None:
             self._forwarder = None
 
-            segment_row, source_node_names = result
+            segment_row, source_node_name = result
 
             description = "handoff complete %s %s %s %s" % (
                 segment_row["collection_id"],
@@ -286,15 +238,15 @@ class ReplyDispatcher(Greenlet):
             self._event_push_client.info(
                 "handoff-complete",
                 description,
-                backup_sources=source_node_names,
+                backup_source=source_node_name,
                 collection_id=segment_row["collection_id"],
                 key=segment_row["key"],
                 timestamp_repr=repr(segment_row["timestamp"])
             )
 
-            self._start_handoff()
+            self._handoff_complete = True
             
-            # purge the handoff source(s)
+            # purge the handoff source
             message = {
                 "message-type"      : "purge-handoff-segment",
                 "priority"          : create_priority(),
@@ -302,7 +254,7 @@ class ReplyDispatcher(Greenlet):
                 "conjoined-part"    : segment_row["conjoined_part"],
                 "handoff-node-id"   : segment_row["handoff_node_id"]
             }
-            self._send_message(source_node_names, message)
+            self._send_message(source_node_name, message)
 
     def _handle_destroy_key_reply(self, message):
         #TODO: we need to squawk about this somehow
@@ -317,7 +269,7 @@ class ReplyDispatcher(Greenlet):
             raise HandoffError(error_message)
 
         try:
-            source_node_names = \
+            source_node_name = \
                 self._active_deletes.pop(message.control["unified-id"])
         except KeyError:
             self._log.error("unknown reply %s" % (message.control["unified-id"], ))
@@ -331,7 +283,7 @@ class ReplyDispatcher(Greenlet):
             "conjoined-part"    : 0,
             "handoff-node-id"   : self._node_dict[_local_node_name],
         }
-        self._send_message(source_node_names, message)
+        self._send_message(source_node_name, message)
 
     def _handle_purge_handoff_conjoined_reply(self, message):
         #TODO: we need to squawk about this somehow
@@ -361,23 +313,17 @@ class ReplyDispatcher(Greenlet):
             # we don't give up here, because the handoff has succeeded 
             # at this point we're just cleaning up
 
-    def _start_handoff(self):
-        try:
-            segment_row, source_node_names = self._pending_handoffs.pop()
-        except IndexError:
-            self._log.debug("_start_handoffs: no handoffs found")
-            return
-
+    def _start_handoff(self, segment_row, source_node_name, duplicate):
         self._log.debug(
-            "_start_handoff segment_row = {0} source_node_names = {1}".format(
-                segment_row, source_node_names))
+            "_start_handoff segment_row = {0} source_node_name = {1}".format(
+                segment_row, source_node_name))
 
         if segment_row["status"] == segment_status_final:
-            self._start_forwarder_coroutine(segment_row, source_node_names)
+            self._start_forwarder_coroutine(segment_row, source_node_name)
             return
 
         if segment_row["status"] == segment_status_tombstone:
-            self._send_delete_message(segment_row, source_node_names)
+            self._send_delete_message(segment_row, source_node_name)
             return
 
         error_message = \
@@ -391,12 +337,7 @@ class ReplyDispatcher(Greenlet):
                                       error_message)
 
 
-    def _start_forwarder_coroutine(self, segment_row, source_node_names):
-        # we pick the first source name, because it's easy, and because,
-        # since that source responded to us first, it might have better 
-        # response
-        # TODO: switch over to the second source on error
-        source_node_name = source_node_names[0]
+    def _start_forwarder_coroutine(self, segment_row, source_node_name):
         if not source_node_name in self._reader_socket_dict:
             self._reader_socket_dict[source_node_name] = \
                 ReqSocket(self._zmq_context,
@@ -428,13 +369,12 @@ class ReplyDispatcher(Greenlet):
         assert self._forwarder is None
         self._forwarder = forwarder_coroutine(self._node_dict,
                                               segment_row, 
-                                              source_node_names, 
+                                              source_node_name, 
                                               writer_socket, 
                                               reader_socket)
         self._forwarder.next()
 
-    def _send_delete_message(self, segment_row, source_node_names):
-        source_node_name = source_node_names[0]
+    def _send_delete_message(self, segment_row, source_node_name):
         message = {
             "message-type"          : "destroy-key",
             "priority"              : create_priority(),
@@ -456,5 +396,5 @@ class ReplyDispatcher(Greenlet):
             log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
                                                        str(instance)))
             raise
-        self._active_deletes[segment_row["unified_id"]] = source_node_names
+        self._active_deletes[segment_row["unified_id"]] = source_node_name
 

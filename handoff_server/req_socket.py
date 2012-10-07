@@ -11,13 +11,17 @@ import uuid
 from gevent_zeromq import zmq
 
 from tools.zeromq_util import prepare_ipc_path
+from tools.data_definitions import message_format
 
 class ReqSocketError(Exception):
     pass
-class ReqSocketAckTimeOut(ReqSocketError):
+class ReqSocketReplyTimeOut(ReqSocketError):
+    pass
+class ReqSocketAckTimeOut(ReqSocketReplyTimeout):
     pass
 
-_timeout_seconds = 120.0
+_reply_timeout_seconds = 120.0
+_ack_timeout_seconds = 120.0
 
 class ReqSocket(object):
     """
@@ -78,29 +82,53 @@ class ReqSocket(object):
                 self._socket.send(data_segment, zmq.SNDMORE)
             self._socket.send(data[-1])
 
-    def wait_for_ack(self):
+    def wait_for_reply(selfi, timeout=_reply_timeout_seconds):
         """
         return when ack is received
-        raise ReqSocketAckTimeout if ack is not received
+        raise ReqSocketReplyTimeout if reply is not received
         """
         # 2012-09-06 dougfort -- gevent.Timeout goes off into outer space here
         start_time = time.time()
         while not self._halt_event.is_set():
             try:
-                reply = self._socket.recv_json(zmq.NOBLOCK)
+                control = self._socket.recv_json(zmq.NOBLOCK)
             except zmq.ZMQError, instance:
                 if instance.errno == zmq.EAGAIN:
                     elapsed_time = time.time() - start_time
-                    if elapsed_time < _timeout_seconds:
+                    if elapsed_time < timeout:
                         self._halt_event.wait(1.0)
                         continue
                     self.close()
-                    error_message = "Timout waiting ack {0} seconds".format(
-                        _timeout_seconds)
+                    error_message = "Timout waiting reply {0} seconds".format(
+                        timeout)
                     self._log.error(error_message)
-                    raise ReqSocketAckTimeOut(error_message)
+                    raise ReqSocketReplyTimeOut(error_message)
                 raise
             else:
-                assert reply["accepted"], str(reply)
-                return
+                break
+
+        body = []
+        while self._socket.rcvmore:
+            body.append(self._socket.recv())
+
+        # 2011-04-06 dougfort -- if someone is expecting a list and we 
+        # only get one segment, they are going to have to deal with it.
+        if len(body) == 0:
+            body = None
+        elif len(body) == 1:
+            body = body[0]
+        self._log.debug("received: {0}".format(control))
+        return message_format(ident=None, control=control, body=body)
+
+    def wait_for_ack(self, timeout=_ack_timeout_seconds):
+        """
+        return when ack is received
+        raise ReqSocketAckTimeout if ack is not received
+        """
+        try:
+            message = self.wait_for_reply(timeout)
+        except ReqSocketReplyTimeOut, instance:
+            raise ReqSocketAckTimeOut(str(instance))
+            
+        assert message.control["accepted"], str(message.control)
 

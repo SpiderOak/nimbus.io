@@ -34,8 +34,7 @@ from tools.unhandled_greenlet_exception import \
 from handoff_server.pull_server import PULLServer
 from handoff_server.rep_server import REPServer
 from handoff_server.handoff_requestor import HandoffRequestor
-from handoff_server.request_dispatcher import RequestDispatcher
-from handoff_server.reply_dispatcher import ReplyDispatcher
+from handoff_server.handoff_manager import HandoffManager
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = u"%s/nimbusio_handoff_server_%s.log" % (

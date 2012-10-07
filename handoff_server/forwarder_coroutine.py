@@ -16,7 +16,7 @@ from handoff_server.req_socket import ReqSocketAckTimeOut
 def forwarder_coroutine(
     node_dict, 
     segment_row, 
-    source_node_names, 
+    source_node_name, 
     writer_socket, 
     reader_socket
 ):
@@ -113,8 +113,8 @@ def forwarder_coroutine(
     reply = yield
 
     if completed:
-        # we give back the segment_row and source node names as our last yield
-        yield (segment_row, source_node_names, )
+        # we give back the segment_row and source node name as our last yield
+        yield (segment_row, source_node_name, )
         return 
 
     assert reply["message-type"] == "archive-key-start-reply", reply
@@ -202,5 +202,5 @@ def forwarder_coroutine(
         assert reply["result"] == "success", reply
 
     # we give back the segment_row and source node names as our last yield
-    yield (segment_row, source_node_names, )
+    yield (segment_row, source_node_name, )
 

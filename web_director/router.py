@@ -2,6 +2,8 @@ import os
 import time
 import logging
 from collections import deque
+from hashlib import sha256
+import hmac
 import gevent
 from gevent.event import AsyncResult
 import httplib
@@ -65,6 +67,10 @@ class Router(object):
         self.memcached_client = None
         self.collection_lookup = None
         self.request_counter = 0
+        # TODO
+        self.path_hash_base = hmac(
+            key="TODO site specific uniqueness here",
+            digestmod=sha256)
 
     def init(self):
         #import logging
@@ -121,8 +127,8 @@ class Router(object):
 
         rows = async_result.get()
     
-        info = dict(rows = rows, 
-                    hosts = deque([r['hostname'] for r in rows]))
+        info = dict(rows = rows,
+                    hosts = [r['hostname'] for r in rows])
 
         return info
 
@@ -198,6 +204,56 @@ class Router(object):
         return { 'close': 'HTTP/1.0 %d %s\r\n\r\n%s' % ( 
                   code, http_error_str, reason, ) }
 
+    def consistent_hash_dest(self, hosts, availability, path, 
+                             prefix=None, recur=0):
+        """
+        """
+        log = logging.getLogger("consistent_hash_dest")
+
+        pathhash = self.path_hash_base.copy()
+        if prefix is not None:
+            pathhash.update(prefix)
+        pathhash.update(path)
+        hexresult = pathhash.hexdigest()
+        intresult = int(hexresult, 16)
+
+        # all these could be pre-calculated
+        hexmax = "f" * len(hexresult)
+        intmax = int(hexmax, 16)
+        bucket_size = intmax / len(hosts)
+        bucket_boundaries = [i+1 * bucket_size
+                             for i in range(len(hosts))]
+        bucket_boundaries[-1] = intmax
+
+        target_host = None
+        for host, boundary in zip(hosts, bucket_boundaries):
+            if intresult <= boundary:
+                target_host = host
+                break
+
+        if target_host in availability:
+            return target_host
+
+        # since our target host is not available, we want to pick a new one.
+        # but we want to do this in a way that is somewhat stable.  we could
+        # easily just make buckets for each of the available hosts, but then
+        # the destination would change every time ANY host changes
+        # availability.
+
+        # recurse, modifying our hash, until we hit an available host.
+        if prefix is None:
+            prefix = target_host + str(recur)
+        else:
+            prefix += target_host + str(recur)
+
+        if recur == 25:
+            log.warn(
+                "excessive hashing with %d hosts available" %
+                    ( len(availability), ))
+
+        return self.consistent_hash_dest(hosts, availability, path, prefix,
+            recur+1)
+
     def route(self, hostname, method, path, _query_string, start=None):
         """
         route a to a host in the appropriate cluster, using simple round-robin
@@ -249,14 +305,7 @@ class Router(object):
 
         availability = self.check_availability(hosts, dest_port)    
 
-        # find an available host
-        for _ in xrange(len(hosts)):
-            hosts.rotate(1)
-            target = hosts[0]
-            if target in availability:
-                break
-        else:
-            # we never found an available host
+        if not availability:
             now = time.time()
             if start is None:
                 log.warn("Request %d No available service, waiting..." %
@@ -267,8 +316,8 @@ class Router(object):
             gevent.sleep(RETRY_DELAY)
             return self.route(hostname, method, path, _query_string, start)
 
+        target = self.consistent_hash_dest(hosts, availability, path)
+
         log.debug("request %d to backend host %s port %d" %
             (request_num, target, dest_port, ))
         return dict(remote = "%s:%d" % (target, dest_port, ))
-
-        # no hosts currently available (hosts is an empty list, presumably)

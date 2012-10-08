@@ -4,6 +4,7 @@ listmatcher.py
 
 listmatch query.
 """
+import itertools
 import os
 
 from collections import namedtuple
@@ -28,6 +29,9 @@ _versions_entry = namedtuple("VersionsEntry", [
     "file_tombstone_unified_id"]
 )
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+
+def _segment_row_key_function(segment_row):
+    return segment_row["key"]
 
 def list_keys(interaction_pool, 
               collection_id, 
@@ -66,20 +70,20 @@ def list_keys(interaction_pool,
 
     truncated = len(result) == request_count
     key_list = list()
-    prev_key = None
-    for row in result[:max_keys]:
-        if row["key"] == prev_key:
-            continue
-        if row["status"] in [segment_status_active, segment_status_cancelled]:
-            continue
-        prev_key = row["key"]
-        if row["status"] == segment_status_tombstone:
-            continue
-        key_list.append(
-            {"key"                : row["key"], 
-             "version_identifier" : row["unified_id"], 
-             "timestamp"          : http_timestamp_str(row["timestamp"])}
-        )
+    group_object = itertools.groupby(result[:max_keys], 
+                                     _segment_row_key_function)
+    for _key, key_group in group_object:
+        for row in key_group:
+            if row["status"] in [segment_status_active, 
+                                 segment_status_cancelled]:
+                continue
+            if row["status"] == segment_status_tombstone:
+                break
+            key_list.append(
+                {"key"                : row["key"], 
+                "version_identifier" : row["unified_id"], 
+                "timestamp"          : http_timestamp_str(row["timestamp"])})
+            break
 
     if delimiter == "":
         return {"key_data" : key_list, "truncated" : truncated} 
@@ -141,31 +145,27 @@ def list_versions(interaction_pool,
 
     truncated = len(result) == request_count
     key_list = list()
-    tombstone_key = None
-    tombstone_unified_id = None
-    for row in result[:max_keys]:
-        if tombstone_key is not None and row["key"] == tombstone_key:
-            continue
-        if tombstone_unified_id is not None and \
-           row["unified_id"] == tombstone_unified_id:
-            tombstone_unified_id = None
-            continue
-        if row["status"] == segment_status_tombstone:
-            if row["file_tombstone_unified_id"] is None:
-                tombstone_key = row["key"]
-                tombstone_unified_id = None
-            else:
-                tombstone_key = None
-                tombstone_unified_id = row["file_tombstone_unified_id"]
-            continue 
-        if row["status"] in [segment_status_active, segment_status_cancelled]:
-            continue
+    group_object = itertools.groupby(result[:max_keys],
+                                     _segment_row_key_function)
+    for _key, key_group in group_object:
+        tombstone_unified_ids = set()
+        for row in key_group:
+            if row["status"] in [segment_status_active, 
+                                 segment_status_cancelled]:
+                continue
+            if row["status"] == segment_status_tombstone:
+                if row["file_tombstone_unified_id"] is None:
+                    break
+                else:
+                    tombstone_unified_ids.add(row["file_tombstone_unified_id"])
+                    continue 
+            if row["unified_id"] in tombstone_unified_ids:
+                continue
 
-        key_list.append(
-            {"key"                : row["key"], 
-             "version_identifier" : row["unified_id"], 
-             "timestamp"          : http_timestamp_str(row["timestamp"])}
-        )
+            key_list.append(
+                {"key"                : row["key"], 
+                "version_identifier" : row["unified_id"], 
+                "timestamp"          : http_timestamp_str(row["timestamp"])})
 
     if delimiter == "":
         return {"key_data" : key_list, "truncated" : truncated} 

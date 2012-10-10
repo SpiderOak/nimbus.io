@@ -125,6 +125,7 @@ def list_versions(interaction_pool,
         where (con.create_timestamp is null 
             or con.complete_timestamp is not null)
         and con.delete_timestamp is null
+        and seg.conjoined_part < 2
         and seg.collection_id = %s
         and seg.handoff_node_id is null
         and seg.key like %s

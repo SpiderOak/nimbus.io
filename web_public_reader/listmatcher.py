@@ -70,6 +70,11 @@ def list_keys(interaction_pool,
 
     truncated = len(result) == request_count
     key_list = list()
+
+    # XXX review: shoudl we have a common function between this and garbage
+    # collection code? something like: visible_segments()... that takes a batch
+    # as input?
+
     group_object = itertools.groupby(result[:max_keys], 
                                      _segment_row_key_function)
     for _key, key_group in group_object:
@@ -79,8 +84,15 @@ def list_keys(interaction_pool,
                 continue
             if row["status"] == segment_status_tombstone:
                 break
+            # xxx review: on a versioned collection, a tombstone may refer to a
+            # particular unified ID. In which case, it doesn't make every
+            # object with a later timestamp invisible. Only the object with the
+            # matching unified ID.  So it might not be appropriate to break
+            # here.
+
             key_list.append(
                 {"key"                : row["key"], 
+                # XXX review: translate public/internal IDs.
                 "version_identifier" : row["unified_id"], 
                 "timestamp"          : http_timestamp_str(row["timestamp"])})
             break
@@ -112,6 +124,8 @@ def list_versions(interaction_pool,
     max_keys = int(max_keys)
     request_count = max_keys + 1
     try:
+        # XXX review: translate public ID to an internal ID
+        # don't reveal internal database IDs.
         version_id_marker = int(version_id_marker_str)
     except ValueError:
         version_id_marker = 0
@@ -165,6 +179,7 @@ def list_versions(interaction_pool,
 
             key_list.append(
                 {"key"                : row["key"], 
+                # xxx review: translate public/private IDs
                 "version_identifier" : row["unified_id"], 
                 "timestamp"          : http_timestamp_str(row["timestamp"])})
 

@@ -48,7 +48,8 @@ def list_keys(interaction_pool,
     request_count = max_keys + 1
     async_result = interaction_pool.run(
         interaction="""
-        select seg.key, seg.unified_id, seg.status, seg.timestamp
+        select seg.key, seg.unified_id, seg.status, seg.timestamp,
+            seg.file_tombstone_unified_id
         from nimbusio_node.conjoined con right join nimbusio_node.segment seg 
         on con.unified_id = seg.unified_id
         where (con.create_timestamp is null 
@@ -73,12 +74,19 @@ def list_keys(interaction_pool,
     group_object = itertools.groupby(result[:max_keys], 
                                      _segment_row_key_function)
     for _key, key_group in group_object:
+        tombstone_unified_ids = set()
         for row in key_group:
             if row["status"] in [segment_status_active, 
                                  segment_status_cancelled]:
                 continue
             if row["status"] == segment_status_tombstone:
-                break
+                if row["file_tombstone_unified_id"] is None:
+                    break
+                else:
+                    tombstone_unified_ids.add(row["file_tombstone_unified_id"])
+                    continue 
+            if row["unified_id"] in tombstone_unified_ids:
+                continue
             key_list.append(
                 {"key"                : row["key"], 
                 "version_identifier" : row["unified_id"], 

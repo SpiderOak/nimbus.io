@@ -21,27 +21,15 @@ class PendingHandoffs(object):
         self._dict = dict()
         heapq.heapify(self._list)
         self._lock = RLock()
-        self._segments_already_seen = set()
 
     def push(self, incoming_segment_row, source_node_name):
         """
         add the segment row, with its source
         """
-        # we want to identify duplicate segments and send them along
-        # so the handoff_manager can send a purge request to the 
-        # source node
-        segment_key = (incoming_segment_row["unified_id"], 
-                       incoming_segment_row["conjoined_part"], )
-        if segment_key in self._segments_already_seen:
-            duplicate = True
-        else:
-            duplicate = False
-            self._segments_already_seen.add(segment_key)
-
         self._lock.acquire()
 
         # we may, or may not, have two instances of a segment in the
-        # pending queue at the same time (one a duplicate). 
+        # pending queue at the same time.
         # We want to give each a unique key
         instance_count = 1
         entry_key = (incoming_segment_row["unified_id"], 
@@ -53,11 +41,8 @@ class PendingHandoffs(object):
                          incoming_segment_row["conjoined_part"], 
                          instance_count, )
 
-
         heapq.heappush(self._list, entry_key)
-        self._dict[entry_key] = (incoming_segment_row, 
-                                 source_node_name, 
-                                 duplicate, )
+        self._dict[entry_key] = (incoming_segment_row, source_node_name, )
 
         self._lock.release()
 

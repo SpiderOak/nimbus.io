@@ -12,6 +12,7 @@ from gevent.greenlet import Greenlet
 from tools.data_definitions import segment_status_final, \
         segment_status_tombstone, \
         create_priority
+from tools.LRUCache import LRUCache
 
 from handoff_server.req_socket import ReqSocket, ReqSocketAckTimeOut
 from handoff_server.forwarder_coroutine import forwarder_coroutine
@@ -26,6 +27,7 @@ _data_reader_addresses = \
 _data_writer_addresses = \
     os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"].split()
 _min_handoff_replies = 9
+_already_processed_cache_size = 10000
 
 class HandoffManager(Greenlet):
     """
@@ -113,6 +115,8 @@ class HandoffManager(Greenlet):
                 self._handle_purge_handoff_segment_reply,
         }
 
+        self._already_processed_cache = LRUCache(_already_processed_cache_size)
+
     def __str__(self):
         return self._name
 
@@ -131,14 +135,12 @@ class HandoffManager(Greenlet):
     def _run(self):
         while not self._halt_event.is_set():
             try:
-                entry = self._pending_handoffs.pop()
+                segment_row, source_node_name = self._pending_handoffs.pop()
             except IndexError:
                 self._halt_event.wait(1.0)
                 continue
 
-            segment_row, source_node_name, duplicate = entry
-           
-            if duplicate:
+            if self._already_processed(segment_row):
                 # purge the handoff source
                 purge_request = {
                     "message-type"      : "purge-handoff-segment",
@@ -173,6 +175,53 @@ class HandoffManager(Greenlet):
                                                   error_message)
                     self._log.exception(error_message)
                     continue
+
+    def _already_processed(self, segment_row):
+        """
+        I don't think it's wise that we purge one of the handoff segments 
+        before we've actually completed receiving the handoff. 
+        I suggest working around it like this:
+
+        Heave the existing code that marks a given handoff in the queue as a 
+        duplicate
+
+        At the beginning of processing every handoff, 
+        check with our local database to see if we already have a final 
+        version of this segment. 
+        
+        If we do, THEN send the purge message and move on.
+
+        (Optional) make #2 fast by adding a LRUCache for, say, the 10,000 
+        previously successfully received handoffs. 
+        This will avoid the DB lookup in the common case.
+        """
+        cache_key = (segment_row["unified_id"], segment_row["conjoined_part"], )
+        if cache_key in self._already_processed_cache:
+            del self._already_processed_cache[cache_key]
+            return True
+
+        query = """select status from nimbusio_node.segment
+                   where collection_id = %s and key = %s
+                   and unified_id = %s and conjoined_part = %s"""
+        args = [segment_row["collection_id"], 
+                segment_row["key"],
+                segment_row["unified_id"],
+                segment_row["conjoined_part"]]
+        async_result = self._interaction_pool.run(interaction=query, 
+                                                  interaction_args=args,
+                                                  pool=_local_node_name) 
+        result_list = async_result.get()
+
+        if len(result_list) == 0:
+            return False
+
+        assert len(result_list) == 1, result_list
+        if result_list[0]["status"] not in [segment_status_final, 
+                                            segment_status_tombstone]:
+            return False
+
+        self._already_processed_cache[cache_key] = True
+        return True
 
     def _send_message(self, node_name, message):
         if not node_name in self._writer_socket_dict:

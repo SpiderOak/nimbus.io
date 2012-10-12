@@ -216,7 +216,7 @@ class WebWriter(object):
 
         self._event_push_client = EventPushClient(
             self._zeromq_context,
-            "web-server"
+            "web-writer"
         )
 
         # message sent to data writers telling them the server

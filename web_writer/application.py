@@ -23,6 +23,7 @@ import os
 import random
 import zlib
 import hashlib
+import httplib
 import json
 import urllib
 import time
@@ -216,7 +217,7 @@ class Application(object):
         self._log.debug("_respond_to_ping")
         # Ticket #44 we don't send 'Connection: close' here because
         # this is an internal URI
-        response = Response(status=200, content_type="text/plain")
+        response = Response(status=httplib.OK, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
@@ -353,16 +354,32 @@ class Application(object):
             )
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
+            response.retry_after = _archive_retry_interval
+            self._stats["archives"] -= 1
+            return response
+        except IOError, instance:
+            # Ticket 61 Simulate Aborting Client Uploads
+            # we get this when the client closes their connection
+            self._event_push_client.warn(
+                "IOError",
+                "{0}: {1}".format(description, instance, ))
+            self._log.warn("IOError failed: {0} {1}".format(description, 
+                                                            instance))
+            _send_archive_cancel(unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
+            # tell the customer to retry in a little while
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             self._stats["archives"] -= 1
             return response
         except Exception, instance:
-            # 2012-07-14 dougfort -- were getting
-            # IOError: unexpected end of file while reading request
-            # if the sender croaks
             self._event_push_client.error(
                 "archive-failed-error",
                 "%s: %s" % (description, instance, )
@@ -373,7 +390,7 @@ class Application(object):
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
             )
-            response = Response(status=500, content_type=None)
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             self._stats["archives"] -= 1
@@ -492,9 +509,9 @@ class Application(object):
             self._log.error("delete failed: %s %s" % (
                 description, instance, 
             ))
-            # 2009-10-08 dougfort -- assume we have some node trouble
+            # httplib.OK9-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -568,7 +585,7 @@ class Application(object):
             ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -581,7 +598,7 @@ class Application(object):
             self._log.exception("start-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -663,7 +680,7 @@ class Application(object):
             ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -676,7 +693,7 @@ class Application(object):
             self._log.exception("finish-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -752,7 +769,7 @@ class Application(object):
             ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -765,7 +782,7 @@ class Application(object):
             self._log.exception("abort-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response

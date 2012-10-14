@@ -59,16 +59,9 @@ class HandoffRequestor(Greenlet):
         self._name = "HandoffRequestor"
         self._log = logging.getLogger(self._name)
 
-        self._req_sockets = list()
-        for address in addresses:
-            req_socket = ReqSocket(zmq_context,
-                                   address, 
-                                   client_tag, 
-                                   client_address,
-                                   halt_event)
-            self._req_sockets.append(req_socket)
+        self._zmq_context = zmq_context
         self._event_push_client = event_push_client
-
+        self._addresses = addresses
         self._local_node_id = local_node_id
         self._client_tag = client_tag
         self._client_address = client_address
@@ -92,24 +85,40 @@ class HandoffRequestor(Greenlet):
         }
 
         # send the message to everyone
-        for req_socket in self._req_sockets:
+        req_sockets = list()
+        for address in self._addresses:
+            req_socket = ReqSocket(self._zmq_context,
+                                   address, 
+                                   self._client_tag, 
+                                   self._client_address,
+                                   self._halt_event)
+            req_sockets.append(req_socket)
             if self._halt_event.is_set():
-                return
+                break
+            self._log.debug("sending to {0}".format(address))
             req_socket.send(message)
 
-        for req_socket in self._req_sockets:
+        if self._halt_event.is_set():
+            for req_socket in req_sockets:
+                req_socket.close()
+            return
+
+        for address, req_socket in zip(self._addresses, req_sockets):
             if self._halt_event.is_set():
-                return
+                break
+            self._log.debug("waiting for reply from {0}".format(address))
             try:
                 message = req_socket.wait_for_reply()
             except ReqSocketReplyTimeOut, instance:
                 self._log.error("timeout waiting reply {0} {1}".format(
                     str(req_socket), str(instance)))
                 continue
-            req_socket.close()
-            self._handle_request_handoffs_reply(message)
+            if message is not None:
+                self._handle_request_handoffs_reply(message)
 
-        self._req_sockets = list()
+        for address, req_socket in zip(self._addresses, req_sockets):
+            self._log.debug("closing {0}".format(address))
+            req_socket.close()
 
     def _handle_request_handoffs_reply(self, message):
         self._log.info(

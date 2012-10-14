@@ -8,10 +8,12 @@ import logging
 import os
 import pickle
 
+import gevent
 from  gevent.greenlet import Greenlet
 from gevent_zeromq import zmq
 
-from tools.zeromq_util import prepare_ipc_path
+from tools.zeromq_util import prepare_ipc_path, \
+    is_interrupted_system_call
 from tools.data_definitions import message_format
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
@@ -100,6 +102,8 @@ class REPServer(Greenlet):
         self._rep_socket = zmq_context.socket(zmq.REP)
         self._log.debug("binding to {0}".format(address))
         self._rep_socket.bind(address)
+        self._poller = zmq.Poller()
+        self._poller.register(self._rep_socket, zmq.POLLIN)
 
         self._halt_event = halt_event
         self._ping_count = 0
@@ -116,6 +120,7 @@ class REPServer(Greenlet):
         Clean up and wait for the greenlet to shut down
         """
         self._log.debug("joining")
+        self._poller.unregister(self._rep_socket)
         self._rep_socket.close()
         Greenlet.join(self, timeout)
         self._log.debug("join complete")
@@ -123,12 +128,20 @@ class REPServer(Greenlet):
     def _run(self):
         while not self._halt_event.is_set():
             try:
-                control = self._rep_socket.recv_json(zmq.NOBLOCK)
-            except zmq.ZMQError, instance:
-                if instance.errno == zmq.EAGAIN:
-                    self._halt_event.wait(1.0)
-                    continue
+                result_list = self._poller.poll(timeout=500)
+            except zmq.ZMQError as zmq_error:
+                if is_interrupted_system_call(zmq_error):
+                    self._log.info("interrupted system call")
+                    self._halt_event.set()
+                    return
+                self._log.exception(str(zmq_error))
                 raise
+
+            if len(result_list) == 0:
+                gevent.sleep()
+                continue
+
+            control = self._rep_socket.recv_json(zmq.NOBLOCK)
             body = []
             while self._rep_socket.rcvmore:
                 body.append(self._rep_socket.recv())

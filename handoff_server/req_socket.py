@@ -8,9 +8,11 @@ import logging
 import time
 import uuid
 
+import gevent
 from gevent_zeromq import zmq
 
-from tools.zeromq_util import prepare_ipc_path
+from tools.zeromq_util import prepare_ipc_path, \
+    is_interrupted_system_call
 from tools.data_definitions import message_format
 
 class ReqSocketError(Exception):
@@ -44,6 +46,8 @@ class ReqSocket(object):
 
         self._log.info("connecting to {0}".format(address))
         self._socket.connect(address)
+        self._poller = zmq.Poller()
+        self._poller.register(self._socket, zmq.POLLIN)
 
         self._client_tag = client_tag
         self._client_address = client_address
@@ -53,6 +57,7 @@ class ReqSocket(object):
         return self._name
 
     def close(self):
+        self._poller.unregister(self._socket)
         self._socket.close()
 
     def send(self, message, data=None):
@@ -87,26 +92,36 @@ class ReqSocket(object):
         return when ack is received
         raise ReqSocketReplyTimeout if reply is not received
         """
-        # 2012-09-06 dougfort -- gevent.Timeout goes off into outer space here
         start_time = time.time()
         while not self._halt_event.is_set():
             try:
-                control = self._socket.recv_json(zmq.NOBLOCK)
-            except zmq.ZMQError, instance:
-                if instance.errno == zmq.EAGAIN:
-                    elapsed_time = time.time() - start_time
-                    if elapsed_time < timeout:
-                        self._halt_event.wait(1.0)
-                        continue
-                    self.close()
-                    error_message = "Timout waiting reply {0} seconds".format(
-                        timeout)
-                    self._log.error(error_message)
-                    raise ReqSocketReplyTimeOut(error_message)
+                result_list = self._poller.poll(timeout=3000)
+            except zmq.ZMQError as zmq_error:
+                if is_interrupted_system_call(zmq_error):
+                    self._log.info("interrupted system call")
+                    self._halt_event.set()
+                    return
+                self._log.exception(str(zmq_error))
                 raise
-            else:
+
+            if len(result_list) != 0:
                 break
 
+            elapsed_time = time.time() - start_time
+            if elapsed_time < timeout:
+                gevent.sleep()
+                continue
+
+            self.close()
+            error_message = "Timout waiting reply {0} seconds".format(
+                timeout)
+            self._log.error(error_message)
+            raise ReqSocketReplyTimeOut(error_message)
+
+        if self._halt_event.is_set():
+            return None
+
+        control = self._socket.recv_json()
         body = []
         while self._socket.rcvmore:
             body.append(self._socket.recv())
@@ -130,5 +145,6 @@ class ReqSocket(object):
         except ReqSocketReplyTimeOut, instance:
             raise ReqSocketAckTimeOut(str(instance))
             
-        assert message.control["accepted"], str(message.control)
+        assert message is None or message.control["accepted"], \
+            str(message.control)
 

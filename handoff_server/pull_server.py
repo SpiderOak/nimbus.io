@@ -7,10 +7,12 @@ to multiple PUSH clients
 """
 import logging
 
+import gevent
 from  gevent.greenlet import Greenlet
 from gevent_zeromq import zmq
 
-from tools.zeromq_util import prepare_ipc_path
+from tools.zeromq_util import prepare_ipc_path, \
+    is_interrupted_system_call
 from tools.data_definitions import message_format
 
 class PULLServer(Greenlet):
@@ -45,8 +47,10 @@ class PULLServer(Greenlet):
             prepare_ipc_path(address)
 
         self._pull_socket = context.socket(zmq.PULL)
-        self._log.debug("bindingi to {0}".format(address))
+        self._log.debug("binding to {0}".format(address))
         self._pull_socket.bind(address)
+        self._poller = zmq.Poller()
+        self._poller.register(self._pull_socket, zmq.POLLIN)
 
         self._reply_queue = reply_queue
         self._halt_event = halt_event
@@ -59,6 +63,7 @@ class PULLServer(Greenlet):
         Clean up and wait for the greenlet to shut down
         """
         self._log.debug("joining")
+        self._poller.unregister(self._pull_socket)
         self._pull_socket.close()
         Greenlet.join(self, timeout)
         self._log.debug("join complete")
@@ -66,12 +71,20 @@ class PULLServer(Greenlet):
     def _run(self):
         while not self._halt_event.is_set():
             try:
-                control = self._pull_socket.recv_json(zmq.NOBLOCK)
-            except zmq.ZMQError, instance:
-                if instance.errno == zmq.EAGAIN:
-                    self._halt_event.wait(1.0)
-                    continue
+                result_list = self._poller.poll(timeout=500)
+            except zmq.ZMQError as zmq_error:
+                if is_interrupted_system_call(zmq_error):
+                    self._log.info("interrupted system call")
+                    self._halt_event.set()
+                    return
+                self._log.exception(str(zmq_error))
                 raise
+
+            if len(result_list) == 0:
+                gevent.sleep()
+                continue
+
+            control = self._pull_socket.recv_json()
             body = []
             while self._pull_socket.rcvmore:
                 body.append(self._pull_socket.recv())

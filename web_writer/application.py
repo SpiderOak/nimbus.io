@@ -720,7 +720,7 @@ class Application(object):
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
         self._log.info(
-            "abort_conjoined: collection = ({0}) {1} key = {3} {4}".format(
+            "abort_conjoined: collection = ({0}) {1} key = {2} {3}".format(
             collection_row["id"], 
             collection_row["name"],
             key,

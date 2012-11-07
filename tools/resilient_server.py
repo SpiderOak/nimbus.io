@@ -122,16 +122,9 @@ class ResilientServer(object):
             self._dispatch_table[message.control["message-type"]](
                 message.control, message.body
             )
-            ack_message["accepted"] = True
-        elif not ("client-tag" in message.control and \
-                  "client-address" in message.control):
-            self._log.error("receive: invalid message '%s'" % (
-                message.control, 
-            ))
-            ack_message["accepted"] = False
         else:
             self._receive_queue.append((message.control, message.body, ))
-            ack_message["accepted"] = True
+        ack_message["accepted"] = True
 
         self._rep_socket.send_json(ack_message)
 

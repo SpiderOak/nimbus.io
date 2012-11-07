@@ -11,12 +11,14 @@ import uuid
 
 from tools.data_definitions import create_priority
 
+from handoff_server.req_socket import ReqSocketAckTimeOut
+
 def forwarder_coroutine(
-    node_name_dict, 
+    node_dict, 
     segment_row, 
     source_node_names, 
-    writer_client, 
-    reader_client
+    writer_socket, 
+    reader_socket
 ):
     """
     manage the message traffic for retrieving and re-archiving 
@@ -32,22 +34,28 @@ def forwarder_coroutine(
         "message-type"              : "retrieve-key-start",
         "retrieve-id"               : retrieve_id,
         "retrieve-sequence"         : retrieve_sequence,
-        "collection-id"             : segment_row.collection_id,
-        "key"                       : segment_row.key,
-        "segment-unified-id"        : segment_row.unified_id,
-        "segment-conjoined-part"    : segment_row.conjoined_part,
-        "segment-num"               : segment_row.segment_num,
-        "handoff-node-id"           : segment_row.handoff_node_id,
+        "collection-id"             : segment_row["collection_id"],
+        "key"                       : segment_row["key"],
+        "segment-unified-id"        : segment_row["unified_id"],
+        "segment-conjoined-part"    : segment_row["conjoined_part"],
+        "segment-num"               : segment_row["segment_num"],
+        "handoff-node-id"           : segment_row["handoff_node_id"],
         "block-offset"              : 0,
         "block-count"               : None,
     }
 
-    log.debug("sending retrieve-key-start %s %s" % (
-        segment_row.unified_id, 
-        segment_row.segment_num
-    ))
+    log.debug("sending retrieve-key-start {0} {1}".format(
+        segment_row["unified_id"], 
+        segment_row["segment_num"]))
     
-    reader_client.queue_message_for_send(message, data=None)
+    reader_socket.send(message)
+    try:
+        reader_socket.wait_for_ack()
+    except ReqSocketAckTimeOut, instance:
+        log.error("timeout waiting ack {0} {1}".format(str(reader_socket), 
+                                                       str(instance)))
+        raise
+
     reply, data = yield
 
     assert reply["message-type"] == "retrieve-key-reply", reply
@@ -60,42 +68,48 @@ def forwarder_coroutine(
         message = {
             "message-type"      : "archive-key-entire",
             "priority"          : archive_priority,
-            "collection-id"     : segment_row.collection_id,
-            "key"               : segment_row.key, 
-            "unified-id"        : segment_row.unified_id,
-            "conjoined-part"    : segment_row.conjoined_part,
-            "timestamp-repr"    : repr(segment_row.timestamp),
-            "segment-num"       : segment_row.segment_num,
+            "collection-id"     : segment_row["collection_id"],
+            "key"               : segment_row["key"], 
+            "unified-id"        : segment_row["unified_id"],
+            "conjoined-part"    : segment_row["conjoined_part"],
+            "timestamp-repr"    : repr(segment_row["timestamp"]),
+            "segment-num"       : segment_row["segment_num"],
             "segment-size"      : reply["segment-size"],
             "zfec-padding-size" : reply["zfec-padding-size"],
             "segment-adler32"   : reply["segment-adler32"],
             "segment-md5-digest": reply["segment-md5-digest"],
-            "file-size"         : segment_row.file_size,
-            "file-adler32"      : segment_row.file_adler32,
-            "file-hash"         : b64encode(segment_row.file_hash),
-            "source-node-name"  : node_name_dict[segment_row.source_node_id],
+            "file-size"         : segment_row["file_size"],
+            "file-adler32"      : segment_row["file_adler32"],
+            "file-hash"         : b64encode(segment_row["file_hash"]),
+            "source-node-name"  : node_dict[segment_row["source_node_id"]],
             "handoff-node-name" : None,
         }
     else:
         message = {
             "message-type"      : "archive-key-start",
             "priority"          : archive_priority,
-            "collection-id"     : segment_row.collection_id,
-            "key"               : segment_row.key, 
-            "unified-id"        : segment_row.unified_id,
-            "conjoined-part"    : segment_row.conjoined_part,
-            "timestamp-repr"    : repr(segment_row.timestamp),
-            "segment-num"       : segment_row.segment_num,
+            "collection-id"     : segment_row["collection_id"],
+            "key"               : segment_row["key"], 
+            "unified-id"        : segment_row["unified_id"],
+            "conjoined-part"    : segment_row["conjoined_part"],
+            "timestamp-repr"    : repr(segment_row["timestamp"]),
+            "segment-num"       : segment_row["segment_num"],
             "segment-size"      : reply["segment-size"],
             "zfec-padding-size" : reply["zfec-padding-size"],
             "segment-adler32"   : reply["segment-adler32"],
             "segment-md5-digest": reply["segment-md5-digest"],
             "sequence-num"      : sequence,
-            "source-node-name"  : node_name_dict[segment_row.source_node_id],
+            "source-node-name"  : node_dict[segment_row["source_node_id"]],
             "handoff-node-name" : None,
         }
             
-    writer_client.queue_message_for_send(message, data=data)
+    writer_socket.send(message, data=data)
+    try:
+        writer_socket.wait_for_ack()
+    except ReqSocketAckTimeOut, instance:
+        log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
+                                                       str(instance)))
+        raise
     reply = yield
 
     if completed:
@@ -115,16 +129,23 @@ def forwarder_coroutine(
             "message-type"              : "retrieve-key-next",
             "retrieve-id"               : retrieve_id,
             "retrieve-sequence"         : retrieve_sequence,
-            "collection-id"             : segment_row.collection_id,
-            "key"                       : segment_row.key,
-            "segment-unified-id"        : segment_row.unified_id,
-            "segment-conjoined-part"    : segment_row.conjoined_part,
-            "segment-num"               : segment_row.segment_num,
-            "handoff-node-id"           : segment_row.handoff_node_id,
+            "collection-id"             : segment_row["collection_id"],
+            "key"                       : segment_row["key"],
+            "segment-unified-id"        : segment_row["unified_id"],
+            "segment-conjoined-part"    : segment_row["conjoined_part"],
+            "segment-num"               : segment_row["segment_num"],
+            "handoff-node-id"           : segment_row["handoff_node_id"],
             "block-offset"              : 0,
             "block-count"               : None,
         }
-        reader_client.queue_message_for_send(message, data=None)
+        reader_socket.send(message)
+        try:
+            reader_socket.wait_for_ack()
+        except ReqSocketAckTimeOut, instance:
+            log.error("timeout waiting ack {0} {1}".format(str(reader_socket), 
+                                                           str(instance)))
+            raise
+
         reply, data = yield
         assert reply["message-type"] == "retrieve-key-reply", reply
         assert reply["result"] == "success", reply
@@ -134,45 +155,49 @@ def forwarder_coroutine(
             message = {
                 "message-type"      : "archive-key-final",
                 "priority"          : archive_priority,
-                "collection-id"     : segment_row.collection_id,
-                "key"               : segment_row.key,
-                "unified-id"        : segment_row.unified_id,
-                "conjoined-part"    : segment_row.conjoined_part,
-                "timestamp-repr"    : repr(segment_row.timestamp),
-                "segment-num"       : segment_row.segment_num,
+                "collection-id"     : segment_row["collection_id"],
+                "key"               : segment_row["key"],
+                "unified-id"        : segment_row["unified_id"],
+                "conjoined-part"    : segment_row["conjoined_part"],
+                "timestamp-repr"    : repr(segment_row["timestamp"]),
+                "segment-num"       : segment_row["segment_num"],
                 "segment-size"      : reply["segment-size"],
                 "zfec-padding-size" : reply["zfec-padding-size"],
                 "segment-adler32"   : reply["segment-adler32"],
                 "segment-md5-digest": reply["segment-md5-digest"],
                 "sequence-num"      : sequence,
-                "file-size"         : segment_row.file_size,
-                "file-adler32"      : segment_row.file_adler32,
-                "file-hash"         : b64encode(segment_row.file_hash),
-                "source-node-name"  : node_name_dict[
-                    segment_row.source_node_id],
+                "file-size"         : segment_row["file_size"],
+                "file-adler32"      : segment_row["file_adler32"],
+                "file-hash"         : b64encode(segment_row["file_hash"]),
+                "source-node-name"  : node_dict[segment_row["source_node_id"]],
                 "handoff-node-name" : None,
             }
         else:
             message = {
                 "message-type"      : "archive-key-next",
                 "priority"          : archive_priority,
-                "collection-id"     : segment_row.collection_id,
-                "key"               : segment_row.key,
-                "unified-id"        : segment_row.unified_id,
-                "conjoined-part"    : segment_row.conjoined_part,
-                "timestamp-repr"    : repr(segment_row.timestamp),
-                "segment-num"       : segment_row.segment_num,
+                "collection-id"     : segment_row["collection_id"],
+                "key"               : segment_row["key"],
+                "unified-id"        : segment_row["unified_id"],
+                "conjoined-part"    : segment_row["conjoined_part"],
+                "timestamp-repr"    : repr(segment_row["timestamp"]),
+                "segment-num"       : segment_row["segment_num"],
                 "segment-size"      : reply["segment-size"],
                 "zfec-padding-size" : reply["zfec-padding-size"],
                 "segment-adler32"   : reply["segment-adler32"],
                 "segment-md5-digest": reply["segment-md5-digest"],
                 "sequence-num"      : sequence,
-                "source-node-name"  : node_name_dict[
-                    segment_row.source_node_id],
+                "source-node-name"  : node_dict[segment_row["source_node_id"]],
                 "handoff-node-name" : None,
             }
         
-        writer_client.queue_message_for_send(message, data=data)
+        writer_socket.send(message, data=data)
+        try:
+            writer_socket.wait_for_ack()
+        except ReqSocketAckTimeOut, instance:
+            log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
+                                                           str(instance)))
+            raise
         reply = yield
         assert reply["result"] == "success", reply
 

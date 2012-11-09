@@ -15,6 +15,8 @@ from tools.event_push_client import EventPushClient, unhandled_exception_topic
 
 from handoff_client.get_node_ids import get_node_ids
 from handoff_client.get_handoff_rows import get_handoff_rows
+from handoff_client.process_conjoined_rows import process_conjoined_rows
+from handoff_client.process_segment_rows import process_segment_rows
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_handoff_client_{1}.log".format(
@@ -39,8 +41,12 @@ def main():
         node_dict = get_node_ids(_local_node_name)
         conjoined_rows, segment_rows = \
             get_handoff_rows(node_dict[_local_node_name])
-#        if len(conjoined_rows) + len(segment_rows) > 0:
-#            _process_handoff_rows(conjoined_rows, segment_rows)
+        log.info("found {0} conjoined and {1} segment handoffs".format(
+            len(conjoined_rows), len(segment_rows)))
+        if len(conjoined_rows)  > 0:
+            process_conjoined_rows(conjoined_rows)
+        if len(segment_rows)  > 0:
+            process_segment_rows(segment_rows)
     except Exception as instance:
         log.exception("Uhandled exception {0}".format(instance))
         event_push_client.exception(

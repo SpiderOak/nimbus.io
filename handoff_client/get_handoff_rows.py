@@ -68,6 +68,7 @@ def get_handoff_rows(node_id):
                              _node_database_ports,
                              _node_database_passwords)
     for name, host, port, password in node_database_list:
+        host='localhost'
         dsn = get_node_database_dsn(name, password, host, port)
         connection = psycopg2.connect(dsn)
         cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)

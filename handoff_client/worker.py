@@ -59,14 +59,19 @@ def main():
 
     while not halt_event.is_set():
         try:
-            source_node_ids, segment_row = req_socket.recv_pyobj()
+            message = req_socket.recv_pyobj()
         except zmq.ZMQError as zmq_error:
             if is_interrupted_system_call(zmq_error) and halt_event.is_set():
                 break
             log.exception(str(zmq_error))
             sys.exit(1)
+        assert not req_socket.rcvmore
 
-        log.warn("reveived message")
+        if message["message-type"] == "stop":
+            break
+
+        assert message["message-type"] == "work", message["message-type"]
+        source_node_ids, segment_row = message["work-entry"]
 
         request = {"message-type"         : "handoff-complete",
                    "worker-id"            : worker_id,
@@ -75,6 +80,7 @@ def main():
                    "conjoined-part"       : segment_row["conjoined_part"],
                    "source-node-ids"      : source_node_ids,
                    "error-message"        : ""}
+
 
         try:
             _process_handoff(halt_event, source_node_ids, segment_row)

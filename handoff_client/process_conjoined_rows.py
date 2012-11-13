@@ -8,7 +8,7 @@ process handoffs of conjoined rows
 def _key_function(conjoined_row):
     return conjoined_row["unified_id"]
 
-def process_conjoined_rows(halt_event, conjoined_rows):
+def process_conjoined_rows(halt_event, node_databases, conjoined_rows):
     """
     process handoffs of conjoined rows
     """

@@ -44,17 +44,16 @@ def _generate_segment_rows(raw_segment_rows):
     """
     # sort on (unified_id, conjoined_part) to bring pairs together
     raw_segment_rows.sort(key=_key_function)
-    group_object = itertools.groupby(raw_segment_rows, _key_function)
 
-    for (_unified_id, _conjoined_id, ), group in group_object:
+    for (unified_id, conjoined_part, ), group in \
+        itertools.groupby(raw_segment_rows, _key_function):
         segment_row_list = list(group)
         assert len(segment_row_list) > 0
         assert len(segment_row_list) < 3, str(len(segment_row_list))
         source_node_ids = list()
         for segment_row in segment_row_list:
             source_node_ids.append(segment_row["source_node_id"])
-        for _ in range(1000):
-            yield (source_node_ids, segment_row_list[0], )
+        yield (source_node_ids, segment_row_list[0], )
 
 def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
     """
@@ -81,11 +80,9 @@ def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
 
     # loop until all handoffs have been accomplished
     log.debug("start handoffs")
-    for work_entry in  _generate_segment_rows(raw_segment_rows):
-
-        if halt_event.is_set():
-            log.warn("breaking due to halt_event")
-            break
+    work_generator =  _generate_segment_rows(raw_segment_rows)
+    pending_handoff_count = 0
+    while not halt_event.is_set():
     
         # block until we have a ready worker
         try:
@@ -95,6 +92,7 @@ def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
                 log.warn("breaking due to halt_event")
                 break
             raise
+        assert not rep_socket.rcvmore
 
         if request["message-type"] == "start":
             log.info("{0} initial request".format(request["worker-id"]))
@@ -103,19 +101,33 @@ def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
                 request["worker-id"], 
                 request["unified-id"], 
                 request["conjoined-part"]))
+            assert pending_handoff_count > 0
+            pending_handoff_count -= 1
         else:
             log.error("{0} handoff ({1}, {2}) failed: {3}".format(
                 request["worker-id"],
                 request["unified-id"], 
                 request["conjoined-part"],
                 request["error-message"]))
+            assert pending_handoff_count > 0
+            pending_handoff_count -= 1
 
-        rep_socket.send_pyobj(work_entry)
+        try:
+            work_entry = next(work_generator)
+        except StopIteration:
+            work_message = {"message-type" : "stop"}
+            rep_socket.send_pyobj(work_message)
+            if pending_handoff_count == 0:
+                break
+        else:
+            work_message = {"message-type" : "work",
+                            "work-entry"   : work_entry}
+            rep_socket.send_pyobj(work_message)
+            pending_handoff_count += 1
 
     log.debug("end of handoffs")
 
     for worker in workers:
-        poll_subprocess(worker)
         terminate_subprocess(worker)
 
     rep_socket.close()

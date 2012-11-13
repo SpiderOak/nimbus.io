@@ -9,11 +9,12 @@ import itertools
 import os
 import subprocess
 import sys
-import time
 
 import zmq
 
-from tools.zeromq_util import ipc_socket_uri, prepare_ipc_path
+from tools.zeromq_util import ipc_socket_uri, \
+        prepare_ipc_path, \
+        is_interrupted_system_call
 from tools.process_util import identify_program_dir, \
         poll_subprocess, \
         terminate_subprocess
@@ -22,15 +23,14 @@ _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _socket_high_water_mark = 1000
 _polling_interval = 1.0
 
-def _start_worker_process(worker_id, work_socket_uri, result_socket_uri):
+def _start_worker_process(worker_id, rep_socket_uri):
     module_dir = identify_program_dir("handoff_client")
     module_path = os.path.join(module_dir, "worker.py")
     
     args = [sys.executable, 
             module_path, 
             worker_id, 
-            work_socket_uri, 
-            result_socket_uri, ]
+            rep_socket_uri, ]
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
 def _key_function(segment_row):
@@ -53,7 +53,8 @@ def _generate_segment_rows(raw_segment_rows):
         source_node_ids = list()
         for segment_row in segment_row_list:
             source_node_ids.append(segment_row["source_node_id"])
-        yield (source_node_ids, segment_row_list[0], )
+        for _ in range(1000):
+            yield (source_node_ids, segment_row_list[0], )
 
 def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
     """
@@ -61,90 +62,61 @@ def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
     """
     log = logging.getLogger("process_segment_row")
 
-    work_socket_uri = ipc_socket_uri(_socket_dir, 
-                                     args.node_name,
-                                     "handoff_client_work")
-    prepare_ipc_path(work_socket_uri)
+    log.debug("creating socket")
+    rep_socket_uri = ipc_socket_uri(_socket_dir, 
+                                    args.node_name,
+                                    "handoff_client")
+    prepare_ipc_path(rep_socket_uri)
 
-    result_socket_uri = ipc_socket_uri(_socket_dir, 
-                                     args.node_name,
-                                     "handoff_client_result")
-    prepare_ipc_path(result_socket_uri)
-
-    work_socket = zeromq_context.socket(zmq.PUSH)
-    work_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
-    log.info("binding work socket to {0}".format(work_socket_uri))
-    work_socket.bind(work_socket_uri)
-
-    result_socket = zeromq_context.socket(zmq.PULL)
-    result_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
-    log.info("binding result socket to {0}".format(result_socket_uri))
-    result_socket.bind(result_socket_uri)
-
-    work_generator = _generate_segment_rows(raw_segment_rows)
+    rep_socket = zeromq_context.socket(zmq.REP)
+    rep_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    log.info("binding rep socket to {0}".format(rep_socket_uri))
+    rep_socket.bind(rep_socket_uri)
 
     log.debug("starting workers")
     workers = list()
     for index in range(args.worker_count):
         worker_id = str(index+1)
-        workers.append(_start_worker_process(worker_id,
-                                             work_socket_uri, 
-                                             result_socket_uri))
-
-    log.debug("loading zeromq buffer")
-    # fill the zeromq buffer with requests
-    pending_handoff_count = 0
-    while pending_handoff_count < _socket_high_water_mark and \
-        not halt_event.is_set():
-        try:
-            work_entry = next(work_generator)
-        except StopIteration:
-            break
-        work_socket.send_pyobj(work_entry)
-        pending_handoff_count += 1
+        workers.append(_start_worker_process(worker_id, rep_socket_uri))
 
     # loop until all handoffs have been accomplished
-    log.debug("start recv loop: pending handoff count = {0}".format(
-        pending_handoff_count))
-    while pending_handoff_count > 0 and not halt_event.is_set():
-        try:
-            reply = result_socket.recv_pyobj(zmq.NOBLOCK)
-        except zmq.ZMQError as instance:
-            if instance.errno == zmq.EAGAIN: # would block
-                reply = None
-            else:
-                raise
-        
-        if reply is None:
-            for worker in workers:
-                poll_subprocess(worker)
-            time.sleep(_polling_interval)
-            continue
+    log.debug("start handoffs")
+    for work_entry in  _generate_segment_rows(raw_segment_rows):
 
-        pending_handoff_count -= 1
+        if halt_event.is_set():
+            log.warn("breaking due to halt_event")
+            break
+    
+        # block until we have a ready worker
         try:
-            work_entry = next(work_generator)
-        except StopIteration:
-            pass
+            request = rep_socket.recv_pyobj()
+        except zmq.ZMQError as zmq_error:
+            if is_interrupted_system_call(zmq_error) and halt_event.is_set():
+                log.warn("breaking due to halt_event")
+                break
+            raise
+
+        if request["message-type"] == "start":
+            log.info("{0} initial request".format(request["worker-id"]))
+        elif request["handoff-successful"]:
+            log.info("{0} handoff ({1}, {2}) successful".format(
+                request["worker-id"], 
+                request["unified-id"], 
+                request["conjoined-part"]))
         else:
-            work_socket.send_pyobj(work_entry)
-            pending_handoff_count += 1
-
-        if not reply["handoff-successful"]:
             log.error("{0} handoff ({1}, {2}) failed: {3}".format(
-                reply["worker-id"],
-                reply["unified-id"], 
-                reply["conjoined-part"],
-                reply["error-message"]))
-            continue
+                request["worker-id"],
+                request["unified-id"], 
+                request["conjoined-part"],
+                request["error-message"]))
 
-        log.info("{0} handoff ({1}, {2}) successful".format(
-            reply["worker-id"], reply["unified-id"], reply["conjoined-part"]))
-    log.debug("recv loop ends")
+        rep_socket.send_pyobj(work_entry)
+
+    log.debug("end of handoffs")
 
     for worker in workers:
+        poll_subprocess(worker)
         terminate_subprocess(worker)
 
-    work_socket.close()
-    result_socket.close()
+    rep_socket.close()
 

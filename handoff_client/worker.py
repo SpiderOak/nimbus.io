@@ -32,7 +32,7 @@ def _initialize_logging_to_stderr():
 
 def _process_handoff(halt_event, source_node_ids, segment_row):
     import random
-    halt_event.wait(random.randint(10, 100))
+    halt_event.wait(random.randint(1, 10))
 
 def main():
     """
@@ -40,8 +40,7 @@ def main():
     return 0 on normal termination (exit code)
     """
     worker_id = sys.argv[1]
-    work_socket_uri = sys.argv[2]
-    result_socket_uri = sys.argv[3]
+    rep_socket_uri = sys.argv[2]
     log = logging.getLogger("main")
 
     halt_event = Event()
@@ -49,17 +48,18 @@ def main():
 
     zeromq_context =  zmq.Context()
 
-    work_socket = zeromq_context.socket(zmq.PULL)
-    work_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
-    work_socket.connect(work_socket_uri)
+    req_socket = zeromq_context.socket(zmq.REQ)
+    req_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    req_socket.connect(rep_socket_uri)
 
-    result_socket = zeromq_context.socket(zmq.PUSH)
-    result_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
-    result_socket.connect(result_socket_uri)
+    # notify our parent that we are ready to receive work
+    request = {"message-type" : "start",
+               "worker-id"    : worker_id}
+    req_socket.send_pyobj(request)
 
     while not halt_event.is_set():
         try:
-            source_node_ids, segment_row = work_socket.recv_pyobj()
+            source_node_ids, segment_row = req_socket.recv_pyobj()
         except zmq.ZMQError as zmq_error:
             if is_interrupted_system_call(zmq_error) and halt_event.is_set():
                 break
@@ -68,24 +68,24 @@ def main():
 
         log.warn("reveived message")
 
-        reply = {"worker-id"            : worker_id,
-                 "handoff-successful"   : True,
-                 "unified-id"           : segment_row["unified_id"],
-                 "conjoined-part"       : segment_row["conjoined_part"],
-                 "source-node-ids"      : source_node_ids,
-                 "error-message"        : ""}
+        request = {"message-type"         : "handoff-complete",
+                   "worker-id"            : worker_id,
+                   "handoff-successful"   : True,
+                   "unified-id"           : segment_row["unified_id"],
+                   "conjoined-part"       : segment_row["conjoined_part"],
+                   "source-node-ids"      : source_node_ids,
+                   "error-message"        : ""}
 
         try:
             _process_handoff(halt_event, source_node_ids, segment_row)
         except Exception as instance:
             log.exception(instance)
-            reply["handoff-successful"] = False
-            reply["error-message"] = str(instance)
+            request["handoff-successful"] = False
+            request["error-message"] = str(instance)
 
-        result_socket.send_pyobj(reply)
+        req_socket.send_pyobj(request)
 
-    work_socket.close()
-    result_socket.close()
+    req_socket.close()
     zeromq_context.term()
     return 0
 

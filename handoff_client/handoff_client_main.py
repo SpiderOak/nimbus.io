@@ -17,6 +17,7 @@ from tools.process_util import set_signal_handler
 
 from handoff_client.options import parse_commandline
 from handoff_client.get_node_ids import get_node_ids
+from handoff_client.node_databases import get_node_databases
 from handoff_client.get_handoff_rows import get_handoff_rows
 from handoff_client.process_conjoined_rows import process_conjoined_rows
 from handoff_client.process_segment_rows import process_segment_rows
@@ -44,18 +45,21 @@ def main():
     event_push_client.info("program-start", "handoff_client starts")  
 
     return_code = 0
+    node_databases = None
     try:
         node_dict = get_node_ids(args.node_name)
+        node_databases = get_node_databases([args.node_name, ])
         conjoined_rows, segment_rows = \
-            get_handoff_rows(node_dict[args.node_name])
+            get_handoff_rows(node_databases, node_dict[args.node_name])
         log.info("found {0} conjoined and {1} segment handoffs".format(
             len(conjoined_rows), len(segment_rows)))
         if len(conjoined_rows)  > 0:
-            process_conjoined_rows(halt_event, conjoined_rows)
+            process_conjoined_rows(halt_event, node_databases, conjoined_rows)
         if len(segment_rows)  > 0:
             process_segment_rows(halt_event, 
                                  zeromq_context, 
                                  args, 
+                                 node_databases,
                                  segment_rows)
     except Exception as instance:
         log.exception("Uhandled exception {0}".format(instance))
@@ -66,6 +70,9 @@ def main():
         )
         return_code = 1
 
+    if node_databases is not None:
+        for connection in node_databases.values():
+            connection.close()
     event_push_client.close()
     zeromq_context.term()
 

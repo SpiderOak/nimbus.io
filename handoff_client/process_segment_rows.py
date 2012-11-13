@@ -16,7 +16,6 @@ from tools.zeromq_util import ipc_socket_uri, \
         prepare_ipc_path, \
         is_interrupted_system_call
 from tools.process_util import identify_program_dir, \
-        poll_subprocess, \
         terminate_subprocess
 
 _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
@@ -55,7 +54,11 @@ def _generate_segment_rows(raw_segment_rows):
             source_node_ids.append(segment_row["source_node_id"])
         yield (source_node_ids, segment_row_list[0], )
 
-def process_segment_rows(halt_event, zeromq_context, args, raw_segment_rows):
+def process_segment_rows(halt_event, 
+                         zeromq_context, 
+                         args, 
+                         node_databases,
+                         raw_segment_rows):
     """
     process handoffs of segment rows
     """

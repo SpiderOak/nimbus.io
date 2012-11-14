@@ -52,11 +52,14 @@ def get_handoff_rows(node_databases, node_id):
     conjoined_rows = list()
     segment_rows = list()
 
-    for connection in node_databases.values():
+    for node_name, connection in node_databases.items():
         cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        conjoined_rows.extend(_retrieve_conjoined_handoffs(cursor, node_id))
-        segment_rows.extend(_retrieve_segment_handoffs(cursor, node_id))
+        conjoined_rows_for_node = _retrieve_conjoined_handoffs(cursor, node_id)
+        segment_rows_for_node = _retrieve_segment_handoffs(cursor, node_id)
         cursor.close()
+
+        conjoined_rows.extend([(node_name, r) for r in conjoined_rows_for_node])
+        segment_rows.extend([(node_name, r) for r in segment_rows_for_node])
     
     return conjoined_rows, segment_rows
 

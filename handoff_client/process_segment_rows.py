@@ -33,12 +33,12 @@ def _start_worker_process(worker_id, rep_socket_uri):
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
 def _key_function(segment_row):
-    return (segment_row["unified_id"], segment_row["conjoined_part"], )
+    return (segment_row[1]["unified_id"], segment_row[1]["conjoined_part"], )
 
 def _generate_segment_rows(raw_segment_rows):
     """
     yield tuples of (source_node_ids, segment_row)
-    where source_node_ids is a list of the nodes where the segment can be 
+    where source_node_names is a list of the nodes where the segment can be 
     retrieved
     """
     # sort on (unified_id, conjoined_part) to bring pairs together
@@ -49,10 +49,10 @@ def _generate_segment_rows(raw_segment_rows):
         segment_row_list = list(group)
         assert len(segment_row_list) > 0
         assert len(segment_row_list) < 3, str(len(segment_row_list))
-        source_node_ids = list()
-        for segment_row in segment_row_list:
-            source_node_ids.append(segment_row["source_node_id"])
-        yield (source_node_ids, segment_row_list[0], )
+        source_node_names = list()
+        for source_node_name, segment_row in segment_row_list:
+            source_node_names.append(source_node_name)
+        yield (source_node_names, segment_row_list[0][1], )
 
 def process_segment_rows(halt_event, 
                          zeromq_context, 

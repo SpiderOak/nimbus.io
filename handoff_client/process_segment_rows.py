@@ -17,18 +17,21 @@ from tools.zeromq_util import ipc_socket_uri, \
         is_interrupted_system_call
 from tools.process_util import identify_program_dir, \
         terminate_subprocess
+from tools.data_definitions import segment_status_final, \
+        segment_status_tombstone, \
 
 _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _socket_high_water_mark = 1000
 _polling_interval = 1.0
 
-def _start_worker_process(worker_id, rep_socket_uri):
+def _start_worker_process(worker_id, dest_node_name, rep_socket_uri):
     module_dir = identify_program_dir("handoff_client")
     module_path = os.path.join(module_dir, "worker.py")
     
     args = [sys.executable, 
             module_path, 
             worker_id, 
+            dest_node_name,
             rep_socket_uri, ]
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
@@ -53,6 +56,10 @@ def _generate_segment_rows(raw_segment_rows):
         for source_node_name, segment_row in segment_row_list:
             source_node_names.append(source_node_name)
         yield (source_node_names, segment_row_list[0][1], )
+
+def _process_tombstone(node_databases, source_node_names, segment_row):
+    log = logging.getLogger("_process_tombstone")
+    raise ValueError("Not Implemented")
 
 def process_segment_rows(halt_event, 
                          zeromq_context, 
@@ -79,14 +86,38 @@ def process_segment_rows(halt_event,
     workers = list()
     for index in range(args.worker_count):
         worker_id = str(index+1)
-        workers.append(_start_worker_process(worker_id, rep_socket_uri))
+        workers.append(_start_worker_process(worker_id, 
+                                             args.node_name, 
+                                             rep_socket_uri))
 
     # loop until all handoffs have been accomplished
     log.debug("start handoffs")
     work_generator =  _generate_segment_rows(raw_segment_rows)
     pending_handoff_count = 0
     while not halt_event.is_set():
+
+        # get a segment row to process. If we are at EOF, segment_row = None
+        try:
+            source_node_names, segment_row = next(work_generator)
+        except StopIteration:
+            if pending_handoff_count == 0:
+                break
+            else:
+                source_node_names, segment_row = None, None
+
+        # if we have a segment row, and it is a tombstone, we can act
+        # directly on the node database(s) without sending it to a worker
+        if segment_row is not None:
+            if segment_row["status"] == segment_status_tombstone:
+                _process_tombstone(node_databases, 
+                                   source_node_names, 
+                                   segment_row)
+                continue
+            assert segment_row["status"] == segment_status_final, \
+                segment_row["status"]
     
+        # at this point we eaither have a segment row in final status, or
+        # None, indicating no more data
         # block until we have a ready worker
         try:
             request = rep_socket.recv_pyobj()
@@ -97,6 +128,7 @@ def process_segment_rows(halt_event,
             raise
         assert not rep_socket.rcvmore
 
+        # see how the worker handled the previous segment (if any)
         if request["message-type"] == "start":
             log.info("{0} initial request".format(request["worker-id"]))
         elif request["handoff-successful"]:
@@ -115,18 +147,17 @@ def process_segment_rows(halt_event,
             assert pending_handoff_count > 0
             pending_handoff_count -= 1
 
-        try:
-            work_entry = next(work_generator)
-        except StopIteration:
-            work_message = {"message-type" : "stop"}
-            rep_socket.send_pyobj(work_message)
-            if pending_handoff_count == 0:
-                break
+        if segment_row is None:
+            # if we have no more work, tell the worker to stop
+            work_message = {"message-type"        : "stop"}
         else:
-            work_message = {"message-type" : "work",
-                            "work-entry"   : work_entry}
-            rep_socket.send_pyobj(work_message)
+            # otherwise, send the segment to the worker 
+            work_message = {"message-type"        : "work",
+                            "source-node_names"   : source_node_names,
+                            "segment-row"         : segment_row}
             pending_handoff_count += 1
+
+        rep_socket.send_pyobj(work_message)
 
     log.debug("end of handoffs")
 

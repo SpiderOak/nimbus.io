@@ -11,15 +11,9 @@ import uuid
 
 from tools.data_definitions import create_priority
 
-from handoff_server.req_socket import ReqSocketAckTimeOut
+from handoff_client.req_socket import ReqSocketAckTimeOut
 
-def forwarder_coroutine(
-    node_dict, 
-    segment_row, 
-    source_node_names, 
-    writer_socket, 
-    reader_socket
-):
+def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
     """
     manage the message traffic for retrieving and re-archiving 
     a segment that was handed off to us
@@ -51,7 +45,7 @@ def forwarder_coroutine(
     reader_socket.send(message)
     try:
         reader_socket.wait_for_ack()
-    except ReqSocketAckTimeOut, instance:
+    except ReqSocketAckTimeOut as instance:
         log.error("timeout waiting ack {0} {1}".format(str(reader_socket), 
                                                        str(instance)))
         raise
@@ -106,15 +100,14 @@ def forwarder_coroutine(
     writer_socket.send(message, data=data)
     try:
         writer_socket.wait_for_ack()
-    except ReqSocketAckTimeOut, instance:
+    except ReqSocketAckTimeOut as instance:
         log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
                                                        str(instance)))
         raise
-    reply = yield
+    reply, _ = yield
 
     if completed:
-        # we give back the segment_row and source node names as our last yield
-        yield (segment_row, source_node_names, )
+        yield "done"
         return 
 
     assert reply["message-type"] == "archive-key-start-reply", reply
@@ -141,7 +134,7 @@ def forwarder_coroutine(
         reader_socket.send(message)
         try:
             reader_socket.wait_for_ack()
-        except ReqSocketAckTimeOut, instance:
+        except ReqSocketAckTimeOut as instance:
             log.error("timeout waiting ack {0} {1}".format(str(reader_socket), 
                                                            str(instance)))
             raise
@@ -194,13 +187,12 @@ def forwarder_coroutine(
         writer_socket.send(message, data=data)
         try:
             writer_socket.wait_for_ack()
-        except ReqSocketAckTimeOut, instance:
+        except ReqSocketAckTimeOut as instance:
             log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
                                                            str(instance)))
             raise
-        reply = yield
+        reply, _ = yield
         assert reply["result"] == "success", reply
 
-    # we give back the segment_row and source node names as our last yield
-    yield (segment_row, source_node_names, )
+    yield "done"
 

@@ -18,7 +18,7 @@ from tools.zeromq_util import ipc_socket_uri, \
 from tools.process_util import identify_program_dir, \
         terminate_subprocess
 from tools.data_definitions import segment_status_final, \
-        segment_status_tombstone, \
+        segment_status_tombstone
 
 _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _socket_high_water_mark = 1000
@@ -47,23 +47,89 @@ def _generate_segment_rows(raw_segment_rows):
     # sort on (unified_id, conjoined_part) to bring pairs together
     raw_segment_rows.sort(key=_key_function)
 
-    for (unified_id, conjoined_part, ), group in \
+    for (_unified_id, _conjoined_part, ), group in \
         itertools.groupby(raw_segment_rows, _key_function):
         segment_row_list = list(group)
         assert len(segment_row_list) > 0
         assert len(segment_row_list) < 3, str(len(segment_row_list))
         source_node_names = list()
-        for source_node_name, segment_row in segment_row_list:
+        for source_node_name, _segment_row in segment_row_list:
             source_node_names.append(source_node_name)
         yield (source_node_names, segment_row_list[0][1], )
 
 def _process_tombstone(node_databases, source_node_names, segment_row):
     log = logging.getLogger("_process_tombstone")
-    raise ValueError("Not Implemented")
+    log.info("({0}, {1}) {2}".format(segment_row["unified_id"],
+                                     segment_row["conjoined_part"],
+                                     source_node_names))
+    query = """
+        insert into nimbusio_node.segment (
+            collection_id,
+            key,
+            status,
+            unified_id,
+            timestamp,
+            segment_num,
+            file_tombstone_unified_id,
+            source_node_id
+        ) values (
+            %(collection_id)s,
+            %(key)s,
+            %(status)s,
+            %(unified_id)s,
+            %(timestamp)s::timestamp,
+            %(segment_num)s,
+            %(file_tombstone_unified_id)s,
+            %(source_node_id)s
+        )""".strip()
 
+    for source_node_name in source_node_names:
+        cursor = node_databases[source_node_name].cusrsor()
+        cursor.execute(query, segment_row)
+        cursor.close()
+        node_databases[source_node_name].commit()
+
+def _purge_handoff_from_source_nodes(node_databases,
+                                     source_node_names,
+                                     collection_id,
+                                     key,
+                                     conjoined_part,
+                                     handoff_node_id):
+    log = logging.getLogger("_purge_handoff_from_source_nodes")
+    query = """
+        begin;
+        delete from nimbusio_node.segment_sequence 
+        where segment_id = (
+            select id from nimbusio_node.segment
+            where collection_id = %(collection_id)s
+            and key  = %(key)s
+            and conjoined_part = %(conjoined_part)s
+            and handoff_node_id = %(handoff_node_id)s
+        );
+        delete from nimbusio_node.segment
+        where collection_id = %(collection_id)s
+        and key = %(key)s
+        and conjoined_part = %(conjoined_part)s
+        and handoff_node_id = %(handoff_node_id)s;
+        """
+    arguments = {"collection_id"    : collection_id,
+                 "key"              : key,
+                 "conjoined_part"   : conjoined_part,
+                 "handoff_node_id"  : handoff_node_id}
+
+    for source_node_name in source_node_names:
+        cursor = node_databases[source_node_name].cusrsor()
+        cursor.execute(query, arguments)
+        if cursor.rowcount != 1:
+            log.error("purged {0} rows {1}".format(cursor.rowcount,
+                                                   arguments))
+        cursor.close()
+        node_databases[source_node_name].commit()
+    
 def process_segment_rows(halt_event, 
                          zeromq_context, 
                          args, 
+                         node_dict,
                          node_databases,
                          raw_segment_rows):
     """
@@ -112,6 +178,12 @@ def process_segment_rows(halt_event,
                 _process_tombstone(node_databases, 
                                    source_node_names, 
                                    segment_row)
+                _purge_handoff_from_source_nodes(node_databases,
+                                                 source_node_names,
+                                                 segment_row["collection_id"],
+                                                 segment_row["key"],
+                                                 segment_row["conjoined_part"],
+                                                 segment_row["handoff_node_id"])
                 continue
             assert segment_row["status"] == segment_status_final, \
                 segment_row["status"]
@@ -129,8 +201,10 @@ def process_segment_rows(halt_event,
         assert not rep_socket.rcvmore
 
         # see how the worker handled the previous segment (if any)
+        initial_request = False
         if request["message-type"] == "start":
             log.info("{0} initial request".format(request["worker-id"]))
+            initial_request = True
         elif request["handoff-successful"]:
             log.info("{0} handoff ({1}, {2}) successful".format(
                 request["worker-id"], 
@@ -138,6 +212,12 @@ def process_segment_rows(halt_event,
                 request["conjoined-part"]))
             assert pending_handoff_count > 0
             pending_handoff_count -= 1
+            _purge_handoff_from_source_nodes(node_databases, 
+                                             request["source-node-names"],
+                                             request["collection-id"],
+                                             request["key"],
+                                             request["conjoined-part"],
+                                             request["handoff-node-id"])
         else:
             log.error("{0} handoff ({1}, {2}) failed: {3}".format(
                 request["worker-id"],
@@ -155,6 +235,9 @@ def process_segment_rows(halt_event,
             work_message = {"message-type"        : "work",
                             "source-node_names"   : source_node_names,
                             "segment-row"         : segment_row}
+            # if this is the worker's first request, send him the node_dict
+            if initial_request:
+                work_message["node-dict"] = node_dict
             pending_handoff_count += 1
 
         rep_socket.send_pyobj(work_message)

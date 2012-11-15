@@ -59,6 +59,7 @@ def main():
             process_segment_rows(halt_event, 
                                  zeromq_context, 
                                  args, 
+                                 node_dict,
                                  node_databases,
                                  segment_rows)
     except Exception as instance:

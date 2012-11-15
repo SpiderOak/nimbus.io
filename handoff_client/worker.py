@@ -20,6 +20,7 @@ from tools.zeromq_util import ipc_socket_uri, \
         is_interrupted_system_call
 
 from handoff_client.forwarder_coroutine import forwarder_coroutine
+from handoff_client.req_socket import ReqSocket
 
 _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _socket_high_water_mark = 1000
@@ -50,6 +51,7 @@ def _add_logging_to_stderr():
 
 def _process_handoff(zeromq_context, 
                      halt_event, 
+                     node_dict,
                      pull_socket,
                      pull_socket_uri,
                      client_tag,
@@ -60,31 +62,31 @@ def _process_handoff(zeromq_context,
     log.info("start ({0}, {1}) from {2}".format(segment_row["unified_id"],
                                                 segment_row["conjoined_part"],
                                                 source_node_names))
-    # we pick the first source name, because it's easy, and because,
-    # since that source responded to us first, it might have better 
-    # response
+
     # TODO: switch over to the second source on error
     source_node_name = source_node_names[0]
 
-    reader_socket = ReqSocket(zmq_context,
+    reader_socket = ReqSocket(zeromq_context,
                               _reader_address_dict[source_node_name],
                               client_tag,
                               pull_socket_uri,
                               halt_event)
 
-    writer_socket = ReqSocket(zmq_context,
+    writer_socket = ReqSocket(zeromq_context,
                               _writer_address_dict[dest_node_name],
                               client_tag,
                               pull_socket_uri,
                               halt_event)
 
-    forwarder = forwarder_coroutine(self._node_dict,
+    forwarder = forwarder_coroutine(node_dict,
                                     segment_row, 
                                     writer_socket, 
                                     reader_socket)
 
     next(forwarder)
 
+    # loop, waiting for messages to the pull socket
+    # until the forwarder tells us it is done
     while not halt_event.is_set():
         try:
             message = pull_socket.recv_json()
@@ -103,6 +105,11 @@ def _process_handoff(zeromq_context,
         elif len(data) == 1:
             data = data[0]
 
+        result = forwarder.send((message, data, ))
+        # the forarder will yield the string 'done' when it is done
+        if result is not None:
+            assert result == "done", result
+            break
 
     reader_socket.close()
     writer_socket.close()
@@ -147,6 +154,7 @@ def main(worker_id, dest_node_name, rep_socket_uri):
     req_socket.send_pyobj(request)
 
     log.info("starting message loop")
+    node_dict = None
     while not halt_event.is_set():
         try:
             message = req_socket.recv_pyobj()
@@ -163,26 +171,38 @@ def main(worker_id, dest_node_name, rep_socket_uri):
             break
 
         assert message["message-type"] == "work", message["message-type"]
-        source_node_names, segment_row = message["work-entry"]
 
+        # we expect our parent to send us the node dict in our first message
+        if "node-dict" in message:
+            node_dict = message["node-dict"]
+        assert node_dict is not None
+
+        # aliases for brevity
+        segment_row = message["segment-row"]
+        source_node_names = message["source-node-names"]
+
+        # send back enough information to purge the handoffs, if successful
         request = {"message-type"         : "handoff-complete",
                    "worker-id"            : worker_id,
                    "handoff-successful"   : True,
                    "unified-id"           : segment_row["unified_id"],
+                   "collection-id"        : segment_row["collection_id"],
+                   "key"                  : segment_row["key"],
                    "conjoined-part"       : segment_row["conjoined_part"],
-                   "source-node-names"    : message["source-node-names"],
+                   "handoff-node-id"      : segment_row["handoff_node_id"],
+                   "source-node-names"    : source_node_names,
                    "error-message"        : ""}
-
 
         try:
             _process_handoff(zeromq_context, 
                              halt_event,
+                             node_dict,
                              pull_socket,
                              pull_socket_uri,
                              client_tag,
-                             message["source-node-names", 
+                             source_node_names, 
                              dest_node_name,
-                             message["segment-row"]
+                             segment_row)
         except Exception as instance:
             log.exception(instance)
             request["handoff-successful"] = False

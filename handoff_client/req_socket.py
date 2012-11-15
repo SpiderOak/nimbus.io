@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 
-from gevent_zeromq import zmq
+import zmq
 
 from tools.zeromq_util import prepare_ipc_path
 
@@ -88,7 +88,7 @@ class ReqSocket(object):
         while not self._halt_event.is_set():
             try:
                 reply = self._socket.recv_json(zmq.NOBLOCK)
-            except zmq.ZMQError, instance:
+            except zmq.ZMQError as instance:
                 if instance.errno == zmq.EAGAIN:
                     elapsed_time = time.time() - start_time
                     if elapsed_time < _timeout_seconds:

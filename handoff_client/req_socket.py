@@ -76,7 +76,7 @@ class ReqSocket(object):
             self._socket.send_json(message, zmq.SNDMORE)
             for data_segment in data[:-1]:
                 self._socket.send(data_segment, zmq.SNDMORE)
-            self._socket.send(data_segment[-1])
+            self._socket.send(data[-1])
 
     def wait_for_ack(self):
         """

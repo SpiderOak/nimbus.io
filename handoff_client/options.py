@@ -6,6 +6,7 @@ parse commandline options
 """
 import argparse 
 import os
+import socket
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 
@@ -20,6 +21,12 @@ def parse_commandline():
     parser.add_argument("-w", "--worker-count", dest="worker_count",
                         type=int, default=3,
                         help="The number of worker processes to use.")
+    parser.add_argument("--host-name", dest="host_name",
+                        default=socket.gethostname(),
+                        help="host name for worker PULL addresses")
+    parser.add_argument("-p", "--base-port", dest="base_port",
+                        type=int, default=10000,
+                        help="Starting port number for worker PULL addresses")
 
     return parser.parse_args()
 

@@ -4,6 +4,7 @@ segment_rows.py
 
 retrieve segment rows to be handed off
 """
+import base64
 
 import psycopg2.extras
 
@@ -38,7 +39,12 @@ def _retrieve_segment_handoffs(cursor, node_id):
     for row in cursor.fetchall():
         # bytea columns come out of the database as buffer objects
         if row["file_hash"] is not None: 
-            row["file_hash"] = str(row["file_hash"])
+            # gotta jump through hoops to get base64 on python 3
+            encoded_bytes = base64.b64encode(bytes(row["file_hash"]))
+            encoded_string = str(encoded_bytes)
+            # this gives us a string of the form "b'<data>'"
+            # what we want is <data>
+            row["file_hash"] = encoded_string[2:-1]
         # row is of type psycopg2.extras.RealDictRow
         # we want an honest dict
         segment_row_list.append(dict(row.items()))

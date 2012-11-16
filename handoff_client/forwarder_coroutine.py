@@ -5,7 +5,6 @@ forwarder_coroutine.py
 a coroutine that handles message traffic for retrieving and
 re-archiving a segment that was handed off to us
 """
-from base64 import b64encode
 import logging
 import uuid
 
@@ -74,7 +73,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
             "segment-md5-digest": reply["segment-md5-digest"],
             "file-size"         : segment_row["file_size"],
             "file-adler32"      : segment_row["file_adler32"],
-            "file-hash"         : b64encode(segment_row["file_hash"]),
+            "file-hash"         : segment_row["file_hash"],
             "source-node-name"  : node_dict[segment_row["source_node_id"]],
             "handoff-node-name" : None,
         }
@@ -161,7 +160,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
                 "sequence-num"      : sequence,
                 "file-size"         : segment_row["file_size"],
                 "file-adler32"      : segment_row["file_adler32"],
-                "file-hash"         : b64encode(segment_row["file_hash"]),
+                "file-hash"         : segment_row["file_hash"],
                 "source-node-name"  : node_dict[segment_row["source_node_id"]],
                 "handoff-node-name" : None,
             }

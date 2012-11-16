@@ -24,14 +24,16 @@ _socket_dir = os.environ["NIMBUSIO_SOCKET_DIR"]
 _socket_high_water_mark = 1000
 _polling_interval = 1.0
 
-def _start_worker_process(worker_id, dest_node_name, rep_socket_uri):
+def _start_worker_process(worker_id, args, rep_socket_uri):
     module_dir = identify_program_dir("handoff_client")
     module_path = os.path.join(module_dir, "worker.py")
     
     args = [sys.executable, 
             module_path, 
             worker_id, 
-            dest_node_name,
+            args.host_name,
+            str(args.base_port),
+            args.node_name,
             rep_socket_uri, ]
     return subprocess.Popen(args, stderr=subprocess.PIPE)
 
@@ -118,7 +120,7 @@ def _purge_handoff_from_source_nodes(node_databases,
                  "handoff_node_id"  : handoff_node_id}
 
     for source_node_name in source_node_names:
-        cursor = node_databases[source_node_name].cusrsor()
+        cursor = node_databases[source_node_name].cursor()
         cursor.execute(query, arguments)
         if cursor.rowcount != 1:
             log.error("purged {0} rows {1}".format(cursor.rowcount,
@@ -152,9 +154,7 @@ def process_segment_rows(halt_event,
     workers = list()
     for index in range(args.worker_count):
         worker_id = str(index+1)
-        workers.append(_start_worker_process(worker_id, 
-                                             args.node_name, 
-                                             rep_socket_uri))
+        workers.append(_start_worker_process(worker_id, args, rep_socket_uri))
 
     # loop until all handoffs have been accomplished
     log.debug("start handoffs")
@@ -233,7 +233,7 @@ def process_segment_rows(halt_event,
         else:
             # otherwise, send the segment to the worker 
             work_message = {"message-type"        : "work",
-                            "source-node_names"   : source_node_names,
+                            "source-node-names"   : source_node_names,
                             "segment-row"         : segment_row}
             # if this is the worker's first request, send him the node_dict
             if initial_request:

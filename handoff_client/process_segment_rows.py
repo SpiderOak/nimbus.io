@@ -86,7 +86,7 @@ def _process_tombstone(node_databases, source_node_names, segment_row):
         )""".strip()
 
     for source_node_name in source_node_names:
-        cursor = node_databases[source_node_name].cusrsor()
+        cursor = node_databases[source_node_name].cursor()
         cursor.execute(query, segment_row)
         cursor.close()
         node_databases[source_node_name].commit()
@@ -95,8 +95,10 @@ def _purge_handoff_from_source_nodes(node_databases,
                                      source_node_names,
                                      collection_id,
                                      key,
+                                     unified_id,
                                      conjoined_part,
-                                     handoff_node_id):
+                                     handoff_node_id,
+                                     status):
     log = logging.getLogger("_purge_handoff_from_source_nodes")
     query = """
         begin;
@@ -105,19 +107,25 @@ def _purge_handoff_from_source_nodes(node_databases,
             select id from nimbusio_node.segment
             where collection_id = %(collection_id)s
             and key  = %(key)s
+            and unified_id = %(unified_id)s
             and conjoined_part = %(conjoined_part)s
             and handoff_node_id = %(handoff_node_id)s
+            and status = %(status)s
         );
         delete from nimbusio_node.segment
         where collection_id = %(collection_id)s
         and key = %(key)s
+        and unified_id = %(unified_id)s
         and conjoined_part = %(conjoined_part)s
-        and handoff_node_id = %(handoff_node_id)s;
+        and handoff_node_id = %(handoff_node_id)s
+        and status = %(status)s;
         """
     arguments = {"collection_id"    : collection_id,
                  "key"              : key,
+                 "unified_id"       : unified_id,
                  "conjoined_part"   : conjoined_part,
-                 "handoff_node_id"  : handoff_node_id}
+                 "handoff_node_id"  : handoff_node_id,
+                 "status"           : status}
 
     for source_node_name in source_node_names:
         cursor = node_databases[source_node_name].cursor()
@@ -127,7 +135,7 @@ def _purge_handoff_from_source_nodes(node_databases,
                                                    arguments))
         cursor.close()
         node_databases[source_node_name].commit()
-    
+
 def process_segment_rows(halt_event, 
                          zeromq_context, 
                          args, 
@@ -182,8 +190,10 @@ def process_segment_rows(halt_event,
                                                  source_node_names,
                                                  segment_row["collection_id"],
                                                  segment_row["key"],
+                                                 segment_row["unified_id"],
                                                  segment_row["conjoined_part"],
-                                                 segment_row["handoff_node_id"])
+                                                 segment_row["handoff_node_id"],
+                                                 segment_status_tombstone)
                 continue
             assert segment_row["status"] == segment_status_final, \
                 segment_row["status"]
@@ -216,8 +226,10 @@ def process_segment_rows(halt_event,
                                              request["source-node-names"],
                                              request["collection-id"],
                                              request["key"],
+                                             request["unified-id"],
                                              request["conjoined-part"],
-                                             request["handoff-node-id"])
+                                             request["handoff-node-id"],
+                                             segment_status_final)
         else:
             log.error("{0} handoff ({1}, {2}) failed: {3}".format(
                 request["worker-id"],

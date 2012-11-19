@@ -145,9 +145,8 @@ def process_segment_rows(halt_event,
     """
     process handoffs of segment rows
     """
-    log = logging.getLogger("process_segment_row")
+    log = logging.getLogger("process_segment_rows")
 
-    log.debug("creating socket")
     rep_socket_uri = ipc_socket_uri(_socket_dir, 
                                     args.node_name,
                                     "handoff_client")

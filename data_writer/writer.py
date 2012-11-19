@@ -257,41 +257,6 @@ def _get_segment_id(connection, collection_id, key, timestamp, segment_num):
     (segment_id, ) = result
     return segment_id
 
-def _purge_handoff_conjoined(
-    connection, unified_ids, handoff_node_id
-):
-    """
-    remove handoff conjoined from local database
-    """
-    command = """
-    delete from nimbusio_node.conjoined
-    where unified_id in (%s)
-    and handoff_node_id = %%(handoff_node_id)s;
-    """ % (",".join([str(unified_id) for unified_id in unified_ids]), )
-    connection.execute(command, {"handoff_node_id" : handoff_node_id})
-
-def _purge_handoff_segment(
-    connection, unified_id, conjoined_part, handoff_node_id
-):
-    """
-    remove handoff segment from local database
-    """
-    connection.execute("""
-        delete from nimbusio_node.segment_sequence 
-        where segment_id = (
-            select id from nimbusio_node.segment
-            where unified_id = %(unified_id)s
-            and conjoined_part = %(conjoined_part)s
-            and handoff_node_id = %(handoff_node_id)s
-        );
-        delete from nimbusio_node.segment
-        where unified_id = %(unified_id)s
-        and conjoined_part = %(conjoined_part)s
-        and handoff_node_id = %(handoff_node_id)s;
-        """, {"unified_id"         :  unified_id,
-              "conjoined_part"     : conjoined_part,
-              "handoff_node_id"    : handoff_node_id})
-
 class Writer(object):
     """
     Manage writing segment values to disk
@@ -513,25 +478,6 @@ class Writer(object):
                             unified_id, 
                             conjoined_part, 
                             segment_num)
-
-    def purge_handoff_conjoined( self, unified_ids, handoff_node_id):
-        """
-        delete rows for a handoff source
-        """
-        _purge_handoff_conjoined(self._connection, 
-                                 unified_ids, 
-                                 handoff_node_id)
-
-    def purge_handoff_segment(
-        self, unified_id, conjoined_part, handoff_node_id
-    ):
-        """
-        delete rows for a handoff source
-        """
-        _purge_handoff_segment(self._connection, 
-                              unified_id, 
-                              conjoined_part, 
-                              handoff_node_id)
 
     def start_conjoined_archive(
         self, collection_id, key, unified_id, timestamp, handoff_node_id

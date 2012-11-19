@@ -18,7 +18,7 @@ _node_database_ports = \
 _node_database_passwords = \
     os.environ["NIMBUSIO_NODE_USER_PASSWORDS"].split() 
 
-def get_node_databases(exclude_names=[]):
+def get_node_databases():
     """
     return a dict of database connections keyed by node name
     """
@@ -29,8 +29,7 @@ def get_node_databases(exclude_names=[]):
                              _node_database_passwords)
 
     for name, host, port, password in node_database_list:
-        if name in exclude_names:
-            continue
+        # XXX: temporary expedient until boostrap is fixed
         host='localhost'
         dsn = get_node_database_dsn(name, password, host, port)
         connection = psycopg2.connect(dsn)

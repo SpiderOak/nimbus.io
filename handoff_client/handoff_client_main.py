@@ -48,13 +48,16 @@ def main():
     node_databases = None
     try:
         node_dict = get_node_ids(args.node_name)
-        node_databases = get_node_databases([args.node_name, ])
+        node_databases = get_node_databases()
         conjoined_rows, segment_rows = \
             get_handoff_rows(node_databases, node_dict[args.node_name])
         log.info("found {0} conjoined and {1} segment handoffs".format(
             len(conjoined_rows), len(segment_rows)))
         if len(conjoined_rows)  > 0:
-            process_conjoined_rows(halt_event, node_databases, conjoined_rows)
+            process_conjoined_rows(halt_event, 
+                                   args, 
+                                   node_databases, 
+                                   conjoined_rows)
         if len(segment_rows)  > 0:
             process_segment_rows(halt_event, 
                                  zeromq_context, 

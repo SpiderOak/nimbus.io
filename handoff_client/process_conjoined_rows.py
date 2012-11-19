@@ -8,7 +8,7 @@ import itertools
 import logging
 
 def _key_function(conjoined_row):
-    return conjoined_row[1]["unified_id"]
+    return (conjoined_row[1]["unified_id"], )
 
 def _generate_conjoined_rows(raw_conjoined_rows):
     """
@@ -89,7 +89,7 @@ def _process_conjoined_row(dest_database, conjoined_row):
                       %(abort_timestamp)s::timestamp,
                       %(complete_timestamp)s::timestamp,
                       %(delete_timestamp)s::timestamp,
-                      $(combined_size)s)"""         
+                      %(combined_size)s)"""         
 
     replace_destination = False
     # if we have an abort or a delete, we don't care what is at the destination
@@ -142,7 +142,6 @@ def _purge_conjoined_handoffs(node_databases,
 def process_conjoined_rows(halt_event, 
                            args,
                            node_databases, 
-                           source_node_names, 
                            raw_conjoined_rows):
     """
     process handoffs of conjoined rows

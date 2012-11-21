@@ -5,13 +5,16 @@ get_node_ids.py
 get a dict cross referencing node ids with node names
 """
 import psycopg2
-import psycopg2.extras
+import psycopg2.extensions
+from psycopg2.extras import RealDictConnection
 
 from tools.database_connection import get_central_database_dsn
 
 def get_node_ids(node_name):
-    connection = psycopg2.connect(get_central_database_dsn())
-    cursor = connection.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
+    psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
+    connection = RealDictConnection(get_central_database_dsn())
+    cursor = connection.cursor()
     query = """select id, name from nimbusio_central.node 
                where cluster_id = 
                    (select cluster_id from nimbusio_central.node

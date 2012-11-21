@@ -64,7 +64,8 @@ def _process_conjoined_row(dest_database, conjoined_row):
     cursor = dest_database.cursor()
 
     delete_query = """delete from nimbusio_node.conjoined
-                      where unified_id = %(unified_id)s"""
+                      where unified_id = %(unified_id)s
+                      and handoff_node_id = null"""
 
     count_query = """select count(*) from nimbusio_node.conjoined
                      where unified_id = %(unified_id)s

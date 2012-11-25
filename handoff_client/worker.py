@@ -56,16 +56,13 @@ def _process_handoff(zeromq_context,
                      pull_socket,
                      pull_socket_uri,
                      client_tag,
-                     source_node_names, 
+                     source_node_name, 
                      dest_node_name,
                      segment_row):
     log = logging.getLogger("_process_handoff")
     log.info("start ({0}, {1}) from {2}".format(segment_row["unified_id"],
                                                 segment_row["conjoined_part"],
-                                                source_node_names))
-
-    # TODO: switch over to the second source on error
-    source_node_name = source_node_names[0]
+                                                source_node_name))
 
     reader_socket = ReqSocket(zeromq_context,
                               _reader_address_dict[source_node_name],
@@ -118,7 +115,7 @@ def _process_handoff(zeromq_context,
 
     log.info("done  ({0}, {1}) from {2}".format(segment_row["unified_id"],
                                                 segment_row["conjoined_part"],
-                                                source_node_names))
+                                                source_node_name))
 
 def main(worker_id, host_name, base_port, dest_node_name, rep_socket_uri):
     """
@@ -183,7 +180,7 @@ def main(worker_id, host_name, base_port, dest_node_name, rep_socket_uri):
         # send back enough information to purge the handoffs, if successful
         request = {"message-type"         : "handoff-complete",
                    "worker-id"            : worker_id,
-                   "handoff-successful"   : True,
+                   "handoff-successful"   : False,
                    "unified-id"           : segment_row["unified_id"],
                    "collection-id"        : segment_row["collection_id"],
                    "key"                  : segment_row["key"],
@@ -192,20 +189,24 @@ def main(worker_id, host_name, base_port, dest_node_name, rep_socket_uri):
                    "source-node-names"    : source_node_names,
                    "error-message"        : ""}
 
-        try:
-            _process_handoff(zeromq_context, 
-                             halt_event,
-                             node_dict,
-                             pull_socket,
-                             pull_socket_uri,
-                             client_tag,
-                             source_node_names, 
-                             dest_node_name,
-                             segment_row)
-        except Exception as instance:
-            log.exception(instance)
-            request["handoff-successful"] = False
-            request["error-message"] = str(instance)
+        for source_node_name in source_node_names:
+            try:
+                _process_handoff(zeromq_context, 
+                                 halt_event,
+                                 node_dict,
+                                 pull_socket,
+                                 pull_socket_uri,
+                                 client_tag,
+                                 source_node_name, 
+                                 dest_node_name,
+                                 segment_row)
+            except Exception as instance:
+                log.exception(instance)
+                request["error-message"] = "".join([request["error-message"],
+                                                    str(instance)])
+            else:
+                request["handoff-successful"] = True
+                break
 
         req_socket.send_pyobj(request)
     log.info("end message loop")

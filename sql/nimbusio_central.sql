@@ -161,5 +161,48 @@ COMMENT ON COLUMN collection_ops_accounting.error_bytes_in IS
 'The sum of socket_bytes_in across the lifetime of the request, at the time
 that a request has failed due to a server side processing error';
 
+create table collection_ops_accounting_flush_dedupe (
+    node_id int4 not null references nimbusio_central.node(id),
+    redis_key text not null,
+    timestamp timestamp not null
+);
+create unique index collection_ops_accounting_flush_dedupe_idx 
+    on collection_ops_accounting_flush_dedupe (node_id, redis_key);
+COMMENT ON TABLE collection_ops_accounting_flush_dedupe IS 
+'This table keeps track of recent previously flushed keys from Redis such that
+flush operations can be idempotent.  
+
+This protects against this scenario resulting in double accounting/billing:
+ 1. We gather data from Redis
+ 2. We commit it into the database
+   - collection program crashes here -
+ 3. We delete data from Redis
+
+Within one transaction, the redis -> database collection program will both
+insert the data, and add the keys gathered to this table.  Future transactions
+will load previously flushed keys from the database and skip those records.
+
+A maintenance process will occasionally delete old records from this table to
+prevent it from growing excessively large.
+';
+
+create table collection_ops_accounting_old (
+    LIKE collection_ops_accounting 
+    EXCLUDING comments
+    INCLUDING indexes
+);
+
+COMMENT ON TABLE collection_ops_accounting_old IS
+'Like collection_ops_accounting except with lower resolution and older data.
+
+A maintenance process will occasionally summerize old records from
+collection_ops_accounting and insert the results into this table.  For example,
+collection_ops_accounting may keep a resolution of 1 minute or 5 minutes, and
+collection_ops_accounting_old may keep a resolution of 1 hour or 1 day.
+collection_ops_accounting may only hold 1 day or 1 week of data, with old
+records moved into this table.
+
+Look at the maintenance script for details.'
+
 /* rollback; */
 commit;

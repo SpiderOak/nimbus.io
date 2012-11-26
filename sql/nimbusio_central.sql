@@ -77,6 +77,7 @@ create table collection_ops_accounting (
    collection_id int4 not null references nimbusio_central.collection(id),
    node_id int4 not null references nimbusio_central.node(id),
    timestamp timestamp not null,
+   duration interval not null,
    get_request int4 not null default 0,
    get_success int4 not null default 0,
    get_error int4 not null default 0,
@@ -109,6 +110,8 @@ COMMENT ON COLUMN collection_ops_accounting.node_id IS
 'The storage node reporting for this period';
 COMMENT ON COLUMN collection_ops_accounting.timestamp IS 
 'A truncated timestamp for the period (i.e. the minute, hour, day, month)';
+COMMENT ON COLUMN collection_ops_accounting.timestamp IS 
+'The interval that timestamp was truncated to (ex 1 min, 5 min, 1 hour, etc)';
 COMMENT ON COLUMN collection_ops_accounting.get_request IS 
 'Number of GET requests initiated during the period';
 COMMENT ON COLUMN collection_ops_accounting.get_success IS 

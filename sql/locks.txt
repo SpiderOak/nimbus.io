@@ -1,0 +1,20 @@
+Emurate uses for PostgreSQL advisory locks here.
+
+    http://www.postgresql.org/docs/9.0/static/explicit-locking.html#ADVISORY-LOCKS
+    http://www.postgresql.org/docs/9.0/static/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS
+
+Since the locks PostgreSQL offers are by integer values instead of by a textual
+key, it is desirable to list their use in a central place to avoid confusion or
+collision.  
+
+For inventing new lock numbers, I suggest random.randint(1, 2**30)
+
+Note that locks can either be requested using a single 8 byte integer, or two 4
+byte integers.  Using the second form, the first integer typically acts as a
+namespace.
+
+
+List of locks acquired in Central database:
+
+redis_stats_collector: pg_try_advisory_lock(779838032, data_center_id)
+

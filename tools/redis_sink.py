@@ -2,13 +2,11 @@
 """
 redis_sink.py
 
-A Greenlet that acts as a sink: reading status updates from a queue and storing
-them in a resis
+A Greenlet that acts as a sink: 
+reading status entries a queue and passing them to redis
 """
-import json
 import logging
 import os
-import socket
 
 import gevent.greenlet
 import gevent.queue
@@ -18,8 +16,6 @@ import redis
 _redis_host = os.environ.get("REDIS_HOST", "localhost")
 _redis_port = int(os.environ.get("REDIS_PORT", str(6379)))
 _redis_db = int(os.environ.get("REDIS_DB", str(0)))
-_hostname = socket.gethostname()
-_hash_name = "nimbus.io.web_monitor.{0}".format(_hostname)
 
 class RedisSink(gevent.greenlet.Greenlet):
     """
@@ -36,7 +32,6 @@ class RedisSink(gevent.greenlet.Greenlet):
         gevent.greenlet.Greenlet.join(self, timeout)
 
     def _run(self):
-        self._log.info("hash name = '{0}'".format(_hash_name))
         self._log.info("connecting to {0}:{1} db={2}".format(_redis_host, 
                                                              _redis_port, 
                                                              _redis_db))
@@ -47,17 +42,16 @@ class RedisSink(gevent.greenlet.Greenlet):
         self._log.debug("start halt_event loop")
         while not self._halt_event.is_set():
             try:
-                key, status_dict = \
-                    self._redis_queue.get(block=True, timeout=1.0)
+                key, entry = self._redis_queue.get(block=True, timeout=1.0)
             except gevent.queue.Empty:
                 continue
-
-            # 2012-08-16 dougfort Ticket #29 - format json for debuging
-            self._redis_connection.hset(_hash_name, 
-                                        key, 
-                                        json.dumps(status_dict, 
-                                                   sort_keys=True,
-                                                   indent=4))
+            self.store(key, entry)
 
         self._log.debug("end halt_event loop")
+
+    def store(self, key, entry):
+        """
+        store one entry from the queue in redis
+        """
+        # we expect a derived class to implement this
 

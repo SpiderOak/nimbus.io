@@ -52,7 +52,7 @@ from gevent.event import Event
 
 from tools.standard_logging import initialize_logging
 
-from web_monitor.redis_sink import RedisSink
+from web_monitor.web_monitor_redis_sink import WebMonitorRedisSink
 from web_monitor.pinger import Pinger
 
 _log_path = \
@@ -108,7 +108,7 @@ def main():
         with open(config_path) as input_file:
             config = json.load(input_file)
 
-        redis_sink = RedisSink(halt_event, redis_queue)
+        redis_sink = WebMonitorRedisSink(halt_event, redis_queue)
         redis_sink.link_exception(_redis_exception_closure(halt_event))
         redis_sink.start()
 

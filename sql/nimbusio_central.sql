@@ -202,7 +202,7 @@ collection_ops_accounting_old may keep a resolution of 1 hour or 1 day.
 collection_ops_accounting may only hold 1 day or 1 week of data, with old
 records moved into this table.
 
-Look at the maintenance script for details.'
+Look at the maintenance script for details.';
 
 /* rollback; */
 commit;

@@ -1,13 +1,13 @@
 The following keys correspond to the columns in the central database
 collection_ops_accounting table:
 
-    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.get_request
-    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.get_success
-    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.get_error
+    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.retrieve_request
+    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.retrieve_success
+    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.retrieve_error
 
-    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.put_request
-    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.put_success
-    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.put_error
+    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.archive_request
+    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.archive_success
+    nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.archive_error
 
     nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.listmatch_request
     nimbus.io.collection_ops_accounting.YYYY.MM.DD.HH.MM.listmatch_success
@@ -32,10 +32,10 @@ a hash, with collection IDs as key and integer values.
 
 As events happen, service-delivery programs (such as web_writer and
 web_public_reader) increment the appropriate key and field with the Redis
-HINCRBY command.  For example, if a GET request involving collection ID 58773
+HINCRBY command.  For example, if a retrieve request involving collection ID 58773
 happened at 2012-11-25 18:23:47 UTC, we would issue this command to Redis:
 
-    HINCRBY nimbus.io.collection_ops_accounting.2012.11.25.18.23.get_request 58773 1
+    HINCRBY nimbus.io.collection_ops_accounting.2012.11.25.18.23.retrieve_request 58773 1
 
 Since service-delivery applications are only incrementing redis keys that
 correspond to the current time, all keys that are in the past are elligible for
@@ -43,5 +43,5 @@ a collection program to gather and flush the information to the central
 database.
 
 The collection program should find all such keys using the Redis KEYS command,
-retrieve and aggregate their contents via multiple HGETALL commands, update the
+retrieve and aggregate their contents via multiple HretrieveALL commands, update the
 central database and commit that transaction, and then DEL the past keys.

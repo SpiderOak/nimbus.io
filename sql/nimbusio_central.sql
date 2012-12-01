@@ -78,12 +78,12 @@ create table collection_ops_accounting (
    node_id int4 not null references nimbusio_central.node(id),
    timestamp timestamp not null,
    duration interval not null,
-   get_request int4 not null default 0,
-   get_success int4 not null default 0,
-   get_error int4 not null default 0,
-   put_request int4 not null default 0,
-   put_success int4 not null default 0,
-   put_error int4 not null default 0,
+   retrieve_request int4 not null default 0,
+   retrieve_success int4 not null default 0,
+   retrieve_error int4 not null default 0,
+   archive_request int4 not null default 0,
+   archive_success int4 not null default 0,
+   archive_error int4 not null default 0,
    listmatch_request int4 not null default 0,
    listmatch_success int4 not null default 0,
    listmatch_error int4 not null default 0,
@@ -112,9 +112,9 @@ COMMENT ON COLUMN collection_ops_accounting.timestamp IS
 'A truncated timestamp for the period (i.e. the minute, hour, day, month)';
 COMMENT ON COLUMN collection_ops_accounting.timestamp IS 
 'The interval that timestamp was truncated to (ex 1 min, 5 min, 1 hour, etc)';
-COMMENT ON COLUMN collection_ops_accounting.get_request IS 
+COMMENT ON COLUMN collection_ops_accounting.retrieve_request IS 
 'Number of GET requests initiated during the period';
-COMMENT ON COLUMN collection_ops_accounting.get_success IS 
+COMMENT ON COLUMN collection_ops_accounting.retrieve_success IS 
 'Number of GET requests completed successfully. 
 
 Note: A request is completed successfully even if the result is an error.  For
@@ -127,7 +127,7 @@ Note: For all _success and _error columns in this table, the timestamp refers
 to the time period in which the request completed -- not the time that it
 began, which could have been much earlier.
 ';
-COMMENT ON COLUMN collection_ops_accounting.get_error IS 
+COMMENT ON COLUMN collection_ops_accounting.retrieve_error IS 
 'Number of GET requests that ended in a server side processing error.';
 
 COMMENT ON COLUMN collection_ops_accounting.socket_bytes_in IS

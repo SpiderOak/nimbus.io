@@ -32,6 +32,7 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
+import gevent.queue
 from gevent_zeromq import zmq
 import gevent
 
@@ -52,11 +53,11 @@ from tools.data_definitions import create_timestamp, \
         node_row_template
 from tools.interaction_pool_authenticator import \
     InteractionPoolAuthenticator
+from tools.operational_stats_redis_sink import OperationalStatsRedisSink
 
 from web_public_reader.space_accounting_client import SpaceAccountingClient
 
 from web_writer.application import Application
-from web_writer.watcher import Watcher
 
 class WebWriterError(Exception):
     pass
@@ -79,9 +80,6 @@ _space_accounting_pipeline_address = \
 _web_writer_host = os.environ.get("NIMBUSIO_WEB_WRITER_HOST", "")
 _web_writer_port = int(os.environ["NIMBUSIO_WEB_WRITER_PORT"])
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
-_stats = {
-    "archives"    : 0,
-}
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
 _memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
@@ -147,7 +145,7 @@ def _get_cluster_row_and_node_row(interaction_pool):
     raise WebWriterError(error_message)
 
 class WebWriter(object):
-    def __init__(self):
+    def __init__(self, halt_event):
         self._log = logging.getLogger("WebWriter")
         memcached_client = memcache.Client(_memcached_nodes)
 
@@ -230,12 +228,6 @@ class WebWriter(object):
                                      timestamp_repr=repr(timestamp),
                                      source_node_name=_local_node_name)
 
-        self._watcher = Watcher(
-            _stats, 
-            self._data_writer_clients,
-            self._event_push_client
-        )
-
         id_translator_keys_path = os.environ.get(
             "NIMBUS_IO_ID_TRANSLATION_KEYS", 
             os.path.join(_repository_path, "id_translator_keys.pkl"))
@@ -248,6 +240,12 @@ class WebWriter(object):
             id_translator_keys["iv_key"],
             id_translator_keys["hmac_size"]
         )
+
+        redis_queue = gevent.queue.Queue()
+
+        self._redis_sink = OperationalStatsRedisSink(halt_event, redis_queue)
+        self._redis_sink.link_exception(self._unhandled_greenlet_exception)
+
         self.application = Application(
             self._cluster_row,
             self._unified_id_factory,
@@ -256,7 +254,7 @@ class WebWriter(object):
             authenticator,
             self._accounting_client,
             self._event_push_client,
-            _stats
+            redis_queue
         )
         self.wsgi_server = WSGIServer((_web_writer_host, _web_writer_port), 
                                       application=self.application,
@@ -266,9 +264,9 @@ class WebWriter(object):
     def start(self):
         self._space_accounting_dealer_client.start()
         self._pull_server.start()
-        self._watcher.start()
         for client in self._data_writer_clients:
             client.start()
+        self._redis_sink.start()
         self.wsgi_server.start()
 
     def stop(self):
@@ -278,19 +276,18 @@ class WebWriter(object):
         self._log.debug("killing greenlets")
         self._space_accounting_dealer_client.kill()
         self._pull_server.kill()
-        self._watcher.kill()
         for client in self._data_writer_clients:
             client.kill()
+        self._redis_sink.kill()
         self._log.debug("joining greenlets")
         self._space_accounting_dealer_client.join()
         self._pull_server.join()
-        self._watcher.join()
         for client in self._data_writer_clients:
             client.join()
+        self._redis_sink.kill()
         self._log.debug("closing zmq")
         self._event_push_client.close()
         self._zeromq_context.term()
-        self._log.info("closing database connections")
 
     def _unhandled_greenlet_exception(self, greenlet_object):
         try:
@@ -311,7 +308,7 @@ def main():
     gevent.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
 
     try:
-        web_writer = WebWriter()
+        web_writer = WebWriter(halt_event)
         web_writer.start()
     except Exception, instance:
         log.exception(str(instance))

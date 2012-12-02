@@ -39,6 +39,7 @@ from tools.data_definitions import block_generator, \
 from tools.collection_access_control import write_access, delete_access
 from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
+from tools.operational_stats_redis_sink import redis_queue_entry_tuple
 
 from tools.zfec_segmenter import ZfecSegmenter
 
@@ -162,7 +163,7 @@ class Application(object):
         authenticator, 
         accounting_client,
         event_push_client,
-        stats
+        redis_queue
     ):
         self._log = logging.getLogger("Application")
         self._cluster_row = cluster_row
@@ -172,7 +173,7 @@ class Application(object):
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
-        self._stats = stats
+        self._redis_queue = redis_queue
 
 
         self._dispatch_table = {
@@ -266,7 +267,6 @@ class Application(object):
             expected_md5 = b64decode(req.headers["content-md5"])
 
         start_time = time.time()
-        self._stats["archives"] += 1
         description = "archive: collection=({0}){1} key={2}, size={3}".format(
             collection_row["id"],
             collection_row["name"],
@@ -278,8 +278,9 @@ class Application(object):
 
         unified_id = None
         conjoined_part = 0
+        conjoined_archive = "conjoined_identifier" in req.GET
 
-        if "conjoined_identifier" in req.GET:
+        if conjoined_archive:
             unified_id = self._id_translator.internal_id(
                req.GET["conjoined_identifier"]
             )
@@ -292,7 +293,6 @@ class Application(object):
             value = value.decode("utf-8")
             if len(value) > 0:
                 conjoined_part = int(value)
-
 
         data_writers = _create_data_writers(
             self._event_push_client,
@@ -310,6 +310,14 @@ class Application(object):
             meta_dict,
             conjoined_part
         )
+
+        if not conjoined_archive:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_request", queue_entry, ))
+
         segmenter = ZfecSegmenter(_min_segments, len(data_writers))
         actual_content_length = 0
         file_adler32 = zlib.adler32('')
@@ -351,13 +359,17 @@ class Application(object):
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
             )
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
-            self._stats["archives"] -= 1
             return response
         except Exception, instance:
             # 2012-07-14 dougfort -- were getting
@@ -373,14 +385,17 @@ class Application(object):
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
             )
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             response = Response(status=500, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            self._stats["archives"] -= 1
             return response
         
         end_time = time.time()
-        self._stats["archives"] -= 1
 
         if actual_content_length != expected_content_length:
             error_message = "actual content length {0} != expected {1}".format(
@@ -389,6 +404,11 @@ class Application(object):
             _send_archive_cancel(unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             raise exc.HTTPBadRequest(error_message)
 
         if expected_md5 is not None and expected_md5 != file_md5.digest():
@@ -397,7 +417,19 @@ class Application(object):
             _send_archive_cancel(unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             raise exc.HTTPBadRequest(error_message)
+
+        if not conjoined_archive:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_success", queue_entry, ))
 
         self.accounting_client.added(
             collection_row["id"],

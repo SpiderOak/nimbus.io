@@ -26,7 +26,7 @@ from gevent.event import Event
 from tools.redis_connection import create_redis_connection
 from tools.operational_stats_redis_sink import OperationalStatsRedisSink, \
     key_prefix, \
-    queue_entry_tuple, \
+    redis_queue_entry_tuple, \
     compute_key
 
 def _initialize_logging_to_stderr():
@@ -98,7 +98,7 @@ class TestStatsAccumulator(unittest.TestCase):
         test that we can increment a key once
         """
         partial_key = "get_request"
-        queue_entry = queue_entry_tuple(timestamp=datetime.utcnow(),
+        queue_entry = redis_queue_entry_tuple(timestamp=datetime.utcnow(),
                                         collection_id=42,
                                         value=12345)
 
@@ -132,7 +132,7 @@ class TestStatsAccumulator(unittest.TestCase):
         test_range = range(10)
         for index in test_range:
             timestamp = base_time + timedelta(seconds=index)
-            queue_entry = queue_entry_tuple(timestamp=timestamp,
+            queue_entry = redis_queue_entry_tuple(timestamp=timestamp,
                                             collection_id=42,
                                             value=index)
 

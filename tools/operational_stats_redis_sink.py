@@ -11,9 +11,9 @@ from collections import namedtuple
 
 from tools.redis_sink import RedisSink
 
-queue_entry_tuple = namedtuple("OperationalStatsQueueEntry", ["timestamp",
-                                                              "collection_id",
-                                                              "value"])
+redis_queue_entry_tuple = namedtuple("RedisQueueEntry", ["timestamp",
+                                                         "collection_id",
+                                                         "value"])
 key_prefix = "nimbus.io.collection_ops_accounting"
 
 def compute_key(timestamp, partial_key):

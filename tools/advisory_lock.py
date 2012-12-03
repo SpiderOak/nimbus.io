@@ -8,12 +8,14 @@ see nimbus.io/sql/locks.txt
 """
 from collections import namedtuple
 import contextlib
+import os
 
 class AdvisoryLockError(Exception):
     pass
 class AdvisoryUnlockError(Exception):
     pass
 
+_cluster_name = os.environ["NIMBUSIO_CLUSTER_NAME"]
 _lock_token = namedtuple("LockToken", ["key1", "key2"])
 
 _central_database_lock_key1 = {"redis_stats_collector" : 779838032, } 
@@ -25,7 +27,9 @@ def acquire_advisory_lock(connection, lock_name):
     if unsuccessful, raise AdvisoryLockError
     """
     key1 = _central_database_lock_key1[lock_name]
-    data_center_id = 1
+    (data_center_id, ) = connection.fetch_one_row("""
+        select data_center_id from nimbusio_central.cluster
+        where name = %s""", [_cluster_name, ])
     (ok, ) = connection.fetch_one_row("select pg_try_advisory_lock(%s, %s)",
                                       [key1, data_center_id])
     if ok:

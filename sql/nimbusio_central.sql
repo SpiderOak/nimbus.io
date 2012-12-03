@@ -9,12 +9,19 @@ create schema nimbusio_central;
 set search_path to nimbusio_central, public;
 
 /* just a mostly informational table to describe the details of the whole cluster */
+create table "data_center" (
+    id serial primary key,
+    name varchar(255) unique not null,
+    creation_time timestamp default 'now'
+);
+
 create table "cluster" (
     id serial primary key,
     name varchar(255) unique not null,
     node_count int4 not null default 10,
     replication_level int4 not null default 3,
-    creation_time timestamp default 'now'
+    creation_time timestamp default 'now',
+    data_center_id int4 not null
 );
 
 create table node (

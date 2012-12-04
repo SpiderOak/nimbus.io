@@ -40,5 +40,8 @@ class OperationalStatsRedisSink(RedisSink):
         store one entry from the queue in redis
         """
         key = compute_key(entry.timestamp, partial_key)
+        self._log.debug("hincrby({0}, {1}, {2})".format(key, 
+                                                        entry.collection_id, 
+                                                        entry.value))
         self._redis_connection.hincrby(key, entry.collection_id, entry.value)
 

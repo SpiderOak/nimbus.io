@@ -99,7 +99,7 @@ def _build_meta_dict(req_get):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
-def _create_data_writers(event_push_client, clients):
+def _create_data_writers(clients):
     data_writers_dict = dict()
 
     connected_clients_by_node = list()
@@ -294,12 +294,7 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
@@ -497,10 +492,7 @@ class Application(object):
             key,
             unified_id_to_delete)
         self._log.info(description)
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            self._data_writer_clients
-        )
+        data_writers = _create_data_writers(self._data_writer_clients)
 
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
@@ -573,14 +565,15 @@ class Application(object):
             collection_row["name"],
             key))
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("archive_request", queue_entry, ))
 
         try:
             start_conjoined_archive(
@@ -598,6 +591,11 @@ class Application(object):
             self._log.error("start-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
@@ -613,6 +611,11 @@ class Application(object):
             self._log.exception("start-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             response = Response(status=500, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
@@ -669,12 +672,7 @@ class Application(object):
             key,
             unified_id))
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
 
         try:
@@ -693,6 +691,11 @@ class Application(object):
             self._log.error("finish-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
@@ -708,10 +711,21 @@ class Application(object):
             self._log.exception("finish-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             response = Response(status=500, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("archive_success", queue_entry, ))
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
@@ -758,12 +772,7 @@ class Application(object):
             key,
             unified_id))
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
 
         try:

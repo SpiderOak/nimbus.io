@@ -22,11 +22,8 @@ from tools.collection_access_control import read_access, list_access
 from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
 
-from web_public_reader.exceptions import SpaceAccountingServerDownError, \
-        SpaceUsageFailedError, \
-        RetrieveFailedError
+from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
-from web_public_reader.space_usage_getter import SpaceUsageGetter
 from web_public_reader.stat_getter import \
     get_last_modified_and_content_length, \
     last_modified_and_content_length_from_status_rows
@@ -37,7 +34,6 @@ from web_public_reader.conjoined_manager import list_conjoined_archives, \
 from web_public_reader.url_discriminator import parse_url, \
         action_respond_to_ping, \
         action_list_versions, \
-        action_space_usage, \
         action_list_keys, \
         action_retrieve_meta, \
         action_retrieve_key, \
@@ -115,7 +111,6 @@ class Application(object):
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
             action_list_versions        : self._list_versions,
-            action_space_usage          : self._collection_space_usage,
             action_list_keys            : self._list_keys,
             action_retrieve_meta        : self._retrieve_meta,
             action_retrieve_key         : self._retrieve_key,
@@ -226,45 +221,6 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
-        return response
-
-    def _collection_space_usage(self, req, match_object):
-        # username = match_object.group("username")
-        collection_name = match_object.group("collection_name")
-        self._log.debug("_collection_space_usage")
-
-        try:
-            collection_row = \
-                self._authenticator.authenticate(collection_name,
-                                                 None,
-                                                 req)
-        except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
-            raise exc.HTTPForbidden()
-        except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
-            raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
-            raise exc.HTTPBadRequest()
-            
-        self._log.info("space_usage: collection = ({0}) {1}".format(
-                collection_row["id"],
-                collection_row["name"]))
-
-
-        getter = SpaceUsageGetter(self.accounting_client)
-        try:
-            usage = getter.get_space_usage(collection_row["id"], 
-                                           _reply_timeout)
-        except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
-            raise exc.HTTPServiceUnavailable(str(e))
-
-        response = Response(content_type=_content_type_json)
-        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
-        response.headers["Connection"] = "close"
-        # 2012-08-16 dougfort Ticket #29 - format json for debuging
-        response.body_file.write(json.dumps(usage, sort_keys=True, indent=4))
         return response
 
     def _list_keys(self, req, match_object):

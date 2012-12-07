@@ -10,9 +10,6 @@ class RetrieveFailedError(Exception):
 class ListmatchFailedError(Exception):
     pass
 
-class SpaceUsageFailedError(Exception):
-    pass
-
 class StatFailedError(Exception):
     pass
 
@@ -20,9 +17,6 @@ class DataReaderDownError(Exception):
     pass
 
 class DatabaseServerDownError(Exception):
-    pass
-
-class SpaceAccountingServerDownError(Exception):
     pass
 
 class ConjoinedFailedError(Exception):

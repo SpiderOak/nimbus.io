@@ -27,8 +27,8 @@ _log_path = "{0}/nimbusio_redis_stats_collector_{1}.log".format(
 _key_prefix = "nimbus.io.collection_ops_accounting"
 
 _collection_ops_accounting_insert = """
-    insert into nimbusio_central.collection_ops_accounting
-    values( collection_id,
+    insert into nimbusio_central.collection_ops_accounting( 
+            collection_id,
             node_id,
             timestamp,
             duration,
@@ -49,12 +49,11 @@ _collection_ops_accounting_insert = """
             success_bytes_in,
             success_bytes_out,
             error_bytes_in,
-            error_bytes_out
-          )
-          (
+            error_bytes_out)
+   values (
             %(collection_id)s,
             %(node_id)s,
-            %(timestamp)s:timestamp,
+            %(timestamp)s,
             %(duration)s,
             %(retrieve_request)s,
             %(retrieve_success)s,
@@ -75,6 +74,7 @@ _collection_ops_accounting_insert = """
             %(error_bytes_in)s,
             %(error_bytes_out)s
           );"""
+
 def _collection_ops_accounting_row(node_id, collection_id, timestamp):
     """
     corresponds to one row in table nimbusio_central.collection_ops_accounting
@@ -269,31 +269,33 @@ def main():
                                   new_dedupes,
                                   keys_processed)
 
-        # After collecting past keys from every storage node, inside a central 
-        # database transaction:
-        # 1. Insert the collected stats into the central database 
-        #    collection_ops_accounting
-        # 2. Insert collected keys into recently collected keys 
-        #    collection_ops_accounting_flush_dedupe.
-        # 3. commit transaction
-        log.debug("updating central database")
-        central_db_connection.begin_transaction()
-        try:
-            _insert_accounting_rows(central_db_connection,
-                                    collection_ops_accounting_rows)
-            _insert_dedupe_rows(central_db_connection, 
-                                timestamp_cutoff, 
-                                new_dedupes)
-        except Exception:
-            central_db_connection.rollback()
-        else:
-            central_db_connection.commit()
+            # After collecting past keys from every storage node, 
+            # inside a central database transaction:
+            # 1. Insert the collected stats into the central database 
+            #    collection_ops_accounting
+            # 2. Insert collected keys into recently collected keys 
+            #    collection_ops_accounting_flush_dedupe.
+            # 3. commit transaction
+            log.debug("updating central database")
+            central_db_connection.begin_transaction()
+            try:
+                _insert_accounting_rows(central_db_connection,
+                                        collection_ops_accounting_rows)
+                _insert_dedupe_rows(central_db_connection, 
+                                    timestamp_cutoff, 
+                                    new_dedupes)
+            except Exception:
+                central_db_connection.rollback()
+                raise
+            else:
+                central_db_connection.commit()
 
-        # Then revisit the Redis nodes, and delete the keys we flushed 
-        # into the database, and any keys we skipped because they were 
-        # found in the dedupe set.
-        for node_name, keys_processed in zip(_node_names, node_keys_processed):
-            _remove_processed_keys(node_name, keys_processed)
+            # Then revisit the Redis nodes, and delete the keys we flushed 
+            # into the database, and any keys we skipped because they were 
+            # found in the dedupe set.
+            for node_name, keys_processed in zip(_node_names, 
+                                                 node_keys_processed):
+                _remove_processed_keys(node_name, keys_processed)
 
     except Exception as instance:
         log.exception("Uhandled exception {0}".format(instance))

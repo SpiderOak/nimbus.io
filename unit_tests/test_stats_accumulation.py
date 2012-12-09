@@ -111,9 +111,15 @@ class TestStatsAccumulator(unittest.TestCase):
         # verify that the key got incremented
         expected_key = compute_key(queue_entry.timestamp,
                                    partial_key)
-        hash_value = self._redis_connection.hget(expected_key,
-                                                 queue_entry.collection_id)
-        self.assertEqual(int(hash_value), queue_entry.value)
+        hash_dict = self._redis_connection.hgetall(expected_key)
+        items = hash_dict.items()
+        self.assertEqual(len(items), 1)
+        collection_id_bytes, count_bytes = items[0]
+        collection_id = int(collection_id_bytes)
+        count = int(count_bytes)
+
+        self.assertEqual(collection_id, queue_entry.collection_id)
+        self.assertEqual(count, queue_entry.value)
 
     def test_multiple_increment(self):
         """

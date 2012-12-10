@@ -131,24 +131,22 @@ def _get_collection_space_usage(cursor, customer_id, collection_name, args):
         collection_dict = {"success"       : False, 
                            "error_message" : "No such collection"}
         return httplib.NOT_FOUND, collection_dict
-    # ---
-    cursor.execute("select * from nimbusio_central.collection_ops_accounting")
-    for row in cursor.fetchall():
-        log.debug(str(row))
-    # ---
 
+    # 2012-12-10 dougfort -- for reasons I don't understand, success_bytes_in
+    # and success_bytes_out emerge as type Dec. So I force them to int to
+    # keep JSON happy.
+    
     cursor.execute(_short_day_query, [collection_id, ])
     collection_dict = {"success" : True, "operational_stats" : list()}
     for row in map(_operational_stats_row._make, cursor.fetchall()):
-        collection_dict["operational_stats"].append({
-            "day" : http_timestamp_str(row.day),
+        stats_dict =  { "day" : http_timestamp_str(row.day),
             "retrieve_success" : row.retrieve_success,
             "archive_success"  : row.archive_success,
             "listmatch_success": row.listmatch_success,
             "delete_success"   : row.delete_success,
-            "success_bytes_in" : row.success_bytes_in,
-            "success_bytes_out": row.success_bytes_out,
-        })
+            "success_bytes_in" : int(row.success_bytes_in),
+            "success_bytes_out": int(row.success_bytes_out), }
+        collection_dict["operational_stats"].append(stats_dict)
 
     return httplib.OK, collection_dict
 

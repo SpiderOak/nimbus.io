@@ -114,7 +114,7 @@ def _retrieve_dedupe_set(central_db_connection, node_id):
         select redis_key
         from nimbusio_central.collection_ops_accounting_flush_dedupe
         where node_id = %s""", [node_id, ])
-    return set([redis_key.decode("utf-8") for (redis_key, ) in rows])
+    return set([redis_key for (redis_key, ) in rows])
 
 def _process_one_node(node_name,
                       node_id,
@@ -184,8 +184,8 @@ def _insert_dedupe_rows(central_db_connection, timestamp_cutoff, new_dedupes):
     for node_id, redis_key in new_dedupes:
         central_db_connection.execute("""
             insert into nimbusio_central.collection_ops_accounting_flush_dedupe
-            values (node_id, redis_key, timestamp)
-            (%s, %s, %s:timestamp)""", [node_id, redis_key, timestamp_cutoff])
+                   (node_id, redis_key, timestamp)
+            values (%s, %s, %s)""", [node_id, redis_key, timestamp_cutoff, ])
 
 def _remove_processed_keys(node_name, keys_processed):
     log = logging.getLogger("_remove_processed_keys")

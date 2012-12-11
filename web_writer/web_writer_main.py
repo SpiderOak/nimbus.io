@@ -243,7 +243,9 @@ class WebWriter(object):
 
         redis_queue = gevent.queue.Queue()
 
-        self._redis_sink = OperationalStatsRedisSink(halt_event, redis_queue)
+        self._redis_sink = OperationalStatsRedisSink(halt_event, 
+                                                     redis_queue,
+                                                     _local_node_name)
         self._redis_sink.link_exception(self._unhandled_greenlet_exception)
 
         self.application = Application(

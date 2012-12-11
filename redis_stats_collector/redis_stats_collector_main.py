@@ -19,12 +19,12 @@ from tools.process_util import set_signal_handler
 from tools.database_connection import get_central_connection
 from tools.advisory_lock import advisory_lock
 from tools.redis_connection import create_redis_connection
+from tools.operational_stats_redis_key import compute_search_key, parse_key
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_redis_stats_collector_{1}.log".format(
     os.environ["NIMBUSIO_LOG_DIR"], _local_node_name)
-_key_prefix = "nimbus.io.collection_ops_accounting"
 
 _collection_ops_accounting_insert = """
     insert into nimbusio_central.collection_ops_accounting( 
@@ -125,23 +125,16 @@ def _process_one_node(node_name,
                       node_keys_processed):
     log = logging.getLogger("_process_one_node")
     redis_connection = create_redis_connection(host=node_name)
-    keys = redis_connection.keys("{0}.*".format(_key_prefix))
-    log.debug("found {0} keys from {1}".format(len(keys), node_name))
+    search_key = compute_search_key(node_name)
+    keys = redis_connection.keys(search_key)
+    log.debug("found {0} keys from {1}".format(len(keys), search_key))
     
     value_dict = dict()
 
     for key_bytes in keys:
         key = key_bytes.decode("utf-8")
 
-        # nimbus.io.collection_ops_accounting.2012.12.04.22.12.archive_success
-        key_as_list = key.split(".")
-        timestamp_list = key_as_list[3:8]
-        timestamp = datetime(int(timestamp_list[0]),
-                             int(timestamp_list[1]),
-                             int(timestamp_list[2]),
-                             hour=int(timestamp_list[3]),
-                             minute=int(timestamp_list[4]))
-        partial_key = key_as_list[8]
+        node_name, timestamp, partial_key = parse_key(key)
 
         if timestamp > timestamp_cutoff:
             log.debug("ignoring recent key {0}".format(key))

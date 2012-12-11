@@ -24,10 +24,12 @@ import gevent.queue
 from gevent.event import Event
 
 from tools.redis_connection import create_redis_connection
+from tools.operational_stats_redis_key import compute_key, \
+    compute_search_key
 from tools.operational_stats_redis_sink import OperationalStatsRedisSink, \
-    key_prefix, \
-    redis_queue_entry_tuple, \
-    compute_key
+    redis_queue_entry_tuple
+
+_node_name = "glort"
 
 def _initialize_logging_to_stderr():
     from tools.standard_logging import _log_format_template
@@ -54,7 +56,8 @@ class TestStatsAccumulator(unittest.TestCase):
         self._halt_event = Event()
         self._redis_queue = gevent.queue.Queue()
         self._redis_sink = OperationalStatsRedisSink(self._halt_event, 
-                                                     self._redis_queue)
+                                                     self._redis_queue,
+                                                     _node_name)
         self._redis_sink.link_exception(_unhandled_greenlet_exception)
         self._redis_sink.start()
         self._redis_connection = create_redis_connection()
@@ -77,7 +80,7 @@ class TestStatsAccumulator(unittest.TestCase):
         if hasattr(self, "redis_sink"):
             delattr(self, "redis_sink")
         log.info("6")
-        for key in self._redis_connection.keys("{0}.*".format(key_prefix)):
+        for key in self._redis_connection.keys(compute_search_key(_node_name)):
             self._redis_connection.delete(key)
         if hasattr(self, "_redis_connection"):
             delattr(self, "_redis_connection")
@@ -109,7 +112,8 @@ class TestStatsAccumulator(unittest.TestCase):
         self._halt_event.wait(1)
 
         # verify that the key got incremented
-        expected_key = compute_key(queue_entry.timestamp,
+        expected_key = compute_key(_node_name,
+                                   queue_entry.timestamp,
                                    partial_key)
         hash_dict = self._redis_connection.hgetall(expected_key)
         items = hash_dict.items()
@@ -148,7 +152,8 @@ class TestStatsAccumulator(unittest.TestCase):
         self._halt_event.wait(1)
 
         # verify that the key got incremented
-        expected_key = compute_key(queue_entry.timestamp,
+        expected_key = compute_key(_node_name,
+                                   queue_entry.timestamp,
                                    partial_key)
         expected_value = sum([x for x in test_range])
         hash_value = self._redis_connection.hget(expected_key,

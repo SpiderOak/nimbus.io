@@ -22,6 +22,8 @@ from web_collection_manager.authenticator import authenticate
 rules = ["/customers/<username>/collections/<collection_name>", ]
 endpoint = "get_collection_attribute"
 
+_memcached_space_accounting_template = \
+    "nimbusio_space_accounting_{0}_{1}_{2}days" 
 _short_day_query = """
 SELECT 
         date_trunc('day', timestamp) as day,
@@ -35,6 +37,7 @@ SELECT
  WHERE collection_id=%s
  GROUP BY day
  ORDER BY day desc
+ LIMIT %s
 """
 
 _long_day_query = """
@@ -52,7 +55,10 @@ SELECT
  WHERE collection_id=%s
  GROUP BY day
  ORDER BY day desc
+ LIMIT %s
 """
+
+_default_days_of_history = 7
 
 _operational_stats_row = namedtuple("OperationalStatsRow", [
         "day",
@@ -62,6 +68,8 @@ _operational_stats_row = namedtuple("OperationalStatsRow", [
         "delete_success",
         "success_bytes_in",
         "success_bytes_out"])
+
+_expiration_time_in_seconds = 15 * 60 # expiration of 15 minutes
 
 def _list_collection(cursor, customer_id, collection_name):
     """
@@ -82,7 +90,8 @@ def _get_collection_info(cursor, username, customer_id, collection_name):
     See Ticket #51 Implement GET JSON for a collection
     """
     log = logging.getLogger("_get_collection_info")
-    log.debug("_list_collection(cursor, {0}, {1}".format(customer_id, collection_name))
+    log.debug("_list_collection(cursor, {0}, {1}".format(customer_id, 
+                                                         collection_name))
     row = _list_collection(cursor, customer_id, collection_name)
     if row is None:
         collection_dict = {"success"       : False, 
@@ -119,12 +128,35 @@ def _get_collection_id(cursor, customer_id, collection_name):
 
     return result[0]
 
-def _get_collection_space_usage(cursor, customer_id, collection_name, args):
+def _get_collection_space_usage(memcached_client, 
+                                cursor, 
+                                customer_id, 
+                                collection_name, 
+                                args):
     """
     get usage information for the collection
     See Ticket #66 Include operational stats in API queries for space usage
     """
     log = logging.getLogger("_get_collection_space_usage")
+
+    if "days_of_history" in args:
+        # if N is specified, it is always rounded up to the nearest multiple 
+        # of 30 (for caching)
+        days_of_history = ((int(args["days_of_history"]) / 30) + 1) * 30
+    else:
+        days_of_history = _default_days_of_history
+    log.debug("seeking {0} days of history".format(days_of_history))
+
+    memcached_key = \
+        _memcached_space_accounting_template.format(customer_id,
+                                                    collection_name,
+                                                    days_of_history)
+
+    cached_dict = memcached_client.get(memcached_key)
+    if cached_dict is not None:
+        log.debug("cache hit {0} days {1}".format(
+            len(cached_dict["operational_stats"]), memcached_key))
+        return httplib.OK, cached_dict
 
     collection_id = _get_collection_id(cursor, customer_id, collection_name)
     if collection_id is None:
@@ -136,7 +168,11 @@ def _get_collection_space_usage(cursor, customer_id, collection_name, args):
     # and success_bytes_out emerge as type Dec. So I force them to int to
     # keep JSON happy.
     
-    cursor.execute(_short_day_query, [collection_id, ])
+    if days_of_history > _default_days_of_history:
+        cursor.execute(_long_day_query, [collection_id, days_of_history, ])
+    else:
+        cursor.execute(_short_day_query, [collection_id, days_of_history, ])
+
     collection_dict = {"success" : True, "operational_stats" : list()}
     for row in map(_operational_stats_row._make, cursor.fetchall()):
         stats_dict =  { "day" : http_timestamp_str(row.day),
@@ -147,6 +183,16 @@ def _get_collection_space_usage(cursor, customer_id, collection_name, args):
             "success_bytes_in" : int(row.success_bytes_in),
             "success_bytes_out": int(row.success_bytes_out), }
         collection_dict["operational_stats"].append(stats_dict)
+
+    log.debug("database hit {0} days {1}".format(
+        len(collection_dict["operational_stats"]), memcached_key))
+
+    success = memcached_client.set(memcached_key, 
+                                   collection_dict, 
+                                   time=_expiration_time_in_seconds)
+    if not success:
+        log.error("memcached_client.set({0}...) returned {1}".format(
+            memcached_key, success))
 
     return httplib.OK, collection_dict
 
@@ -175,24 +221,24 @@ class GetCollectionAttributeView(ConnectionPoolView):
             cursor = connection.cursor()
             if "action" in  flask.request.args:
                 assert flask.request.args["action"] == "space_usage"
-                handler = _get_collection_space_usage
                 try:
-                    status, result_dict = handler(cursor, 
-                                                  customer_id,
-                                                  collection_name, 
-                                                  flask.request.args)
+                    status, result_dict = \
+                        _get_collection_space_usage(self.memcached_client,
+                                                    cursor, 
+                                                    customer_id,
+                                                    collection_name, 
+                                                    flask.request.args)
                 except Exception:
                     log.exception("{0} {1}".format(collection_name, 
                                                    flask.request.args))
                     cursor.close()
                     raise
             else:
-                handler = _get_collection_info
                 try:
-                    status, result_dict = handler(cursor, 
-                                                  username,
-                                                  customer_id,
-                                                  collection_name)
+                    status, result_dict = _get_collection_info(cursor, 
+                                                               username,
+                                                               customer_id,
+                                                               collection_name)
                 except Exception:
                     log.exception("{0} {1}".format(collection_name, 
                                                    flask.request.args))

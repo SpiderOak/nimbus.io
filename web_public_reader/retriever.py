@@ -14,7 +14,9 @@ import gevent
 
 from tools.data_definitions import block_size, \
         segment_status_final, \
-        segment_status_cancelled
+        segment_status_cancelled, \
+        create_timestamp
+from tools.operational_stats_redis_sink import redis_queue_entry_tuple
 
 from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.local_database_util import current_status_of_key, \
@@ -35,6 +37,7 @@ class Retriever(object):
         self, 
         memcached_client,
         interaction_pool,
+        redis_queue,
         collection_id, 
         key, 
         version_id,
@@ -44,6 +47,7 @@ class Retriever(object):
         self._log = logging.getLogger("Retriever")
         self._memcached_client = memcached_client
         self._interaction_pool = interaction_pool
+        self._redis_queue = redis_queue
         self._collection_id = collection_id
         self._key = key
         self._version_id = version_id
@@ -235,6 +239,11 @@ class Retriever(object):
             return self._retrieve(response, timeout)
         except Exception, instance:
             self._log.exception(instance)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=self._collection_id,
+                                        value=1)
+            self._redis_queue.put(("retrieve_error", queue_entry, ))
             response.status_int = httplib.SERVICE_UNAVAILABLE
             response.retry_after = _retrieve_retry_interval
             raise RetrieveFailedError(instance)
@@ -242,6 +251,13 @@ class Retriever(object):
     def _retrieve(self, response, timeout):
         self._cache_status_rows_in_memcached(self.status_rows)
         self.total_file_size = sum([r.seg_file_size for r in self.status_rows])
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=self._collection_id,
+                                    value=1)
+        self._redis_queue.put(("retrieve_request", queue_entry, ))
+        retrieve_bytes = 0L
 
         self._log.debug("start status_rows loop")
         first_block = True
@@ -283,7 +299,7 @@ class Retriever(object):
             except urllib2.HTTPError, instance:
                 if instance.code == httplib.NOT_FOUND:
                     response.status_int = httplib.NOT_FOUND
-                    raise StopIteration()
+                    break
                 if instance.code == httplib.PARTIAL_CONTENT and \
                 expected_status ==  httplib.PARTIAL_CONTENT:
                     urllib_response = instance
@@ -293,28 +309,28 @@ class Retriever(object):
                     self._log.exception(message)
                     response.status_int = httplib.SERVICE_UNAVAILABLE
                     response.retry_after = _retrieve_retry_interval
-                    raise StopIteration()
+                    break
             except gevent.httplib.RequestFailed, instance:
                 message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
                     instance.args, instance.message)
                 self._log.exception(message)
                 response.status_int = httplib.SERVICE_UNAVAILABLE
                 response.retry_after = _retrieve_retry_interval
-                raise StopIteration()
+                break
             except Exception, instance:
                 message = "GET failed {0} '{1}'".format(
                     instance.__class__.__name__, instance)
                 self._log.exception(message)
                 response.status_int = httplib.SERVICE_UNAVAILABLE
                 response.retry_after = _retrieve_retry_interval
-                raise StopIteration()
+                break
                 
             if urllib_response is None:
                 message = "GET returns None {0}".format(uri)
                 self._log.error(message)
                 response.status_int = httplib.SERVICE_UNAVAILABLE
                 response.retry_after = _retrieve_retry_interval
-                raise StopIteration()
+                break
 
             # TODO: might be a good idea to buffer here
             data = urllib_response.read()
@@ -331,5 +347,24 @@ class Retriever(object):
             self._log.debug("yielding {0} bytes".format(len(data)))
             yield data
 
+            retrieve_bytes += len(data)
+
             first_block = False
+
+        # end - for entry in self._generate_status_rows(self.status_rows):
+
+        if response.status_int == httplib.OK:
+            redis_entries = [("retrieve_success", 1),
+                             ("success_bytes_out", retrieve_bytes)]
+        else:
+            redis_entries = [("retrieve_error", 1),
+                             ("error_bytes_out", retrieve_bytes)]
+
+        timestamp = create_timestamp()
+        for key, value in redis_entries:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=self._collection_id,
+                                    value=value)
+            self._redis_queue.put((key, queue_entry, ))
 

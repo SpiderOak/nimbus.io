@@ -26,6 +26,7 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
+import gevent.queue
 from gevent_zeromq import zmq
 import gevent
 
@@ -43,6 +44,7 @@ from tools.id_translator import InternalIDTranslator
 from tools.interaction_pool_authenticator import \
     InteractionPoolAuthenticator
 from tools.data_definitions import cluster_row_template
+from tools.operational_stats_redis_sink import OperationalStatsRedisSink
 
 from web_public_reader.application import Application
 from web_public_reader.space_accounting_client import SpaceAccountingClient
@@ -103,7 +105,7 @@ def _get_cluster_row(interaction_pool):
                                 replication_level=result["replication_level"])
 
 class WebPublicReaderServer(object):
-    def __init__(self):
+    def __init__(self, halt_event):
         self._log = logging.getLogger("WebServer")
         memcached_client = memcache.Client(_memcached_nodes)
 
@@ -169,6 +171,14 @@ class WebPublicReaderServer(object):
             id_translator_keys["iv_key"],
             id_translator_keys["hmac_size"]
         )
+
+        redis_queue = gevent.queue.Queue()
+
+        self._redis_sink = OperationalStatsRedisSink(halt_event, 
+                                                     redis_queue,
+                                                     _local_node_name)
+        self._redis_sink.link_exception(self._unhandled_greenlet_exception)
+
         self.application = Application(
             memcached_client,
             self._interaction_pool,
@@ -176,7 +186,8 @@ class WebPublicReaderServer(object):
             self._id_translator,
             authenticator,
             self._accounting_client,
-            self._event_push_client
+            self._event_push_client,
+            redis_queue
         )
         self.wsgi_server = WSGIServer(
             (_web_public_reader_host, _web_public_reader_port), 
@@ -186,6 +197,7 @@ class WebPublicReaderServer(object):
 
     def start(self):
         self._space_accounting_dealer_client.start()
+        self._redis_sink.start()
         self.wsgi_server.start()
 
     def stop(self):
@@ -196,6 +208,7 @@ class WebPublicReaderServer(object):
         self._space_accounting_dealer_client.kill()
         self._log.debug("joining greenlets")
         self._space_accounting_dealer_client.join()
+        self._redis_sink.kill()
         self._log.debug("closing zmq")
         self._event_push_client.close()
         self._zeromq_context.term()
@@ -219,7 +232,7 @@ def main():
     gevent.signal(signal.SIGTERM, _signal_handler_closure(halt_event))
 
     try:
-        web_public_reader = WebPublicReaderServer()
+        web_public_reader = WebPublicReaderServer(halt_event)
         web_public_reader.start()
     except Exception, instance:
         log.exception(str(instance))

@@ -17,10 +17,12 @@ from webob import exc
 from webob import Response
 
 from tools.data_definitions import http_timestamp_str, \
-        parse_http_timestamp
+        parse_http_timestamp, \
+        create_timestamp
 from tools.collection_access_control import read_access, list_access
 from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
+from tools.operational_stats_redis_sink import redis_queue_entry_tuple
 
 from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
@@ -97,7 +99,8 @@ class Application(object):
         id_translator,
         authenticator, 
         accounting_client,
-        event_push_client
+        event_push_client,
+        redis_queue
     ):
         self._log = logging.getLogger("Application")
         self._memcached_client = memcached_client
@@ -107,6 +110,7 @@ class Application(object):
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
+        self._redis_queue = redis_queue
 
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
@@ -202,9 +206,30 @@ class Application(object):
                 collection_row["name"],
                 kwargs))
 
-        result_dict = list_versions(self._interaction_pool,
-                                    collection_row["id"], 
-                                    **kwargs)
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_request", queue_entry, ))
+
+        try:
+            result_dict = list_versions(self._interaction_pool,
+                                        collection_row["id"], 
+                                        **kwargs)
+        except Exception, instance:
+            self._log.exception(instance)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("listmatch_error", queue_entry, ))
+            raise
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_success", queue_entry, ))
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -265,9 +290,31 @@ class Application(object):
                 kwargs
             )
         )
-        result_dict = list_keys(self._interaction_pool,
-                                collection_row["id"], 
-                                **kwargs)
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_request", queue_entry, ))
+
+        try:
+            result_dict = list_keys(self._interaction_pool,
+                                    collection_row["id"], 
+                                    **kwargs)
+        except Exception, instance:
+            self._log.exception(instance)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("listmatch_error", queue_entry, ))
+            raise
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_success", queue_entry, ))
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -335,6 +382,9 @@ class Application(object):
             slice_size)
         self._log.info(description)
 
+        # 2012-12-12 dougfort: we handle redis space accounting stats in
+        # the Retriever object
+
         response_headers = dict()
         response = Response(headers=response_headers)
 
@@ -342,6 +392,7 @@ class Application(object):
             retriever = Retriever(
                 self._memcached_client,
                 self._interaction_pool,
+                self._redis_queue,
                 collection_row["id"],
                 key,
                 version_id,
@@ -369,6 +420,11 @@ class Application(object):
                 retriever.status_rows)
 
         if last_modified is None or content_length is None:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("retrieve_error", queue_entry, ))
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         # Ticket #31 Guess Content-Type and Content-Encoding
@@ -384,11 +440,18 @@ class Application(object):
             except Exception, instance:
                 self._log.error(
                     "unparsable timestamp '{0}'".format(timestamp_str))
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=1)
+                self._redis_queue.put(("retrieve_error", queue_entry, ))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
                 response.headers["Connection"] = "close"
                 response.last_modified = last_modified
+                # 2012-12-12 dougfort: is this a successful retrieve in terms
+                # of space accounting?
                 response.status_int = httplib.NOT_MODIFIED
                 return  response
 
@@ -399,9 +462,19 @@ class Application(object):
             except Exception, instance:
                 self._log.error(
                     "unparsable timestamp '{0}'".format(timestamp_str))
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=1)
+                self._redis_queue.put(("retrieve_error", queue_entry, ))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=1)
+                self._redis_queue.put(("retrieve_error", queue_entry, ))
                 response.headers["Connection"] = "close"
                 response.last_modified = last_modified
                 response.status_int = httplib.PRECONDITION_FAILED

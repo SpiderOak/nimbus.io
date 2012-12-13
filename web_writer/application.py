@@ -522,6 +522,12 @@ class Application(object):
             timestamp
         )
 
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("delete_request", queue_entry, ))
+
         try:
             destroyer.destroy(_reply_timeout)
         except DestroyFailedError, instance:            
@@ -532,6 +538,11 @@ class Application(object):
             self._log.error("delete failed: %s %s" % (
                 description, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("delete_error", queue_entry, ))
             # 2009-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
             response = Response(status=503, content_type=None)
@@ -539,6 +550,12 @@ class Application(object):
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("delete_success", queue_entry, ))
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}

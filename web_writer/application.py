@@ -404,6 +404,11 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=actual_content_length)
+            self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPBadRequest(error_message)
 
         if expected_md5 is not None and expected_md5 != file_md5.digest():
@@ -417,6 +422,11 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=actual_content_length)
+            self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPBadRequest(error_message)
 
         if not conjoined_archive:
@@ -425,6 +435,12 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_success", queue_entry, ))
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=actual_content_length)
+        self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         self.accounting_client.added(
             collection_row["id"],

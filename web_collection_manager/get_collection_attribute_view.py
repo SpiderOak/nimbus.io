@@ -248,11 +248,13 @@ class GetCollectionAttributeView(ConnectionPoolView):
 
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
-        return flask.Response(json.dumps(result_dict, 
-                                         sort_keys=True, 
-                                         indent=4), 
-                              status=status,
-                              content_type="application/json")
+        data = json.dumps(result_dict, sort_keys=True, indent=4) 
+
+        response = flask.Response(data, 
+                                  status=status,
+                                  content_type="application/json")
+        response.headers["content-length"] = str(len(data))
+        return response
 
 view_function = GetCollectionAttributeView.as_view(endpoint)
 

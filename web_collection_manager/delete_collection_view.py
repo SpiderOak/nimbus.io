@@ -104,11 +104,13 @@ class DeleteCollectionView(ConnectionPoolView):
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         collection_dict = {"success" : True}
-        return flask.Response(json.dumps(collection_dict, 
-                                         sort_keys=True, 
-                                         indent=4), 
-                              status=httplib.OK,
-                              content_type="application/json")
+        data = json.dumps(collection_dict, sort_keys=True, indent=4) 
+
+        response = flask.Response(data, 
+                                  status=httplib.OK,
+                                  content_type="application/json")
+        response.headers["content-length"] = str(len(data))
+        return response
 
 view_function = DeleteCollectionView.as_view(endpoint)
 

@@ -78,11 +78,13 @@ class CreateCollectionView(ConnectionPoolView):
             collection_dict = {
                 "name"           : collection_name,
                 "error-messages" : ["Invalid Name"]} 
-            return flask.Response(json.dumps(collection_dict, 
-                                             sort_keys=True, 
-                                             indent=4), 
-                                  status=httplib.CONFLICT,
-                                  content_type="application/json")
+            data = json.dumps(collection_dict, sort_keys=True, indent=4) 
+            response = flask.Response(data,
+                                      status=httplib.CONFLICT,
+                                      content_type="application/json")
+            response.headers["content-length"] = str(len(data))
+            return response
+
         versioning = False
 
         # Ticket # 43 Implement access_control properties for collections
@@ -93,11 +95,12 @@ class CreateCollectionView(ConnectionPoolView):
             if error_list is not None:
                 result_dict = {"success"    : False,
                                "error_list" : error_list, }
-                return flask.Response(json.dumps(result_dict, 
-                                                 sort_keys=True, 
-                                                 indent=4), 
-                                      status=httplib.BAD_REQUEST,
-                                      content_type="application/json")
+                data = json.dumps(result_dict, sort_keys=True, indent=4) 
+                response = flask.Response(data, 
+                                          status=httplib.BAD_REQUEST,
+                                          content_type="application/json")
+                response.headers["content-length"] = str(len(data))
+                return response
         else:
             access_control = None
 
@@ -130,11 +133,12 @@ class CreateCollectionView(ConnectionPoolView):
                 collection_dict = {
                     "name"           : collection_name,
                     "error-messages" : ["Invalid Name"]} 
-                return flask.Response(json.dumps(collection_dict, 
-                                                 sort_keys=True, 
-                                                 indent=4), 
-                                      status=httplib.CONFLICT,
-                                      content_type="application/json")
+                data = json.dumps(collection_dict, sort_keys=True, indent=4) 
+                response = flask.Response(data, 
+                                          status=httplib.CONFLICT,
+                                          content_type="application/json")
+                response.headers["content-length"] = str(len(data))
+                return response
 
             except Exception:
                 cursor.close()
@@ -151,14 +155,16 @@ class CreateCollectionView(ConnectionPoolView):
             "versioning" : versioning,
             "creation-time" : http_timestamp_str(creation_time)} 
 
+        # 2012-08-16 dougfort Ticket #29 - format json for debuging
+        data = json.dumps(collection_dict, sort_keys=True, indent=4)
+
         # 2012-04-15 dougfort Ticket #12 - return 201 'created'
         # 2012-08-16 dougfort Ticket #28 - set content_type
-        # 2012-08-16 dougfort Ticket #29 - format json for debuging
-        return flask.Response(json.dumps(collection_dict, 
-                                         sort_keys=True, 
-                                         indent=4), 
-                              status=httplib.CREATED,
-                              content_type="application/json")
+        response = flask.Response(data, 
+                                  status=httplib.CREATED,
+                                  content_type="application/json")
+        response.headers["content-length"] = str(len(data))
+        return response
 
 view_function = CreateCollectionView.as_view(endpoint)
 

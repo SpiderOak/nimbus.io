@@ -18,6 +18,7 @@ archive:
 
 """
 from base64 import b64decode
+import httplib
 import logging
 import os
 import random
@@ -217,7 +218,7 @@ class Application(object):
         self._log.debug("_respond_to_ping")
         # Ticket #44 we don't send 'Connection: close' here because
         # this is an internal URI
-        response = Response(status=200, content_type="text/plain")
+        response = Response(status=httplib.OK, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
@@ -361,7 +362,7 @@ class Application(object):
             self._redis_queue.put(("archive_error", queue_entry, ))
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -385,7 +386,7 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
-            response = Response(status=500, content_type=None)
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -467,6 +468,11 @@ class Application(object):
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
     def _delete_key(self, req, match_object):
@@ -543,9 +549,9 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("delete_error", queue_entry, ))
-            # 2009-10-08 dougfort -- assume we have some node trouble
+            # 2011-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -565,6 +571,12 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _start_conjoined(self, req, match_object):
@@ -629,9 +641,16 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -649,7 +668,13 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
-            response = Response(status=500, content_type=None)
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -668,6 +693,12 @@ class Application(object):
         response.body_file.write(json.dumps(conjoined_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _finish_conjoined(self, req, match_object):
@@ -729,9 +760,15 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -749,7 +786,13 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("archive_error", queue_entry, ))
-            response = Response(status=500, content_type=None)
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -759,6 +802,12 @@ class Application(object):
                                     collection_id=collection_row["id"],
                                     value=1)
         self._redis_queue.put(("archive_success", queue_entry, ))
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=int(req.headers["content-length"]))
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
@@ -768,6 +817,12 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=int(response.headers["content-length"]))
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _abort_conjoined(self, req, match_object):
@@ -824,9 +879,16 @@ class Application(object):
             self._log.error("abort-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -839,7 +901,14 @@ class Application(object):
             self._log.exception("abort-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -852,5 +921,11 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=int(response.headers["content-length"]))
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 

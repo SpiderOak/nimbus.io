@@ -155,7 +155,7 @@ class Application(object):
         # self._log.debug("_respond_to_ping")
         # Ticket #44 We don't send Connection: close here
         # because this is an internal URI
-        response = Response(status=200, content_type="text/plain")
+        response = Response(status=httplib.OK, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
@@ -223,6 +223,12 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("listmatch_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise
 
         queue_entry = \
@@ -230,6 +236,12 @@ class Application(object):
                                     collection_id=collection_row["id"],
                                     value=1)
         self._redis_queue.put(("listmatch_success", queue_entry, ))
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in_request", queue_entry, ))
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -246,6 +258,11 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
     def _list_keys(self, req, match_object):
@@ -308,6 +325,12 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("listmatch_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise
 
         queue_entry = \
@@ -315,6 +338,12 @@ class Application(object):
                                     collection_id=collection_row["id"],
                                     value=1)
         self._redis_queue.put(("listmatch_success", queue_entry, ))
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -331,6 +360,13 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True,
                                             indent=4))
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _retrieve_key(self, req, match_object):
@@ -405,6 +441,12 @@ class Application(object):
             self._log.error("retrieve failed: %s %s" % (
                 description, instance,
             ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             return exc.HTTPNotFound(str(instance))
         except Exception, instance:
             self._log.exception("retrieve_failed {0}".format(instance))
@@ -413,6 +455,12 @@ class Application(object):
                 str(instance),
                 exctype=instance.__class__.__name__
             )
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise
 
         last_modified, content_length = \
@@ -425,6 +473,12 @@ class Application(object):
                                         collection_id=collection_row["id"],
                                         value=1)
             self._redis_queue.put(("retrieve_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         # Ticket #31 Guess Content-Type and Content-Encoding
@@ -445,6 +499,12 @@ class Application(object):
                                             collection_id=collection_row["id"],
                                             value=1)
                 self._redis_queue.put(("retrieve_error", queue_entry, ))
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
@@ -452,6 +512,12 @@ class Application(object):
                 response.last_modified = last_modified
                 # 2012-12-12 dougfort: is this a successful retrieve in terms
                 # of space accounting?
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 response.status_int = httplib.NOT_MODIFIED
                 return  response
 
@@ -467,6 +533,12 @@ class Application(object):
                                             collection_id=collection_row["id"],
                                             value=1)
                 self._redis_queue.put(("retrieve_error", queue_entry, ))
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
@@ -475,6 +547,12 @@ class Application(object):
                                             collection_id=collection_row["id"],
                                             value=1)
                 self._redis_queue.put(("retrieve_error", queue_entry, ))
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 response.headers["Connection"] = "close"
                 response.last_modified = last_modified
                 response.status_int = httplib.PRECONDITION_FAILED
@@ -537,7 +615,20 @@ class Application(object):
                                   key)
 
         if meta_dict is None:
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPNotFound(req.url)
+
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("error_bytes_in", queue_entry, ))
 
         response = Response(content_type=_content_type_json)
         # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
@@ -546,6 +637,13 @@ class Application(object):
         response.body_file.write(json.dumps(meta_dict, 
                                             sort_keys=True, 
                                             indent=4))
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _head_key(self, req, match_object):
@@ -593,9 +691,21 @@ class Application(object):
                                                  key,
                                                  version_id)
         if last_modified is None or content_length is None:
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         status = httplib.OK
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         # Ticket #37 handle If-Modified-Since and If-Unmodified-Since headers
 
@@ -605,7 +715,7 @@ class Application(object):
                 timestamp = parse_http_timestamp(timestamp_str)
             except Exception, instance:
                 self._log.error(
-                    "unparable timestamp '{0}'".format(timestamp_str))
+                    "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 status = httplib.NOT_MODIFIED
@@ -616,7 +726,7 @@ class Application(object):
                 timestamp = parse_http_timestamp(timestamp_str)
             except Exception, instance:
                 self._log.error(
-                    "unparable timestamp '{0}'".format(timestamp_str))
+                    "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 status = httplib.PRECONDITION_FAILED
@@ -636,6 +746,12 @@ class Application(object):
             response.content_type = content_type
         if content_encoding is not None:
             response.content_encoding = content_encoding
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
 
         return response
 
@@ -685,6 +801,13 @@ class Application(object):
             **kwargs
         )
 
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
+
         conjoined_list = list()
         for entry in conjoined_entries:
             row_dict = {
@@ -709,6 +832,12 @@ class Application(object):
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True,
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _list_upload_in_conjoined(self, req, match_object):

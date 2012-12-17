@@ -660,7 +660,7 @@ def gc_pass(collection_id, key = None, versioned = None):
 
     pass
 
-def collectable_archive(collection_id, versioned, key = None, 
+def collectable_archive(collection_id, versioned = False, key = None, 
                                                   unified_id = None):
     """
     return sql query for a list of uncollected garbage archives meeting the

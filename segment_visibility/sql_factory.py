@@ -724,7 +724,7 @@ def list_keys(collection_id, versioned, prefix, key_marker=None, limit=10001):
 
     return sql
 
-def list_versions(collection_id, versioned, prefix, key_marker=None, 
+def list_versions(collection_id, versioned=False, prefix=None, key_marker=None, 
                                                     version_marker=None,
                                                     limit=10001):
     """

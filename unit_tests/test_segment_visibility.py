@@ -102,7 +102,7 @@ class TestSegmentVisibility(unittest.TestCase):
             delattr(self, "_connection")
         log.debug("teardown done")
     
-    def test_collectable(self):
+    def xxxtest_collectable(self):
         """
         test retrieving garbage collectable segments
         """
@@ -125,6 +125,42 @@ class TestSegmentVisibility(unittest.TestCase):
                                        key=_test_key, 
                                        unified_id=_test_no_such_unified_id)
         #log.debug(sql_text)
+        self.assertEqual(False, True)
+
+    def test_list_versions(self):
+        """
+        test listing the versions of a key
+        """
+        log = logging.getLogger("test_list_versions")
+
+        # check that there's no more than one row per key for a versioned 
+        # collection
+        # check that every row begins with prefix
+        sql_text = list_versions(_test_collection_id, 
+                                 versioned=False, 
+                                 prefix=_test_prefix) 
+        log.debug(sql_text)
+
+        args = {"collection_id" : _test_collection_id,
+                "versioned"     : False,
+                "prefix"        : _test_prefix, }
+
+        rows = self._connection.fetch_all_rows(sql_text, args)
+        log.debug(rows)
+
+        # check that there's >= as many rows now as above.
+        sql_text = list_versions(_test_collection_id, 
+                                 versioned=True, 
+                                 prefix=_test_prefix)
+        log.debug(sql_text)
+
+        args = {"collection_id" : _test_collection_id,
+                "versioned"     : False,
+                "prefix"        : _test_prefix, }
+
+        rows = self._connection.fetch_all_rows(sql_text, args)
+        log.debug(rows)
+
         self.assertEqual(False, True)
 
 if __name__ == "__main__":

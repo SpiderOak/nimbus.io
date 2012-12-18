@@ -340,7 +340,7 @@ SELECT segment.id as segment_id,
 
         if base_where:
             template += """
-    AND %(base_where)s
+    AND %(base_where_unjoined)s
 """.lstrip("\n")
 
     else:
@@ -399,10 +399,15 @@ SELECT *
 ) gc_archive_batches
 ) gc_archive_batches_with_end_time
 """ 
+    # 2012-12-18 dougfort -- this incorrectly changes conjoined_part to 
+    # conjoined.part. So we change it back
+    args = dict(
+        base_where = base_where, 
+        base_where_unjoined = base_where.replace("conjoined_", "conjoined.")) 
+    args["base_where_unjoined"] = \
+        args["base_where_unjoined"].replace("conjoined.part", "conjoined_part") 
 
-    sql = template % ( dict(base_where=base_where))
-
-    return sql
+    return template % args
 
 class _NamedParam(object):
     """

@@ -102,7 +102,7 @@ class TestSegmentVisibility(unittest.TestCase):
             delattr(self, "_connection")
         log.debug("teardown done")
     
-    def xxxtest_collectable(self):
+    def test_collectable(self):
         """
         test retrieving garbage collectable segments
         """
@@ -127,7 +127,7 @@ class TestSegmentVisibility(unittest.TestCase):
         #log.debug(sql_text)
         self.assertEqual(False, True)
 
-    def test_list_versions(self):
+    def xxxtest_list_versions(self):
         """
         test listing the versions of a key
         """

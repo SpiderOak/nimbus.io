@@ -14,6 +14,14 @@ try:
 except ImportError:
     import unittest
 
+import psycopg2
+import psycopg2.extensions
+psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
+psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
+from psycopg2.extras import RealDictConnection
+
+from tools.database_connection import get_node_database_dsn
+
 from tools.process_util import identify_program_dir
 from tools.database_connection import _node_database_name, \
     _node_database_user, \
@@ -88,10 +96,11 @@ class TestSegmentVisibility(unittest.TestCase):
         log.debug("installing schema and test data")
         _install_schema_and_test_data()
         log.debug("creating database connection")
-        self._connection = get_node_connection(_node_name, 
-                                               _database_password, 
-                                               _database_host, 
-                                               _database_port)
+        self._connection = RealDictConnection(
+            get_node_database_dsn(_node_name, 
+                                  _database_password, 
+                                  _database_host, 
+                                  _database_port))
         log.debug("setup done")
 
     def tearDown(self):
@@ -101,7 +110,8 @@ class TestSegmentVisibility(unittest.TestCase):
             self._connection.close()
             delattr(self, "_connection")
         log.debug("teardown done")
-    
+
+    @unittest.skip("need sql help")
     def test_collectable(self):
         """
         test retrieving garbage collectable segments
@@ -117,7 +127,10 @@ class TestSegmentVisibility(unittest.TestCase):
                 "versioned"     : False,
                 "key"           : _test_key,
                 "unified_id"    : None}
-        rows = self._connection.fetch_all_rows(sql_text, args)
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        rows = cursor.fetchall()
+        cursor.close()
         log.debug(rows)
 
         sql_text = collectable_archive(_test_collection_id, 
@@ -125,9 +138,14 @@ class TestSegmentVisibility(unittest.TestCase):
                                        key=_test_key, 
                                        unified_id=_test_no_such_unified_id)
         #log.debug(sql_text)
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        rows = cursor.fetchall()
+        cursor.close()
+
         self.assertEqual(False, True)
 
-    def xxxtest_list_versions(self):
+    def test_list_versions(self):
         """
         test listing the versions of a key
         """
@@ -145,21 +163,29 @@ class TestSegmentVisibility(unittest.TestCase):
                 "versioned"     : False,
                 "prefix"        : _test_prefix, }
 
-        rows = self._connection.fetch_all_rows(sql_text, args)
-        log.debug(rows)
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        rows = cursor.fetchall()
+        cursor.close()
+
+        for row in rows:
+            log.debug(rows)
 
         # check that there's >= as many rows now as above.
         sql_text = list_versions(_test_collection_id, 
                                  versioned=True, 
                                  prefix=_test_prefix)
-        log.debug(sql_text)
+        #log.debug(sql_text)
 
         args = {"collection_id" : _test_collection_id,
                 "versioned"     : False,
                 "prefix"        : _test_prefix, }
 
-        rows = self._connection.fetch_all_rows(sql_text, args)
-        log.debug(rows)
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        rows = cursor.fetchall()
+        cursor.close()
+        #log.debug(rows)
 
         self.assertEqual(False, True)
 

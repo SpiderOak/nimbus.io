@@ -146,6 +146,7 @@ class TestSegmentVisibility(unittest.TestCase):
 
         self.assertEqual(False, True)
 
+    @unittest.skip("isolate test")
     def test_list(self):
         """
         test listing keys and versions of keys
@@ -201,6 +202,10 @@ class TestSegmentVisibility(unittest.TestCase):
                              versioned=False, 
                              prefix=_test_prefix)
 
+        args = {"collection_id" : _test_collection_id,
+                "versioned"     : False,
+                "prefix"        : _test_prefix, }
+
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         key_unversioned_rows = cursor.fetchall()
@@ -235,6 +240,101 @@ class TestSegmentVisibility(unittest.TestCase):
         for row in key_versioned_rows:
             key_versioned_counts[row["key"]] += 1
             self.assertTrue(row["key"].startswith(_test_prefix))
+
+    def test_limits_and_markers(self):
+        """
+        check that the limits and markers work correctly. 
+        perhaps take the result with limit=None, and run a series of queries 
+        with limit=1 for each of those rows, checking results.
+        """
+        log = logging.getLogger("test_limits_and_markers")
+
+        for versioned in [True, False]:
+            sql_text = list_keys(_test_collection_id, 
+                                 versioned=versioned, 
+                                 prefix=_test_prefix)
+
+            args = {"collection_id" : _test_collection_id,
+                    "versioned"     : versioned,
+                    "prefix"        : _test_prefix, }
+
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            baseline_rows = cursor.fetchall()
+            cursor.close()
+
+            key_marker = None
+            for row in baseline_rows:
+                sql_text = list_keys(_test_collection_id, 
+                                     versioned=versioned, 
+                                     prefix=_test_prefix,
+                                     key_marker=key_marker,
+                                     limit=1)
+
+                args = {"collection_id" : _test_collection_id,
+                        "versioned"     : versioned,
+                        "prefix"        : _test_prefix, 
+                        "key_marker"    : key_marker,
+                        "limit"         : 1}
+
+                cursor = self._connection.cursor()
+                cursor.execute(sql_text, args)
+                test_row = cursor.fetchone()
+                cursor.close()
+                
+                self.assertEqual(test_row["key"], row["key"], 
+                                 (test_row["key"], row["key"]))
+                self.assertEqual(test_row["unified_id"], row["unified_id"], 
+                                 (test_row["unified_id"], row["unified_id"]))
+
+                key_marker = test_row["key"]
+
+        for versioned in [True, False]:
+            sql_text = list_versions(_test_collection_id, 
+                                 versioned=versioned, 
+                                 prefix=_test_prefix)
+
+            args = {"collection_id" : _test_collection_id,
+                    "versioned"     : versioned,
+                    "prefix"        : _test_prefix, }
+
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            baseline_rows = cursor.fetchall()
+            cursor.close()
+
+            key_marker = None
+            version_marker = None
+            for row in baseline_rows:
+                sql_text = list_versions(_test_collection_id, 
+                                     versioned=versioned, 
+                                     prefix=_test_prefix,
+                                     key_marker=key_marker,
+                                     version_marker=version_marker,
+                                     limit=1)
+
+                args = {"collection_id" : _test_collection_id,
+                        "versioned"     : versioned,
+                        "prefix"        : _test_prefix, 
+                        "key_marker"    : key_marker,
+                        "version_marker": version_marker,
+                        "limit"         : 1}
+
+                cursor = self._connection.cursor()
+                cursor.execute(sql_text, args)
+                test_row = cursor.fetchone()
+                cursor.close()
+                
+                log.info("{0}, {1}".format(test_row["key"], row["key"]))
+                log.debug(sql_text)
+
+                self.assertEqual(test_row["key"], row["key"], 
+                                 (versioned, test_row["key"], row["key"]))
+                self.assertEqual(test_row["unified_id"], row["unified_id"], 
+                                 (test_row["unified_id"], row["unified_id"]))
+
+                key_marker = test_row["key"]
+                version_marker = test_row["unified_id"]
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

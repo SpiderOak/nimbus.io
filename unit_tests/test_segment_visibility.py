@@ -4,6 +4,7 @@ test_segment_visibility.py
 
 see Ticket #67 Continue implementation of segment visibility subsystem
 """
+from collections import Counter
 import logging
 import os
 import os.path
@@ -145,19 +146,15 @@ class TestSegmentVisibility(unittest.TestCase):
 
         self.assertEqual(False, True)
 
-    def test_list_versions(self):
+    def test_list(self):
         """
-        test listing the versions of a key
+        test listing keys and versions of keys
         """
-        log = logging.getLogger("test_list_versions")
+        log = logging.getLogger("test_list")
 
-        # check that there's no more than one row per key for a versioned 
-        # collection
-        # check that every row begins with prefix
         sql_text = list_versions(_test_collection_id, 
                                  versioned=False, 
                                  prefix=_test_prefix) 
-        log.debug(sql_text)
 
         args = {"collection_id" : _test_collection_id,
                 "versioned"     : False,
@@ -165,29 +162,79 @@ class TestSegmentVisibility(unittest.TestCase):
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
-        rows = cursor.fetchall()
+        unversioned_rows = cursor.fetchall()
         cursor.close()
 
-        for row in rows:
-            log.debug(rows)
+        # check that there's no more than one row per key for a non-versioned 
+        # collection
+        # check that every row begins with prefix
+        unversioned_key_counts = Counter()
+        for row in unversioned_rows:
+            unversioned_key_counts[row["key"]] += 1
+            self.assertTrue(row["key"].startswith(_test_prefix))
+        for key, value in unversioned_key_counts.items():
+            self.assertEqual(value, 1, (key, value))
 
-        # check that there's >= as many rows now as above.
         sql_text = list_versions(_test_collection_id, 
                                  versioned=True, 
                                  prefix=_test_prefix)
-        #log.debug(sql_text)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : False,
+                "versioned"     : True,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
-        rows = cursor.fetchall()
+        versioned_rows = cursor.fetchall()
         cursor.close()
-        #log.debug(rows)
+        
+        versioned_key_counts = Counter()
+        for row in versioned_rows:
+            versioned_key_counts[row["key"]] += 1
+            self.assertTrue(row["key"].startswith(_test_prefix))
 
-        self.assertEqual(False, True)
+        # check that there's >= as many rows now as above.
+        for key, value in versioned_key_counts.items():
+            self.assertTrue(value >= versioned_key_counts[key], (key, value))
+
+        sql_text = list_keys(_test_collection_id, 
+                             versioned=False, 
+                             prefix=_test_prefix)
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        key_unversioned_rows = cursor.fetchall()
+        cursor.close()
+
+        # check that the list keys result is the same as list_versions in the
+        # unversioned case above (although there could be extra columns.)
+        key_unversioned_counts = Counter()
+        for row in key_unversioned_rows:
+            key_unversioned_counts[row["key"]] += 1
+            self.assertTrue(row["key"].startswith(_test_prefix))
+        for key, value in key_unversioned_counts.items():
+            self.assertEqual(value, 1, (key, value))
+        for key_row, version_row in zip(key_unversioned_rows, unversioned_rows):
+            self.assertEqual(key_row["key"], version_row["key"])
+            self.assertEqual(key_row["unified_id"], version_row["unified_id"])
+
+        sql_text = list_versions(_test_collection_id, 
+                                 versioned=True, 
+                                 prefix=_test_prefix)
+
+        args = {"collection_id" : _test_collection_id,
+                "versioned"     : True,
+                "prefix"        : _test_prefix, }
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        key_versioned_rows = cursor.fetchall()
+        cursor.close()
+        
+        key_versioned_counts = Counter()
+        for row in key_versioned_rows:
+            key_versioned_counts[row["key"]] += 1
+            self.assertTrue(row["key"].startswith(_test_prefix))
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

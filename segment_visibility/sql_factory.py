@@ -773,7 +773,7 @@ def list_versions(collection_id, versioned=False, prefix=None, key_marker=None,
                    limit = limit)
     return sql
 
-def version_for_key(collection_id, versioned, key, unified_id=None):
+def version_for_key(collection_id, versioned=False, key=None, unified_id=None):
     """
     Select all the final, not-garbage rows (including handoffs and conjoined
     parts beyond the first one) for a version of a key.

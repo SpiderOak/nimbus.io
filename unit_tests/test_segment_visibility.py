@@ -241,6 +241,7 @@ class TestSegmentVisibility(unittest.TestCase):
             key_versioned_counts[row["key"]] += 1
             self.assertTrue(row["key"].startswith(_test_prefix))
 
+    @unittest.skip("isolate test")
     def test_limits_and_markers(self):
         """
         check that the limits and markers work correctly. 
@@ -335,6 +336,55 @@ class TestSegmentVisibility(unittest.TestCase):
 
                 key_marker = test_row["key"]
                 version_marker = test_row["unified_id"]
+
+    def test_version_for_key(self):
+        """
+        version_for_key 
+        """
+        log = logging.getLogger("test_version_for_key")
+
+        # check that for every row in list_keys, calling version_for_key with
+        # unified_id=None should return the same row, regardless of it being 
+        # versioned or not.
+        for versioned in [True, False]:
+            sql_text = list_keys(_test_collection_id, 
+                                 versioned=versioned, 
+                                 prefix=_test_prefix)
+
+            args = {"collection_id" : _test_collection_id,
+                    "versioned"     : versioned,
+                    "prefix"        : _test_prefix, }
+
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            baseline_rows = cursor.fetchall()
+            cursor.close()
+
+            key_marker = None
+            for row in baseline_rows:
+                sql_text = version_for_key(_test_collection_id, 
+                                           versioned=versioned, 
+                                           key=row["key"])
+
+                log.debug(sql_text)
+
+                args = {"collection_id" : _test_collection_id,
+                        "versioned"     : versioned,
+                        "key"           : row["key"]} 
+
+                cursor = self._connection.cursor()
+                cursor.execute(sql_text, args)
+                test_rows = cursor.fetchall()
+                cursor.close()
+
+                self.assertEqual(len(test_rows), 1)
+                test_row = test_rows[0]
+                
+                self.assertEqual(test_row["key"], row["key"], 
+                                 (test_row["key"], row["key"]))
+                self.assertEqual(test_row["unified_id"], row["unified_id"], 
+                                 (test_row["unified_id"], row["unified_id"]))
+
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

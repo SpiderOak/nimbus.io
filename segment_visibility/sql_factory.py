@@ -612,14 +612,16 @@ WINDOW surviving_key_rows AS (
  WHERE num_newer_versions <= %d
 """ % (allow, )
 
-    if limit:
-        sql += u"""
- LIMIT %d""" % ( limit, )
+# 2012-12-19 dougfort -- ORDER BY must precede LIMIT
 
     if sort:
         sql +=  u""" 
  ORDER BY collection_id, key, unified_id DESC
 """
+
+    if limit:
+        sql += u"""
+ LIMIT %d""" % ( limit, )
 
     return sql
 
@@ -688,7 +690,11 @@ def collectable_archive(collection_id, versioned = False, key = None,
                                   unified_id = unified_id))
     return sql
 
-def list_keys(collection_id, versioned, prefix, key_marker=None, limit=10001):
+def list_keys(collection_id, 
+              versioned=False, 
+              prefix=None, 
+              key_marker=None, 
+              limit=10001):
     """
     return sql to select the newest version row for final, not-garbage keys.
     Does not include handoff rows or later conjoined parts.

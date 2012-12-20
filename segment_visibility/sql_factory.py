@@ -514,6 +514,7 @@ def _base_where(**kwargs):
             clauses.append(u"%s > %%(%s)s" % (col_name, param_name, ))
         elif name.endswith("__gteq"):
             col_name = name[:-6]
+            param_name = param_name if param_name else col_name
             clauses.append(u"%s >= %%(%s)s" % (col_name, param_name, ))
         else:
             param_name = param_name if param_name else name
@@ -538,7 +539,7 @@ def _where(final=True, garbage=False, versioned=False, collectable=False,
     clauses = []
 
     if unified_id:
-        clauses.append(u"unified_id = %(unified_id)")
+        clauses.append(u"unified_id = %(unified_id)s")
 
     if final:
         clauses.append(u"""

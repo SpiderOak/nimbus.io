@@ -127,59 +127,75 @@ class TestSegmentVisibility(unittest.TestCase):
             delattr(self, "_connection")
         log.debug("teardown done")
 
-    @unittest.skip("need sql help")
-    def test_collectable(self):
+    def _retrieve_collectables(self, versioned):
         """
-        test retrieving garbage collectable segments
+        check that none of these rows appear in any other result.
+        check that the rows from other results are not included here.
         """
-        log = logging.getLogger("test_collectable")
-
         sql_text = collectable_archive(_test_collection_id, 
-                                       versioned=False, 
+                                       versioned=versioned, 
                                        key=_test_key, 
                                        unified_id=None)
-        log.debug(sql_text)
+
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : False,
+                "versioned"     : versioned,
                 "key"           : _test_key,
                 "unified_id"    : None}
+
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         rows = cursor.fetchall()
         cursor.close()
-        log.debug(rows)
+
+        return set([(r["key"], r["unified_id"], ) for r in rows])
+
+    def test_no_such_collectable(self):
+        """
+        test retrieving garbage collectable segments
+        """
+        log = logging.getLogger("test_no_such_collectable")
 
         sql_text = collectable_archive(_test_collection_id, 
                                        versioned=True, 
                                        key=_test_key, 
                                        unified_id=_test_no_such_unified_id)
-        #log.debug(sql_text)
+
+        args = {"collection_id" : _test_collection_id,
+                "versioned"     : False,
+                "key"           : _test_key,
+                "unified_id"    : _test_no_such_unified_id}
+
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         rows = cursor.fetchall()
         cursor.close()
+        self.assertEqual(len(rows), 0, rows)
 
-        self.assertEqual(False, True)
-
-    @unittest.skip("isolate test")
     def test_list(self):
         """
         test listing keys and versions of keys
         """
         log = logging.getLogger("test_list")
 
+        versioned = False
         sql_text = list_versions(_test_collection_id, 
-                                 versioned=False, 
+                                 versioned=versioned, 
                                  prefix=_test_prefix) 
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : False,
+                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         unversioned_rows = cursor.fetchall()
         cursor.close()
+
+        collectable_set = self._retrieve_collectables(versioned)
+        test_set = set([(r["key"], r["unified_id"], ) for r in unversioned_rows])
+        collectable_intersection = test_set & collectable_set
+        self.assertEqual(len(collectable_intersection), 0, 
+                         collectable_intersection)
 
         # check that there's no more than one row per key for a non-versioned 
         # collection
@@ -191,18 +207,25 @@ class TestSegmentVisibility(unittest.TestCase):
         for key, value in unversioned_key_counts.items():
             self.assertEqual(value, 1, (key, value))
 
+        versioned = True
         sql_text = list_versions(_test_collection_id, 
-                                 versioned=True, 
+                                 versioned=versioned, 
                                  prefix=_test_prefix)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : True,
+                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         versioned_rows = cursor.fetchall()
         cursor.close()
+
+        collectable_set = self._retrieve_collectables(versioned)
+        test_set = set([(r["key"], r["unified_id"], ) for r in versioned_rows])
+        collectable_intersection = test_set & collectable_set
+        self.assertEqual(len(collectable_intersection), 0, 
+                         collectable_intersection)
         
         versioned_key_counts = Counter()
         for row in versioned_rows:
@@ -213,18 +236,25 @@ class TestSegmentVisibility(unittest.TestCase):
         for key, value in versioned_key_counts.items():
             self.assertTrue(value >= versioned_key_counts[key], (key, value))
 
+        versioned = False
         sql_text = list_keys(_test_collection_id, 
-                             versioned=False, 
+                             versioned=versioned, 
                              prefix=_test_prefix)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : False,
+                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         key_unversioned_rows = cursor.fetchall()
         cursor.close()
+
+        collectable_set = self._retrieve_collectables(versioned)
+        test_set = set([(r["key"], r["unified_id"], ) for r in key_unversioned_rows])
+        collectable_intersection = test_set & collectable_set
+        self.assertEqual(len(collectable_intersection), 0, 
+                         collectable_intersection)
 
         # check that the list keys result is the same as list_versions in the
         # unversioned case above (although there could be extra columns.)
@@ -238,19 +268,26 @@ class TestSegmentVisibility(unittest.TestCase):
             self.assertEqual(key_row["key"], version_row["key"])
             self.assertEqual(key_row["unified_id"], version_row["unified_id"])
 
+        versioned = True
         sql_text = list_versions(_test_collection_id, 
-                                 versioned=True, 
+                                 versioned=versioned, 
                                  prefix=_test_prefix)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : True,
+                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         key_versioned_rows = cursor.fetchall()
         cursor.close()
-        
+
+        collectable_set = self._retrieve_collectables(versioned)
+        test_set = set([(r["key"], r["unified_id"], ) for r in key_versioned_rows])
+        collectable_intersection = test_set & collectable_set
+        self.assertEqual(len(collectable_intersection), 0, 
+                         collectable_intersection)
+
         key_versioned_counts = Counter()
         for row in key_versioned_rows:
             key_versioned_counts[row["key"]] += 1

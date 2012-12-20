@@ -8,6 +8,11 @@ To run this, first create test user and database:
  sudo -u postgres createuser -P nimbusio_node_user_test
  sudo -u postgres createdb -O nimbusio_node_user_test nimbusio_node.test
 
+To work with the generated debug output files, I generally edit them directly
+in vim.  You can run them on the command line like this, or just use piping
+straight from vim.
+ sudo -u postgres psql nimbusio_node.test < /tmp/debug.sql
+
 """
 
 

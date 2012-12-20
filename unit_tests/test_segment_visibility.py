@@ -3,7 +3,14 @@
 test_segment_visibility.py
 
 see Ticket #67 Continue implementation of segment visibility subsystem
+
+To run this, first create test user and database:
+ sudo -u postgres createuser -P nimbusio_node_user_test
+ sudo -u postgres createdb -O nimbusio_node_user_test nimbusio_node.test
+
 """
+
+
 from collections import Counter
 import logging
 import os

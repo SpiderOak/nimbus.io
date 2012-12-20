@@ -644,7 +644,7 @@ def mogrify(sql, params):
     for k, v in params.iteritems():
         if type(v) is unicode:
             safe_params.append((k, adapt(v), ))
-        if type(v) is str:
+        elif type(v) is str:
             safe_params.append((k, adapt(v.decode('utf_8')), ))
         elif type(v) is int:
             safe_params.append((k, v, ))

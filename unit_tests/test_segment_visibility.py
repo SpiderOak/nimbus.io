@@ -38,7 +38,10 @@ from tools.database_connection import _node_database_name, \
 from segment_visibility.sql_factory import collectable_archive, \
     list_versions, \
     list_keys, \
-    version_for_key
+    version_for_key, \
+    mogrify
+
+_write_debug_sql = int(os.environ.get("WRITE_DEBUG_SQL", "0"))
 
 _node_name = "test"
 _database_password = "test_password"
@@ -380,6 +383,9 @@ class TestSegmentVisibility(unittest.TestCase):
                         "key"           : row["key"]} 
 
                 cursor = self._connection.cursor()
+                if _write_debug_sql:
+                    with open("/tmp/debug.sql", "w") as debug_sql_file:
+                        debug_sql_file.write(mogrify(sql_text, args))
                 cursor.execute(sql_text, args)
                 test_rows = cursor.fetchall()
                 cursor.close()

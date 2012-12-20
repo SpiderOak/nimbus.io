@@ -138,7 +138,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                        unified_id=None)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : versioned,
                 "key"           : _test_key,
                 "unified_id"    : None}
 
@@ -161,7 +160,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                        unified_id=_test_no_such_unified_id)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : False,
                 "key"           : _test_key,
                 "unified_id"    : _test_no_such_unified_id}
 
@@ -213,7 +211,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                  prefix=_test_prefix)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
@@ -242,7 +239,6 @@ class TestSegmentVisibility(unittest.TestCase):
                              prefix=_test_prefix)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
@@ -274,7 +270,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                  prefix=_test_prefix)
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
@@ -308,7 +303,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                  prefix=_test_prefix)
 
             args = {"collection_id" : _test_collection_id,
-                    "versioned"     : versioned,
                     "prefix"        : _test_prefix, }
 
             cursor = self._connection.cursor()
@@ -325,7 +319,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                      limit=1)
 
                 args = {"collection_id" : _test_collection_id,
-                        "versioned"     : versioned,
                         "prefix"        : _test_prefix, 
                         "key_marker"    : key_marker,
                         "limit"         : 1}
@@ -348,7 +341,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                  prefix=_test_prefix)
 
             args = {"collection_id" : _test_collection_id,
-                    "versioned"     : versioned,
                     "prefix"        : _test_prefix, }
 
             cursor = self._connection.cursor()
@@ -367,7 +359,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                      limit=1)
 
                 args = {"collection_id" : _test_collection_id,
-                        "versioned"     : versioned,
                         "prefix"        : _test_prefix, 
                         "key_marker"    : key_marker,
                         "version_marker": version_marker,
@@ -404,7 +395,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                  prefix=_test_prefix)
 
             args = {"collection_id" : _test_collection_id,
-                    "versioned"     : versioned,
                     "prefix"        : _test_prefix, }
 
             cursor = self._connection.cursor()
@@ -418,7 +408,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                            key=row["key"])
 
                 args = {"collection_id" : _test_collection_id,
-                        "versioned"     : versioned,
                         "key"           : row["key"]} 
 
                 cursor = self._connection.cursor()
@@ -447,7 +436,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                        unified_id=_test_no_such_unified_id)
 
             args = {"collection_id" : _test_collection_id,
-                    "versioned"     : versioned,
                     "key"           : row["key"],
                     "unified_id"    : _test_no_such_unified_id} 
 

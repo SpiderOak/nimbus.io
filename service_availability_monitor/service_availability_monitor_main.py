@@ -55,11 +55,6 @@ _ping_process_descs = [
                        file_name="zmq_ping_main.py",
                        service_name="data_writer",
                        ping_uris=os.environ["NIMBUSIO_DATA_WRITER_ADDRESSES"]),
-    _ping_process_desc(module_dir="zmq_ping",
-                       file_name="zmq_ping_main.py",
-                       service_name="handoff_server",
-                       ping_uris=\
-                           os.environ["NIMBUSIO_HANDOFF_SERVER_ADDRESSES"]),
 ]
 
 def _bind_pull_socket(zeromq_context):

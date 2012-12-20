@@ -2,60 +2,101 @@
 """
 handoff_requestor.py
 
-class HandoffRequestor
-
-A time queue action to periodically query the other handoff servers to 
-see if their node has any handoffs for us.
+a class that sends a 'request-handoffs' message to all active handoff
+servers
 """
 import logging
 import os
-import time
+import uuid
+
+import gevent
+from gevent.greenlet import Greenlet
 
 from tools.data_definitions import create_timestamp
 
-handoff_polling_interval = float(os.environ.get(
-    "NIMBUSIO_HANDOFF_POLLING_INTERVAL", str(15.0 * 60.0)
-))
-_delay_interval = 5.0
+from handoff_server.req_socket import ReqSocket, ReqSocketAckTimeOut
 
-class HandoffRequestor(object):
+_local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
+
+class HandoffRequestor(Greenlet):
     """
-    A time queue action to periodically query the other handoff servers to 
-    see if their node has any handoffs for us.
+    zmq_context
+        zeromq context
+
+    addresses
+        the address of every handoff_server except ourselves
+
+    local_node_id
+        the database id of the node row for our local node
+
+    client_tag
+        A unique identifier for our client, to be included in every message
+
+    client_address
+        the address our socket binds to. Sent to the remote server in every
+        message
+
+    halt_event:
+        Event object, set when it's time to halt
     """
-    def __init__(self, state, local_node_name):
-        self._log = logging.getLogger("HandoffRequestor")
-        self._state = state
-        self._local_node_name = local_node_name
-        self._local_node_id = state["node-id-dict"][local_node_name]
+    def __init__(self, 
+                 zmq_context, 
+                 addresses, 
+                 local_node_id, 
+                 client_tag,
+                 client_address,
+                 halt_event):
+        Greenlet.__init__(self)
+        self._name = "HandoffRequestor"
+        self._log = logging.getLogger(self._name)
 
-    @classmethod
-    def next_run(cls):
-        return time.time() + handoff_polling_interval
+        self._req_sockets = list()
+        for address in addresses:
+            req_socket = ReqSocket(zmq_context,
+                                   address, 
+                                   client_tag, 
+                                   client_address,
+                                   halt_event)
+            self._req_sockets.append(req_socket)
 
-    def run(self, halt_event):
-        """
-        send 'request-handoffs' to all remote handoff servers
-        """
+        self._local_node_id = local_node_id
+        self._client_tag = client_tag
+        self._client_address = client_address
+        self._halt_event = halt_event
 
-        if halt_event.is_set():
-            return
+    def __str__(self):
+        return self._name
 
-        if len(self._state["pending-handoffs"]) > 0:
-            # run again later
-            return [(self.run, time.time() + _delay_interval, )]
-
+    def _run(self):
         self._log.debug("sending handoff requests")
 
         message = {
             "message-type"              : "request-handoffs",
+            "message-id"                : uuid.uuid1().hex,
+            "client-tag"                : self._client_tag,
+            "client-address"            : self._client_address,
             "request-timestamp-repr"    : repr(create_timestamp()),
-            "node-name"                 : self._local_node_name,
+            "node-name"                 : _local_node_name,
             "node-id"                   : self._local_node_id,
         }
 
-        for handoff_server_client in self._state["handoff-server-clients"]:
-            handoff_server_client.queue_message_for_send(message)
-        
-        return [(self.run, self.next_run(), )]
+        # send the message to everyone
+        for req_socket in self._req_sockets:
+            if self._halt_event.is_set():
+                return
+            req_socket.send(message)
+
+        # wait for ack
+        for req_socket in self._req_sockets:
+            if self._halt_event.is_set():
+                return
+            try:
+                req_socket.wait_for_ack()
+            except ReqSocketAckTimeOut, instance:
+                self._log.error("timeout waiting ack {0} {1}".format(
+                    str(req_socket), str(instance)))
+                continue
+            req_socket.close()
+
+        self._req_sockets = list()
 

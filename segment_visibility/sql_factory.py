@@ -353,7 +353,7 @@ SELECT segment.id as segment_id,
 
         if base_where:
             template += """
-    AND %(base_where)s
+    AND %(base_where_unjoined)s
 """.lstrip("\n")
     
     if include_recent_garbage or include_all_garbage:

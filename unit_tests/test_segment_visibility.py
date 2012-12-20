@@ -379,7 +379,6 @@ class TestSegmentVisibility(unittest.TestCase):
                 log.debug(sql_text)
 
                 args = {"collection_id" : _test_collection_id,
-                        "versioned"     : versioned,
                         "key"           : row["key"]} 
 
                 cursor = self._connection.cursor()

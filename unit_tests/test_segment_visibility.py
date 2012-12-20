@@ -412,15 +412,13 @@ class TestSegmentVisibility(unittest.TestCase):
             baseline_rows = cursor.fetchall()
             cursor.close()
 
-            key_marker = None
             for row in baseline_rows:
                 sql_text = version_for_key(_test_collection_id, 
                                            versioned=versioned, 
                                            key=row["key"])
 
-                log.debug(sql_text)
-
                 args = {"collection_id" : _test_collection_id,
+                        "versioned"     : versioned,
                         "key"           : row["key"]} 
 
                 cursor = self._connection.cursor()
@@ -431,14 +429,33 @@ class TestSegmentVisibility(unittest.TestCase):
                 test_rows = cursor.fetchall()
                 cursor.close()
 
-                self.assertEqual(len(test_rows), 1)
-                test_row = test_rows[0]
-                
-                self.assertEqual(test_row["key"], row["key"], 
-                                 (test_row["key"], row["key"]))
-                self.assertEqual(test_row["unified_id"], row["unified_id"], 
-                                 (test_row["unified_id"], row["unified_id"]))
+                # 2012-12-20 dougfort -- list_keys and list_versions only
+                # retrieve one conjoined part, but version_for_key retrieves
+                # all conjoined parts. So we may have more than one row here.
+                self.assertTrue(len(test_rows) > 0) 
+                for test_row in test_rows:
+                    self.assertEqual(test_row["key"], row["key"], 
+                                     (test_row["key"], row["key"]))
+                    self.assertEqual(test_row["unified_id"], row["unified_id"], 
+                                     (test_row["unified_id"], row["unified_id"]))
 
+        # check that these return empty
+        for versioned in [True, False]:
+            sql_text = version_for_key(_test_collection_id, 
+                                       versioned=versioned, 
+                                       key=_test_key,
+                                       unified_id=_test_no_such_unified_id)
+
+            args = {"collection_id" : _test_collection_id,
+                    "versioned"     : versioned,
+                    "key"           : row["key"],
+                    "unified_id"    : _test_no_such_unified_id} 
+
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            test_rows = cursor.fetchall()
+            cursor.close()
+            self.assertEqual(len(test_rows), 0, test_rows)
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

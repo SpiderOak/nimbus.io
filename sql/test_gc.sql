@@ -46,7 +46,6 @@ CREATE AGGREGATE median(anyelement) (
 
 
 truncate segment;
-explain analyze
 insert into segment (
     id, collection_id, key, status, unified_id, timestamp, segment_num, 
     conjoined_part, file_size, file_adler32, file_hash, source_node_id )

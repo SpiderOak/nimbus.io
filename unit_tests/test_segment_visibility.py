@@ -181,7 +181,6 @@ class TestSegmentVisibility(unittest.TestCase):
                                  prefix=_test_prefix) 
 
         args = {"collection_id" : _test_collection_id,
-                "versioned"     : versioned,
                 "prefix"        : _test_prefix, }
 
         cursor = self._connection.cursor()
@@ -444,6 +443,214 @@ class TestSegmentVisibility(unittest.TestCase):
             test_rows = cursor.fetchall()
             cursor.close()
             self.assertEqual(len(test_rows), 0, test_rows)
+
+    def test_version_for_key_find_all_same_rows(self):
+        """
+        check that this can find all the same rows list_keys returns
+        """
+        log = logging.getLogger("test_version_for_key_find_all_same_rows")
+
+        sql_text = list_keys(_test_collection_id, 
+                             versioned=False, 
+                             prefix=_test_prefix)
+
+        args = {"collection_id" : _test_collection_id,
+                "prefix"        : _test_prefix, }
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        list_keys_rows = cursor.fetchall()
+        cursor.close()
+
+        for list_keys_row in list_keys_rows:
+            sql_text = version_for_key(_test_collection_id, 
+                                       versioned=False, 
+                                       key=list_keys_row["key"])
+
+            args = {"collection_id" : _test_collection_id,
+                    "key"           : list_keys_row["key"], }
+
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            version_for_key_rows = cursor.fetchall()
+            cursor.close()
+
+            self.assertTrue(len(version_for_key_rows) > 0)
+            for version_for_key_row in version_for_key_rows:
+                self.assertEqual(version_for_key_row["key"],
+                                 list_keys_row["key"])
+                self.assertEqual(version_for_key_row["unified_id"],
+                                 list_keys_row["unified_id"])
+
+    def test_list_versions_same_rows(self):
+        """
+        check that this can find all the same rows list_versions returns in the
+        versioned case above
+        """
+        log = logging.getLogger("test_list_versions_same_rows")
+
+        sql_text = list_versions(_test_collection_id, 
+                                 versioned=True, 
+                                 prefix=_test_prefix) 
+
+        args = {"collection_id" : _test_collection_id,
+                "prefix"        : _test_prefix, }
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        list_versions_rows = cursor.fetchall()
+        cursor.close()
+
+        for list_versions_row in list_versions_rows:
+            sql_text = version_for_key(_test_collection_id, 
+                                       key=list_versions_row["key"], 
+                                       unified_id=list_versions_row["unified_id"]) 
+
+            args = {"collection_id" : _test_collection_id,
+                    "key"           : list_versions_row["key"], 
+                    "unified_id"    : list_versions_row["unified_id"]}
+
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            version_for_key_rows = cursor.fetchall()
+            cursor.close()
+
+            self.assertTrue(len(version_for_key_rows) > 0, args)
+            for version_for_key_row in version_for_key_rows:
+                self.assertEqual(version_for_key_row["key"],
+                                 list_versions_row["key"])
+                self.assertEqual(version_for_key_row["unified_id"],
+                                 list_versions_row["unified_id"],
+                                 list_versions_row)
+
+    def test_list_keys_vs_list_versions(self):
+        """ 
+        check that this can ONLY find the same rows list_versions returns 
+        above IF they are also in the result that list_keys returns
+        (i.e. some of them should be findable, some not.)
+        """
+        # Background: list_keys returns the newest version of every key. 
+        # list_versions returns every version of every key. 
+        # If a collection is unversioned, output from list_keys and list_versions 
+        # should find the same rows 
+        # (although the output from list_keys has an extra column.) 
+        # In other words, in a versioned collection, any version of a key 
+        # that isn't the newest version should be unreachable.
+        # So, I was imagining the test to do this:
+        # 1. get the full output from list_versions(test_colelction_id, versioned=True) and save it.
+        # 2. get the full output from list_keys(test_collection_id, versioned=True) and save it
+        # 3. compare the results to determine which keys are older versions
+        # 4. For each row, call version_for_key with specific unified_id and versioned arguments 
+        #    and verify finding (or correctly not finding) the result.
+        #
+        # Sothe rows that are in the output of list_versions but are NOT in 
+        # the output of list_keys should be rows that are older versions. 
+        # (You may have to discard that extra column from list_keys before 
+        # comparing results.) That's probably worth an assert or two to verify 
+        # that assumption once you have the lists.
+        # Then, if we call version_for_key on those rows that are only in 
+        # list_versions with versioned=False and specify their unified_id when 
+        # calling version_for_key, they should not be reachable. 
+        # With versioned=True they should be reachable.
+        # The rows that were in both list_versions output and list_keys output 
+        # should be reachable either with versioned=True or versioned=False.
+
+        # 1. get the full output from list_versions(test_colelction_id, versioned=True) and save it.
+        sql_text = list_versions(_test_collection_id, 
+                                 versioned=True, 
+                                 prefix=_test_prefix)
+
+        args = {"collection_id" : _test_collection_id,
+                "prefix"        : _test_prefix, }
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        list_versions_rows = cursor.fetchall()
+        cursor.close()
+
+        list_versions_set = set([(r["key"], r["unified_id"], ) \
+                                 for r in list_versions_rows])
+
+        # 2. get the full output from list_keys(test_collection_id, versioned=True) and save it
+        sql_text = list_keys(_test_collection_id, 
+                             versioned=True, 
+                             prefix=_test_prefix)
+
+        args = {"collection_id" : _test_collection_id,
+                "prefix"        : _test_prefix, }
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        list_keys_rows = cursor.fetchall()
+        cursor.close()
+
+        list_keys_set = set([(r["key"], r["unified_id"], ) \
+                                 for r in list_keys_rows])
+
+        # 3. compare the results to determine which keys are older versions
+        older_version_set = list_versions_set - list_keys_set
+
+        # Sothe rows that are in the output of list_versions but are NOT in 
+        # the output of list_keys should be rows that are older versions. 
+        # (You may have to discard that extra column from list_keys before 
+        # comparing results.) That's probably worth an assert or two to verify 
+        # that assumption once you have the lists.
+        for list_versions_row in list_versions_rows:
+            test_tuple = (list_versions_row["key"], 
+                          list_versions_row["unified_id"], )
+            self.assertIn(test_tuple, list_versions_set)
+            if test_tuple in list_keys_set:
+                self.assertNotIn(test_tuple, older_version_set)
+            else:
+                self.assertIn(test_tuple, older_version_set)
+
+        # 4. For each row, call version_for_key with specific unified_id and versioned arguments 
+        #    and verify finding (or correctly not finding) the result.
+
+        # Then, if we call version_for_key on those rows that are only in 
+        # list_versions with versioned=False and specify their unified_id when 
+        # calling version_for_key, they should not be reachable. 
+        # With versioned=True they should be reachable.
+        for key, unified_id in older_version_set:
+            for versioned in [False, True, ]:
+                sql_text = version_for_key(_test_collection_id, 
+                                           versioned=versioned, 
+                                           key=key,
+                                           unified_id=unified_id)
+
+                args = {"collection_id" : _test_collection_id,
+                        "key"           : key,
+                        "unified_id"    : unified_id} 
+
+                cursor = self._connection.cursor()
+                cursor.execute(sql_text, args)
+                test_rows = cursor.fetchall()
+                cursor.close()
+
+                if not versioned:
+                    self.assertEqual(len(test_rows), 0)
+                else:
+                    self.assertTrue(len(test_rows) > 0)
+
+        # The rows that were in both list_versions output and list_keys output 
+        # should be reachable either with versioned=True or versioned=False.
+        for key, unified_id in list_keys_set:
+            for versioned in [False, True, ]:
+                sql_text = version_for_key(_test_collection_id, 
+                                           versioned=versioned, 
+                                           key=key,
+                                           unified_id=unified_id)
+
+                args = {"collection_id" : _test_collection_id,
+                        "key"           : key,
+                        "unified_id"    : unified_id} 
+
+                cursor = self._connection.cursor()
+                cursor.execute(sql_text, args)
+                test_rows = cursor.fetchall()
+                cursor.close()
+
+                self.assertTrue(len(test_rows) > 0)
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

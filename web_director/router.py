@@ -36,6 +36,13 @@ NIMBUSIO_WEB_WRITER_PORT = int(os.environ['NIMBUSIO_WEB_WRITER_PORT'])
 NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = \
     os.environ['NIMBUSIO_MANAGEMENT_API_REQUEST_DEST']
 
+NIMBUSIO_URL_DEST_HASH_KEY = os.environ.get('NIMBUSIO_URL_DEST_HASH_KEY', None)
+if NIMBUSIO_URL_DEST_HASH_KEY is not None:
+    NIMBUSIO_URL_DEST_HASH_KEY = open(NIMBUSIO_URL_DEST_HASH_KEY, "rb").read()
+else:
+    NIMBUSIO_URL_DEST_HASH_KEY = os.urandom(32)
+
+
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", str(6379)))
 REDIS_DB = int(os.environ.get("REDIS_DB", str(0)))
@@ -67,9 +74,8 @@ class Router(object):
         self.memcached_client = None
         self.collection_lookup = None
         self.request_counter = 0
-        # TODO
-        self.path_hash_base = hmac(
-            key="TODO site specific uniqueness here",
+        self.path_hash_base = hmac.new(
+            key = NIMBUSIO_URL_DEST_HASH_KEY,
             digestmod=sha256)
 
     def init(self):
@@ -204,16 +210,24 @@ class Router(object):
         return { 'close': 'HTTP/1.0 %d %s\r\n\r\n%s' % ( 
                   code, http_error_str, reason, ) }
 
-    def consistent_hash_dest(self, hosts, availability, path, 
+    def consistent_hash_dest(self, hosts, availability, collection, path,
                              prefix=None, recur=0):
         """
+        Pick an available host in a semi-stable way based on collection + path
+        hashing, despite hosts becoming available an unavailable dynamically.
+
+        Uses HMAC with key contained in the file pointed to by env
+        NIMBUSIO_URL_DEST_HASH_KEY or a random key if that file is unspecified.
+
+        Returns a host.
         """
         log = logging.getLogger("consistent_hash_dest")
 
         pathhash = self.path_hash_base.copy()
         if prefix is not None:
             pathhash.update(prefix)
-        pathhash.update(path)
+        pathhash.update(unicode(collection).encode('utf_8'))
+        pathhash.update(unicode(path).encode('utf_8'))
         hexresult = pathhash.hexdigest()
         intresult = int(hexresult, 16)
 
@@ -251,8 +265,8 @@ class Router(object):
                 "excessive hashing with %d hosts available" %
                     ( len(availability), ))
 
-        return self.consistent_hash_dest(hosts, availability, path, prefix,
-            recur+1)
+        return self.consistent_hash_dest(hosts, availability, collection, 
+            path, prefix, recur+1)
 
     def route(self, hostname, method, path, _query_string, start=None):
         """
@@ -316,7 +330,8 @@ class Router(object):
             gevent.sleep(RETRY_DELAY)
             return self.route(hostname, method, path, _query_string, start)
 
-        target = self.consistent_hash_dest(hosts, availability, path)
+        target = self.consistent_hash_dest(hosts, availability, collection, 
+            path)
 
         log.debug("request %d to backend host %s port %d" %
             (request_num, target, dest_port, ))

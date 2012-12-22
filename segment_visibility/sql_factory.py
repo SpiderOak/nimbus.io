@@ -647,7 +647,7 @@ def mogrify(sql, params):
             safe_params.append((k, adapt(v), ))
         elif type(v) is str:
             safe_params.append((k, adapt(v.decode('utf_8')), ))
-        elif type(v) is int:
+        elif type(v) in [int, long]:
             safe_params.append((k, v, ))
         else:
             raise ValueError("cannot mogrify key %r type %r" % (k, type(v), ))

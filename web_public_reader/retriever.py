@@ -24,8 +24,22 @@ memcached_key_template = "internal_read_{0}_{1}"
 
 _web_internal_reader_host = \
     os.environ["NIMBUSIO_WEB_INTERNAL_READER_HOST"]
-_web_internal_reader_port = \
-    int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
+
+_web_internal_reader_port = int(
+    os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
+
+# if web internal reader has a cache available, load info for using it instead
+# of always talking to the internal reader directly.
+_web_internal_reader_cache_port = None
+if 'NIMBUSIO_WEB_INTERNAL_READER_CACHE_PORT' in os.environ:
+    _web_internal_reader_cache_port = int(
+        os.environ['NIMBUSIO_WEB_INTERNAL_READER_CACHE_PORT'])
+
+_web_internal_reader_max_cache_size = 100 * 1024 ** 2
+if 'NIMBUSIO_WEB_INTERNAL_READER_MAX_CACHE_SIZE' in os.environ:
+    _web_internal_reader_max_cache_size = int(
+        os.environ['NIMBUSIO_WEB_INTERNAL_READER_MAX_CACHE_SIZE'])
+
 _nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
 _retrieve_retry_interval = 120
 
@@ -254,9 +268,17 @@ class Retriever(object):
                 status_row.seg_conjoined_part
             ))
 
+            # if a cache port is defined, and this response isn't larger than
+            # the configured maximum, send the request through the cache.
+            target_port = _web_internal_reader_port
+            if (_web_internal_reader_cache_port is not None and
+                _web_internal_reader_max_cache_size <= status_row.seg_file_size
+            ):
+                target_port = _web_internal_reader_cache_port
+
             uri = "http://{0}:{1}/data/{2}/{3}".format(
                 _web_internal_reader_host,
-                _web_internal_reader_port,
+                target_port,
                 status_row.seg_unified_id, 
                 status_row.seg_conjoined_part)
             self._log.info("requesting {0}".format(uri))

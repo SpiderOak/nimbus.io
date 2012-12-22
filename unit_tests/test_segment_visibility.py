@@ -515,7 +515,12 @@ class TestSegmentVisibility(unittest.TestCase):
             version_for_key_rows = cursor.fetchall()
             cursor.close()
 
-            self.assertTrue(len(version_for_key_rows) > 0, args)
+            if len(version_for_key_rows) == 0:
+                with open("/tmp/debug.sql", "w") as debug_sql_file:
+                    debug_sql_file.write(mogrify(sql_text, args))
+
+            self.assertTrue(len(version_for_key_rows) > 0, 
+                            "{0} {1}".format(args, list_versions_row))
             for version_for_key_row in version_for_key_rows:
                 self.assertEqual(version_for_key_row["key"],
                                  list_versions_row["key"])
@@ -650,7 +655,8 @@ class TestSegmentVisibility(unittest.TestCase):
                 test_rows = cursor.fetchall()
                 cursor.close()
 
-                self.assertTrue(len(test_rows) > 0)
+                self.assertTrue(len(test_rows) > 0, 
+                                "versioned={0} {1}".format(versioned, args))
 
 if __name__ == "__main__":
     _initialize_logging_to_stderr()

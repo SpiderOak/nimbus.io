@@ -30,6 +30,7 @@ _web_internal_reader_port = \
     int(os.environ["NIMBUSIO_WEB_INTERNAL_READER_PORT"])
 _nimbusio_node_name = os.environ['NIMBUSIO_NODE_NAME']
 _retrieve_retry_interval = 120
+_buffer_size = 1024 ** 2
 
 class Retriever(object):
     """retrieves data from web_internal_reader"""
@@ -332,23 +333,36 @@ class Retriever(object):
                 response.retry_after = _retrieve_retry_interval
                 break
 
-            # TODO: might be a good idea to buffer here
-            data = urllib_response.read()
+            # Ticket #68 add buffering
+            # 2012-12-23 dougfort -- the choice of block_size as the
+            # amount to read is fairly arbitrary but we should read at least 
+            # that much
+            prev_data = None
+            while True:
+                data = urllib_response.read(block_size)
+                if len(data) == 0: 
+                    assert prev_data is not None
+                    if self._last_block_in_slice_retrieved and \
+                    self._residue_from_last_block > 0:
+                        prev_data = prev_data[:-self._residue_from_last_block]
+                    self._log.debug("yielding {0} bytes from last block".format(
+                        len(prev_data)))
+                    yield prev_data
+                    retrieve_bytes += len(prev_data)
+                    break
+                if prev_data is None:
+                    if first_block:
+                        assert len(data) > self._offset_into_first_block
+                        prev_data = data[self._offset_into_first_block:]
+                    else:
+                        prev_data = data
+                    continue
+                self._log.debug("yielding {0} bytes".format(len(prev_data)))
+                yield prev_data
+                retrieve_bytes += len(prev_data)
+                prev_data = data
+
             urllib_response.close()
-            self._log.debug("retrieved {0} bytes".format(len(data)))
-
-            if first_block:
-                data = data[self._offset_into_first_block:]
-
-            if self._last_block_in_slice_retrieved and \
-                self._residue_from_last_block > 0:
-                data = data[:-self._residue_from_last_block]
-
-            self._log.debug("yielding {0} bytes".format(len(data)))
-            yield data
-
-            retrieve_bytes += len(data)
-
             first_block = False
 
         # end - for entry in self._generate_status_rows(self.status_rows):

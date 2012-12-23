@@ -148,6 +148,7 @@ class TestSegmentVisibility(unittest.TestCase):
 
         return set([(r["key"], r["unified_id"], ) for r in rows])
 
+    @unittest.skip("isolate test")
     def test_no_such_collectable(self):
         """
         test retrieving garbage collectable segments
@@ -169,6 +170,7 @@ class TestSegmentVisibility(unittest.TestCase):
         cursor.close()
         self.assertEqual(len(rows), 0, rows)
 
+    @unittest.skip("isolate test")
     def test_list(self):
         """
         test listing keys and versions of keys
@@ -379,6 +381,7 @@ class TestSegmentVisibility(unittest.TestCase):
                 key_marker = test_row["key"]
                 version_marker = test_row["unified_id"]
 
+    @unittest.skip("isolate test")
     def test_version_for_key(self):
         """
         version_for_key 
@@ -444,6 +447,7 @@ class TestSegmentVisibility(unittest.TestCase):
             cursor.close()
             self.assertEqual(len(test_rows), 0, test_rows)
 
+    @unittest.skip("isolate test")
     def test_version_for_key_find_all_same_rows(self):
         """
         check that this can find all the same rows list_keys returns
@@ -496,6 +500,9 @@ class TestSegmentVisibility(unittest.TestCase):
         args = {"collection_id" : _test_collection_id,
                 "prefix"        : _test_prefix, }
 
+        with open("/tmp/debug.sql", "w") as debug_sql_file:
+            debug_sql_file.write(mogrify(sql_text, args))
+
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         list_versions_rows = cursor.fetchall()
@@ -515,10 +522,6 @@ class TestSegmentVisibility(unittest.TestCase):
             version_for_key_rows = cursor.fetchall()
             cursor.close()
 
-            if len(version_for_key_rows) == 0:
-                with open("/tmp/debug.sql", "w") as debug_sql_file:
-                    debug_sql_file.write(mogrify(sql_text, args))
-
             self.assertTrue(len(version_for_key_rows) > 0, 
                             "{0} {1}".format(args, list_versions_row))
             for version_for_key_row in version_for_key_rows:
@@ -528,6 +531,7 @@ class TestSegmentVisibility(unittest.TestCase):
                                  list_versions_row["unified_id"],
                                  list_versions_row)
 
+    @unittest.skip("isolate test")
     def test_list_keys_vs_list_versions(self):
         """ 
         check that this can ONLY find the same rows list_versions returns 

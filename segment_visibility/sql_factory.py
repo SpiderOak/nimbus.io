@@ -626,15 +626,18 @@ WINDOW surviving_key_rows AS (
 
     return sql
 
-def _compose(columns, from_, where='', sort=True, limit=None):
+def _compose(columns, from_, where='', sort="unified-id-desc", limit=None):
     "return a full SQL query based on the outputs of the helper functions"
     columns = u",\n       ".join(columns)
     sql =       u"SELECT " + columns + u"\n"
     sql +=      u"  FROM " + from_ 
     if where:
         sql +=  u" WHERE " + where + u"\n"
-    if sort:
+    assert sort in [None, "unified-id-desc", "unified-id-asc", ]
+    if sort == "unified-id-desc":
         sql +=  u" ORDER BY collection_id, key, unified_id DESC" + u"\n"
+    if sort == "unified-id-asc":
+        sql +=  u" ORDER BY collection_id, key, unified_id ASC" + u"\n"
     if limit:
         sql +=  u" LIMIT %d" % (limit, )
     return sql
@@ -722,7 +725,7 @@ def list_keys(collection_id,
                    where = _where(final = True, 
                                   garbage = False, 
                                   versioned = versioned),
-                    sort = False,
+                    sort = None,
                    limit = None)
 
     # Reduce down to just the newest version of each key.  This is earliest
@@ -770,7 +773,7 @@ def list_versions(collection_id, versioned=False, prefix=None, key_marker=None,
                    where = _where(final=True,
                                   garbage=False,
                                   versioned=versioned),
-                    sort = True,
+                    sort = "unified-id-desc",
                    limit = limit)
     return sql
 
@@ -809,7 +812,7 @@ def version_for_key(collection_id, versioned=False, key=None, unified_id=None):
                                   garbage = False, 
                                   versioned = versioned,
                                   unified_id = unified_id),
-                    sort = False,
+                    sort = None,
                    limit = None)
 
     # I'm not sure if it would be any faster, but another way of reducing down

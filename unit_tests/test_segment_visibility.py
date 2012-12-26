@@ -148,7 +148,7 @@ class TestSegmentVisibility(unittest.TestCase):
 
         return set([(r["key"], r["unified_id"], ) for r in rows])
 
-    @unittest.skip("isolate test")
+    #@unittest.skip("isolate test")
     def test_no_such_collectable(self):
         """
         test retrieving garbage collectable segments
@@ -170,7 +170,7 @@ class TestSegmentVisibility(unittest.TestCase):
         cursor.close()
         self.assertEqual(len(rows), 0, rows)
 
-    @unittest.skip("isolate test")
+    #@unittest.skip("isolate test")
     def test_list(self):
         """
         test listing keys and versions of keys
@@ -289,7 +289,7 @@ class TestSegmentVisibility(unittest.TestCase):
             key_versioned_counts[row["key"]] += 1
             self.assertTrue(row["key"].startswith(_test_prefix))
 
-    @unittest.skip("isolate test")
+    #@unittest.skip("isolate test")
     def test_limits_and_markers(self):
         """
         check that the limits and markers work correctly. 
@@ -381,7 +381,7 @@ class TestSegmentVisibility(unittest.TestCase):
                 key_marker = test_row["key"]
                 version_marker = test_row["unified_id"]
 
-    @unittest.skip("isolate test")
+    #@unittest.skip("isolate test")
     def test_version_for_key(self):
         """
         version_for_key 
@@ -447,7 +447,7 @@ class TestSegmentVisibility(unittest.TestCase):
             cursor.close()
             self.assertEqual(len(test_rows), 0, test_rows)
 
-    @unittest.skip("isolate test")
+    #@unittest.skip("isolate test")
     def test_version_for_key_find_all_same_rows(self):
         """
         check that this can find all the same rows list_keys returns
@@ -531,7 +531,7 @@ class TestSegmentVisibility(unittest.TestCase):
                                  list_versions_row["unified_id"],
                                  list_versions_row)
 
-    @unittest.skip("isolate test")
+    #@unittest.skip("isolate test")
     def test_list_keys_vs_list_versions(self):
         """ 
         check that this can ONLY find the same rows list_versions returns 

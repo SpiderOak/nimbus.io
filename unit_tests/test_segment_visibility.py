@@ -16,7 +16,7 @@ straight from vim.
 """
 
 
-from collections import Counter
+from collections import Counter, OrderedDict
 import logging
 import os
 import os.path
@@ -181,10 +181,15 @@ class TestSegmentVisibility(unittest.TestCase):
         versioned = False
         sql_text = list_versions(_test_collection_id, 
                                  versioned=versioned, 
-                                 prefix=_test_prefix) 
+                                 prefix=_test_prefix, 
+                                 limit=None)
 
         args = {"collection_id" : _test_collection_id,
                 "prefix"        : _test_prefix, }
+
+        if _write_debug_sql:
+            with open("/tmp/debug_unversioned_rows.sql", "w") as debug_sql_file:
+                debug_sql_file.write(mogrify(sql_text, args))
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
@@ -215,6 +220,10 @@ class TestSegmentVisibility(unittest.TestCase):
         args = {"collection_id" : _test_collection_id,
                 "prefix"        : _test_prefix, }
 
+        if _write_debug_sql:
+            with open("/tmp/debug_versioned_rows.sql", "w") as debug_sql_file:
+                debug_sql_file.write(mogrify(sql_text, args))
+
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         versioned_rows = cursor.fetchall()
@@ -226,6 +235,13 @@ class TestSegmentVisibility(unittest.TestCase):
         self.assertEqual(len(collectable_intersection), 0, 
                          collectable_intersection)
         
+        latest_versioned_rows = OrderedDict()
+        for row in versioned_rows[::-1]:
+            latest_versioned_rows.setdefault(row["key"], row)
+        latest_versioned_rows = latest_versioned_rows.values()
+        latest_versioned_rows.reverse()
+        assert len(latest_versioned_rows) <= len(versioned_rows)
+
         versioned_key_counts = Counter()
         for row in versioned_rows:
             versioned_key_counts[row["key"]] += 1
@@ -237,10 +253,12 @@ class TestSegmentVisibility(unittest.TestCase):
 
         # check that the list keys result is the same as list_versions in the
         # unversioned case above (although there could be extra columns.)
+
         for versioned in [False, True, ]:
             sql_text = list_keys(_test_collection_id, 
                                  versioned=versioned, 
-                                 prefix=_test_prefix)
+                                 prefix=_test_prefix,
+                                 limit=None)
 
             args = {"collection_id" : _test_collection_id,
                     "prefix"        : _test_prefix, }
@@ -250,11 +268,30 @@ class TestSegmentVisibility(unittest.TestCase):
             key_rows = cursor.fetchall()
             cursor.close()
 
+            if _write_debug_sql:
+                debug_filename = "/tmp/debug_key_rows_versioned_%r.sql" % ( versioned, )
+                with open(debug_filename, "w") as debug_sql_file:
+                    debug_sql_file.write(mogrify(sql_text, args))
+
             collectable_set = self._retrieve_collectables(versioned)
             test_set = set([(r["key"], r["unified_id"], ) for r in key_rows])
             collectable_intersection = test_set & collectable_set
             self.assertEqual(len(collectable_intersection), 0, 
                              collectable_intersection)
+
+            if versioned:
+                # a list of keys with versioning on may have keys that don't
+                # show up in the list of unversioned rows.  That's because in
+                # an unversioned collection, keys end when another key is
+                # added.  So it's possible for that plus a tombstone to cause a
+                # situation where an archive is not eligible for garbage
+                # collection in a versioned collection, but it is eligible for
+                # garbage collection in an unversioned collection.
+                self.assertGreaterEqual(len(key_rows), len(unversioned_rows), 
+                    (len(key_rows), len(unversioned_rows), versioned, ))
+            else:
+                self.assertEqual(len(key_rows), len(unversioned_rows), 
+                    (len(key_rows), len(unversioned_rows), versioned, ))
 
             key_counts = Counter()
             for row in key_rows:
@@ -262,9 +299,15 @@ class TestSegmentVisibility(unittest.TestCase):
                 self.assertTrue(row["key"].startswith(_test_prefix))
             for key, value in key_counts.items():
                 self.assertEqual(value, 1, (key, value))
-            for key_row, version_row in zip(key_rows, unversioned_rows):
-                self.assertEqual(key_row["key"], version_row["key"])
-                self.assertEqual(key_row["unified_id"], version_row["unified_id"])
+
+            if versioned:
+                for key_row, version_row in zip(key_rows, latest_versioned_rows):
+                    self.assertEqual(key_row["key"], version_row["key"])
+                    self.assertEqual(key_row["unified_id"], version_row["unified_id"])
+            else:
+                for key_row, version_row in zip(key_rows, unversioned_rows):
+                    self.assertEqual(key_row["key"], version_row["key"])
+                    self.assertEqual(key_row["unified_id"], version_row["unified_id"])
 
     #@unittest.skip("isolate test")
     def test_limits_and_markers(self):

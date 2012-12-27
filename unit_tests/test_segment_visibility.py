@@ -235,64 +235,36 @@ class TestSegmentVisibility(unittest.TestCase):
         for key, value in versioned_key_counts.items():
             self.assertTrue(value >= unversioned_key_counts[key], (key, value))
 
-        versioned = False
-        sql_text = list_keys(_test_collection_id, 
-                             versioned=versioned, 
-                             prefix=_test_prefix)
-
-        args = {"collection_id" : _test_collection_id,
-                "prefix"        : _test_prefix, }
-
-        cursor = self._connection.cursor()
-        cursor.execute(sql_text, args)
-        key_unversioned_rows = cursor.fetchall()
-        cursor.close()
-
-        collectable_set = self._retrieve_collectables(versioned)
-        test_set = set([(r["key"], r["unified_id"], ) for r in key_unversioned_rows])
-        collectable_intersection = test_set & collectable_set
-        self.assertEqual(len(collectable_intersection), 0, 
-                         collectable_intersection)
-
         # check that the list keys result is the same as list_versions in the
         # unversioned case above (although there could be extra columns.)
-        key_unversioned_counts = Counter()
-        for row in key_unversioned_rows:
-            key_unversioned_counts[row["key"]] += 1
-            self.assertTrue(row["key"].startswith(_test_prefix))
-        for key, value in key_unversioned_counts.items():
-            self.assertEqual(value, 1, (key, value))
-        for key_row, version_row in zip(key_unversioned_rows, unversioned_rows):
-            self.assertEqual(key_row["key"], version_row["key"])
-            self.assertEqual(key_row["unified_id"], version_row["unified_id"])
-
-        versioned = True
-        # XXX was expecting list_keys instead of list_versions here.. what's
-        # up?
-        sql_text = list_versions(_test_collection_id, 
+        for versioned in [False, True, ]:
+            sql_text = list_keys(_test_collection_id, 
                                  versioned=versioned, 
                                  prefix=_test_prefix)
 
-        args = {"collection_id" : _test_collection_id,
-                "prefix"        : _test_prefix, }
+            args = {"collection_id" : _test_collection_id,
+                    "prefix"        : _test_prefix, }
 
-        cursor = self._connection.cursor()
-        cursor.execute(sql_text, args)
-        key_versioned_rows = cursor.fetchall()
-        cursor.close()
+            cursor = self._connection.cursor()
+            cursor.execute(sql_text, args)
+            key_rows = cursor.fetchall()
+            cursor.close()
 
-        collectable_set = self._retrieve_collectables(versioned)
-        test_set = set([(r["key"], r["unified_id"], ) for r in key_versioned_rows])
-        collectable_intersection = test_set & collectable_set
-        self.assertEqual(len(collectable_intersection), 0, 
-                         collectable_intersection)
+            collectable_set = self._retrieve_collectables(versioned)
+            test_set = set([(r["key"], r["unified_id"], ) for r in key_rows])
+            collectable_intersection = test_set & collectable_set
+            self.assertEqual(len(collectable_intersection), 0, 
+                             collectable_intersection)
 
-        key_versioned_counts = Counter()
-        for row in key_versioned_rows:
-            key_versioned_counts[row["key"]] += 1
-            self.assertTrue(row["key"].startswith(_test_prefix))
-
-        # XXX we don't compare anything with key_versioned_counts here?
+            key_counts = Counter()
+            for row in key_rows:
+                key_counts[row["key"]] += 1
+                self.assertTrue(row["key"].startswith(_test_prefix))
+            for key, value in key_counts.items():
+                self.assertEqual(value, 1, (key, value))
+            for key_row, version_row in zip(key_rows, unversioned_rows):
+                self.assertEqual(key_row["key"], version_row["key"])
+                self.assertEqual(key_row["unified_id"], version_row["unified_id"])
 
     #@unittest.skip("isolate test")
     def test_limits_and_markers(self):

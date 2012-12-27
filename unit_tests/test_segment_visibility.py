@@ -133,25 +133,26 @@ class TestSegmentVisibility(unittest.TestCase):
         check that the rows from other results are not included here.
         """
         sql_text = collectable_archive(_test_collection_id, 
-                                       versioned=versioned, 
-                                       key=_test_key, 
-                                       unified_id=None)
+                                       versioned=versioned)
 
         args = {"collection_id" : _test_collection_id,
-                "key"           : _test_key,
-                "unified_id"    : None}
+                }
 
         cursor = self._connection.cursor()
         cursor.execute(sql_text, args)
         rows = cursor.fetchall()
         cursor.close()
 
+        # there should always be some garbage. If there's not, something's
+        # wrong.
+        self.assertGreater(len(rows), 0)
+
         return set([(r["key"], r["unified_id"], ) for r in rows])
 
     #@unittest.skip("isolate test")
     def test_no_such_collectable(self):
         """
-        test retrieving garbage collectable segments
+        test that there are no collectable rows for a bogus unified_id
         """
         log = logging.getLogger("test_no_such_collectable")
 
@@ -232,7 +233,7 @@ class TestSegmentVisibility(unittest.TestCase):
 
         # check that there's >= as many rows now as above.
         for key, value in versioned_key_counts.items():
-            self.assertTrue(value >= versioned_key_counts[key], (key, value))
+            self.assertTrue(value >= unversioned_key_counts[key], (key, value))
 
         versioned = False
         sql_text = list_keys(_test_collection_id, 
@@ -266,6 +267,8 @@ class TestSegmentVisibility(unittest.TestCase):
             self.assertEqual(key_row["unified_id"], version_row["unified_id"])
 
         versioned = True
+        # XXX was expecting list_keys instead of list_versions here.. what's
+        # up?
         sql_text = list_versions(_test_collection_id, 
                                  versioned=versioned, 
                                  prefix=_test_prefix)
@@ -288,6 +291,8 @@ class TestSegmentVisibility(unittest.TestCase):
         for row in key_versioned_rows:
             key_versioned_counts[row["key"]] += 1
             self.assertTrue(row["key"].startswith(_test_prefix))
+
+        # XXX we don't compare anything with key_versioned_counts here?
 
     #@unittest.skip("isolate test")
     def test_limits_and_markers(self):
@@ -339,19 +344,25 @@ class TestSegmentVisibility(unittest.TestCase):
         for versioned in [True, False]:
             sql_text = list_versions(_test_collection_id, 
                                  versioned=versioned, 
-                                 prefix=_test_prefix)
+                                 prefix=_test_prefix,
+                                 limit=None)
 
             args = {"collection_id" : _test_collection_id,
                     "prefix"        : _test_prefix, }
+
+            if _write_debug_sql:
+                with open("/tmp/debug_all.sql", "w") as debug_sql_file:
+                    debug_sql_file.write(mogrify(sql_text, args))
 
             cursor = self._connection.cursor()
             cursor.execute(sql_text, args)
             baseline_rows = cursor.fetchall()
             cursor.close()
-
+            baseline_set = set([(r["key"], r["unified_id"], ) 
+                                for r in baseline_rows])
             key_marker = None
             version_marker = None
-            for row in baseline_rows:
+            for row_idx, row in enumerate(baseline_rows):
                 sql_text = list_versions(_test_collection_id, 
                                      versioned=versioned, 
                                      prefix=_test_prefix,
@@ -361,22 +372,42 @@ class TestSegmentVisibility(unittest.TestCase):
 
                 args = {"collection_id" : _test_collection_id,
                         "prefix"        : _test_prefix, 
-                        "key_marker"    : key_marker,
-                        "version_marker": version_marker,
                         "limit"         : 1}
 
-                cursor = self._connection.cursor()
-                cursor.execute(sql_text, args)
-                test_row = cursor.fetchone()
-                cursor.close()
+                if key_marker is not None:
+                    args["key_marker"] = key_marker
+                if version_marker is not None:
+                    args["version_marker"] = version_marker
+
+                if _write_debug_sql:
+                    debug_filename = "/tmp/debug_%s.sql" % (row_idx, )
+                    with open(debug_filename, "w") as debug_sql_file:
+                        debug_sql_file.write(mogrify(sql_text, args))
+
+                # this result should always be stable. is it?
+                last_time = None
+                for _ in range(5):
+                    cursor = self._connection.cursor()
+                    cursor.execute(sql_text, args)
+                    test_row = cursor.fetchone()
+                    cursor.close()
+                    if last_time is not None:
+                        assert test_row == last_time
+                    last_time = test_row
+
+                # make sure it's in the result somewhere. below we test if it's
+                # in the right order.
+                self.assertEqual(
+                    (test_row["key"], test_row["unified_id"]) in baseline_set,
+                    True)
                 
                 log.info("{0}, {1}".format(test_row["key"], row["key"]))
                 log.debug(sql_text)
 
                 self.assertEqual(test_row["key"], row["key"], 
-                                 (versioned, test_row["key"], row["key"]))
+                                 (row_idx, versioned, test_row["key"], row["key"]))
                 self.assertEqual(test_row["unified_id"], row["unified_id"], 
-                                 (test_row["unified_id"], row["unified_id"]))
+                                 (row_idx, versioned, test_row["unified_id"], row["unified_id"]))
 
                 key_marker = test_row["key"]
                 version_marker = test_row["unified_id"]
@@ -486,6 +517,7 @@ class TestSegmentVisibility(unittest.TestCase):
                 self.assertEqual(version_for_key_row["unified_id"],
                                  list_keys_row["unified_id"])
 
+    #@unittest.skip("isolate test")
     def test_list_versions_same_rows(self):
         """
         check that this can find all the same rows list_versions returns in the

@@ -427,7 +427,7 @@ class _NamedParam(object):
     def __unicode__(self):
         return unicode(self.param_name)
 
-def _base_where(**kwargs):
+def _base_where(pre_formed_clauses=[], **kwargs):
     """
     Generate the where clause to use at the deepest level of the query.
 
@@ -519,6 +519,8 @@ def _base_where(**kwargs):
         else:
             param_name = param_name if param_name else name
             clauses.append(u"%s = %%(%s)s" % (name, param_name, ))
+
+    clauses.extend(pre_formed_clauses)
 
     base_where = "\n   AND ".join(clauses)
     return base_where
@@ -756,7 +758,21 @@ def list_versions(collection_id, versioned=False, prefix=None, key_marker=None,
             raise ValueError("key_marker should be >= prefix")
         if not key_marker.startswith(prefix):
             raise ValueError("key_marker should start with prefix")
-    
+
+    # require key_marker and version_marker or neither
+    if ((key_marker or version_marker) and not 
+        (key_marker and version_marker)
+    ):
+        raise ValueError("version_marker should be used with key_marker")
+
+    # version_marker can only be applied to rows that have the same key as key
+    # marker. Rows from later keys might have earlier unified_ids that we
+    # should not exclude.
+    pre_formed_clauses = []
+    if version_marker is not None:
+        pre_formed_clauses.append(
+            "( key <> %(key_marker)s OR unified_id > %(version_marker)s )")
+
     base_where = _base_where(
         collection_id = collection_id,
         exclude_later_parts = True,
@@ -764,7 +780,7 @@ def list_versions(collection_id, versioned=False, prefix=None, key_marker=None,
         exclude_canceled = True,
         key__prefix = _NamedParam(prefix = prefix),
         key__gteq = _NamedParam(key_marker = key_marker),
-        unified_id__gt = _NamedParam(version_marker = version_marker)
+        pre_formed_clauses = pre_formed_clauses,
     )
 
     sql = _compose(_columns,
@@ -773,7 +789,10 @@ def list_versions(collection_id, versioned=False, prefix=None, key_marker=None,
                    where = _where(final=True,
                                   garbage=False,
                                   versioned=versioned),
-                    sort = "unified-id-desc",
+                    # have to sort such that the versions are returned in order
+                    # of increasing unified_id, because the version_marker is
+                    # compared using greater than.
+                    sort = "unified-id-asc",
                    limit = limit)
     return sql
 

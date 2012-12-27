@@ -514,6 +514,7 @@ class TestSegmentVisibility(unittest.TestCase):
 
         for list_versions_row in list_versions_rows:
             sql_text = version_for_key(_test_collection_id, 
+                                       versioned=True,
                                        key=list_versions_row["key"], 
                                        unified_id=list_versions_row["unified_id"]) 
 

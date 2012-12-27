@@ -10,6 +10,7 @@
 
 begin;
 set search_path to nimbusio_node, public;
+select setseed(0.057192239581570603);
 
 /* add a median function, from the postgresql wiki */
 CREATE OR REPLACE FUNCTION _final_median(anyarray)
@@ -55,11 +56,12 @@ select
     1 + (100 * random())::int4 as collection_id,
     'key-' || (1 + (100 * random()))::int4::text as key,
     'F' as status,
-    current_timestamp::abstime::int4::int8
+    '2012-12-25 00:00:01 UTC'::timestamp::abstime::int4::int8
         - '2011-01-01'::timestamp::abstime::int4::int8
         + (1000::int8 * id::int8) as unified_id,
-    current_timestamp - ('10000000 seconds'::interval)
-                      + ('1 second'::interval * id) as timestamp,
+    '2012-12-25 00:00:01 UTC'::timestamp - ('10000000 seconds'::interval)
+                                         + ('1 second'::interval * id) 
+                                         as timestamp,
     1 as segment_num,
     0 as conjoined_part,
     (1000000000 * random())::int8 as file_size,
@@ -279,7 +281,8 @@ insert into segment (
         a.*,
         coalesce((select timestamp+'1 second'::interval 
          from segment s2 where s2.unified_id > a.unified_id 
-         order by unified_id limit 1), current_timestamp) as timestamp
+         order by unified_id limit 1), 
+         '2012-12-25 00:00:01 UTC'::timestamp) as timestamp
     from archives_to_get_tombstones a
     where not exists (
         select 1 from segment s2 where s2.unified_id=a.unified_id);

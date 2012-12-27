@@ -502,6 +502,8 @@ class TestSegmentVisibility(unittest.TestCase):
         """
         check that this can find all the same rows list_keys returns
         """
+        # XXX: this looks like it tests the same stuff as the previous
+        # entry?
         log = logging.getLogger("test_version_for_key_find_all_same_rows")
 
         sql_text = list_keys(_test_collection_id, 
@@ -648,6 +650,27 @@ class TestSegmentVisibility(unittest.TestCase):
         list_keys_set = set([(r["key"], r["unified_id"], ) \
                                  for r in list_keys_rows])
 
+        # find keys that are only reachable by list_keys when versioned=True
+        # we need this below.
+        sql_text = list_keys(_test_collection_id, 
+                             versioned=False, 
+                             prefix=_test_prefix)
+
+        args = {"collection_id" : _test_collection_id,
+                "prefix"        : _test_prefix, }
+
+        cursor = self._connection.cursor()
+        cursor.execute(sql_text, args)
+        unversioned_list_keys_rows = cursor.fetchall()
+        cursor.close()
+
+        unversioned_list_keys_set = set([(r["key"], r["unified_id"], ) \
+                                         for r in unversioned_list_keys_rows])
+
+        versioned_only_reachable_set = \
+            list_keys_set - unversioned_list_keys_set
+
+
         # 3. compare the results to determine which keys are older versions
         older_version_set = list_versions_set - list_keys_set
 
@@ -693,8 +716,9 @@ class TestSegmentVisibility(unittest.TestCase):
                 else:
                     self.assertTrue(len(test_rows) > 0)
 
-        # The rows that were in both list_versions output and list_keys output 
-        # should be reachable either with versioned=True or versioned=False.
+        # The rows that were in both list_versions output and list_keys output
+        # should be reachable either with versioned=True, but only reachable
+        # with versioned=False if they are not in versioned_only_reachable_set.
         for key, unified_id in list_keys_set:
             for versioned in [False, True, ]:
                 sql_text = version_for_key(_test_collection_id, 
@@ -711,7 +735,13 @@ class TestSegmentVisibility(unittest.TestCase):
                 test_rows = cursor.fetchall()
                 cursor.close()
 
-                self.assertTrue(len(test_rows) > 0, 
+                if (versioned is False
+                    and (key, unified_id, ) in versioned_only_reachable_set
+                ):
+                    self.assertTrue(len(test_rows) == 0,
+                                "versioned={0} {1}".format(versioned, args))
+                else:
+                    self.assertTrue(len(test_rows) > 0, 
                                 "versioned={0} {1}".format(versioned, args))
 
 if __name__ == "__main__":

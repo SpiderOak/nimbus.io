@@ -251,8 +251,12 @@ class TestSegmentVisibility(unittest.TestCase):
         for key, value in versioned_key_counts.items():
             self.assertTrue(value >= unversioned_key_counts[key], (key, value))
 
-        # check that the list keys result is the same as list_versions in the
-        # unversioned case above (although there could be extra columns.)
+        # check that the list keys result is consistent with list_versions in
+        # above (although there could be extra columns.)  Note that
+        # list_keys(versioned=True) may have records that
+        # list_versions(versioned=False) does not have, because there are more
+        # ways for a segment to become eligible for garbage collection in an
+        # unversioned collection.
 
         for versioned in [False, True, ]:
             sql_text = list_keys(_test_collection_id, 

@@ -1,0 +1,3 @@
+We have a 'sql' directory to document our SQL various SQL database schemas, so
+it seems appropriate to also have a directory to document Redis data structures
+used by Nimbus.io.

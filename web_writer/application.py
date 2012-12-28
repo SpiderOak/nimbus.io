@@ -18,6 +18,7 @@ archive:
 
 """
 from base64 import b64decode
+import httplib
 import logging
 import os
 import random
@@ -39,6 +40,7 @@ from tools.data_definitions import block_generator, \
 from tools.collection_access_control import write_access, delete_access
 from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
+from tools.operational_stats_redis_sink import redis_queue_entry_tuple
 
 from tools.zfec_segmenter import ZfecSegmenter
 
@@ -98,7 +100,7 @@ def _build_meta_dict(req_get):
 def _connected_clients(clients):
     return [client for client in clients if client.connected]
 
-def _create_data_writers(event_push_client, clients):
+def _create_data_writers(clients):
     data_writers_dict = dict()
 
     connected_clients_by_node = list()
@@ -162,7 +164,7 @@ class Application(object):
         authenticator, 
         accounting_client,
         event_push_client,
-        stats
+        redis_queue
     ):
         self._log = logging.getLogger("Application")
         self._cluster_row = cluster_row
@@ -172,7 +174,7 @@ class Application(object):
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
-        self._stats = stats
+        self._redis_queue = redis_queue
 
 
         self._dispatch_table = {
@@ -216,7 +218,7 @@ class Application(object):
         self._log.debug("_respond_to_ping")
         # Ticket #44 we don't send 'Connection: close' here because
         # this is an internal URI
-        response = Response(status=200, content_type="text/plain")
+        response = Response(status=httplib.OK, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
@@ -266,7 +268,6 @@ class Application(object):
             expected_md5 = b64decode(req.headers["content-md5"])
 
         start_time = time.time()
-        self._stats["archives"] += 1
         description = "archive: collection=({0}){1} key={2}, size={3}".format(
             collection_row["id"],
             collection_row["name"],
@@ -278,8 +279,9 @@ class Application(object):
 
         unified_id = None
         conjoined_part = 0
+        conjoined_archive = "conjoined_identifier" in req.GET
 
-        if "conjoined_identifier" in req.GET:
+        if conjoined_archive:
             unified_id = self._id_translator.internal_id(
                req.GET["conjoined_identifier"]
             )
@@ -293,13 +295,7 @@ class Application(object):
             if len(value) > 0:
                 conjoined_part = int(value)
 
-
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
         archiver = Archiver(
             data_writers,
@@ -310,6 +306,14 @@ class Application(object):
             meta_dict,
             conjoined_part
         )
+
+        if not conjoined_archive:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_request", queue_entry, ))
+
         segmenter = ZfecSegmenter(_min_segments, len(data_writers))
         actual_content_length = 0
         file_adler32 = zlib.adler32('')
@@ -351,13 +355,17 @@ class Application(object):
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
             )
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
             # 2011-09-30 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
-            self._stats["archives"] -= 1
             return response
         except Exception, instance:
             # 2012-07-14 dougfort -- were getting
@@ -373,14 +381,17 @@ class Application(object):
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
             )
-            response = Response(status=500, content_type=None)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            self._stats["archives"] -= 1
             return response
         
         end_time = time.time()
-        self._stats["archives"] -= 1
 
         if actual_content_length != expected_content_length:
             error_message = "actual content length {0} != expected {1}".format(
@@ -389,6 +400,16 @@ class Application(object):
             _send_archive_cancel(unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=actual_content_length)
+            self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPBadRequest(error_message)
 
         if expected_md5 is not None and expected_md5 != file_md5.digest():
@@ -397,7 +418,30 @@ class Application(object):
             _send_archive_cancel(unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=actual_content_length)
+            self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPBadRequest(error_message)
+
+        if not conjoined_archive:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_success", queue_entry, ))
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=actual_content_length)
+        self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         self.accounting_client.added(
             collection_row["id"],
@@ -424,6 +468,11 @@ class Application(object):
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
     def _delete_key(self, req, match_object):
@@ -465,10 +514,7 @@ class Application(object):
             key,
             unified_id_to_delete)
         self._log.info(description)
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            self._data_writer_clients
-        )
+        data_writers = _create_data_writers(self._data_writer_clients)
 
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
@@ -482,6 +528,12 @@ class Application(object):
             timestamp
         )
 
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("delete_request", queue_entry, ))
+
         try:
             destroyer.destroy(_reply_timeout)
         except DestroyFailedError, instance:            
@@ -492,13 +544,24 @@ class Application(object):
             self._log.error("delete failed: %s %s" % (
                 description, instance, 
             ))
-            # 2009-10-08 dougfort -- assume we have some node trouble
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("delete_error", queue_entry, ))
+            # 2011-10-08 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("delete_success", queue_entry, ))
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
@@ -508,6 +571,12 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _start_conjoined(self, req, match_object):
@@ -541,14 +610,15 @@ class Application(object):
             collection_row["name"],
             key))
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         unified_id = self._unified_id_factory.next()
         timestamp = create_timestamp()
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("archive_request", queue_entry, ))
 
         try:
             start_conjoined_archive(
@@ -566,9 +636,21 @@ class Application(object):
             self._log.error("start-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -581,7 +663,18 @@ class Application(object):
             self._log.exception("start-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -600,6 +693,12 @@ class Application(object):
         response.body_file.write(json.dumps(conjoined_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _finish_conjoined(self, req, match_object):
@@ -637,12 +736,7 @@ class Application(object):
             key,
             unified_id))
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
 
         try:
@@ -661,9 +755,20 @@ class Application(object):
             self._log.error("finish-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -676,10 +781,33 @@ class Application(object):
             self._log.exception("finish-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("archive_success", queue_entry, ))
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=int(req.headers["content-length"]))
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         result_dict = {"success" : True}
@@ -689,6 +817,12 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=int(response.headers["content-length"]))
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _abort_conjoined(self, req, match_object):
@@ -726,12 +860,7 @@ class Application(object):
             key,
             unified_id))
 
-        data_writers = _create_data_writers(
-            self._event_push_client,
-            # _data_writer_clients are the 0mq clients for each of the nodes in
-            # the cluster. They may or may not be connected.
-            self._data_writer_clients
-        ) 
+        data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
 
         try:
@@ -750,9 +879,16 @@ class Application(object):
             self._log.error("abort-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             # 2012-03-21 dougfort -- assume we have some node trouble
             # tell the customer to retry in a little while
-            response = Response(status=503, content_type=None)
+            response = Response(status=httplib.SERVICE_UNAVAILABLE, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
@@ -765,7 +901,14 @@ class Application(object):
             self._log.exception("abort-conjoined failed: %s %s" % (
                 unified_id, instance, 
             ))
-            response = Response(status=500, content_type=None)
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=timestamp,
+                                            collection_id=collection_row["id"],
+                                            value=int(req.headers["content-length"]))
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            response = Response(status=httplib.INTERNAL_SERVER_ERROR, 
+                                content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
@@ -778,5 +921,11 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=timestamp,
+                                    collection_id=collection_row["id"],
+                                    value=int(response.headers["content-length"]))
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 

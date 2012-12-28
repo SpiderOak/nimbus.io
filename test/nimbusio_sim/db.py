@@ -131,8 +131,16 @@ def populate_central_database(cluster_config, database_users, hostnames=None):
                   password=database_users[cluster_config.central_db_user], )
     conn = retry_db_connect(params)
     cursor = conn.cursor()
-    cursor.execute("insert into nimbusio_central.cluster (name) values(%s)",
-        [cluster_config.clustername])
+    cursor.execute("""
+        insert into nimbusio_central.data_center (name) values(%s)
+        returning id
+        """,
+        [cluster_config.datacenter_name])
+    (data_center_id, ) = cursor.fetchone()
+    cursor.execute("""
+        insert into nimbusio_central.cluster (name, data_center_id) values(%s, %s)
+        """,
+        [cluster_config.clustername, data_center_id])
     for idx, name in enumerate(cluster_config.node_names):
         cursor.execute("insert into nimbusio_central.node "
                        "(cluster_id, node_number_in_cluster, name, hostname) "

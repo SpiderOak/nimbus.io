@@ -74,13 +74,15 @@ class ListCollectionsView(ConnectionPoolView):
                      "creation-time" : http_timestamp_str(raw_creation_time)}
             collection_list.append(entry)
 
-        # 2012-08-16 dougfort Ticket #28 - set content_type
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
-        return flask.Response(json.dumps(collection_list, 
-                                         sort_keys=True, 
-                                         indent=4), 
-                              status=httplib.OK,
-                              content_type="application/json")
+        data = json.dumps(collection_list, sort_keys=True, indent=4) 
+
+        # 2012-08-16 dougfort Ticket #28 - set content_type
+        response = flask.Response(data, 
+                                  status=httplib.OK,
+                                  content_type="application/json")
+        response.headers["content-length"] = str(len(data))
+        return response
 
 view_function = ListCollectionsView.as_view(endpoint)
 

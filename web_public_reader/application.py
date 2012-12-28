@@ -17,16 +17,15 @@ from webob import exc
 from webob import Response
 
 from tools.data_definitions import http_timestamp_str, \
-        parse_http_timestamp
+        parse_http_timestamp, \
+        create_timestamp
 from tools.collection_access_control import read_access, list_access
 from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
+from tools.operational_stats_redis_sink import redis_queue_entry_tuple
 
-from web_public_reader.exceptions import SpaceAccountingServerDownError, \
-        SpaceUsageFailedError, \
-        RetrieveFailedError
+from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
-from web_public_reader.space_usage_getter import SpaceUsageGetter
 from web_public_reader.stat_getter import \
     get_last_modified_and_content_length, \
     last_modified_and_content_length_from_status_rows
@@ -37,7 +36,6 @@ from web_public_reader.conjoined_manager import list_conjoined_archives, \
 from web_public_reader.url_discriminator import parse_url, \
         action_respond_to_ping, \
         action_list_versions, \
-        action_space_usage, \
         action_list_keys, \
         action_retrieve_meta, \
         action_retrieve_key, \
@@ -101,7 +99,8 @@ class Application(object):
         id_translator,
         authenticator, 
         accounting_client,
-        event_push_client
+        event_push_client,
+        redis_queue
     ):
         self._log = logging.getLogger("Application")
         self._memcached_client = memcached_client
@@ -111,11 +110,11 @@ class Application(object):
         self._authenticator = authenticator
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
+        self._redis_queue = redis_queue
 
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
             action_list_versions        : self._list_versions,
-            action_space_usage          : self._collection_space_usage,
             action_list_keys            : self._list_keys,
             action_retrieve_meta        : self._retrieve_meta,
             action_retrieve_key         : self._retrieve_key,
@@ -156,7 +155,7 @@ class Application(object):
         # self._log.debug("_respond_to_ping")
         # Ticket #44 We don't send Connection: close here
         # because this is an internal URI
-        response = Response(status=200, content_type="text/plain")
+        response = Response(status=httplib.OK, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
@@ -207,9 +206,42 @@ class Application(object):
                 collection_row["name"],
                 kwargs))
 
-        result_dict = list_versions(self._interaction_pool,
-                                    collection_row["id"], 
-                                    **kwargs)
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_request", queue_entry, ))
+
+        try:
+            result_dict = list_versions(self._interaction_pool,
+                                        collection_row["id"], 
+                                        **kwargs)
+        except Exception, instance:
+            self._log.exception(instance)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("listmatch_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            raise
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_success", queue_entry, ))
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in_request", queue_entry, ))
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -226,45 +258,11 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True, 
                                             indent=4))
-        return response
-
-    def _collection_space_usage(self, req, match_object):
-        # username = match_object.group("username")
-        collection_name = match_object.group("collection_name")
-        self._log.debug("_collection_space_usage")
-
-        try:
-            collection_row = \
-                self._authenticator.authenticate(collection_name,
-                                                 None,
-                                                 req)
-        except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
-            raise exc.HTTPForbidden()
-        except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
-            raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
-            raise exc.HTTPBadRequest()
-            
-        self._log.info("space_usage: collection = ({0}) {1}".format(
-                collection_row["id"],
-                collection_row["name"]))
-
-
-        getter = SpaceUsageGetter(self.accounting_client)
-        try:
-            usage = getter.get_space_usage(collection_row["id"], 
-                                           _reply_timeout)
-        except (SpaceAccountingServerDownError, SpaceUsageFailedError), e:
-            raise exc.HTTPServiceUnavailable(str(e))
-
-        response = Response(content_type=_content_type_json)
-        # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
-        response.headers["Connection"] = "close"
-        # 2012-08-16 dougfort Ticket #29 - format json for debuging
-        response.body_file.write(json.dumps(usage, sort_keys=True, indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
     def _list_keys(self, req, match_object):
@@ -309,9 +307,43 @@ class Application(object):
                 kwargs
             )
         )
-        result_dict = list_keys(self._interaction_pool,
-                                collection_row["id"], 
-                                **kwargs)
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_request", queue_entry, ))
+
+        try:
+            result_dict = list_keys(self._interaction_pool,
+                                    collection_row["id"], 
+                                    **kwargs)
+        except Exception, instance:
+            self._log.exception(instance)
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("listmatch_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
+            raise
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=1)
+        self._redis_queue.put(("listmatch_success", queue_entry, ))
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         # translate version ids to the form we show to the public
         if "key_data" in result_dict:
@@ -328,6 +360,13 @@ class Application(object):
         response.body_file.write(json.dumps(result_dict, 
                                             sort_keys=True,
                                             indent=4))
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _retrieve_key(self, req, match_object):
@@ -379,6 +418,9 @@ class Application(object):
             slice_size)
         self._log.info(description)
 
+        # 2012-12-12 dougfort: we handle redis space accounting stats in
+        # the Retriever object
+
         response_headers = dict()
         response = Response(headers=response_headers)
 
@@ -386,6 +428,7 @@ class Application(object):
             retriever = Retriever(
                 self._memcached_client,
                 self._interaction_pool,
+                self._redis_queue,
                 collection_row["id"],
                 key,
                 version_id,
@@ -398,6 +441,12 @@ class Application(object):
             self._log.error("retrieve failed: %s %s" % (
                 description, instance,
             ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             return exc.HTTPNotFound(str(instance))
         except Exception, instance:
             self._log.exception("retrieve_failed {0}".format(instance))
@@ -406,6 +455,12 @@ class Application(object):
                 str(instance),
                 exctype=instance.__class__.__name__
             )
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise
 
         last_modified, content_length = \
@@ -413,6 +468,17 @@ class Application(object):
                 retriever.status_rows)
 
         if last_modified is None or content_length is None:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("retrieve_error", queue_entry, ))
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         # Ticket #31 Guess Content-Type and Content-Encoding
@@ -428,11 +494,30 @@ class Application(object):
             except Exception, instance:
                 self._log.error(
                     "unparsable timestamp '{0}'".format(timestamp_str))
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=1)
+                self._redis_queue.put(("retrieve_error", queue_entry, ))
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
                 response.headers["Connection"] = "close"
                 response.last_modified = last_modified
+                # 2012-12-12 dougfort: is this a successful retrieve in terms
+                # of space accounting?
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 response.status_int = httplib.NOT_MODIFIED
                 return  response
 
@@ -443,9 +528,31 @@ class Application(object):
             except Exception, instance:
                 self._log.error(
                     "unparsable timestamp '{0}'".format(timestamp_str))
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=1)
+                self._redis_queue.put(("retrieve_error", queue_entry, ))
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=1)
+                self._redis_queue.put(("retrieve_error", queue_entry, ))
+                if "content-length" in req.headers:
+                    queue_entry = \
+                        redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                                collection_id=collection_row["id"],
+                                                value=req.headers["content-length"])
+                    self._redis_queue.put(("error_bytes_in", queue_entry, ))
                 response.headers["Connection"] = "close"
                 response.last_modified = last_modified
                 response.status_int = httplib.PRECONDITION_FAILED
@@ -508,7 +615,20 @@ class Application(object):
                                   key)
 
         if meta_dict is None:
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPNotFound(req.url)
+
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("error_bytes_in", queue_entry, ))
 
         response = Response(content_type=_content_type_json)
         # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
@@ -517,6 +637,13 @@ class Application(object):
         response.body_file.write(json.dumps(meta_dict, 
                                             sort_keys=True, 
                                             indent=4))
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _head_key(self, req, match_object):
@@ -564,9 +691,21 @@ class Application(object):
                                                  key,
                                                  version_id)
         if last_modified is None or content_length is None:
+            if "content-length" in req.headers:
+                queue_entry = \
+                    redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                            collection_id=collection_row["id"],
+                                            value=req.headers["content-length"])
+                self._redis_queue.put(("error_bytes_in", queue_entry, ))
             raise exc.HTTPNotFound("Not Found: %r" % (key, ))
 
         status = httplib.OK
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
 
         # Ticket #37 handle If-Modified-Since and If-Unmodified-Since headers
 
@@ -576,7 +715,7 @@ class Application(object):
                 timestamp = parse_http_timestamp(timestamp_str)
             except Exception, instance:
                 self._log.error(
-                    "unparable timestamp '{0}'".format(timestamp_str))
+                    "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 status = httplib.NOT_MODIFIED
@@ -587,7 +726,7 @@ class Application(object):
                 timestamp = parse_http_timestamp(timestamp_str)
             except Exception, instance:
                 self._log.error(
-                    "unparable timestamp '{0}'".format(timestamp_str))
+                    "unparsable timestamp '{0}'".format(timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 status = httplib.PRECONDITION_FAILED
@@ -607,6 +746,12 @@ class Application(object):
             response.content_type = content_type
         if content_encoding is not None:
             response.content_encoding = content_encoding
+
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
 
         return response
 
@@ -656,6 +801,13 @@ class Application(object):
             **kwargs
         )
 
+        if "content-length" in req.headers:
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=req.headers["content-length"])
+            self._redis_queue.put(("success_bytes_in", queue_entry, ))
+
         conjoined_list = list()
         for entry in conjoined_entries:
             row_dict = {
@@ -680,6 +832,12 @@ class Application(object):
         response.body_file.write(json.dumps(response_dict, 
                                             sort_keys=True,
                                             indent=4))
+        queue_entry = \
+            redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                    collection_id=collection_row["id"],
+                                    value=response.headers["content-length"])
+        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+
         return response
 
     def _list_upload_in_conjoined(self, req, match_object):

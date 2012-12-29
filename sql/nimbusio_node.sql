@@ -78,11 +78,61 @@ create table segment (
     constraint file_hash_length check (file_hash is null or length(file_hash)=16)
 );
 
-/* The segment_archived table is exactly like the segment table, 
- * but with no indexes. 
- * Garbage collected rows from segment are moved to segment_archived, 
- * so they can still be used for billing and such. */
-create table segment_archived as select * from segment where 0 = 1;
+/* The garbage_segment_conjoined table is a join between segment and conjoined
+ * for rows that have recently been garbage collected.
+ * Since the system is eventually consistent, recently garbage collected rows
+ * may still be needed to determine the garbage status of newly arriving rows.
+ * (For example, in an unversioned collection, an new archive has the effect of
+ * making previous archives in the same collection with the same key become
+ * collectable garbage.  However, since rows may be handed off, they may arrive
+ * out of order.)  
+
+ * Collected garbage rows should be kept in garbage_segment_conjoined_recent
+ * for as long as the maximum amount of time a handoff is expected to complete.
+ * This table has indexes, since it must be queried live to determine the
+ * status of other (current) rows during retrieve and list operations.
+ * There's also garbage_segment_conjoined_old for garbage rows that are beyond
+ * the exected timeframe that a handoff might take.
+ */
+create table garbage_segment_conjoined_recent as 
+    SELECT segment.id as segment_id,
+           segment.collection_id,
+           segment.key,
+           segment.status,
+           segment.unified_id,
+           segment.timestamp,
+           segment.segment_num,
+           segment.conjoined_part,
+           segment.file_size,
+           segment.file_adler32,
+           segment.file_hash,
+           segment.file_tombstone_unified_id,
+           segment.source_node_id,
+           segment.handoff_node_id,
+           conjoined.id AS conjoined_id,
+           conjoined.create_timestamp AS conjoined_create_timestamp,
+           conjoined.abort_timestamp AS conjoined_abort_timestamp,
+           conjoined.complete_timestamp AS conjoined_complete_timestamp,
+           conjoined.delete_timestamp AS conjoined_delete_timestamp,
+           conjoined.combined_size,
+           conjoined.combined_hash,
+           /* these are added during the garbage collection process */
+           null::timestamp as collected_time,
+           null::timestamp as collected_end_time,
+           null::int8 as collected_by_unified_id
+           /*  these are redundant 
+           conjoined.collection_id,
+           conjoined.key,
+           conjoined.unified_id,
+           conjoined.handoff_node_id */
+      FROM nimbusio_node.segment
+      LEFT OUTER JOIN nimbusio_node.conjoined 
+           USING (collection_id, key, unified_id)
+     WHERE 0=1;
+
+create table garbage_segment_conjoined_old (
+    LIKE garbage_segment_conjoined_recent 
+    EXCLUDING indexes );
 
 /* I need to research more about the actual implementation of multi column
  * indexes.  The goal here is to keep writes reasonably efficient even when the
@@ -96,6 +146,9 @@ create index segment_key_idx on nimbusio_node.segment("collection_id", "key");
 /* a partial index just for handoffs, so it's easy to find these records when a
  * node comes back online */
 create index segment_handoff_idx on nimbusio_node.segment("handoff_node_id") where handoff_node_id is not null;
+
+create index garbage_segment_conjoined_recent_idx 
+    on nimbusio_node.garbage_segment_conjoined_recent("collection_id", "key");
 
 /* we store all the values in the nimbusio_node key/value store in large, sequentially
  * written value data files.  These are pointed to by the segment_sequence table to

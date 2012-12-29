@@ -218,6 +218,10 @@ class Application(object):
                                         collection_row["id"], 
                                         collection_row["versioning"],
                                         **kwargs)
+        # segment_visibility raises ValueError if it is unhappy
+        except ValueError, instance:
+            self._log.error(instance)
+            raise exc.HTTPBadRequest(instance)
         except Exception, instance:
             self._log.exception(instance)
             queue_entry = \
@@ -322,6 +326,10 @@ class Application(object):
                                     collection_row["id"], 
                                     collection_row["versioning"], 
                                     **kwargs)
+        # segment_visibility raises ValueError if it is unhappy
+        except ValueError, instance:
+            self._log.error(instance)
+            raise exc.HTTPBadRequest(instance)
         except Exception, instance:
             self._log.exception(instance)
             queue_entry = \

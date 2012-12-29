@@ -201,9 +201,10 @@ class Application(object):
                 kwargs["version_id_marker"]
             )
 
-        self._log.info("_list_versions: collection = ({0}) {1} {2}".format(
+        self._log.info("_list_versions: collection = ({0}) {1} {2} {3}".format(
                 collection_row["id"],
                 collection_row["name"],
+                collection_row["versioning"],
                 kwargs))
 
         queue_entry = \
@@ -215,6 +216,7 @@ class Application(object):
         try:
             result_dict = list_versions(self._interaction_pool,
                                         collection_row["id"], 
+                                        collection_row["versioning"],
                                         **kwargs)
         except Exception, instance:
             self._log.exception(instance)
@@ -301,9 +303,10 @@ class Application(object):
                 kwargs[variable_name] = variable_value
 
         self._log.info(
-            "_list_keys: collection = ({0}) {1} {2}".format(
+            "_list_keys: collection = ({0}) {1} {2} {3}".format(
                 collection_row["id"],
                 collection_row["name"],
+                collection_row["versioning"],
                 kwargs
             )
         )
@@ -317,6 +320,7 @@ class Application(object):
         try:
             result_dict = list_keys(self._interaction_pool,
                                     collection_row["id"], 
+                                    collection_row["versioning"], 
                                     **kwargs)
         except Exception, instance:
             self._log.exception(instance)

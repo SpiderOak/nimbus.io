@@ -14,9 +14,6 @@ import gevent.queue
 
 from web_writer.exceptions import DestroyFailedError
 
-from web_public_reader.local_database_util import current_status_of_key, \
-        current_status_of_version
-
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _task_timeout = 60.0
 

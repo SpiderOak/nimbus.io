@@ -288,7 +288,8 @@ class Retriever(object):
             # the configured maximum, send the request through the cache.
             target_port = _web_internal_reader_port
             if (_web_internal_reader_cache_port is not None and
-                _web_internal_reader_max_cache_size <= status_row.seg_file_size
+                status_row.seg_file_size <= 
+                    _web_internal_reader_max_cache_size 
             ):
                 target_port = _web_internal_reader_cache_port
 

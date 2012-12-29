@@ -42,7 +42,7 @@ def list_keys(interaction_pool,
 
     truncated = len(result) == request_count
     key_list = list()
-    for row in result:
+    for row in result[:max_keys]:
         key_list.append(
             {"key"                : row["key"], 
             "version_identifier"  : row["unified_id"], 
@@ -68,20 +68,13 @@ def list_versions(interaction_pool,
                   max_keys=1000, 
                   delimiter="",
                   key_marker=None,
-                  version_id_marker_str=None):
+                  version_id_marker=None):
     """
     retrieve infromation about versions which are visible: not deleted, etc
     """
     # ask for one more than max_keys, so we can tell if we are truncated
     max_keys = int(max_keys)
     request_count = max_keys + 1
-    if version_id_marker_str is None:
-        version_id_marker = 0
-    else:
-        try:
-            version_id_marker = int(version_id_marker_str)
-        except ValueError:
-            version_id_marker = 0
 
     sql_text = sql_factory.list_versions(collection_id,
                                          versioned=versioned,
@@ -104,7 +97,7 @@ def list_versions(interaction_pool,
 
     truncated = len(result) == request_count
     key_list = list()
-    for row in result:
+    for row in result[:max_keys]:
         key_list.append(
             {"key"                : row["key"], 
             "version_identifier" : row["unified_id"], 

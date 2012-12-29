@@ -706,7 +706,7 @@ def list_keys(collection_id,
     Does not include handoff rows or later conjoined parts.
     """
 
-    if key_marker is not None:
+    if key_marker is not None and prefix is not None:
         if key_marker < prefix:
             raise ValueError("key_marker should be >= prefix")
         if not key_marker.startswith(prefix):
@@ -753,7 +753,7 @@ def list_versions(collection_id, versioned=False, prefix=None, key_marker=None,
     # to the effort of eliminating every row that isn't the newest version of a
     # key.
 
-    if key_marker is not None:
+    if key_marker is not None and prefix is not None:
         if key_marker < prefix:
             raise ValueError("key_marker should be >= prefix")
         if not key_marker.startswith(prefix):

@@ -342,15 +342,17 @@ class Router(object):
             len(path) > 6 and
             path.startswith('/data/')
         ):
+            routing_method = 'hash'
             target = self.consistent_hash_dest(hosts, availability, collection, 
                 path)
         else:
+            routing_method = 'round_robin'
             while True:
                 hosts_idx = self.round_robin_dispatch_counter % len(hosts)
                 target = hosts[hosts_idx]
                 if target in availability:
                     break
 
-        log.debug("request %d to backend host %s port %d" %
-            (request_num, target, dest_port, ))
+        log.debug("request %d via %s to backend host %s port %d" %
+            (request_num, routing_method, target, dest_port, ))
         return dict(remote = "%s:%d" % (target, dest_port, ))

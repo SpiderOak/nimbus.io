@@ -21,6 +21,7 @@ from web_collection_manager import list_collections_view
 from web_collection_manager import create_collection_view
 from web_collection_manager import delete_collection_view
 from web_collection_manager import set_collection_attribute_view
+from web_collection_manager import get_collection_attribute_view
 
 _log_path = os.path.join(os.environ["NIMBUSIO_LOG_DIR"], 
                          "nimbusio_web_collection_manager.log")
@@ -44,7 +45,8 @@ _views = [ping_view,
           list_collections_view, 
           create_collection_view,
           delete_collection_view, 
-          set_collection_attribute_view]
+          set_collection_attribute_view,
+          get_collection_attribute_view]
 
 from flask import Flask
 app = Flask("web_collection_manager")

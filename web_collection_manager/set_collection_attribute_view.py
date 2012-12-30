@@ -3,7 +3,6 @@
 set_collection_attribute_view.py
 
 A View to to set an attribute of a collection for a user
-At present, the only attribute we recognize is 'versioning'
 """
 import httplib
 import json
@@ -83,9 +82,8 @@ def _set_collection_access_control(cursor,
     # Ticket #49 collection manager allows authenticated users to set 
     # versioning property on collections they don't own
     if cursor.rowcount == 0:
-        log.error(
-            "attempt to set access_control on unknown collection {0} {1}".format(
-                customer_id, collection_name))
+        log.error("unknown collection {0} {1}".format(customer_id, 
+                                                      collection_name))
         collection_dict = {"success" : False}
         return httplib.FORBIDDEN, collection_dict
 
@@ -117,6 +115,7 @@ class SetCollectionAttributeView(ConnectionPoolView):
 
             cursor = connection.cursor()
             attribute = None
+            arg_value = None
             status = None
             result_dict = None
             for key in flask.request.args:
@@ -129,15 +128,16 @@ class SetCollectionAttributeView(ConnectionPoolView):
                     status = httplib.METHOD_NOT_ALLOWED
                     break
                 attribute = key
+                arg_value = flask.request.args[attribute]
                 break
 
             if attribute is not None:
                 try:
                     status, result_dict = \
-                        _dispatch_table[key](cursor, 
-                                             customer_id,
-                                             collection_name, 
-                                             flask.request.args[key])
+                        _dispatch_table[attribute](cursor, 
+                                                   customer_id,
+                                                   collection_name, 
+                                                   arg_value)
                 except Exception:
                     log.exception("{0} {1}".format(collection_name, 
                                                    attribute))
@@ -149,11 +149,13 @@ class SetCollectionAttributeView(ConnectionPoolView):
             connection.commit()
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
-        return flask.Response(json.dumps(result_dict, 
-                                         sort_keys=True, 
-                                         indent=4), 
-                              status=status,
-                              content_type="application/json")
+        data = json.dumps(result_dict, sort_keys=True, indent=4) 
+
+        response = flask.Response(data, 
+                                  status=status,
+                                  content_type="application/json")
+        response.headers["content-length"] = str(len(data))
+        return response
 
 view_function = SetCollectionAttributeView.as_view(endpoint)
 

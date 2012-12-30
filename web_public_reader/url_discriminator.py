@@ -15,7 +15,6 @@ import os
 
 action_respond_to_ping = "respond-to-ping"
 action_list_versions = "list-versions"
-action_space_usage = "space-usage"
 action_list_keys = "list-keys"
 action_retrieve_key = "retrieve-key"
 action_retrieve_meta = "retrieve-meta"
@@ -32,10 +31,6 @@ _ping_re = re.compile(
 
 _list_versions_re = re.compile(
     r"^http(s?)://(?P<collection_name>[a-zA-Z0-9-]+)\." + _re_service_domain + r"(:\d+)?/\?versions(\&.*)?$"
-)
-
-_space_usage_re = re.compile(
-    r"^http(s?)://" + _re_service_domain + r"(:\d+)?/customers/(?P<username>[a-zA-Z0-9-]+)/collections/(?P<collection_name>[a-zA-Z0-9-]+)\?action=space_usage$"
 )
 
 _list_keys_re = re.compile(
@@ -67,7 +62,6 @@ _list_upload_in_conjoined_re = re.compile(
 _regex_by_method = {
     "GET"   : [
         (_ping_re, action_respond_to_ping, ),
-        (_space_usage_re, action_space_usage, ),
         (_list_versions_re, action_list_versions, ),
         (_list_keys_re, action_list_keys, ),
         (_retrieve_meta_re, action_retrieve_meta, ),

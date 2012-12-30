@@ -11,6 +11,7 @@ from redis import StrictRedis, RedisError
 import socket
 import json
 import memcache
+import random
 
 from gdbpool.interaction_pool import DBInteractionPool
 
@@ -77,6 +78,9 @@ class Router(object):
         self.path_hash_base = hmac.new(
             key = NIMBUSIO_URL_DEST_HASH_KEY,
             digestmod=sha256)
+        # start the round robin dispatcher at a random number, so all the
+        # workers don't start on the same point.
+        self.round_robin_dispatch_counter = random.choice(range(10))
 
     def init(self):
         #import logging
@@ -330,8 +334,22 @@ class Router(object):
             gevent.sleep(RETRY_DELAY)
             return self.route(hostname, method, path, _query_string, start)
 
-        target = self.consistent_hash_dest(hosts, availability, collection, 
-            path)
+        # we really only want to do consistent destination routing for requests
+        # to retrieve an archive.  Other requests can go round robin like
+        # usual.
+        if (
+            method in ( 'GET', 'HEAD', ) and
+            len(path) > 6 and
+            path.startswith('/data/')
+        ):
+            target = self.consistent_hash_dest(hosts, availability, collection, 
+                path)
+        else:
+            while True:
+                hosts_idx = self.round_robin_dispatch_counter % len(hosts)
+                target = hosts[hosts_idx]
+                if target in availability:
+                    break
 
         log.debug("request %d to backend host %s port %d" %
             (request_num, target, dest_port, ))

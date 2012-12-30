@@ -234,20 +234,8 @@ class Router(object):
         pathhash.update(unicode(path).encode('utf_8'))
         hexresult = pathhash.hexdigest()
         intresult = int(hexresult, 16)
-
-        # all these could be pre-calculated
-        hexmax = "f" * len(hexresult)
-        intmax = int(hexmax, 16)
-        bucket_size = intmax / len(hosts)
-        bucket_boundaries = [i+1 * bucket_size
-                             for i in range(len(hosts))]
-        bucket_boundaries[-1] = intmax
-
-        target_host = None
-        for host, boundary in zip(hosts, bucket_boundaries):
-            if intresult <= boundary:
-                target_host = host
-                break
+        target_host_idx = intresult % len(hosts)
+        target_host = hosts[target_host_idx]
 
         if target_host in availability:
             return target_host
@@ -340,7 +328,7 @@ class Router(object):
         if (
             method in ( 'GET', 'HEAD', ) and
             len(path) > 6 and
-            path.startswith('/data/')
+            unicode(path).startswith(u'/data/')
         ):
             routing_method = 'hash'
             target = self.consistent_hash_dest(hosts, availability, collection, 

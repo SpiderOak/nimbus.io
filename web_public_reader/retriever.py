@@ -17,10 +17,9 @@ from tools.data_definitions import block_size, \
         segment_status_cancelled, \
         create_timestamp
 from tools.operational_stats_redis_sink import redis_queue_entry_tuple
+from segment_visibility.sql_factory import version_for_key
 
 from web_public_reader.exceptions import RetrieveFailedError
-from web_public_reader.local_database_util import current_status_of_key, \
-    current_status_of_version
 
 memcached_key_template = "internal_read_{0}_{1}"
 
@@ -40,6 +39,7 @@ class Retriever(object):
         interaction_pool,
         redis_queue,
         collection_id, 
+        versioned,
         key, 
         version_id,
         slice_offset,
@@ -50,12 +50,13 @@ class Retriever(object):
         self._interaction_pool = interaction_pool
         self._redis_queue = redis_queue
         self._collection_id = collection_id
+        self._versioned = versioned
         self._key = key
         self._version_id = version_id
         self._slice_offset = slice_offset
         self._slice_size = slice_size
 
-        self.status_rows = self._fetch_status_rows_from_database()
+        self.key_rows = self._fetch_key_rows_from_database()
 
         self.total_file_size = 0
 
@@ -72,53 +73,48 @@ class Retriever(object):
         self._last_block_in_slice_retrieved = False
 
 
-    def _fetch_status_rows_from_database(self):
+    def _fetch_key_rows_from_database(self):
         # TODO: find a non-blocking way to do this
         # TODO: don't just use the local node, it might be wrong
-        if self._version_id is None:
-            status_rows = current_status_of_key(self._interaction_pool,
-                                                self._collection_id, 
-                                                self._key)
-        else:
-            status_rows = current_status_of_version(self._interaction_pool, 
-                                                    self._version_id,
-                                                    self._key)
+        sql_text = version_for_key(self._collection_id, 
+                                   versioned=self._versioned, 
+                                   key=self._key,
+                                   unified_id=self._version_id)
 
-        if len(status_rows) == 0:
-            raise RetrieveFailedError("key not found %s %s" % (
-                self._collection_id, self._key,
-            ))
+        args = {"collection_id" : self._collection_id,
+                "key"           : self._key, 
+                "unified_id"    : self._version_id}
 
-        is_available = False
-        if status_rows[0].con_create_timestamp is None:
-            is_available = status_rows[0].seg_status == segment_status_final
-        else:
-            is_available = status_rows[0].con_complete_timestamp is not None
+        async_result = \
+            self._interaction_pool.run(interaction=sql_text.encode("utf-8"),
+                                       interaction_args=args,
+                                       pool=_nimbusio_node_name)
+        result = async_result.get()
 
-        if not is_available:
-            raise RetrieveFailedError("key is not available %s %s" % (
-                self._collection_id, self._key,
-            ))
+        if len(result) == 0:
+            raise RetrieveFailedError("key not found {0} {1} {2}".format(
+                self._collection_id, 
+                self._key,
+                self._version_id))
 
-        return status_rows
+        # row is of type psycopg2.extras.RealDictRow
+        # we want an honest dict
+        return [dict(row.items()) for row in result]
 
-    def _cache_status_rows_in_memcached(self, status_rows):
+    def _cache_key_rows_in_memcached(self, key_rows):
         memcached_key = \
             memcached_key_template.format(_nimbusio_node_name, 
-                                          status_rows[0].seg_unified_id)
-
-        # See Ticket #40, comment 1 - pickle won't handle namedtuple
-        # so we convert to dict()
-        cached_status_rows = [row._asdict() for row in status_rows]
+                                          key_rows[0]["unified_id"])
 
         # pickle also won't handle the md5 digest, so we encode
-        for row in cached_status_rows:
-            row["seg_file_hash"] = b64encode(row["seg_file_hash"]) 
+        for key_row in key_rows:
+            key_row["file_hash"] = b64encode(key_row["file_hash"]) 
+            key_row["combined_hash"] = b64encode(key_row["combined_hash"]) 
 
         cache_dict = {
             "collection-id" : self._collection_id,
             "key"           : self._key,
-            "status-rows"   : cached_status_rows,
+            "status-rows"   : key_rows,
         }
 
         self._log.debug("caching {0}".format(memcached_key))
@@ -131,7 +127,7 @@ class Retriever(object):
         if not successful:
             self._log.warn("memcached set failed {0}".format(memcached_key))
 
-    def _generate_status_rows(self, status_rows):
+    def _generate_key_rows(self, key_rows):
 
         # 2012-03-14 dougfort -- note that we are dealing wiht two different
         # types of 'size': 'raw' and 'zfec encoded'. 
@@ -166,16 +162,16 @@ class Retriever(object):
         # preceding file
         block_count = None
 
-        for status_row in status_rows:
+        for key_row in key_rows:
 
-            if status_row.seg_status == segment_status_cancelled:
+            if key_row["status"] == segment_status_cancelled:
                 continue
                         
             if self._last_block_in_slice_retrieved:
                 break
 
             next_cumulative_file_size = \
-                    cumulative_file_size + status_row.seg_file_size
+                    cumulative_file_size + key_row["file_size"]
             if next_cumulative_file_size <= self._slice_offset:
                 cumulative_file_size = next_cumulative_file_size
                 continue
@@ -194,7 +190,7 @@ class Retriever(object):
                 assert cumulative_slice_size < self._slice_size
                 next_slice_size = \
                     cumulative_slice_size + \
-                        (status_row.seg_file_size - current_file_offset)
+                        (key_row["file_size"] - current_file_offset)
                 if next_slice_size >= self._slice_size:
                     self._last_block_in_slice_retrieved = True
                     current_file_slice_size = \
@@ -228,7 +224,7 @@ class Retriever(object):
                            self._offset_into_first_block,
                            self._residue_from_last_block))
                     
-            yield status_row, block_offset, block_count
+            yield key_row, block_offset, block_count
 
             cumulative_file_size = next_cumulative_file_size
             current_file_offset = 0
@@ -250,8 +246,8 @@ class Retriever(object):
             raise RetrieveFailedError(instance)
 
     def _retrieve(self, response, timeout):
-        self._cache_status_rows_in_memcached(self.status_rows)
-        self.total_file_size = sum([r.seg_file_size for r in self.status_rows])
+        self._cache_key_rows_in_memcached(self.key_rows)
+        self.total_file_size = sum([r.seg_file_size for r in self.key_rows])
 
         queue_entry = \
             redis_queue_entry_tuple(timestamp=create_timestamp(),
@@ -260,26 +256,26 @@ class Retriever(object):
         self._redis_queue.put(("retrieve_request", queue_entry, ))
         retrieve_bytes = 0L
 
-        self._log.debug("start status_rows loop")
+        self._log.debug("start key_rows loop")
         first_block = True
-        for entry in self._generate_status_rows(self.status_rows):
+        for entry in self._generate_key_rows(self.key_rows):
 
-            status_row, block_offset, block_count = entry
+            key_row, block_offset, block_count = entry
 
             self._log.debug("request retrieve: {0} {1}".format(
-                status_row.seg_unified_id, 
-                status_row.seg_conjoined_part
+                key_row["unified_id"], 
+                key_row["conjoined_part"]
             ))
 
             uri = "http://{0}:{1}/data/{2}/{3}".format(
                 _web_internal_reader_host,
                 _web_internal_reader_port,
-                status_row.seg_unified_id, 
-                status_row.seg_conjoined_part)
+                key_row["unified_id"], 
+                key_row["conjoined_part"])
             self._log.info("requesting {0}".format(uri))
 
             headers = {"x-nimbus-io-expected-content-length" : \
-                            str(status_row.seg_file_size)}
+                            str(key_row["file_size"])}
 
             expected_status = httplib.OK
             if block_offset > 0 and block_count is None:
@@ -365,7 +361,7 @@ class Retriever(object):
             urllib_response.close()
             first_block = False
 
-        # end - for entry in self._generate_status_rows(self.status_rows):
+        # end - for entry in self._generate_key_rows(self.key_rows):
 
         if response.status_int == httplib.OK:
             redis_entries = [("retrieve_success", 1),

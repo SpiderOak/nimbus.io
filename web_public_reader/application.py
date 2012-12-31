@@ -28,7 +28,7 @@ from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
 from web_public_reader.stat_getter import \
     get_last_modified_and_content_length, \
-    last_modified_and_content_length_from_status_rows
+    last_modified_and_content_length_from_key_rows
 from web_public_reader.retriever import Retriever
 from web_public_reader.meta_manager import retrieve_meta
 from web_public_reader.conjoined_manager import list_conjoined_archives, \
@@ -442,6 +442,7 @@ class Application(object):
                 self._interaction_pool,
                 self._redis_queue,
                 collection_row["id"],
+                collection_row["versioning"],
                 key,
                 version_id,
                 slice_offset,
@@ -476,8 +477,7 @@ class Application(object):
             raise
 
         last_modified, content_length = \
-            last_modified_and_content_length_from_status_rows(
-                retriever.status_rows)
+            last_modified_and_content_length_from_key_rows(retriever.key_rows)
 
         if last_modified is None or content_length is None:
             queue_entry = \
@@ -624,6 +624,7 @@ class Application(object):
 
         meta_dict = retrieve_meta(self._interaction_pool, 
                                   collection_row["id"], 
+                                  collection_row["versioning"],
                                   key)
 
         if meta_dict is None:

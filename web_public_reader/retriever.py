@@ -8,18 +8,20 @@ from base64 import b64encode
 import httplib
 import logging
 import os
+
+import pickle
+
 import urllib2
 
 import gevent
 
 from tools.data_definitions import block_size, \
-        segment_status_final, \
-        segment_status_cancelled, \
         create_timestamp
 from tools.operational_stats_redis_sink import redis_queue_entry_tuple
 from segment_visibility.sql_factory import version_for_key
 
 from web_public_reader.exceptions import RetrieveFailedError
+from web_public_reader.memcached_client import create_memcached_client
 
 memcached_key_template = "internal_read_{0}_{1}"
 
@@ -35,7 +37,6 @@ class Retriever(object):
     """retrieves data from web_internal_reader"""
     def __init__(
         self, 
-        memcached_client,
         interaction_pool,
         redis_queue,
         collection_id, 
@@ -46,7 +47,7 @@ class Retriever(object):
         slice_size
     ):
         self._log = logging.getLogger("Retriever")
-        self._memcached_client = memcached_client
+        self._memcached_client = create_memcached_client()
         self._interaction_pool = interaction_pool
         self._redis_queue = redis_queue
         self._collection_id = collection_id
@@ -55,9 +56,7 @@ class Retriever(object):
         self._version_id = version_id
         self._slice_offset = slice_offset
         self._slice_size = slice_size
-
-        self.key_rows = self._fetch_key_rows_from_database()
-
+        self._key_rows = self._fetch_key_rows_from_database()
         self.total_file_size = 0
 
         self._sequence = 0
@@ -105,11 +104,13 @@ class Retriever(object):
         memcached_key = \
             memcached_key_template.format(_nimbusio_node_name, 
                                           key_rows[0]["unified_id"])
+        self._log.debug("memcached_key = {0}".format(memcached_key))
 
         # pickle also won't handle the md5 digest, so we encode
         for key_row in key_rows:
             key_row["file_hash"] = b64encode(key_row["file_hash"]) 
-            key_row["combined_hash"] = b64encode(key_row["combined_hash"]) 
+            if key_row["combined_hash"] is not None:
+                key_row["combined_hash"] = b64encode(key_row["combined_hash"]) 
 
         cache_dict = {
             "collection-id" : self._collection_id,
@@ -122,7 +123,11 @@ class Retriever(object):
             successful = self._memcached_client.set(memcached_key, cache_dict)
         except Exception, instance:
             self._log.exception(instance)
-            raise
+            raise RetrieveFailedError("{0} {1} {2} {3}".format(
+                self._collection_id, 
+                self._key,
+                self._version_id,
+                instance))
 
         if not successful:
             self._log.warn("memcached set failed {0}".format(memcached_key))
@@ -133,7 +138,7 @@ class Retriever(object):
         # types of 'size': 'raw' and 'zfec encoded'. 
         #
         # The caller requests slice_offset and slice_size in 'raw' size, 
-        # seg_file_size is also 'raw' size.
+        # segment file_size is also 'raw' size.
         #
         # But what we are going to request from each data_writer are 
         # 'zfec encoded' blocks which are smaller than raw blocks
@@ -164,9 +169,6 @@ class Retriever(object):
 
         for key_row in key_rows:
 
-            if key_row["status"] == segment_status_cancelled:
-                continue
-                        
             if self._last_block_in_slice_retrieved:
                 break
 
@@ -246,8 +248,10 @@ class Retriever(object):
             raise RetrieveFailedError(instance)
 
     def _retrieve(self, response, timeout):
-        self._cache_key_rows_in_memcached(self.key_rows)
-        self.total_file_size = sum([r.seg_file_size for r in self.key_rows])
+        self._log.debug("start retrieve")
+        self._cache_key_rows_in_memcached(self._key_rows)
+        self.total_file_size = sum([row["file_size"] for row in self._key_rows])
+        self._log.debug("total_file_size = {0}".format(self.total_file_size))
 
         queue_entry = \
             redis_queue_entry_tuple(timestamp=create_timestamp(),
@@ -258,7 +262,7 @@ class Retriever(object):
 
         self._log.debug("start key_rows loop")
         first_block = True
-        for entry in self._generate_key_rows(self.key_rows):
+        for entry in self._generate_key_rows(self._key_rows):
 
             key_row, block_offset, block_count = entry
 
@@ -361,7 +365,7 @@ class Retriever(object):
             urllib_response.close()
             first_block = False
 
-        # end - for entry in self._generate_key_rows(self.key_rows):
+        # end - for entry in self._generate_key_rows(self._key_rows):
 
         if response.status_int == httplib.OK:
             redis_entries = [("retrieve_success", 1),

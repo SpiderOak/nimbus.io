@@ -5,10 +5,7 @@ meta_manager.py
 functions for accessing meta data
 """
 import os
-from tools.data_definitions import segment_status_final
-
-from web_public_reader.local_database_util import current_status_of_key, \
-        current_status_of_version
+from segment_visibility.sql_factory import version_for_key
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _retrieve_meta_query = """
@@ -16,28 +13,38 @@ _retrieve_meta_query = """
     collection_id = %s and segment_id = %s
 """.strip()
 
-def retrieve_meta(interaction_pool, collection_id, key, version_id=None):
+def retrieve_meta(interaction_pool, 
+                  collection_id, 
+                  versioned, 
+                  key, 
+                  version_id=None):
     """
     get a dict of meta data associated with the segment
     """
     # TODO: find a non-blocking way to do this
     # TODO: don't just use the local node, it might be wrong
 
-    if version_id is None:
-        status_rows = current_status_of_key(interaction_pool, 
-                                            collection_id, 
-                                            key)
-    else:
-        status_rows = current_status_of_version(interaction_pool, version_id)
+    sql_text = version_for_key(collection_id, 
+                               versioned=versioned, 
+                               key=key,
+                               unified_id=version_id)
 
-    if len(status_rows) == 0 or \
-       status_rows[0].seg_status != segment_status_final:
+    args = {"collection_id" : collection_id,
+            "key"           : key, 
+            "unified_id"    : version_id}
+
+    async_result = interaction_pool.run(interaction=sql_text.encode("utf-8"),
+                                        interaction_args=args,
+                                        pool=_local_node_name)
+    result = async_result.get()
+
+    if len(result) == 0:
         return None
 
     async_result = \
         interaction_pool.run(interaction=_retrieve_meta_query, 
                              interaction_args=[collection_id, 
-                                               status_rows[0].seg_id],
+                                               result[0]["segment_id"]],
                              pool=_local_node_name)
 
     result = async_result.get()

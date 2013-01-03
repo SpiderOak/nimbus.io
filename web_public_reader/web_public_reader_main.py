@@ -32,7 +32,6 @@ import gevent
 
 import gdbpool.interaction_pool
 
-import memcache
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_dealer_client import GreenletDealerClient
@@ -46,6 +45,7 @@ from tools.interaction_pool_authenticator import \
 from tools.data_definitions import cluster_row_template
 from tools.operational_stats_redis_sink import OperationalStatsRedisSink
 
+from web_public_reader.memcached_client import create_memcached_client
 from web_public_reader.application import Application
 from web_public_reader.space_accounting_client import SpaceAccountingClient
 
@@ -66,9 +66,6 @@ _web_public_reader_port = \
     int(os.environ.get("NIMBUSIO_WEB_PUBLIC_READER_PORT", "8088"))
 _wsgi_backlog = int(os.environ.get("NIMBUS_IO_WSGI_BACKLOG", "1024"))
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
-_memcached_host = os.environ.get("NIMBUSIO_MEMCACHED_HOST", "localhost")
-_memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
-_memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
 _central_database_pool_size = 3 
 _central_pool_name = "default"
 _local_database_pool_size = 3 
@@ -107,7 +104,7 @@ def _get_cluster_row(interaction_pool):
 class WebPublicReaderServer(object):
     def __init__(self, halt_event):
         self._log = logging.getLogger("WebServer")
-        memcached_client = memcache.Client(_memcached_nodes)
+        memcached_client = create_memcached_client()
 
         self._interaction_pool = \
             gdbpool.interaction_pool.DBInteractionPool(
@@ -180,7 +177,6 @@ class WebPublicReaderServer(object):
         self._redis_sink.link_exception(self._unhandled_greenlet_exception)
 
         self.application = Application(
-            memcached_client,
             self._interaction_pool,
             self._cluster_row,
             self._id_translator,
@@ -192,7 +188,8 @@ class WebPublicReaderServer(object):
         self.wsgi_server = WSGIServer(
             (_web_public_reader_host, _web_public_reader_port), 
             application=self.application,
-            backlog=_wsgi_backlog
+            backlog=_wsgi_backlog,
+            log=sys.stdout
         )
 
     def start(self):

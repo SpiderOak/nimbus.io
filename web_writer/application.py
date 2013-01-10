@@ -322,28 +322,26 @@ class Application(object):
         segments = None
         zfec_padding_size = None
         try:
-            # XXX refactor this loop. it's awkward because it needs to know
-            # when any given slice is the last slice, so it works an iteration
-            # behind, but sometimes sends an empty final slice.
             for slice_item in slice_generator(req.body_file):
                 actual_content_length += len(slice_item)
-                if segments:
-                    archiver.archive_slice(
-                        segments, zfec_padding_size, _reply_timeout
-                    )
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
                 file_md5.update(slice_item)
                 file_size += len(slice_item)
                 segments = segmenter.encode(block_generator(slice_item))
                 zfec_padding_size = segmenter.padding_size(slice_item)
-            archiver.archive_final(
-                file_size,
-                file_adler32,
-                file_md5.digest(),
-                segments,
-                zfec_padding_size,
-                _reply_timeout
-            )
+                if actual_content_length == expected_content_length:
+                    archiver.archive_final(
+                        file_size,
+                        file_adler32,
+                        file_md5.digest(),
+                        segments,
+                        zfec_padding_size,
+                        _reply_timeout
+                    )
+                else:
+                    archiver.archive_slice(
+                        segments, zfec_padding_size, _reply_timeout
+                    )
         except ArchiveFailedError, instance:
             self._event_push_client.error(
                 "archive-failed-error",

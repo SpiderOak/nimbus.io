@@ -296,6 +296,12 @@ class Writer(object):
         """
         assert self._value_file is not None
         self._value_file.sync()
+
+        # Ticket #70 Data writer causes "already a transaction in progress" 
+        # warning in the PostgreSQL log
+        if len(self._completions) == 0:
+            return
+
         # at this point we can complete all pending archives
 
         self._connection.begin_transaction()

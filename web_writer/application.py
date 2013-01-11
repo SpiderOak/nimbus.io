@@ -50,7 +50,7 @@ from web_writer.exceptions import ArchiveFailedError, \
 
 from web_writer.data_writer_handoff_client import DataWriterHandoffClient
 from web_writer.data_writer import DataWriter
-from web_writer.data_slicer import slice_generator
+from web_writer.data_slicer import slice_generator, SliceGeneratorTimeout
 from web_writer.archiver import Archiver
 from web_writer.destroyer import Destroyer
 from web_writer.conjoined_manager import start_conjoined_archive, \
@@ -342,6 +342,27 @@ class Application(object):
                     archiver.archive_slice(
                         segments, zfec_padding_size, _reply_timeout
                     )
+        except SliceGeneratorTimeout, instance:
+            # Ticket #69 Protection in Web Writer from Slow Uploads
+            self._event_push_client.error(
+                "archive-failed-error",
+                "%s: timeout %s" % (description, instance, )
+            )
+            self._log.error("archive failed: %s timeout %s" % (
+                description, instance, 
+            ))
+            _send_archive_cancel(
+                unified_id, conjoined_part, self._data_writer_clients
+            )
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=timestamp,
+                                        collection_id=collection_row["id"],
+                                        value=1)
+            self._redis_queue.put(("archive_error", queue_entry, ))
+            response = Response(status=httplib.REQUEST_TIMEOUT, content_type=None)
+            # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
+            response.headers["Connection"] = "close"
+            return response
         except ArchiveFailedError, instance:
             self._event_push_client.error(
                 "archive-failed-error",

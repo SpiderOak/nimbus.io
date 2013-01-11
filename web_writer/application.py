@@ -28,6 +28,9 @@ import json
 import urllib
 import time
 
+import gevent.greenlet
+import gevent.queue
+
 from webob.dec import wsgify
 from webob import exc
 from webob import Response
@@ -51,7 +54,6 @@ from web_writer.exceptions import ArchiveFailedError, \
 
 from web_writer.data_writer_handoff_client import DataWriterHandoffClient
 from web_writer.data_writer import DataWriter
-#from web_writer.data_slicer import slice_generator, SliceGeneratorTimeout
 from web_writer.archiver import Archiver
 from web_writer.destroyer import Destroyer
 from web_writer.conjoined_manager import start_conjoined_archive, \
@@ -64,6 +66,20 @@ from web_writer.url_discriminator import parse_url, \
         action_start_conjoined, \
         action_finish_conjoined, \
         action_abort_conjoined
+
+class ReaderGreenlet(gevent.greenlet.Greenlet):
+    def __init__(self, file_object, data_queue):
+        gevent.greenlet.Greenlet.__init__(self)
+        self._file_object = file_object
+        self._data_queue = data_queue
+
+    def _run(self):
+        while True:
+            data = self._file_object.read(incoming_slice_size)
+            if len(data) == 0:
+                self._data_queue.put(None)
+                break
+            self._data_queue.put(data)
 
 class SliceGeneratorTimeout(object):
     pass
@@ -81,6 +97,7 @@ _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
 _archive_retry_interval = 120
 _content_type_json = "application/json"
+_max_sequence_upload_interval = 300
 
 def _fix_timestamp(timestamp):
     return (None if timestamp is None else http_timestamp_str(timestamp))
@@ -318,6 +335,10 @@ class Application(object):
                                         value=1)
             self._redis_queue.put(("archive_request", queue_entry, ))
 
+        data_queue = gevent.queue.Queue()
+        reader = ReaderGreenlet(req.body_file, data_queue)
+        reader.start()
+
         segmenter = ZfecSegmenter(_min_segments, len(data_writers))
         actual_content_length = 0
         file_adler32 = zlib.adler32('')
@@ -327,8 +348,10 @@ class Application(object):
         zfec_padding_size = None
         try:
             while True:
-                slice_item = req.body_file.read(incoming_slice_size)
-                if len(slice_item) == 0:
+                slice_item = \
+                    data_queue.get(block=True, 
+                                   timeout=_max_sequence_upload_interval)
+                if slice_item is None:
                     break
                 actual_content_length += len(slice_item)
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
@@ -349,7 +372,7 @@ class Application(object):
                     archiver.archive_slice(
                         segments, zfec_padding_size, _reply_timeout
                     )
-        except SliceGeneratorTimeout, instance:
+        except gevent.queue.Empty, instance:
             # Ticket #69 Protection in Web Writer from Slow Uploads
             self._event_push_client.error(
                 "archive-failed-error",
@@ -416,6 +439,8 @@ class Application(object):
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
             return response
+
+        assert reader.dead
         
         end_time = time.time()
 

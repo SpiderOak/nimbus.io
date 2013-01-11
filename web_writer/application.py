@@ -32,7 +32,8 @@ from webob.dec import wsgify
 from webob import exc
 from webob import Response
 
-from tools.data_definitions import block_generator, \
+from tools.data_definitions import incoming_slice_size, \
+        block_generator, \
         create_priority, \
         create_timestamp, \
         nimbus_meta_prefix, \
@@ -50,7 +51,7 @@ from web_writer.exceptions import ArchiveFailedError, \
 
 from web_writer.data_writer_handoff_client import DataWriterHandoffClient
 from web_writer.data_writer import DataWriter
-from web_writer.data_slicer import slice_generator, SliceGeneratorTimeout
+#from web_writer.data_slicer import slice_generator, SliceGeneratorTimeout
 from web_writer.archiver import Archiver
 from web_writer.destroyer import Destroyer
 from web_writer.conjoined_manager import start_conjoined_archive, \
@@ -63,6 +64,9 @@ from web_writer.url_discriminator import parse_url, \
         action_start_conjoined, \
         action_finish_conjoined, \
         action_abort_conjoined
+
+class SliceGeneratorTimeout(object):
+    pass
 
 _node_names = os.environ['NIMBUSIO_NODE_NAME_SEQ'].split()
 _reply_timeout = float(
@@ -322,7 +326,10 @@ class Application(object):
         segments = None
         zfec_padding_size = None
         try:
-            for slice_item in slice_generator(req.body_file):
+            while True:
+                slice_item = req.body_file.read(incoming_slice_size)
+                if len(slice_item) == 0:
+                    break
                 actual_content_length += len(slice_item)
                 file_adler32 = zlib.adler32(slice_item, file_adler32)
                 file_md5.update(slice_item)

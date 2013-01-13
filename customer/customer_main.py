@@ -61,11 +61,11 @@ def _parse_command_line():
     options, _ = parser.parse_args()
 
     if options.username is None:
-        print >> sys.stderr, "You must enter a user name"
+        sys.stderr.write("You must enter a user name\n")
         sys.exit(1)
 
     if options.command is None:
-        print >> sys.stderr, "You must specify exactly one command"
+        sys.stderr.write("You must specify exactly one command\n")
         sys.exit(1)
 
     return options
@@ -74,30 +74,30 @@ def _handle_create_customer(connection, options):
     create_customer(connection, options.username, options.versioning)
     add_key_to_customer(connection, options.username)
     key_id, key = list_customer_keys(connection, options.username)[0]
-    print "Username",  options.username
-    print "AuthKeyId",  str(key_id)
-    print "AuthKey", key
-    print
+    sys.stdout.write("Username {0}\n".format(options.username))
+    sys.stdout.write("AuthKeyId {0}\n".format(key_id))
+    sys.stdout.write("AuthKey {0}\n".format(key))
+    sys.stdout.write("\n")
 
 def _handle_add_key(connection, options):
-    print >> sys.stderr, "adding key to customer", options.username
+    sys.stderr.write("adding key to customer{0}\n".format(options.username))
     add_key_to_customer(connection, options.username)
-    print >> sys.stderr, "key added"
+    sys.stderr.write("key added\n")
 
 def _handle_list_keys(connection, options):
-    print >> sys.stderr, "listing customer keys", options.username
+    sys.stderr.write("listing customer keys {0}\n".format(options.username))
     for key_id, key in list_customer_keys(connection, options.username):
-        print >> sys.stderr, "%6d" % key_id, key
-    print >> sys.stderr, "listed"
+        sys.stderr.write("{0:6} {1}\n".format(key_id, key))
+    sys.stderr.write("listed\n")
 
 def _handle_delete_customer(_connection, options):
-    print >> sys.stderr, "deleting customer", options.username
-    print >> sys.stderr, "*** not implemented ***"
+    sys.stderr.write("deleting customer {0}\n".format(options.username))
+    sys.stderr.write("*** not implemented ***\n")
 
 def _handle_purge_customer(connection, options):
-    print >> sys.stderr, "purging customer", options.username
+    sys.stderr.write("purging customer {0}\n".format(options.username))
     purge_customer(connection, options.username)
-    print >> sys.stderr, "purged", options.username
+    sys.stderr.write("purged {0}\n".format(options.username))
 
 _dispatch_table = {
     _create_customer    : _handle_create_customer,

@@ -11,6 +11,7 @@ import os
 import re
 import json
 import urllib
+import itertools
 
 from webob.dec import wsgify
 from webob import exc
@@ -23,6 +24,7 @@ from tools.collection_access_control import read_access, list_access
 from tools.interaction_pool_authenticator import AccessUnauthorized, \
         AccessForbidden
 from tools.operational_stats_redis_sink import redis_queue_entry_tuple
+from tools.iter_exception_logger import iter_exception_logger
 
 from web_public_reader.exceptions import RetrieveFailedError
 from web_public_reader.listmatcher import list_keys, list_versions
@@ -109,6 +111,7 @@ class Application(object):
         self.accounting_client = accounting_client
         self._event_push_client = event_push_client
         self._redis_queue = redis_queue
+        self._request_counter = itertools.count(1)
 
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
@@ -124,16 +127,26 @@ class Application(object):
     @wsgify
     def __call__(self, req):
 
+        request_num = self._request_counter.next()
+
         result = parse_url(req.method, req.url)
         if result is None:
             self._log.error("Unparseable URL: %r" % (req.url, ))
             raise exc.HTTPNotFound(req.url)
 
+
         action_tag, match_object = result
+
+        if not action_tag == "respond-to-ping":
+            self._log.info("start request %s: %r %r" % ( 
+                request_num, req.method, req.url, ) )
+
         try:
-            return self._dispatch_table[action_tag](req, match_object)
+            response = self._dispatch_table[action_tag](
+                req, match_object, request_num)
         except exc.HTTPException, instance:
-            self._log.error("%s %s %s %r" % (
+            self._log.error("request %s %s %s %s %r" % (
+                request_num,
                 instance.__class__.__name__, 
                 instance, 
                 action_tag,
@@ -141,7 +154,9 @@ class Application(object):
             ))
             raise
         except Exception, instance:
-            self._log.exception("%s" % (req.url, ))
+            self._log.exception(instance)
+            self._log.error("request %s: exception on %r" 
+                % (request_num, req.url, ))
             self._event_push_client.exception(
                 "unhandled_exception",
                 str(instance),
@@ -149,7 +164,18 @@ class Application(object):
             )
             raise
 
-    def _respond_to_ping(self, _req, _match_object):
+        if not action_tag == "respond-to-ping":
+            self._log.info(
+                "response to request %s: dispatch status_int=%s app_iter=%s"
+                % (
+                    request_num, 
+                    str(getattr(response, "status_int", "-")), 
+                    str(hasattr(response, "app_iter")), )
+            )
+
+        return response
+
+    def _respond_to_ping(self, _req, _match_object, _request_num):
         # self._log.debug("_respond_to_ping")
         # Ticket #44 We don't send Connection: close here
         # because this is an internal URI
@@ -157,7 +183,7 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
-    def _list_versions(self, req, match_object):
+    def _list_versions(self, req, match_object, _request_num):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_versions")
 
@@ -269,7 +295,7 @@ class Application(object):
         self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
-    def _list_keys(self, req, match_object):
+    def _list_keys(self, req, match_object, _request_num):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_keys")
 
@@ -379,7 +405,7 @@ class Application(object):
 
         return response
 
-    def _retrieve_key(self, req, match_object):
+    def _retrieve_key(self, req, match_object, request_num):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         self._log.debug("_retrieve_key")
@@ -390,13 +416,16 @@ class Application(object):
                                                  read_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                (request_num, instance, )))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                (request_num, instance, )))
             raise exc.HTTPUnauthorized()
         except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+            self._log.exception("request {0}: auth exception {1}".format(
+                (request_num, instance, )))
             raise exc.HTTPBadRequest()
             
         try:
@@ -419,10 +448,11 @@ class Application(object):
             lower_bound, upper_bound, slice_offset, slice_size = \
                 _parse_range_header(req.headers["range"])
 
-        description = "retrieve: ({0}){1} key={2} version={3} {4}:{5}".format(
+        description = "request {0}: retrieve ({1}) {2} key={3} version={4} {5}:{6}".format(
+            request_num,
             collection_row["id"],
             collection_row["name"],
-            key,
+            repr(key),
             version_id,
             slice_offset,
             slice_size)
@@ -443,10 +473,22 @@ class Application(object):
                 key,
                 version_id,
                 slice_offset,
-                slice_size
+                slice_size,
+                request_num
             )
 
-            retrieve_generator = retriever.retrieve(response, _reply_timeout)
+            # the exception blocks below will only catch exceptions before the
+            # first yield of the generator, at which point we hand the
+            # retrieve_generator off to webob.
+            # so, don't let exceptions inside the generator by handled by webob
+            # before we get a chance to log them! wrap it in this.
+            retrieve_generator = iter_exception_logger(
+                "retrieve_generator", 
+                "request %s: " % (request_num, ),
+                retriever.retrieve,
+                response, 
+                _reply_timeout)
+
         except RetrieveFailedError, instance:
             self._log.error("retrieve failed: %s %s" % (
                 description, instance,
@@ -459,7 +501,8 @@ class Application(object):
                 self._redis_queue.put(("error_bytes_in", queue_entry, ))
             return exc.HTTPNotFound(str(instance))
         except Exception, instance:
-            self._log.exception("retrieve_failed {0}".format(instance))
+            self._log.exception(
+                "retrieve_generator init exception: {0}".format(instance))
             self._event_push_client.exception(
                 "unhandled_exception in retrieve",
                 str(instance),
@@ -591,9 +634,10 @@ class Application(object):
 
         response.status_int = status_int
         response.app_iter = retrieve_generator
-        return  response
+        
+        return response
 
-    def _retrieve_meta(self, req, match_object):
+    def _retrieve_meta(self, req, match_object, _request_num):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         self._log.debug("_retrieve_meta")
@@ -656,7 +700,7 @@ class Application(object):
 
         return response
 
-    def _head_key(self, req, match_object):
+    def _head_key(self, req, match_object, _request_num):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         self._log.debug("_head_key")
@@ -765,7 +809,7 @@ class Application(object):
 
         return response
 
-    def _list_conjoined(self, req, match_object):
+    def _list_conjoined(self, req, match_object, _request_num):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_conjoined")
 
@@ -850,7 +894,7 @@ class Application(object):
 
         return response
 
-    def _list_upload_in_conjoined(self, req, match_object):
+    def _list_upload_in_conjoined(self, req, match_object, _request_num):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")

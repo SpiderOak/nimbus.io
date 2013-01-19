@@ -325,7 +325,10 @@ class Router(object):
         # we really only want to do consistent destination routing for requests
         # to retrieve an archive.  Other requests can go round robin like
         # usual.
-        if (
+        if True:
+            routing_method = 'alwaysfirst'
+            target = hosts[0]
+        elif (
             method in ( 'GET', 'HEAD', ) and
             len(path) > 6 and
             unicode(path).startswith(u'/data/')

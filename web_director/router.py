@@ -2,6 +2,8 @@ import os
 import time
 import logging
 from collections import deque
+from hashlib import sha256
+import hmac
 import gevent
 from gevent.event import AsyncResult
 import httplib
@@ -9,6 +11,7 @@ from redis import StrictRedis, RedisError
 import socket
 import json
 import memcache
+import random
 
 from gdbpool.interaction_pool import DBInteractionPool
 
@@ -33,6 +36,13 @@ NIMBUSIO_WEB_PUBLIC_READER_PORT = \
 NIMBUSIO_WEB_WRITER_PORT = int(os.environ['NIMBUSIO_WEB_WRITER_PORT'])
 NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = \
     os.environ['NIMBUSIO_MANAGEMENT_API_REQUEST_DEST']
+
+NIMBUSIO_URL_DEST_HASH_KEY = os.environ.get('NIMBUSIO_URL_DEST_HASH_KEY', None)
+if NIMBUSIO_URL_DEST_HASH_KEY is not None:
+    NIMBUSIO_URL_DEST_HASH_KEY = open(NIMBUSIO_URL_DEST_HASH_KEY, "rb").read()
+else:
+    NIMBUSIO_URL_DEST_HASH_KEY = os.urandom(32)
+
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", str(6379)))
@@ -65,6 +75,12 @@ class Router(object):
         self.memcached_client = None
         self.collection_lookup = None
         self.request_counter = 0
+        self.path_hash_base = hmac.new(
+            key = NIMBUSIO_URL_DEST_HASH_KEY,
+            digestmod=sha256)
+        # start the round robin dispatcher at a random number, so all the
+        # workers don't start on the same point.
+        self.round_robin_dispatch_counter = random.choice(range(10))
 
     def init(self):
         #import logging
@@ -121,8 +137,8 @@ class Router(object):
 
         rows = async_result.get()
     
-        info = dict(rows = rows, 
-                    hosts = deque([r['hostname'] for r in rows]))
+        info = dict(rows = rows,
+                    hosts = [r['hostname'] for r in rows])
 
         return info
 
@@ -198,6 +214,52 @@ class Router(object):
         return { 'close': 'HTTP/1.0 %d %s\r\n\r\n%s' % ( 
                   code, http_error_str, reason, ) }
 
+    def consistent_hash_dest(self, hosts, availability, collection, path,
+                             prefix=None, recur=0):
+        """
+        Pick an available host in a semi-stable way based on collection + path
+        hashing, despite hosts becoming available an unavailable dynamically.
+
+        Uses HMAC with key contained in the file pointed to by env
+        NIMBUSIO_URL_DEST_HASH_KEY or a random key if that file is unspecified.
+
+        Returns a host.
+        """
+        log = logging.getLogger("consistent_hash_dest")
+
+        pathhash = self.path_hash_base.copy()
+        if prefix is not None:
+            pathhash.update(prefix)
+        pathhash.update(unicode(collection).encode('utf_8'))
+        pathhash.update(unicode(path).encode('utf_8'))
+        hexresult = pathhash.hexdigest()
+        intresult = int(hexresult, 16)
+        target_host_idx = intresult % len(hosts)
+        target_host = hosts[target_host_idx]
+
+        if target_host in availability:
+            return target_host
+
+        # since our target host is not available, we want to pick a new one.
+        # but we want to do this in a way that is somewhat stable.  we could
+        # easily just make buckets for each of the available hosts, but then
+        # the destination would change every time ANY host changes
+        # availability.
+
+        # recurse, modifying our hash, until we hit an available host.
+        if prefix is None:
+            prefix = target_host + str(recur)
+        else:
+            prefix += target_host + str(recur)
+
+        if recur == 25:
+            log.warn(
+                "excessive hashing with %d hosts available" %
+                    ( len(availability), ))
+
+        return self.consistent_hash_dest(hosts, availability, collection, 
+            path, prefix, recur+1)
+
     def route(self, hostname, method, path, _query_string, start=None):
         """
         route a to a host in the appropriate cluster, using simple round-robin
@@ -249,14 +311,7 @@ class Router(object):
 
         availability = self.check_availability(hosts, dest_port)    
 
-        # find an available host
-        for _ in xrange(len(hosts)):
-            hosts.rotate(1)
-            target = hosts[0]
-            if target in availability:
-                break
-        else:
-            # we never found an available host
+        if not availability:
             now = time.time()
             if start is None:
                 log.warn("Request %d No available service, waiting..." %
@@ -267,8 +322,25 @@ class Router(object):
             gevent.sleep(RETRY_DELAY)
             return self.route(hostname, method, path, _query_string, start)
 
-        log.debug("request %d to backend host %s port %d" %
-            (request_num, target, dest_port, ))
-        return dict(remote = "%s:%d" % (target, dest_port, ))
+        # we really only want to do consistent destination routing for requests
+        # to retrieve an archive.  Other requests can go round robin like
+        # usual.
+        if (
+            method in ( 'GET', 'HEAD', ) and
+            len(path) > 6 and
+            unicode(path).startswith(u'/data/')
+        ):
+            routing_method = 'hash'
+            target = self.consistent_hash_dest(hosts, availability, collection, 
+                path)
+        else:
+            routing_method = 'round_robin'
+            while True:
+                hosts_idx = self.round_robin_dispatch_counter % len(hosts)
+                target = hosts[hosts_idx]
+                if target in availability:
+                    break
 
-        # no hosts currently available (hosts is an empty list, presumably)
+        log.debug("request %d via %s to backend host %s port %d" %
+            (request_num, routing_method, target, dest_port, ))
+        return dict(remote = "%s:%d" % (target, dest_port, ))

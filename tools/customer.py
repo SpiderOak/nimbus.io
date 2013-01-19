@@ -18,7 +18,13 @@ _username_re = re.compile(r'[a-z0-9][a-z0-9-]*[a-z0-9]$')
 
 def _generate_key():
     """generate a key string"""
-    return base64.b64encode(random_string(32)).rstrip('=')
+    result = base64.b64encode(random_string(32))
+    if type(result) == str:
+        result.rstrip("=")
+    else:
+        while result[-1] == ord('='):
+            result = result[:-1]
+    return result
 
 def valid_username(username):
     """

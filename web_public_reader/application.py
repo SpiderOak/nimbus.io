@@ -12,6 +12,7 @@ import re
 import json
 import urllib
 import itertools
+import uuid
 
 from webob.dec import wsgify
 from webob import exc
@@ -127,26 +128,32 @@ class Application(object):
     @wsgify
     def __call__(self, req):
 
-        request_num = self._request_counter.next()
-
         result = parse_url(req.method, req.url)
         if result is None:
             self._log.error("Unparseable URL: %r" % (req.url, ))
             raise exc.HTTPNotFound(req.url)
 
-
         action_tag, match_object = result
+
+        try:
+            user_request_id = req.headers['x-nimbus-io-user-request-id']
+        except KeyError:
+            user_request_id = str(uuid.uuid4())
+            if not action_tag == "respond-to-ping":
+                self._log.warn(
+                    "request %s: no x-nimbus-io-user-request-id header" % (
+                    user_request_id, ) )
 
         if not action_tag == "respond-to-ping":
             self._log.info("start request %s: %r %r" % ( 
-                request_num, req.method, req.url, ) )
+                user_request_id, req.method, req.url, ) )
 
         try:
             response = self._dispatch_table[action_tag](
-                req, match_object, request_num)
+                req, match_object, user_request_id)
         except exc.HTTPException, instance:
             self._log.error("request %s %s %s %s %r" % (
-                request_num,
+                user_request_id,
                 instance.__class__.__name__, 
                 instance, 
                 action_tag,
@@ -156,7 +163,7 @@ class Application(object):
         except Exception, instance:
             self._log.exception(instance)
             self._log.error("request %s: exception on %r" 
-                % (request_num, req.url, ))
+                % (user_request_id, req.url, ))
             self._event_push_client.exception(
                 "unhandled_exception",
                 str(instance),
@@ -168,14 +175,14 @@ class Application(object):
             self._log.info(
                 "response to request %s: dispatch status_int=%s app_iter=%s"
                 % (
-                    request_num, 
+                    user_request_id, 
                     str(getattr(response, "status_int", "-")), 
                     str(hasattr(response, "app_iter")), )
             )
 
         return response
 
-    def _respond_to_ping(self, _req, _match_object, _request_num):
+    def _respond_to_ping(self, _req, _match_object, _user_request_id):
         # self._log.debug("_respond_to_ping")
         # Ticket #44 We don't send Connection: close here
         # because this is an internal URI
@@ -183,7 +190,7 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
-    def _list_versions(self, req, match_object, _request_num):
+    def _list_versions(self, req, match_object, _user_request_id):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_versions")
 
@@ -295,7 +302,7 @@ class Application(object):
         self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
-    def _list_keys(self, req, match_object, _request_num):
+    def _list_keys(self, req, match_object, _user_request_id):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_keys")
 
@@ -405,7 +412,7 @@ class Application(object):
 
         return response
 
-    def _retrieve_key(self, req, match_object, request_num):
+    def _retrieve_key(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         self._log.debug("_retrieve_key")
@@ -417,15 +424,15 @@ class Application(object):
                                                  req)
         except AccessForbidden, instance:
             self._log.error("request {0}: forbidden {1}".format(
-                (request_num, instance, )))
+                (user_request_id, instance, )))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
             self._log.error("request {0}: unauthorized {1}".format(
-                (request_num, instance, )))
+                (user_request_id, instance, )))
             raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("request {0}: auth exception {1}".format(
-                (request_num, instance, )))
+                (user_request_id, instance, )))
             raise exc.HTTPBadRequest()
             
         try:
@@ -449,7 +456,7 @@ class Application(object):
                 _parse_range_header(req.headers["range"])
 
         description = "request {0}: retrieve ({1}) {2} key={3} version={4} {5}:{6}".format(
-            request_num,
+            user_request_id,
             collection_row["id"],
             collection_row["name"],
             repr(key),
@@ -474,7 +481,7 @@ class Application(object):
                 version_id,
                 slice_offset,
                 slice_size,
-                request_num
+                user_request_id
             )
 
             # the exception blocks below will only catch exceptions before the
@@ -484,7 +491,7 @@ class Application(object):
             # before we get a chance to log them! wrap it in this.
             retrieve_generator = iter_exception_logger(
                 "retrieve_generator", 
-                "request %s: " % (request_num, ),
+                "request %s: " % (user_request_id, ),
                 retriever.retrieve,
                 response, 
                 _reply_timeout)
@@ -637,7 +644,7 @@ class Application(object):
         
         return response
 
-    def _retrieve_meta(self, req, match_object, _request_num):
+    def _retrieve_meta(self, req, match_object, _user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         self._log.debug("_retrieve_meta")
@@ -700,7 +707,7 @@ class Application(object):
 
         return response
 
-    def _head_key(self, req, match_object, _request_num):
+    def _head_key(self, req, match_object, _user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         self._log.debug("_head_key")
@@ -809,7 +816,7 @@ class Application(object):
 
         return response
 
-    def _list_conjoined(self, req, match_object, _request_num):
+    def _list_conjoined(self, req, match_object, _user_request_id):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_conjoined")
 
@@ -894,7 +901,7 @@ class Application(object):
 
         return response
 
-    def _list_upload_in_conjoined(self, req, match_object, _request_num):
+    def _list_upload_in_conjoined(self, req, match_object, _user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")

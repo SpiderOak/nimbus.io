@@ -124,10 +124,16 @@ class Application(object):
             raise exc.HTTPNotFound(req.url)
 
         action_tag, match_object = result
+
+        if not action_tag == "respond-to-ping":
+            self._log.info("request %s: %r %r" % ( 
+                id(req), req.method, req.url, ) )
+
         try:
             return self._dispatch_table[action_tag](req, match_object)
         except exc.HTTPException, instance:
-            self._log.error("%s %s %s %r" % (
+            self._log.error("request %s %s %s %s %r" % (
+                id(req),
                 instance.__class__.__name__, 
                 instance, 
                 action_tag,
@@ -135,7 +141,9 @@ class Application(object):
             ))
             raise
         except Exception, instance:
-            self._log.exception("%s" % (req.url, ))
+            self._log.exception(instance)
+            self._log.error("exception on request %s %r" 
+                % (id(req), req.url, ))
             self._event_push_client.exception(
                 "unhandled_exception",
                 str(instance),
@@ -167,6 +175,8 @@ class Application(object):
             select collection_id, key from nimbusio_node.segment
             where unified_id = %s and conjoined_part = %s
             limit 1""", [unified_id, conjoined_part, ])
+
+        
 
     def _retrieve_key(self, req, match_object):
         unified_id = int(match_object.group("unified_id"))

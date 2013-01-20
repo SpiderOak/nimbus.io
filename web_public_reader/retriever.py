@@ -58,7 +58,8 @@ class Retriever(object):
         key, 
         version_id,
         slice_offset,
-        slice_size
+        slice_size,
+        user_request_id
     ):
         self._log = logging.getLogger("Retriever")
         self._memcached_client = create_memcached_client()
@@ -72,6 +73,7 @@ class Retriever(object):
         self._slice_size = slice_size
         self._key_rows = self._fetch_key_rows_from_database()
         self.total_file_size = 0
+        self.user_request_id = user_request_id
 
         self._sequence = 0
                 
@@ -251,6 +253,8 @@ class Retriever(object):
         try:
             return self._retrieve(response, timeout)
         except Exception, instance:
+            self._log.error("request {0} _retrieve exception".format(
+                self.user_request_id))
             self._log.exception(instance)
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=create_timestamp(),
@@ -262,7 +266,8 @@ class Retriever(object):
             raise RetrieveFailedError(instance)
 
     def _retrieve(self, response, timeout):
-        self._log.debug("start retrieve")
+        self._log.debug("request {0}: start _retrieve".format(
+            (self.user_request_id)))
         self._cache_key_rows_in_memcached(self._key_rows)
         self.total_file_size = sum([row["file_size"] for row in self._key_rows])
         self._log.debug("total_file_size = {0}".format(self.total_file_size))
@@ -276,11 +281,16 @@ class Retriever(object):
 
         self._log.debug("start key_rows loop")
         first_block = True
-        for entry in self._generate_key_rows(self._key_rows):
+
+        key_rows_entries = list(self._generate_key_rows(self._key_rows))
+        for idx, entry in enumerate(key_rows_entries):
 
             key_row, block_offset, block_count = entry
 
-            self._log.debug("request retrieve: {0} {1}".format(
+            self._log.debug("request {0}: _retrieve {1}/{2}: {3} {4}".format(
+                self.user_request_id,
+                idx + 1,
+                len(key_rows_entries),
                 key_row["unified_id"], 
                 key_row["conjoined_part"]
             ))
@@ -300,10 +310,14 @@ class Retriever(object):
                 key_row["unified_id"], 
                 key_row["conjoined_part"])
 
-            self._log.info("requesting {0}".format(uri))
+            self._log.info(
+                "request {0} internally requesting {1}".format(
+                self.user_request_id, uri))
 
             headers = {"x-nimbus-io-expected-content-length" : \
-                            str(key_row["file_size"])}
+                            str(key_row["file_size"]),
+                       "x-nimbus-io-user-request-id":
+                            self.user_request_id, }
 
             expected_status = httplib.OK
             if block_offset > 0 and block_count is None:
@@ -318,11 +332,15 @@ class Retriever(object):
                 expected_status = httplib.PARTIAL_CONTENT
                 
             request = urllib2.Request(uri, headers=headers)
-            self._log.debug("start request")
+            self._log.debug(
+                "request {0} start internal request expected_status={1}".format(
+                    self.user_request_id, repr(expected_status)))
             try:
                 urllib_response = urllib2.urlopen(request, timeout=timeout)
             except urllib2.HTTPError, instance:
                 if instance.code == httplib.NOT_FOUND:
+                    self._log.error(
+                        "request {0}: got 404".format(self.user_request_id))
                     response.status_int = httplib.NOT_FOUND
                     break
                 if instance.code == httplib.PARTIAL_CONTENT and \
@@ -331,6 +349,9 @@ class Retriever(object):
                 else:
                     message = "urllib2.HTTPError '{0}' '{1}'".format(
                         instance.code, instance)
+                    self._log.error(
+                        "request {0}: exception {1}".format(
+                        self.user_request_id, message))
                     self._log.exception(message)
                     response.status_int = httplib.SERVICE_UNAVAILABLE
                     response.retry_after = _retrieve_retry_interval
@@ -338,6 +359,9 @@ class Retriever(object):
             except gevent.httplib.RequestFailed, instance:
                 message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
                     instance.args, instance.message)
+                self._log.error(
+                    "request {0}: exception {1}".format(
+                    self.user_request_id, message))
                 self._log.exception(message)
                 response.status_int = httplib.SERVICE_UNAVAILABLE
                 response.retry_after = _retrieve_retry_interval
@@ -345,6 +369,9 @@ class Retriever(object):
             except Exception, instance:
                 message = "GET failed {0} '{1}'".format(
                     instance.__class__.__name__, instance)
+                self._log.error(
+                    "request {0}: exception {1}".format(
+                    self.user_request_id, message))
                 self._log.exception(message)
                 response.status_int = httplib.SERVICE_UNAVAILABLE
                 response.retry_after = _retrieve_retry_interval
@@ -352,10 +379,16 @@ class Retriever(object):
                 
             if urllib_response is None:
                 message = "GET returns None {0}".format(uri)
-                self._log.error(message)
+                self._log.error(
+                    "request {0}: exception {1}".format(
+                    self.user_request_id, message))
                 response.status_int = httplib.SERVICE_UNAVAILABLE
                 response.retry_after = _retrieve_retry_interval
                 break
+
+            self._log.debug(
+                "request {0} internal request made".format(
+                self.user_request_id))
 
             # Ticket #68 add buffering
             # 2012-12-23 dougfort -- the choice of block_size as the
@@ -369,8 +402,9 @@ class Retriever(object):
                     if self._last_block_in_slice_retrieved and \
                     self._residue_from_last_block > 0:
                         prev_data = prev_data[:-self._residue_from_last_block]
-                    self._log.debug("yielding {0} bytes from last block".format(
-                        len(prev_data)))
+                    self._log.debug(
+                        "request {0} yielding {0} bytes from last block".format(
+                        self.user_request_id, len(prev_data)))
                     yield prev_data
                     retrieve_bytes += len(prev_data)
                     break
@@ -381,12 +415,19 @@ class Retriever(object):
                     else:
                         prev_data = data
                     continue
-                self._log.debug("yielding {0} bytes".format(len(prev_data)))
+                self._log.debug(
+                    "request {0} yielding {0} bytes".format(
+                    self.user_request_id, len(prev_data)))
                 yield prev_data
                 retrieve_bytes += len(prev_data)
                 prev_data = data
 
             urllib_response.close()
+
+            self._log.debug(
+                "request {0} internal request complete".format(
+                self.user_request_id))
+
             first_block = False
 
         # end - for entry in self._generate_key_rows(self._key_rows):

@@ -20,12 +20,16 @@ does not implement several of the needed capabilities including:
       cluster.)
 """
 
+import uuid
 import gevent
+import re
+from http_parser.http import HttpStream, NoMoreData
+from http_parser.reader import SocketReader
+import socket
 
 import traceback
 import logging
 import os
-import re
 
 #from http_parser.pyparser import HttpParser
 from http_parser.parser import HttpParser
@@ -95,6 +99,76 @@ def proxy(data):
         return { 'close': 
             'HTTP/1.0 502 Gateway Error\r\n'
             '\r\nError routing request' }
+
+def add_x_forwarded_for_header(headers, peername):
+    log = logging.getLogger("add_x_forwarded_for_header")
+    # I'm not sure what guarantees the parser makes about how the headers are
+    # presented to us, so this is overly defensive.
+
+    existing_x_forwarded_for = None
+    headers_to_remove = []
+    for name in headers:
+        if name.strip().lower() == 'x-forwarded-for':
+            existing_x_forwarded_for = headers[name]
+            headers_to_remove.append(name)
+    for name in headers_to_remove: 
+        del headers[name]
+
+    if existing_x_forwarded_for:
+        new_x_forwarded_for = "%s, %s" % (existing_x_forwarded_for, peername, )
+    else:
+        new_x_forwarded_for = str(peername)
+
+    headers["X-Forwarded-For"] = new_x_forwarded_for
+
+    # still I don't feel great about this. from a security standpoint,
+    # signaling access control information (such as IP address, which some
+    # collections set access policy for) inside a stream of data controlled by
+    # the attacker is a bad idea.  downstream http parsers are probably robust
+    # enough to not be easily trickable, but I'd feel better about signaling
+    # out of band, or adding another header with a HMAC from a secret key.
+
+def rewrite_headers(parser, peername, values=None):
+    log = logging.getLogger("rewrite_headers")
+    headers = parser.headers()
+    if isinstance(values, dict):
+        headers.update(values)
+
+    add_x_forwarded_for_header(headers, peername)
+
+    httpver = "HTTP/%s" % ".".join(map(str,
+                parser.version()))
+
+    new_headers = ["%s %s %s\r\n" % (parser.method(), parser.url(),
+        httpver)]
+
+    new_headers.extend(["%s: %s\r\n" % (k, str(v)) for k, v in \
+            headers.items()])
+
+    return "".join(new_headers) + "\r\n"
+
+def rewrite_request(req):
+    log = logging.getLogger("rewrite_request")
+    peername = req._src.getpeername()
+    try:
+        while True:
+            request_id = str(uuid.uuid4())
+            parser = HttpStream(req)
+            new_headers = rewrite_headers(
+                parser, peername, {'x-nimbus-io-user-request-id': request_id})
+            if new_headers is None:
+                break
+            log.debug("rewriting request %s" % ( request_id, ))
+            req.send(new_headers)
+            body = parser.body_file()
+            while True:
+                data = body.read(8192)
+                if not data:
+                    break
+                req.writeall(data)
+    except (socket.error, NoMoreData):
+        pass
+
 
 def init_setup():
     initialize_logging(LOG_PATH)

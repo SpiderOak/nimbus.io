@@ -424,15 +424,15 @@ class Application(object):
                                                  req)
         except AccessForbidden, instance:
             self._log.error("request {0}: forbidden {1}".format(
-                (user_request_id, instance, )))
+                user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
             self._log.error("request {0}: unauthorized {1}".format(
-                (user_request_id, instance, )))
+                user_request_id, instance))
             raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("request {0}: auth exception {1}".format(
-                (user_request_id, instance, )))
+                user_request_id, instance))
             raise exc.HTTPBadRequest()
             
         try:

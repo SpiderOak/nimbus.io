@@ -65,16 +65,20 @@ class CreateCollectionView(ConnectionPoolView):
 
     def dispatch_request(self, username):
         log = logging.getLogger("CreateCollectionView")
-        log.info("user_name = {0}, collection_name = {1}".format(
-            username, flask.request.args["name"]))
+        user_request_id = flask.request.headers["x-nimbus-io-user-request-id"]
+        log.info("user_request_id = {0}, user_name = {1}, " \
+                 "collection_name = {2}".format(user_request_id, 
+                                                username, 
+                                                flask.request.args["name"]))
         assert flask.request.args["action"] == "create", flask.request.args
 
         collection_name = flask.request.args["name"]
         if not valid_collection_name(collection_name):
             # Ticket #48 Creating collection incorrectly handles 
             # creating colliding collections
-            log.error("invalid collection name '{0}'".format(
-                collection_name))
+            log.error("user_request_id = {0}, " \
+                      "invalid collection name '{1}'".format(user_request_id,
+                                                             collection_name))
             collection_dict = {
                 "name"           : collection_name,
                 "error-messages" : ["Invalid Name"]} 
@@ -93,6 +97,9 @@ class CreateCollectionView(ConnectionPoolView):
             access_control, error_list = \
                 cleanse_access_control(flask.request.data)
             if error_list is not None:
+                log.error("user_request_id = {0}, " \
+                          "invalid access control '{1}'".format(user_request_id,
+                                                                error_list))
                 result_dict = {"success"    : False,
                                "error_list" : error_list, }
                 data = json.dumps(result_dict, sort_keys=True, indent=4) 
@@ -111,8 +118,9 @@ class CreateCollectionView(ConnectionPoolView):
                                             connection)
             customer_id = authenticate(customer_key_lookup,
                                        username,
-                                       flask.request)
+                                       flask.request)            
             if customer_id is None:
+                log.info("user_request_id = {0}, unauthorized")
                 flask.abort(httplib.UNAUTHORIZED)
 
             cursor = connection.cursor()
@@ -128,8 +136,10 @@ class CreateCollectionView(ConnectionPoolView):
                 connection.rollback()
                 # Ticket #48 Creating collection incorrectly handles 
                 # creating colliding collections
-                log.error("duplicate collection name '{0}'".format(
-                    collection_name))
+                log.error("user_request_id = {0}, " \
+                          "duplicate collection name '{1}'".format(
+                          user_request_id, collection_name))
+
                 collection_dict = {
                     "name"           : collection_name,
                     "error-messages" : ["Invalid Name"]} 
@@ -141,6 +151,7 @@ class CreateCollectionView(ConnectionPoolView):
                 return response
 
             except Exception:
+                log.exception("user_request_id = {0}".format(user_request_id))
                 cursor.close()
                 connection.rollback()
                 raise
@@ -148,6 +159,9 @@ class CreateCollectionView(ConnectionPoolView):
             else:
                 cursor.close()
                 connection.commit()
+
+        log.info("user_request_id = {0}, created {1}".format(user_request_id,
+                                                             collection_name))
 
         # this is the same format returned by list_collection
         collection_dict = {

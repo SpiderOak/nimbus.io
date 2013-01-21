@@ -41,7 +41,11 @@ class ListCollectionsView(ConnectionPoolView):
 
     def dispatch_request(self, username):
         log = logging.getLogger("ListCollectionsView")
-        log.info("user_name = {0}".format(username))
+        user_request_id = flask.request.headers["x-nimbus-io-user-request-id"]
+
+        log.info("user_request_id = {0}, " \
+                 "user_name = {1}".format(user_request_id, 
+                                          username))
 
         with GetConnection(self.connection_pool) as connection:
 
@@ -52,9 +56,15 @@ class ListCollectionsView(ConnectionPoolView):
                                        username,
                                        flask.request)
             if customer_id is None:
+                log.info("user_request_id = {0}, unauthorized".format(
+                         user_request_id))
                 flask.abort(httplib.UNAUTHORIZED)
 
-            raw_collection_list = _list_collections(connection, customer_id)
+            try:
+                raw_collection_list = _list_collections(connection, customer_id)
+            except Exception:
+                log.exception("user_request_id = {0}".format(user_request_id))
+                raise
 
         # ticket #50 When listing collections for a user, show whether a
         # collection is a default collection.
@@ -73,6 +83,9 @@ class ListCollectionsView(ConnectionPoolView):
                      "access_control" : access_control,
                      "creation-time" : http_timestamp_str(raw_creation_time)}
             collection_list.append(entry)
+
+        log.info("user_request_id = {0}, found {1} collections".format(
+                 user_request_id, len(collection_list)))
 
         # 2012-08-16 dougfort Ticket #29 - format json for debuging
         data = json.dumps(collection_list, sort_keys=True, indent=4) 

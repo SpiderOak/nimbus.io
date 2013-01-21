@@ -201,9 +201,12 @@ class GetCollectionAttributeView(ConnectionPoolView):
 
     def dispatch_request(self, username, collection_name):
         log = logging.getLogger("GetCollectionAttributeView")
-
-        log.info("user_name = {0}, collection_name = {1}".format(
-            username, collection_name))
+        user_request_id = flask.request.headers["x-nimbus-io-user-request-id"]
+        log.info("user_request_id = {1}, " \
+                 "user_name = {1}, " \
+                 "collection_name = {1}".format(user_request_id,
+                                                username, 
+                                                collection_name))
 
         result_dict = None
 
@@ -216,6 +219,8 @@ class GetCollectionAttributeView(ConnectionPoolView):
                                        username,
                                        flask.request)
             if customer_id is None:
+                log.info("user_request_id = {0}, " \
+                         "unauthorized".format(user_request_id))
                 flask.abort(httplib.UNAUTHORIZED)
 
             cursor = connection.cursor()
@@ -229,7 +234,9 @@ class GetCollectionAttributeView(ConnectionPoolView):
                                                     collection_name, 
                                                     flask.request.args)
                 except Exception:
-                    log.exception("{0} {1}".format(collection_name, 
+                    log.exception("user_request_id = {0}, " \
+                                  "{1} {2}".format(user_request_id, 
+                                                   collection_name, 
                                                    flask.request.args))
                     cursor.close()
                     raise
@@ -240,7 +247,9 @@ class GetCollectionAttributeView(ConnectionPoolView):
                                                                customer_id,
                                                                collection_name)
                 except Exception:
-                    log.exception("{0} {1}".format(collection_name, 
+                    log.exception("user_request_id = {0}, " \
+                                  "{1} {2}".format(user_request_id,
+                                                   collection_name, 
                                                    flask.request.args))
                     cursor.close()
                     raise

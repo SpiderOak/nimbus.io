@@ -20,7 +20,7 @@ from web_collection_manager.authenticator import authenticate
 rules = ["/customers/<username>/collections/<collection_name>", ]
 endpoint = "delete_collection"
 
-def _delete_collection(cursor, customer_id, collection_name):
+def _delete_collection(cursor, user_request_id, customer_id, collection_name):
     """
     mark the collection as deleted
     """
@@ -32,14 +32,18 @@ def _delete_collection(cursor, customer_id, collection_name):
         [customer_id, collection_name, ])
     result = cursor.fetchone()
     if result is None:
-        log.warn("attempt to delete unknown collection {0}".format(
-            collection_name))
+        log.warn("user_request_id = {0}, " \
+                 "attempt to delete unknown ", \
+                 "collection {1}".format(user_request_id,
+                                         collection_name))
         return False
     (row_id, ) = result
 
     deleted_name = "".join(["__deleted__{0}__".format(row_id), 
                             collection_name, ])
-    log.debug("renaming deleted collection to  {0}".format(deleted_name))
+    log.debug("user_request_id = {0}, " \
+              "renaming deleted collection to {1}".format(user_request_id,
+                                                          deleted_name))
     cursor.execute("""
         update nimbusio_central.collection
         set deletion_time = current_timestamp,
@@ -54,13 +58,17 @@ class DeleteCollectionView(ConnectionPoolView):
 
     def dispatch_request(self, username, collection_name):
         log = logging.getLogger("DeleteCollectionView")
-        log.info("user_name = {0}, collection_name = {1}".format(
-            username, collection_name))
+        user_request_id = flask.request.headers["x-nimbus-io-user-request-id"]
+        log.info("user_request_id = {0}, " \
+                 "user_name = {1}, " \
+                 "collection_name = {2}".format(user_request_id,
+                                                username, 
+                                                collection_name))
 
         assert flask.request.method == "DELETE" or \
             (flask.request.method == "POST" \
              and flask.request.args["action"] == "delete"), \
-                (flask.request.method, flask.request.args, )
+                (user_request_id, flask.request.method, flask.request.args, )
 
         with GetConnection(self.connection_pool) as connection:
 
@@ -71,13 +79,16 @@ class DeleteCollectionView(ConnectionPoolView):
                                        username,
                                        flask.request)
             if customer_id is None:
+                log.info("user_request_id = {0}, " \
+                         "unauthroized".format(user_request_id))
                 flask.abort(httplib.UNAUTHORIZED)
 
             # you can't delete your default collection
             default_collection_name = compute_default_collection_name(username)
             if collection_name == default_collection_name:
-                log.warn("attempt to delete default collection {0}".format(
-                    default_collection_name))
+                log.warn("user_request_id = {0}, " \
+                         "attempt to delete default collection {1}".format(
+                         user_request_id, default_collection_name))
                 flask.abort(httplib.METHOD_NOT_ALLOWED)
 
             # TODO: can't delete a collection that contains keys
@@ -85,9 +96,11 @@ class DeleteCollectionView(ConnectionPoolView):
             cursor = connection.cursor()
             try:
                 deleted = _delete_collection(cursor, 
+                                             user_request_id,
                                              customer_id, 
                                              collection_name)
             except Exception:
+                log.exception("user_request_id = {0}".format(user_request_id))
                 cursor.close()
                 connection.rollback()
                 raise
@@ -97,10 +110,16 @@ class DeleteCollectionView(ConnectionPoolView):
             # Ticket #39 collection manager allows authenticated users to set 
             # versioning property on collections they don't own
             if not deleted:
+                log.error("user_request_id = {0}, " \
+                          "forbidden".format(user_request_id))
                 connection.rollback()
                 flask.abort(httplib.FORBIDDEN)
 
             connection.commit()
+
+        log.info("user_request_id = {0}, "\
+                 "collection {1} deleted".format(user_request_id,
+                                                 collection_name))
 
         # Ticket #33 Make Nimbus.io API responses consistently JSON
         collection_dict = {"success" : True}

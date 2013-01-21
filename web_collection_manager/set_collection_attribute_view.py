@@ -20,7 +20,11 @@ from web_collection_manager.authenticator import authenticate
 rules = ["/customers/<username>/collections/<collection_name>", ]
 endpoint = "set_collection_attribute"
 
-def _set_collection_versioning(cursor, customer_id, collection_name, value):
+def _set_collection_versioning(cursor, 
+                               user_request_id, 
+                               customer_id, 
+                               collection_name, 
+                               value):
     """
     set the versioning attribute of the collection
     """
@@ -31,7 +35,8 @@ def _set_collection_versioning(cursor, customer_id, collection_name, value):
         versioning = False
     else:
         error_message = "Invalid versioning value '{0}'".format(value)
-        log.error(error_message)
+        log.error("user_request_id = {0}, {1}".format(user_request_id,
+                                                      error_message))
         collection_dict = {"success" : False,
                            "error_message" : error_message}
         return httplib.BAD_REQUEST, collection_dict
@@ -44,16 +49,21 @@ def _set_collection_versioning(cursor, customer_id, collection_name, value):
     # Ticket #49 collection manager allows authenticated users to set 
     # versioning property on collections they don't own
     if cursor.rowcount == 0:
-        log.error(
-            "attempt to set version on unknown collection {0} {1}".format(
-                customer_id, collection_name))
+        log.error("user_request_id = {0}, " \
+                  "attempt to set version on unknown "\
+                  "collection {1} {2}".format(user_request_id,
+                                              customer_id, 
+                                              collection_name))
         collection_dict = {"success" : False}
         return httplib.FORBIDDEN, collection_dict
 
+    log.info("user_request_id = {0}, " \
+             "versioning set to {1}".format(user_request_id, versioning))
     collection_dict = {"success" : True}
     return httplib.OK, collection_dict
 
 def _set_collection_access_control(cursor, 
+                                   user_request_id,
                                    customer_id, 
                                    collection_name, 
                                    _value):
@@ -69,7 +79,8 @@ def _set_collection_access_control(cursor,
         access_control, error_list = \
             cleanse_access_control(flask.request.data)
         if error_list is not None:
-            log.error("{0}".format(error_list))
+            log.error("user_request_id = {0}, {1}".format(user_request_id, 
+                                                          error_list))
             result_dict = {"success"    : False,
                            "error_list" : error_list, }
             return httplib.BAD_REQUEST, result_dict
@@ -82,10 +93,16 @@ def _set_collection_access_control(cursor,
     # Ticket #49 collection manager allows authenticated users to set 
     # versioning property on collections they don't own
     if cursor.rowcount == 0:
-        log.error("unknown collection {0} {1}".format(customer_id, 
+        log.error("user_request_id = {0}, " \
+                  "unknown collection {1} {2}".format(user_request_id,
+                                                      customer_id, 
                                                       collection_name))
         collection_dict = {"success" : False}
         return httplib.FORBIDDEN, collection_dict
+
+    log.info("user_request_id = {0}, " \
+             "access_control set to {1}".format(user_request_id, 
+                                                access_control))
 
     collection_dict = {"success" : True}
     return httplib.OK, collection_dict
@@ -98,9 +115,12 @@ class SetCollectionAttributeView(ConnectionPoolView):
 
     def dispatch_request(self, username, collection_name):
         log = logging.getLogger("SetCollectionAttributeView")
-
-        log.info("user_name = {0}, collection_name = {1}".format(
-            username, collection_name))
+        user_request_id = flask.request.headers["x-nimbus-io-user-request-id"]
+        log.info("user_request_id = {0}, " \
+                 "user_name = {1}, " \
+                 "collection_name = {2}".format(user_request_id,
+                                                username, 
+                                                collection_name))
 
         with GetConnection(self.connection_pool) as connection:
 
@@ -111,6 +131,8 @@ class SetCollectionAttributeView(ConnectionPoolView):
                                        username,
                                        flask.request)
             if customer_id is None:
+                log.info("user_request_id = {0}, " \
+                         "unauthorized".format(user_request_id))
                 flask.abort(httplib.UNAUTHORIZED)
 
             cursor = connection.cursor()
@@ -122,7 +144,9 @@ class SetCollectionAttributeView(ConnectionPoolView):
                 if key not in _dispatch_table:
                     error_message = "unknown attribute '{0}'".format(
                         flask.request.args)
-                    log.error(error_message)
+                    log.error("user_request_id = {0}, " \
+                              "{1}".format(user_request_id, 
+                                           error_message))
                     result_dict = {"success" : False,
                                    "error_message" : error_message}
                     status = httplib.METHOD_NOT_ALLOWED
@@ -134,12 +158,15 @@ class SetCollectionAttributeView(ConnectionPoolView):
             if attribute is not None:
                 try:
                     status, result_dict = \
-                        _dispatch_table[attribute](cursor, 
+                        _dispatch_table[attribute](cursor,
+                                                   user_request_id, 
                                                    customer_id,
                                                    collection_name, 
                                                    arg_value)
                 except Exception:
-                    log.exception("{0} {1}".format(collection_name, 
+                    log.exception("user_request_id = {0}, " \
+                                  "{1} {2}".format(user_request_id, 
+                                                   collection_name, 
                                                    attribute))
                     cursor.close()
                     connection.rollback()

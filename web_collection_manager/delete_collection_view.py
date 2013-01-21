@@ -7,6 +7,7 @@ A View to delete a collection for a user
 import httplib
 import json
 import logging
+import uuid
 
 import flask
 
@@ -58,7 +59,14 @@ class DeleteCollectionView(ConnectionPoolView):
 
     def dispatch_request(self, username, collection_name):
         log = logging.getLogger("DeleteCollectionView")
-        user_request_id = flask.request.headers["x-nimbus-io-user-request-id"]
+        try:
+            user_request_id = \
+                flask.request.headers['x-nimbus-io-user-request-id']
+        except KeyError:
+            user_request_id = str(uuid.uuid4())
+            log.warn("user_request_id = {0}, " \
+                     "no x-nimbus-io-user-request-id " \
+                     "header".format(user_request_id))
         log.info("user_request_id = {0}, " \
                  "user_name = {1}, " \
                  "collection_name = {2}".format(user_request_id,

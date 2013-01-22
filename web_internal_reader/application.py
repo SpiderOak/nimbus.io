@@ -18,6 +18,7 @@ import os
 from itertools import chain
 import re
 import time
+import uuid
 
 from webob.dec import wsgify
 from webob import exc
@@ -125,15 +126,26 @@ class Application(object):
 
         action_tag, match_object = result
 
+        try:
+            user_request_id = req.headers['x-nimbus-io-user-request-id']
+        except KeyError:
+            user_request_id = str(uuid.uuid4())
+            if not action_tag == "respond-to-ping":
+                self._log.warn(
+                    "request {0}: no x-nimbus-io-user-request-id header".format(
+                    user_request_id))
+
         if not action_tag == "respond-to-ping":
-            self._log.info("request %s: %r %r" % ( 
-                id(req), req.method, req.url, ) )
+            self._log.info("start request {0}: {1} {2}".format( 
+                user_request_id, req.method, req.url))
 
         try:
-            return self._dispatch_table[action_tag](req, match_object)
+            return self._dispatch_table[action_tag](req, 
+                                                    match_object, 
+                                                    user_request_id)
         except exc.HTTPException, instance:
-            self._log.error("request %s %s %s %s %r" % (
-                id(req),
+            self._log.error("request {0} {1} {2} {3} {4}".format(
+                user_request_id,
                 instance.__class__.__name__, 
                 instance, 
                 action_tag,
@@ -141,19 +153,13 @@ class Application(object):
             ))
             raise
         except Exception, instance:
-            self._log.exception(instance)
-            self._log.error("exception on request %s %r" 
-                % (id(req), req.url, ))
-            self._event_push_client.exception(
-                "unhandled_exception",
-                str(instance),
-                exctype=instance.__class__.__name__
-            )
+            self._log.error("exception on request {0} {1}".format( 
+                user_request_id, req.url))
             raise
 
-    def _respond_to_ping(self, _req, _match_object):
+    def _respond_to_ping(self, _req, _match_object, _user_request_id):
         self._log.debug("_respond_to_ping")
-        response = Response(status=200, content_type="text/plain")
+        response = Response(status=httplib.OK, content_type="text/plain")
         response.body_file.write("ok")
         return response
 
@@ -176,9 +182,7 @@ class Application(object):
             where unified_id = %s and conjoined_part = %s
             limit 1""", [unified_id, conjoined_part, ])
 
-        
-
-    def _retrieve_key(self, req, match_object):
+    def _retrieve_key(self, req, match_object, user_request_id):
         unified_id = int(match_object.group("unified_id"))
         conjoined_part = int(match_object.group("conjoined_part"))
 
@@ -192,7 +196,8 @@ class Application(object):
                 _parse_range_header(req.headers["range"])
             if not "x-nimbus-io-expected-content-length" in req.headers:
                 message = "expected x-nimbus-io-expected-content-length header" 
-                self._log.error(message)
+                self._log.error("request {0} {1}".format(user_request_id, 
+                                                         message))
                 raise exc.HTTPBadRequest(message)
             total_file_size = \
                 int(req.headers["x-nimbus-io-expected-content-length"])
@@ -208,23 +213,26 @@ class Application(object):
         connected_data_readers = _connected_clients(self.data_readers)
 
         if len(connected_data_readers) < _min_connected_clients:
-            raise exc.HTTPServiceUnavailable("Too few connected readers %s" % (
-                len(connected_data_readers),
-            ))
+            self._log.error("request {0} too few connected readers {1}".format(
+                            user_request_id, len(connected_data_readers)))
+            raise exc.HTTPServiceUnavailable("Too few connected readers {0}".format(
+                len(connected_data_readers)))
 
         result = self._get_params_from_memcache(unified_id, conjoined_part)
         if result is None:
-            self._log.warn("cache miss unified-id {0} {1}".format(
-                unified_id, conjoined_part))
+            self._log.warn("request {0} cache miss unified-id {1} {2}".format(
+                user_request_id, unified_id, conjoined_part))
             result = self._get_params_from_database(unified_id, conjoined_part)
         if result is None:
             error_message = "unknown unified-id {0} {1}".format(unified_id,
                                                                 conjoined_part)
-            self._log.error(error_message)
+            self._log.error("request {0} {1}".format(user_request_id, 
+                                                     error_message))
             raise exc.HTTPServiceUnavailable(error_message)
         collection_id, key = result
 
-        description = "retrieve: (%s) key=%r unified_id=%r-%r %r:%r" % (
+        description = "request {0} retrieve: ({1}) key={2} unified_id={3}-{4} {5}:{6}".format(
+            user_request_id,                                                                                        
             collection_id,
             key,
             unified_id,
@@ -246,7 +254,8 @@ class Application(object):
             conjoined_part,
             block_offset,
             block_count,
-            _min_segments
+            _min_segments,
+            user_request_id
         )
 
         retrieved = retriever.retrieve(_reply_timeout)
@@ -254,8 +263,8 @@ class Application(object):
         try:
             first_segments = retrieved.next()
         except RetrieveFailedError, instance:
-            self._log.error("retrieve failed: %s %s" % (
-                description, instance,
+            self._log.error("retrieve failed: {0} {1}".format(
+                description, instance
             ))
             self._stats["retrieves"] -= 1
             return exc.HTTPNotFound(str(instance))
@@ -285,11 +294,7 @@ class Application(object):
                         sent += len(data)
 
             except RetrieveFailedError, instance:
-                self._event_push_client.warn(
-                    "retrieve-failed",
-                    "%s: %s" % (description, instance, )
-                )
-                self._log.error('retrieve failed: %s %s' % (
+                self._log.error('retrieve failed: {0} {1}'.format(
                     description, instance
                 ))
                 self._stats["retrieves"] -= 1
@@ -305,13 +310,7 @@ class Application(object):
                 sent
             )
 
-            self._event_push_client.info(
-                "retrieve-stats",
-                description,
-                start_time=start_time,
-                end_time=end_time,
-                bytes_retrieved=sent
-            )
+        self._log.info("request {0} successful retrieve".format(user_request_id))
 
         response_headers = dict()
         if "range" in req.headers:

@@ -30,10 +30,12 @@ class Retriever(object):
         conjoined_part,
         block_offset,
         block_count,
-        segments_needed
+        segments_needed,
+        user_request_id
     ):
         self._log = logging.getLogger("Retriever")
-        self._log.info("{0}, {1}, {2}, {3}, {4} {5}".format(
+        self._log.info("request {0} {1}, {2}, {3}, {4}, {5} {6}".format(
+            user_request_id,
             collection_id, 
             key, 
             unified_id,
@@ -50,13 +52,15 @@ class Retriever(object):
         self._block_offset = block_offset
         self._block_count = block_count
         self._segments_needed = segments_needed
+        self._user_request_id = user_request_id
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
         self._sequence = 0
                 
     def _done_link(self, task):
         if task.sequence != self._sequence:
-            self._log.debug("_done_link ignore task %s seq %s expect %s" % (
+            self._log.debug("request {0} _done_link ignore task {1} seq {2} expect {3}".format(
+                self._user_request_id,
                 task.data_reader.node_name,
                 task.sequence,
                 self._sequence
@@ -72,7 +76,8 @@ class Retriever(object):
         start = True
         while True:
             self._sequence += 1
-            self._log.debug("retrieve: {0} {1} {2} {3}".format(
+            self._log.debug("request {0} retrieve: {1} {2} {3} {4}".format(
+                self._user_request_id,
                 self._sequence, 
                 self._unified_id, 
                 self._conjoined_part,
@@ -81,8 +86,8 @@ class Retriever(object):
             # send a request to all node
             for i, data_reader in enumerate(self._data_readers):
                 if not data_reader.connected:
-                    self._log.warn("ignoring disconnected reader %s" % (
-                        str(data_reader),
+                    self._log.warn("request {0} ignoring disconnected reader {1}".format(
+                        self._user_request_id, str(data_reader),
                     ))
                     continue
 
@@ -98,7 +103,8 @@ class Retriever(object):
                         self._conjoined_part,
                         segment_number,
                         self._block_offset,
-                        self._block_count
+                        self._block_count,
+                        self._user_request_id,
                     )
                 else:
                     task = self._pending.spawn(
@@ -111,7 +117,8 @@ class Retriever(object):
                         self._conjoined_part,
                         segment_number,
                         self._block_offset,
-                        self._block_count
+                        self._block_count,
+                        self._user_request_id
                     )
                 task.link(self._done_link)
                 task.segment_number = segment_number
@@ -120,8 +127,8 @@ class Retriever(object):
 
             # wait for, and process, replies from the nodes
             result_dict, completed = self._process_node_replies(timeout)
-            self._log.debug("retrieve: completed sequence %s" % (
-                self._sequence,
+            self._log.debug("request {0} retrieve: completed sequence {1}".format(
+                self._user_request_id, self._sequence,
             ))
 
             yield result_dict
@@ -149,7 +156,8 @@ class Retriever(object):
                             self._collection_id,
                             self._key,
                         )
-                    self._log.error(error_message)
+                    self._log.error("request {0} {1}"format(self._user_request_id, 
+                                                            error_message))
                     raise RetrieveFailedError(error_message)
 
                 continue
@@ -158,7 +166,8 @@ class Retriever(object):
             # those other 2 replies coming in even though we have moved on.
             if task.sequence != self._sequence:
                 self._log.debug(
-                    "_process_node_replies ignore task %s seq %s expect %s" % (
+                    "request {0} _process_node_replies ignore task {1} seq {2} expect {3}".format(
+                        self._user_request_id,
                         task.data_reader.node_name,
                         task.sequence,
                         self._sequence
@@ -180,7 +189,8 @@ class Retriever(object):
 
             if len(result_dict) >= self._segments_needed:
                 self._log.debug(
-                    "%s %s len(result_dict) = %s: enough" % (
+                    "request {0} {1} {2} len(result_dict) = {3}: enough".format(
+                    self._user_request_id,
                     self._collection_id,
                     self._key,
                     len(result_dict),
@@ -192,31 +202,35 @@ class Retriever(object):
         self._pending.join(timeout, raise_error=True)
 
         if len(result_dict) < self._segments_needed:
-            error_message = "(%s) %s too few valid results %s" % (
+            error_message = "({0}) {1} too few valid results {2}".format(
                 self._collection_id,
                 self._key,
-                len(result_dict),
+                len(result_dict)
             )
-            self._log.error(error_message)
+            self._log.error("request {0} {1}".format(self._user_request_id, 
+                                                     error_message)
             raise RetrieveFailedError(error_message)
 
         if all(completed_list):
-            self._log.debug("(%s) %s all nodes say completed" % (
+            self._log.debug("request {0} ({1}) {2} all nodes say completed".format(
+                self._user_request_id,
                 self._collection_id,
                 self._key,
             ))
             return result_dict, True
 
         if any(completed_list):
-            error_message = "(%s) %s inconsistent completed %s" % (
+            error_message = "({0}) {1} inconsistent completed {2}".format(
                 self._collection_id,
                 self._key,
-                completed_list,
+                completed_list
             )
-            self._log.error(error_message)
+            self._log.error("request {0} {1}".format(user_request_id, 
+                                                     error_message))
             raise RetrieveFailedError(error_message)
             
-        self._log.debug("(%s) %s all nodes say NOT completed" % (
+        self._log.debug("request {0} ({1}) {2} all nodes say NOT completed".format(
+            self._user_request_id,
             self._collection_id,
             self._key,
         ))
@@ -225,7 +239,8 @@ class Retriever(object):
     def _process_finished_task(self, task):
         if isinstance(task.value, gevent.GreenletExit):
             self._log.debug(
-                "(%s) %s %s task ends with GreenletExit" % (
+                "request {0} ({1}) {2} {3} task ends with GreenletExit".format(
+                    self._user_request_id,
                     self._collection_id,
                     self._key,
                     task.data_reader.node_name,
@@ -236,14 +251,16 @@ class Retriever(object):
         if not task.successful():
             # 2011-10-07 dougfort -- I don't know how a task
             # could be unsuccessful
-            self._log.warn("(%s) %s %s task unsuccessful" % (
+            self._log.warn("request {0} ({1}) {2} {3} task unsuccessful".format(
+                self._user_request_id,
                 self._collection_id,
                 self._key,
                 task.data_reader.node_name,
             ))
             return None
 
-        self._log.debug("(%s) %s %s task successful" % (
+        self._log.debug("request {0} ({1}) {2} {3} task successful".format(
+            self._user_request_id,
             self._collection_id,
             self._key,
             task.data_reader.node_name,
@@ -257,7 +274,8 @@ class Retriever(object):
 
         if task.value is None:
             self._log.debug(
-                "(%s) %s %s task value is None" % (
+                "request {0} ({1}) {2} {3} task value is None".format(
+                    self._user_request_id,
                     self._collection_id,
                     self._key,
                     task.data_reader.node_name,
@@ -267,7 +285,8 @@ class Retriever(object):
 
         data_segment, zfec_padding_size, completion_status = task.value
 
-        self._log.debug("(%s) %s %s task successful complete = %r" % (
+        self._log.debug("request {0} ({1}) {2} {3} task successful complete = {4}".format(
+            self._user_request_id,
             self._collection_id,
             self._key,
             task.data_reader.node_name, 
@@ -275,4 +294,3 @@ class Retriever(object):
         ))
 
         return data_segment, zfec_padding_size, completion_status
-

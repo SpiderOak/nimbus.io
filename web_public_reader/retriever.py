@@ -120,7 +120,9 @@ class Retriever(object):
         memcached_key = \
             memcached_key_template.format(_nimbusio_node_name, 
                                           key_rows[0]["unified_id"])
-        self._log.debug("memcached_key = {0}".format(memcached_key))
+        self._log.debug("request {0}: memcached_key = {1}".format(
+                        self.user_request_id,
+                        memcached_key))
 
         # pickle also won't handle the md5 digest, so we encode
         for key_row in key_rows:
@@ -134,7 +136,8 @@ class Retriever(object):
             "status-rows"   : key_rows,
         }
 
-        self._log.debug("caching {0}".format(memcached_key))
+        self._log.debug("request {0}: caching {1}".format(self.user_request_id, 
+                                                          memcached_key))
         try:
             successful = self._memcached_client.set(memcached_key, cache_dict)
         except Exception, instance:
@@ -146,7 +149,9 @@ class Retriever(object):
                 instance))
 
         if not successful:
-            self._log.warn("memcached set failed {0}".format(memcached_key))
+            self._log.warn("request {0}: " \
+                           "memcached set failed {1}".format(self.user_request_id, 
+                                                             memcached_key))
 
     def _generate_key_rows(self, key_rows):
 
@@ -224,16 +229,31 @@ class Retriever(object):
                     if cumulative_slice_size == 0 and block_count == 1:
                         self._residue_from_last_block -= \
                         self._offset_into_first_block
+                    self._log.debug("request {0}: "
+                                    "self._slice_size={1}, "
+                                    "next_slice_size={2}, "
+                                    "cumulative_slice_size={3}, "
+                                    "current_file_slice_size={4}, "
+                                    "residue_from_last_block={5}".format(
+                                    self.user_request_id,
+                                    self._slice_size,
+                                    next_slice_size,
+                                    cumulative_slice_size,
+                                    current_file_slice_size,
+                                    self._residue_from_last_block))
+ 
                 else:
                     cumulative_slice_size = next_slice_size
 
-            self._log.debug("cumulative_file_size={0}, "
-                           "cumulative_slice_size={1}, "
-                           "current_file_offset={2}, "
-                           "block_offset={3}, "
-                           "block_count={4}, "
-                           "offset_into_first_block={5}, " 
-                           "residue_from_loast_block={6}".format(
+            self._log.debug("request {0}: "
+                            "cumulative_file_size={1}, "
+                           "cumulative_slice_size={2}, "
+                           "current_file_offset={3}, "
+                           "block_offset={4}, "
+                           "block_count={5}, "
+                           "offset_into_first_block={6}, " 
+                           "residue_from_last_block={7}".format(
+                           self.user_request_id,
                            cumulative_file_size,
                            cumulative_slice_size,
                            current_file_offset,
@@ -255,7 +275,7 @@ class Retriever(object):
         except Exception, instance:
             self._log.error("request {0} _retrieve exception".format(
                 self.user_request_id))
-            self._log.exception(instance)
+            self._log.exception("request {0}".format(self.user_request_id))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=create_timestamp(),
                                         collection_id=self._collection_id,
@@ -401,9 +421,15 @@ class Retriever(object):
                     assert prev_data is not None
                     if self._last_block_in_slice_retrieved and \
                     self._residue_from_last_block > 0:
+                        self._log.debug("request {0}: " \
+                                        "len(prev_data) = {1} " \
+                                        "_residue_from_last_block = {2}".format(
+                                        self.user_request_id, 
+                                        len(prev_data),
+                                        self._residue_from_last_block))
                         prev_data = prev_data[:-self._residue_from_last_block]
                     self._log.debug(
-                        "request {0} yielding {0} bytes from last block".format(
+                        "request {0} yielding {1} bytes from last block".format(
                         self.user_request_id, len(prev_data)))
                     yield prev_data
                     retrieve_bytes += len(prev_data)
@@ -416,7 +442,7 @@ class Retriever(object):
                         prev_data = data
                     continue
                 self._log.debug(
-                    "request {0} yielding {0} bytes".format(
+                    "request {0} yielding {1} bytes".format(
                     self.user_request_id, len(prev_data)))
                 yield prev_data
                 retrieve_bytes += len(prev_data)
@@ -432,7 +458,7 @@ class Retriever(object):
 
         # end - for entry in self._generate_key_rows(self._key_rows):
 
-        if response.status_int == httplib.OK:
+        if response.status_int in [httplib.OK, httplib.PARTIAL_CONTENT, ]:
             redis_entries = [("retrieve_success", 1),
                              ("success_bytes_out", retrieve_bytes)]
         else:

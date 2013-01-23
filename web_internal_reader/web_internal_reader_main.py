@@ -211,12 +211,6 @@ class WebInternalReader(object):
             greenlet_object.get()
         except Exception:
             self._log.exception(str(greenlet_object))
-            exctype, value = sys.exc_info()[:2]
-            self._event_push_client.exception(
-                "unhandled_greenlet_exception",
-                str(value),
-                exctype=exctype.__name__
-            )
 
 def main():
     initialize_logging(_log_path)

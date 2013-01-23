@@ -34,9 +34,11 @@ class DataReader(object):
                            segment_conjoined_part, 
                            segment_num,
                            block_offset,
-                           block_count):
+                           block_count,
+                           user_request_id):
         message = {
             "message-type"              : "retrieve-key-start",
+            "user-request-id"           : user_request_id,            
             "retrieve-id"               : retrieve_id,
             "retrieve-sequence"         : sequence,
             "collection-id"             : collection_id,
@@ -52,18 +54,18 @@ class DataReader(object):
             delivery_channel = \
                     self._resilient_client.queue_message_for_send(message)
         except ResilientClientError:
-            self._log.exception("retrieve_key_start")
+            self._log.exception("request {0}".format(user_request_id))
             return None
 
-        self._log.debug(
-            "%(message-type)s: %(segment-unified-id)s %(segment-num)s" \
-            % message
-        )
+        self._log.debug("request: {user-request-id} " \
+                        "{message-type}: {segment-unified-id} {segment-num}".format(
+                        **message))
 
         reply, data = delivery_channel.get()
 
         if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
+            self._log.error("request {0} failed: {1}".format(user_request_id,
+                                                             reply))
             return None
 
         # we expect a list of blocks, but if the data is smaller than 
@@ -80,13 +82,14 @@ class DataReader(object):
             segment_md5.update(block)
 
         if segment_size != reply["segment-size"]:
-            self._log.error("failed: data size is %s expecting %s %s" % (
-                segment_size, reply["segment-size"], reply
-            ))
+            self._log.error("request {0} failed: " \
+                            "data size is {1} expecting {2} {3}".format(
+                user_request_id, segment_size, reply["segment-size"], reply))
             return None
 
         if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
-            self._log.error("md5 digest mismatch %s" % (reply, ))
+            self._log.error("request {0} md5 digest mismatch {1}".format(
+                            user_request_id, reply))
             return None
 
         return data, reply["zfec-padding-size"], reply["completed"]
@@ -100,9 +103,11 @@ class DataReader(object):
                           segment_conjoined_part, 
                           segment_num,
                           block_offset,
-                          block_count):
+                          block_count,
+                          user_request_id):
         message = {
             "message-type"              : "retrieve-key-next",
+            "user-request-id"           : user_request_id,
             "retrieve-id"               : retrieve_id,
             "retrieve-sequence"         : sequence,
             "collection-id"             : collection_id,
@@ -118,17 +123,17 @@ class DataReader(object):
             delivery_channel = \
                     self._resilient_client.queue_message_for_send(message)
         except ResilientClientError:
-            self._log.exception("retrieve_key_start")
+            self._log.exception("request {0}".format(user_request_id))
             return None
 
-        self._log.debug(
-            "%(message-type)s: %(segment-unified-id)s %(segment-num)s" \
-            % message
-        )
+        self._log.debug("request: {user-request-id} " \
+                        "{message-type}: {segment-unified-id} {segment-num}".format(
+                        **message))
         reply, data = delivery_channel.get()
 
         if reply["result"] != "success":
-            self._log.error("failed: %s" % (reply, ))
+            self._log.error("request {0} failed: {1}".format(user_request_id,
+                                                             reply))
             return None
 
         # we expect a list of blocks, but if the data is smaller than 
@@ -145,14 +150,14 @@ class DataReader(object):
             segment_md5.update(block)
 
         if segment_size != reply["segment-size"]:
-            self._log.error("failed: data size is %s expecting %s %s" % (
-                reply["segment-size"], segment_size, reply
-            ))
+            self._log.error("request {0} failed: " \
+                            "data size is {1} expecting {2} {3}".format(
+                user_request_id, segment_size, reply["segment-size"], reply))
             return None
 
         if segment_md5.digest() != b64decode(reply["segment-md5-digest"]):
-            self._log.error("md5 digest mismatch %s" % (reply, ))
+            self._log.error("request {0} md5 digest mismatch {1}".format(
+                            user_request_id, reply))
             return None
 
         return data, reply["zfec-padding-size"], reply["completed"]
-

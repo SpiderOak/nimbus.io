@@ -56,6 +56,14 @@ class Retriever(object):
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
         self._sequence = 0
+
+    def _unhandled_greenlet_exception(self, greenlet_object):
+        self._log.error("request {0}: " \
+                        "unhandled greenlet exception {1} {2} {3}".format(
+                        self._user_request_id,
+                        str(greenlet_object),
+                        greenlet_object.exception.__class__.__name__,
+                        str(greenlet_object.exception)))
                 
     def _done_link(self, task):
         if task.sequence != self._sequence:
@@ -121,6 +129,7 @@ class Retriever(object):
                         self._user_request_id
                     )
                 task.link(self._done_link)
+                task.link_exception(self._unhandled_greenlet_exception)
                 task.segment_number = segment_number
                 task.data_reader = data_reader
                 task.sequence = self._sequence
@@ -156,7 +165,7 @@ class Retriever(object):
                             self._collection_id,
                             self._key,
                         )
-                    self._log.error("request {0} {1}"format(self._user_request_id, 
+                    self._log.error("request {0} {1}".format(self._user_request_id, 
                                                             error_message))
                     raise RetrieveFailedError(error_message)
 
@@ -208,7 +217,7 @@ class Retriever(object):
                 len(result_dict)
             )
             self._log.error("request {0} {1}".format(self._user_request_id, 
-                                                     error_message)
+                                                     error_message))
             raise RetrieveFailedError(error_message)
 
         if all(completed_list):
@@ -225,7 +234,7 @@ class Retriever(object):
                 self._key,
                 completed_list
             )
-            self._log.error("request {0} {1}".format(user_request_id, 
+            self._log.error("request {0} {1}".format(self._user_request_id, 
                                                      error_message))
             raise RetrieveFailedError(error_message)
             

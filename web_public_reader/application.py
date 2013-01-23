@@ -428,17 +428,20 @@ class Application(object):
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
             self._log.error("request {0}: unauthorized {1}".format(
-                (user_request_id, instance, )))
+                            user_request_id, 
+                            instance))
             raise exc.HTTPUnauthorized()
         except Exception, instance:
             self._log.exception("request {0}: auth exception {1}".format(
-                (user_request_id, instance, )))
+                                user_request_id, 
+                                instance))
             raise exc.HTTPBadRequest()
             
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
         except Exception, instance:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPServiceUnavailable(str(instance))
 
         version_id = None

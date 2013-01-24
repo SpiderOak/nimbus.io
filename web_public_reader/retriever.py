@@ -302,18 +302,13 @@ class Retriever(object):
         self._log.debug("start key_rows loop")
         first_block = True
 
-        key_rows_entries = list(self._generate_key_rows(self._key_rows))
-        for idx, entry in enumerate(key_rows_entries):
+        for key_row, block_offset, block_count in \
+            self._generate_key_rows(self._key_rows):
 
-            key_row, block_offset, block_count = entry
-
-            self._log.debug("request {0}: _retrieve {1}/{2}: {3} {4}".format(
-                self.user_request_id,
-                idx + 1,
-                len(key_rows_entries),
-                key_row["unified_id"], 
-                key_row["conjoined_part"]
-            ))
+            self._log.debug("request {0}: {1} {2}".format(
+                            self.user_request_id,
+                            key_row["unified_id"], 
+                            key_row["conjoined_part"]))
 
             # if a cache port is defined, and this response isn't larger than
             # the configured maximum, send the request through the cache.

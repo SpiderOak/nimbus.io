@@ -115,8 +115,10 @@ def _process_one_transaction(dealer_socket,
             control["error-message"] = "no sequence rows found"
 
     if control["result"] != "success":
-        log.error("{0} {1}".format(control["result"], 
-                                   control["error-message"]))
+        log.error("user_request_id = {0}, " \
+                  "{1} {2}".format(request["user-request-id"],
+                                  control["result"], 
+                                  control["error-message"]))
         dealer_socket.send_pyobj(request, zmq.SNDMORE)
         dealer_socket.send_pyobj(control)
         return
@@ -131,7 +133,10 @@ def _process_one_transaction(dealer_socket,
         row_dict["space_id"] = space_id
         result_list.append(row_dict)
 
-    log.debug("sending request back to controller")
+    log.debug("user_request_id = {0}, " \
+              " sending request back to controller".format(
+              request["user-request-id"]))
+    
     dealer_socket.send_pyobj(request, zmq.SNDMORE)
     dealer_socket.send_pyobj(control, zmq.SNDMORE)
     dealer_socket.send_pyobj(result_list)

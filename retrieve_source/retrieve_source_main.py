@@ -107,10 +107,10 @@ def _process_one_request(rep_socket, db_controller_push_socket):
     assert not rep_socket.rcvmore
 
     ack_message = {
-        "message-type" : "resilient-server-ack",
-        "message-id"   : request["message-id"],
-        "incoming-type": request["message-type"],
-        "accepted"     : None
+        "message-type"      : "resilient-server-ack",
+        "message-id"        : request["message-id"],
+        "incoming-type"     : request["message-type"],
+        "accepted"          : None
     }
 
     push_request_to_db_controller = False
@@ -124,7 +124,9 @@ def _process_one_request(rep_socket, db_controller_push_socket):
     rep_socket.send_json(ack_message)
 
     if push_request_to_db_controller:
-        log.info("pushing {0} {1}".format(request["message-type"],
+        log.info("user_request_id = {0}, " \
+                 "pushing {0} {1}".format(request["user-request-id"],
+                                          request["message-type"],
                                           request["retrieve-id"]))
         control = {"result"              : None,
                    "error-message"       : None, } 

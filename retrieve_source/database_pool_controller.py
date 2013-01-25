@@ -69,7 +69,6 @@ def _send_pending_work_to_available_workers(resources):
     send messages from the pending_work_queue 
     to workers in the available_ident_queue
     """
-    log = logging.getLogger("_send_pending_work_to_available_workers")
     work_count = min(len(resources.pending_work_queue), 
                      len(resources.available_ident_queue))
     for _ in range(work_count):
@@ -83,11 +82,14 @@ def _handle_retrieve_key_start(resources, message, control):
     log = logging.getLogger("_handle_retrieve_key_start")
     retrieve_id = message["retrieve-id"]
     if retrieve_id in resources.active_retrieves:
-        log.error("duplicate retrieve-id {0} in retrieve-key-start".format(
-             retrieve_id))
+        log.error("user_request_id = {0}, " \
+                  "duplicate retrieve-id {1} in retrieve-key-start".format(
+                  message["user-request-id"], retrieve_id))
         del resources.active_retrieves[retrieve_id]
 
-    log.debug("adding {0} to pending work queue".format(message))
+    log.debug("user_request_id = {0}, adding to pending work queue".format(
+              message["user-request-id"]))
+
     resources.pending_work_queue.append((message, control, ))
 
 def _handle_retrieve_key_next(resources, message, control):
@@ -95,12 +97,14 @@ def _handle_retrieve_key_next(resources, message, control):
     retrieve_id = message["retrieve-id"]
 
     if retrieve_id not in resources.active_retrieves:
-        log.error("unknown retrieve-id {0} in retrieve-key-next".format(
-             retrieve_id))
+        log.error("user_request_id = {0}, " \
+                  "unknown retrieve-id {1} in retrieve-key-next".format(
+                  message["user-request-id"], retrieve_id))
         return
 
     retrieve_state = resources.active_retrieves.pop(retrieve_id)
-    log.debug("sending {0} to io-controller".format(message))
+    log.debug("user_request_id = {0}, sending to io-controller".format(
+              message["user-request-id"]))
     _send_request_to_io_controller(resources, message, control, retrieve_state)
 
 _dispatch_table = { "retrieve-key-start" : _handle_retrieve_key_start,
@@ -254,7 +258,9 @@ def _read_router_socket(resources):
     control = resources.router_socket.recv_pyobj()
 
     if control["result"] != "success":
-        log.error("{0} {1} {2}".format(message["retrieve-id"],
+        log.error("user_request_id = {0}, " \
+                  "{1} {2} {3}".format(message["user-request-id"],
+                                       message["retrieve-id"],
                                        control["result"],
                                        control["error-message"]))
         _send_error_reply(resources, message, control)
@@ -270,13 +276,15 @@ def _read_router_socket(resources):
         _analyze_slice_offsets(sequence_rows, 
                                message["block-offset"],
                                message["block-count"])
-    log.debug(
-        "{0} {1} rows; skip={2}, left_offset={3}, right_offset={4} ".format(
-            message["retrieve-id"],
-            len(sequence_rows),
-            row_skip_count,
-            left_offset,
-            right_offset))
+    log.debug("user_request_id = {0}, " \
+              "{1} {2} rows; skip={3}, " \
+              "left_offset={4}, right_offset={5} ".format(
+              message["user-request-id"],
+              message["retrieve-id"],
+              len(sequence_rows),
+              row_skip_count,
+              left_offset,
+              right_offset))
 
     retrieve_state = _retrieve_state_tuple(sequence_rows=sequence_rows,
                                            sequence_index=row_skip_count,
@@ -291,10 +299,12 @@ def _send_request_to_io_controller(resources,
                                    control, 
                                    retrieve_state):
     log = logging.getLogger("_send_request_to_io_controller")
-    log.debug("{0} sending row[{1}] of {2}".format(
-        message["retrieve-id"],
-        retrieve_state.sequence_index,
-        len(retrieve_state.sequence_rows)))
+    log.debug("user_request_id = {0}, " \
+              "{1} sending row[{2}] of {3}".format(
+              message["user-request-id"],
+              message["retrieve-id"],
+              retrieve_state.sequence_index,
+              len(retrieve_state.sequence_rows)))
 
     if message["message-type"] == "retrieve-key-start":
         control["left-offset"] = retrieve_state.left_offset

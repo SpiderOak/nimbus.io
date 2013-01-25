@@ -71,6 +71,7 @@ def _send_error_reply(resources, message, control):
     push_socket = _get_reply_push_socket(resources, message["client-address"])
 
     reply = {"message-type"          : "retrieve-key-reply",
+             "user-request-id"       : message["user-request-id"],
              "client-tag"            : message["client-tag"],
              "message-id"            : message["message-id"],
              "retrieve-id"           : message["retrieve-id"],
@@ -96,7 +97,8 @@ def _process_request(resources):
     assert resources.dealer_socket.rcvmore
     control = resources.dealer_socket.recv_pyobj()
 
-    log.debug("request = {0}; control = {1}".format(request, control))
+    log.debug("user_request_id = {0}; control = {1}".format(
+              request["user-request-id"], control))
 
     assert resources.dealer_socket.rcvmore
     sequence_row = resources.dealer_socket.recv_pyobj()
@@ -115,7 +117,9 @@ def _process_request(resources):
         try:
             value_file = open(value_file_path, "rb")
         except Exception as instance:
-            log.exception("read {0}".format(value_file_path))
+            log.exception("user_request_id = {0}, " \
+                          "read {1}".format(request["user-request-id"],
+                                            value_file_path))
             resources.event_push_client.exception("error_opening_value_file", 
                                                   str(instance))
             control["result"] = "error_opening_value_file"
@@ -124,7 +128,6 @@ def _process_request(resources):
         if control["result"] != "success":
             _send_error_reply(resources, request, control)
             return
-
 
     read_offset = \
         sequence_row["value_file_offset"] + \
@@ -139,7 +142,9 @@ def _process_request(resources):
         value_file.seek(read_offset)
         encoded_data = value_file.read(read_size)
     except Exception as instance:
-        log.exception("read {0}".format(value_file_path))
+        log.exception("user_request_id = {0}, " \
+                      "read {1}".format(request["user-request-id"],
+                                        value_file_path))
         resources.event_push_client.exception("error_reading_value_file", 
                                               str(instance))
         control["result"] = "error_reading_vqalue_file"
@@ -157,7 +162,8 @@ def _process_request(resources):
             request["retrieve-id"],
             len(encoded_data),
             read_size)
-        log.error(error_message)
+        log.error("user_request_id = {0}, {1}".format(request["user-request-id"],
+                                                      error_message))
         resources.event_push_client.error("size_mismatch", error_message)
         control["result"] = "size_mismatch"
         control["error-message"] = error_message
@@ -179,6 +185,7 @@ def _process_request(resources):
 
     reply = {
         "message-type"          : "retrieve-key-reply",
+        "user-request-id"       : request["user-request-id"],
         "client-tag"            : request["client-tag"],
         "message-id"            : request["message-id"],
         "retrieve-id"           : request["retrieve-id"],
@@ -298,4 +305,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

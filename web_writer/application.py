@@ -25,8 +25,9 @@ import random
 import zlib
 import hashlib
 import json
-import urllib
 import time
+import urllib
+import uuid
 
 import gevent.greenlet
 import gevent.queue
@@ -216,26 +217,38 @@ class Application(object):
             raise exc.HTTPNotFound(req.url)
 
         action_tag, match_object = result
+
         try:
-            return self._dispatch_table[action_tag](req, match_object)
+            user_request_id = req.headers['x-nimbus-io-user-request-id']
+        except KeyError:
+            user_request_id = str(uuid.uuid4())
+            if not action_tag == "respond-to-ping":
+                self._log.warn(
+                    "request %s: no x-nimbus-io-user-request-id header" % (
+                    user_request_id, ) )
+
+        if not action_tag == "respond-to-ping":
+            self._log.info("start request {0}: {1} {2}".format( 
+                user_request_id, req.method, req.url, ) )
+
+        try:
+            return self._dispatch_table[action_tag](req, 
+                                                    match_object, 
+                                                    user_request_id)
         except exc.HTTPException, instance:
-            self._log.error("%s %s %s %r" % (
+            self._log.error("request {0}: {1} {2} {3} {4}".format(
+                user_request_id,
                 instance.__class__.__name__, 
                 instance, 
                 action_tag,
-                req.url
-            ))
+                req.url))
             raise
         except Exception, instance:
-            self._log.exception("%s" % (req.url, ))
-            self._event_push_client.exception(
-                "unhandled_exception",
-                str(instance),
-                exctype=instance.__class__.__name__
-            )
+            self._log.exception("request {0}: {1}".format(user_request_id,
+                                                          req.url))
             raise
 
-    def _respond_to_ping(self, _req, _match_object):
+    def _respond_to_ping(self, _req, _match_object, _user_request_id):
         self._log.debug("_respond_to_ping")
         # Ticket #44 we don't send 'Connection: close' here because
         # this is an internal URI
@@ -243,7 +256,7 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
-    def _archive_key(self, req, match_object):
+    def _archive_key(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
 
@@ -253,22 +266,25 @@ class Application(object):
                                                  write_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(user_request_id,
+                                                                instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: " \
+                            "unauthorized {1}".format(user_request_id, 
+                                                      instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
             key = urllib.unquote_plus(key)
             key = key.decode("utf-8")
         except Exception, instance:
-            self._log.error('unable to prepare key %r %s' % (
-                key, instance
-            ))
+            self._log.error("request {0}: " \
+                            "unable to prepare key {1} {2}".format(
+                            user_request_id, key, instance))
             raise exc.HTTPServiceUnavailable(str(instance))
 
         # Ticket #39 Reject Requests with Inaccurate Content-Length or 
@@ -281,7 +297,8 @@ class Application(object):
         except ValueError:
             error_message = "connot parse content-length {0}".format(
                 req.headers["content-length"])
-            self._log.error(error_message)
+            self._log.error("request {0}: {1}".format(user_request_id,
+                                                      error_message))
             raise exc.HTTPBadRequest(error_message)
 
         expected_md5 = None
@@ -289,11 +306,13 @@ class Application(object):
             expected_md5 = b64decode(req.headers["content-md5"])
 
         start_time = time.time()
-        description = "archive: collection=({0}){1} key={2}, size={3}".format(
-            collection_row["id"],
-            collection_row["name"],
-            key, 
-            req.content_length)
+        description = "request {0}: " \
+                      "archive: collection=({0}){1} key={2}, size={3}".format(
+                      user_request_id,
+                      collection_row["id"],
+                      collection_row["name"],
+                      key, 
+                      req.content_length)
         self._log.info(description)
 
         meta_dict = _build_meta_dict(req.GET)
@@ -325,7 +344,8 @@ class Application(object):
             unified_id,
             timestamp,
             meta_dict,
-            conjoined_part
+            conjoined_part,
+            user_request_id,
         )
 
         if not conjoined_archive:
@@ -374,12 +394,8 @@ class Application(object):
                     )
         except gevent.queue.Empty, instance:
             # Ticket #69 Protection in Web Writer from Slow Uploads
-            self._event_push_client.error(
-                "archive-failed-error",
-                "%s: timeout %s" % (description, instance, )
-            )
-            self._log.error("archive failed: %s timeout %s" % (
-                description, instance, 
+            self._log.error("archive failed: {0} timeout {1}".format(
+                description, instance
             ))
             _send_archive_cancel(
                 unified_id, conjoined_part, self._data_writer_clients
@@ -394,11 +410,7 @@ class Application(object):
             response.headers["Connection"] = "close"
             return response
         except ArchiveFailedError, instance:
-            self._event_push_client.error(
-                "archive-failed-error",
-                "%s: %s" % (description, instance, )
-            )
-            self._log.error("archive failed: %s %s" % (
+            self._log.error("archive failed: {0} {1}".format(
                 description, instance, 
             ))
             _send_archive_cancel(
@@ -420,11 +432,7 @@ class Application(object):
             # 2012-07-14 dougfort -- were getting
             # IOError: unexpected end of file while reading request
             # if the sender croaks
-            self._event_push_client.error(
-                "archive-failed-error",
-                "%s: %s" % (description, instance, )
-            )
-            self._log.exception("archive failed: %s %s" % (
+            self._log.exception("archive failed: {0} {1}".format(
                 description, instance, 
             ))
             _send_archive_cancel(
@@ -447,7 +455,8 @@ class Application(object):
         if actual_content_length != expected_content_length:
             error_message = "actual content length {0} != expected {1}".format(
                 actual_content_length, expected_content_length)
-            self._log.error(error_message)
+            self._log.error("request {0}: {1}".format(user_request_id, 
+                                                      error_message))
             _send_archive_cancel(unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
@@ -465,7 +474,8 @@ class Application(object):
 
         if expected_md5 is not None and expected_md5 != file_md5.digest():
             error_message = "body md5 does not match content-md5 header"
-            self._log.error(error_message)
+            self._log.error("request {0}: {1}".format(user_request_id, 
+                                                      error_message))
             _send_archive_cancel(unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
@@ -500,14 +510,6 @@ class Application(object):
             file_size
         )
 
-        self._event_push_client.info(
-            "archive-stats",
-            description,
-            start_time=start_time,
-            end_time=end_time,
-            bytes_archived=req.content_length
-        )
-
         response_dict = {
             "version_identifier" : self._id_translator.public_id(unified_id),
         }
@@ -526,7 +528,7 @@ class Application(object):
         self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
-    def _delete_key(self, req, match_object):
+    def _delete_key(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
 
@@ -536,13 +538,16 @@ class Application(object):
                                                  delete_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(user_request_id,
+                                                                instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: " \
+                            "unauthorized {1}".format(user_request_id, 
+                                                      instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
@@ -559,11 +564,13 @@ class Application(object):
                 version_identifier
             )
 
-        description = "_delete_key: ({0}) {1} key = {2} {3}".format(
-            collection_row["id"],
-            collection_row["name"],
-            key,
-            unified_id_to_delete)
+        description = "request {0}: " \
+                      "_delete_key: ({1}) {2} key = {3} {4}".format(
+                      user_request_id,
+                      collection_row["id"],
+                      collection_row["name"],
+                      key,
+                      unified_id_to_delete)
         self._log.info(description)
         data_writers = _create_data_writers(self._data_writer_clients)
 
@@ -576,7 +583,8 @@ class Application(object):
             key,
             unified_id_to_delete,
             unified_id,
-            timestamp
+            timestamp,
+            user_request_id
         )
 
         queue_entry = \
@@ -588,11 +596,7 @@ class Application(object):
         try:
             destroyer.destroy(_reply_timeout)
         except DestroyFailedError, instance:            
-            self._event_push_client.error(
-                "delete-failed-error",
-                "%s: %s" % (description, instance, )
-            )
-            self._log.error("delete failed: %s %s" % (
+            self._log.error("delete failed: {0} {1}".format(
                 description, instance, 
             ))
             queue_entry = \
@@ -630,7 +634,7 @@ class Application(object):
 
         return response
 
-    def _start_conjoined(self, req, match_object):
+    def _start_conjoined(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
 
@@ -640,13 +644,16 @@ class Application(object):
                                                  write_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(user_request_id, 
+                                                                instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: " \
+                            "unauthorized {1}".format(user_request_id, 
+                                                      instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
@@ -656,7 +663,9 @@ class Application(object):
             raise exc.HTTPServiceUnavailable(str(instance))
 
         self._log.info(
-            "start_conjoined: collection = ({0}) {1} key = {2}".format(
+            "request {0}: "\
+            "start_conjoined: collection = ({1}) {2} key = {3}".format(
+            user_request_id,
             collection_row["id"], 
             collection_row["name"],
             key))
@@ -680,13 +689,9 @@ class Application(object):
                 timestamp
             )
         except ConjoinedFailedError, instance:
-            self._event_push_client.error(
-                "start-conjoined-failed-error",
-                "%s: %s" % (unified_id, instance, )
-            )
-            self._log.error("start-conjoined failed: %s %s" % (
-                unified_id, instance, 
-            ))
+            self._log.error("request {0}: " \
+                            "start-conjoined failed: {1} {2}".format(
+                            user_request_id, unified_id, instance))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -706,14 +711,8 @@ class Application(object):
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
-        except Exception, instance:
-            self._event_push_client.error(
-                "start-conjoined-failed-error",
-                "%s: %s" % (unified_id, instance, )
-            )
-            self._log.exception("start-conjoined failed: %s %s" % (
-                unified_id, instance, 
-            ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -752,7 +751,7 @@ class Application(object):
 
         return response
 
-    def _finish_conjoined(self, req, match_object):
+    def _finish_conjoined(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")
@@ -763,13 +762,16 @@ class Application(object):
                                                  write_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(user_request_id,
+                                                                instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: " \
+                            "unauthorized {1}".format(user_request_id, 
+                                                      instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
@@ -780,12 +782,13 @@ class Application(object):
 
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
-        self._log.info(
-            "finish_conjoined: collection = ({0}) {1} key = {2} {3}".format(
-            collection_row["id"], 
-            collection_row["name"],
-            key,
-            unified_id))
+        self._log.info("request {0}: " \
+                       "finish_conjoined: collection = ({1}) {2} " \
+                       "key = {3} {4}".format(user_request_id, 
+                                              collection_row["id"], 
+                                              collection_row["name"],
+                                              key,
+                                              unified_id))
 
         data_writers = _create_data_writers(self._data_writer_clients) 
         timestamp = create_timestamp()
@@ -799,13 +802,9 @@ class Application(object):
                 timestamp
             )
         except ConjoinedFailedError, instance:
-            self._event_push_client.error(
-                "finish-conjoined-failed-error",
-                "%s: %s" % (unified_id, instance, )
-            )
-            self._log.error("finish-conjoined failed: %s %s" % (
-                unified_id, instance, 
-            ))
+            self._log.error("request {0}: " \
+                            "finish-conjoined failed: {1} {2}".format(
+                            user_request_id, unified_id, instance))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -824,14 +823,8 @@ class Application(object):
             response.headers["Connection"] = "close"
             response.retry_after = _archive_retry_interval
             return response
-        except Exception, instance:
-            self._event_push_client.error(
-                "finish-conjoined-failed-error",
-                "%s: %s" % (unified_id, instance, )
-            )
-            self._log.exception("finish-conjoined failed: %s %s" % (
-                unified_id, instance, 
-            ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -876,7 +869,7 @@ class Application(object):
 
         return response
 
-    def _abort_conjoined(self, req, match_object):
+    def _abort_conjoined(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")
@@ -887,12 +880,15 @@ class Application(object):
                                                  write_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(user_request_id,
+                                                                instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: " \
+                            "unauthorized {1}".format(user_request_id,
+                                                      instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
+        except Exception:
             self._log.exception("%s" % (instance, ))
             raise exc.HTTPBadRequest()
             
@@ -923,13 +919,9 @@ class Application(object):
                 timestamp
             )
         except ConjoinedFailedError, instance:
-            self._event_push_client.error(
-                "abort-conjoined-failed-error",
-                "%s: %s" % (unified_id, instance, )
-            )
-            self._log.error("abort-conjoined failed: %s %s" % (
-                unified_id, instance, 
-            ))
+            self._log.error("request {0}: " \
+                            "abort-conjoined failed: {1} {2}".format(
+                            user_request_id, unified_id, instance))
             if "content-length" in req.headers:
                 queue_entry = \
                     redis_queue_entry_tuple(timestamp=timestamp,
@@ -945,13 +937,9 @@ class Application(object):
             response.retry_after = _archive_retry_interval
             return response
         except Exception, instance:
-            self._event_push_client.error(
-                "abort-conjoined-failed-error",
-                "%s: %s" % (unified_id, instance, )
-            )
-            self._log.exception("abort-conjoined failed: %s %s" % (
-                unified_id, instance, 
-            ))
+            self._log.exception("request {0}: " \
+                                "abort-conjoined failed: {0} {1}".format(
+                                user_request_id, unified_id, instance))
             if "content-length" in req.headers:
                 queue_entry = \
                     redis_queue_entry_tuple(timestamp=timestamp,

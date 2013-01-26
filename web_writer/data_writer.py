@@ -53,6 +53,7 @@ class DataWriter(object):
         file_md5,
         segment,
         source_node_name,
+        user_request_id
     ):
         segment_size, segment_adler32, segment_md5 = \
                 _segment_properties(segment)
@@ -60,6 +61,7 @@ class DataWriter(object):
         message = {
             "message-type"              : "archive-key-entire",
             "priority"                  : create_priority(),
+            "user-request-id"           : user_request_id,
             "collection-id"             : collection_id,
             "key"                       : key, 
             "unified-id"                : unified_id,
@@ -80,12 +82,10 @@ class DataWriter(object):
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
-        self._log.debug(
-            '%(message-type)s: '
-            'key = %(key)r '
-            'timestamp = %(timestamp-repr)r '
-            'segment_num = %(segment-num)d' % message
-            )
+        self._log.debug("request {user-request-id}: {message-type}: " \
+                        "key = {key} " \
+                        "timestamp = {timestamp-repr} " \
+                        "segment_num = {segment-num}".format(**message))
         reply, _data = delivery_channel.get()
         return reply
 
@@ -100,7 +100,8 @@ class DataWriter(object):
         zfec_padding_size,
         sequence_num,
         segment,
-        source_node_name
+        source_node_name,
+        user_request_id
     ):
         segment_size, segment_adler32, segment_md5 = \
                 _segment_properties(segment)
@@ -110,6 +111,7 @@ class DataWriter(object):
         message = {
             "message-type"          : "archive-key-start",
             "priority"              : self._archive_priority,
+            "user-request-id"       : user_request_id,
             "collection-id"         : collection_id,
             "key"                   : key, 
             "unified-id"            : unified_id,
@@ -127,11 +129,10 @@ class DataWriter(object):
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
-        self._log.debug(
-            '%(message-type)s: '
-            'key = %(key)r '
-            'segment_num = %(segment-num)d' % message
-            )
+        self._log.debug("request {user-request-id}: {message-type}: " \
+                        "key = {key} " \
+                        "timestamp = {timestamp-repr} " \
+                        "segment_num = {segment-num}".format(**message))
         reply, _data = delivery_channel.get()
         return reply
 
@@ -146,7 +147,8 @@ class DataWriter(object):
         zfec_padding_size,
         sequence_num,
         segment,
-        source_node_name
+        source_node_name,
+        user_request_id,
     ):
         segment_size, segment_adler32, segment_md5 = \
                 _segment_properties(segment)
@@ -154,6 +156,7 @@ class DataWriter(object):
         message = {
             "message-type"          : "archive-key-next",
             "priority"              : self._archive_priority,
+            "user-request-id"       : user_request_id,
             "collection-id"         : collection_id,
             "key"                   : key,
             "unified-id"            : unified_id,
@@ -171,10 +174,10 @@ class DataWriter(object):
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
-        self._log.debug(
-            '%(message-type)s: %(collection-id)s $(key)s '
-            'sequence = %(sequence-num)s' % message
-            )
+        self._log.debug("request {user-request-id}: {message-type}: " \
+                        "key = {key} " \
+                        "timestamp = {timestamp-repr} " \
+                        "segment_num = {segment-num}".format(**message))
         reply, _data = delivery_channel.get()
         return reply
 
@@ -193,7 +196,8 @@ class DataWriter(object):
         file_adler32,
         file_md5,
         segment,
-        source_node_name
+        source_node_name,
+        user_request_id
     ):
         segment_size, segment_adler32, segment_md5 = \
                 _segment_properties(segment)
@@ -201,6 +205,7 @@ class DataWriter(object):
         message = {
             "message-type"              : "archive-key-final",
             "priority"                  : self._archive_priority,
+            "user-request-id"           : user_request_id,
             "collection-id"             : collection_id,
             "key"                       : key,
             "unified-id"                : unified_id,
@@ -225,9 +230,10 @@ class DataWriter(object):
         delivery_channel = self._resilient_client.queue_message_for_send(
             message, data=segment
         )
-        self._log.debug(
-            '%(message-type)s: %(collection-id)s %(key)s' % message
-        )
+        self._log.debug("request {user-request-id}: {message-type}: " \
+                        "key = {key} " \
+                        "timestamp = {timestamp-repr} " \
+                        "segment_num = {segment-num}".format(**message))
         reply, _data = delivery_channel.get()
         return reply
 
@@ -239,11 +245,13 @@ class DataWriter(object):
         unified_id,
         timestamp,
         segment_num,
-        source_node_name
+        source_node_name,
+        user_request_id
     ):
         message = {
             "message-type"              : "destroy-key",
             "priority"                  : create_priority(),
+            "user-request-id"           : user_request_id,
             "collection-id"             : collection_id,
             "key"                       : key,
             "unified-id-to-delete"      : unified_id_to_delete,
@@ -256,11 +264,9 @@ class DataWriter(object):
         delivery_channel = \
                 self._resilient_client.queue_message_for_send(message)
 
-        self._log.debug(
-            '%(message-type)s: '
-            'key = %(key)r '
-            'segment_num = %(segment-num)d' % message
-            )
+        self._log.debug("request {user-request-id}: {message-type}: " \
+                        "key = {key} " \
+                        "timestamp = {timestamp-repr} " \
+                        "segment_num = {segment-num}".format(**message))
         reply, _data = delivery_channel.get()
         return reply
-

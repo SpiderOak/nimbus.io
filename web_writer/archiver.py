@@ -27,7 +27,8 @@ class Archiver(object):
         unified_id,
         timestamp, 
         meta_dict, 
-        conjoined_part
+        conjoined_part,
+        user_request_id
     ):
         self._log = logging.getLogger(
             'Archiver(collection_id=%d, key=%r)' % (collection_id, key))
@@ -38,6 +39,7 @@ class Archiver(object):
         self._timestamp = timestamp
         self._meta_dict = meta_dict
         self._conjoined_part = conjoined_part
+        self._user_request_id = user_request_id
         self._sequence_num = 0
         self._pending = gevent.pool.Group()
         self._finished_tasks = gevent.queue.Queue()
@@ -45,6 +47,14 @@ class Archiver(object):
     def _done_link(self, task):
         self._finished_tasks.put(task, block=True)
 
+    def _unhandled_greenlet_exception(self, greenlet_object):
+        self._log.error("request {0}: " \
+                        "unhandled greenlet exception {1} {2} {3}".format(
+                        self._user_request_id,
+                        str(greenlet_object),
+                        greenlet_object.exception.__class__.__name__,
+                        str(greenlet_object.exception)))
+ 
     def archive_slice(self, segments, zfec_padding_size, timeout=None):
         for i, segment in enumerate(segments):
             segment_num = i + 1
@@ -61,7 +71,8 @@ class Archiver(object):
                     zfec_padding_size,
                     self._sequence_num,
                     segment,
-                    _local_node_name
+                    _local_node_name,
+                    self._user_request_id
                 )
             else:
                 task = self._pending.spawn(
@@ -75,10 +86,12 @@ class Archiver(object):
                     zfec_padding_size,
                     self._sequence_num,
                     segment,
-                    _local_node_name
+                    _local_node_name,
+                    self._user_request_id
                 )
-            task.link(self._done_link)
             task.node_name = data_writer.node_name
+            task.link(self._done_link)
+            task.link_exception(self._unhandled_greenlet_exception)
 
         self._process_node_replies(timeout)
         self._sequence_num += 1
@@ -110,7 +123,8 @@ class Archiver(object):
                     file_adler32,
                     file_md5,
                     segment,
-                    _local_node_name
+                    _local_node_name,
+                    self._user_request_id
                 )
             else:
                 task = self._pending.spawn(
@@ -128,10 +142,12 @@ class Archiver(object):
                     file_adler32,
                     file_md5,
                     segment,
-                    _local_node_name
+                    _local_node_name,
+                    self._user_request_id
                 )
-            task.link(self._done_link)
             task.node_name = data_writer.node_name
+            task.link(self._done_link)
+            task.link_exception(self._unhandled_greenlet_exception)
 
         self._process_node_replies(timeout)
 
@@ -154,56 +170,62 @@ class Archiver(object):
                             self._key,
                             self._unified_id
                         )
-                    self._log.error(error_message)
+                    self._log.error("request {0}: {1}".format(
+                                    self._user_request_id,
+                                    error_message))
                     raise ArchiveFailedError(error_message)
 
-                self._log.warn("timeout waiting for completed task")
+                self._log.warn("request {0}: " \
+                               "timeout waiting for completed task".format(
+                                self._user_request_id,
+                                error_message))
                 continue
 
             finished_count += 1
             if isinstance(task.value, gevent.GreenletExit):
-                self._log.debug(
-                    "(%s) %s %s %s task ends with GreenletExit" % (
-                        self._collection_id,
-                        self._key,
-                        self._unified_id,
-                        task.node_name,
-                    )
-                )
+                self._log.debug("request {0}: " \
+                                "({1}) {2} {3} {4} " \
+                                "task ends with GreenletExit".format(
+                                self._user_request_id,
+                                self._collection_id,
+                                self._key,
+                                self._unified_id,
+                                task.node_name))
                 error_count += 1
                 continue
 
             if not task.successful():
                 # 2011-10-07 dougfort -- I don't know how a task
                 # could be unsuccessful
-                self._log.error("(%s) %s %s %s task unsuccessful" % (
-                    self._collection_id,
-                    self._key,
-                    self._unified_id,
-                    task.node_name,
-                ))
+                self._log.error("request {0}: " \
+                                "({1}) {2} {3} {4} task unsuccessful".format(
+                                self._user_request_id,
+                                self._collection_id,
+                                self._key,
+                                self._unified_id,
+                                task.node_name))
                 error_count += 1
                 continue
 
             if task.value["result"] != "success":
-                self._log.error(
-                    "(%s) %s %s %s task ends with %s" % (
-                        self._collection_id,
-                        self._key,
-                        self._unified_id,
-                        task.node_name,
-                        task.value["error-message"]
-                    )
-                )
+                self._log.error("request {0}: " \
+                                "({1}) {2} {3} {4} task ends with {5}".format(
+                                self._user_request_id,
+                                self._collection_id,
+                                self._key,
+                                self._unified_id,
+                                task.node_name,
+                                task.value["error-message"]))
                 error_count += 1
                 continue
 
-            self._log.debug("(%s) %s %s %s task successful" % (
-                self._collection_id,
-                self._key,
-                self._unified_id,
-                task.node_name,
-            ))
+            self._log.debug("request {0}: " \
+                            " ({1}) {2} {3} {4} task successful".format(
+                            self._user_request_id,
+                            self._collection_id,
+                            self._key,
+                            self._unified_id,
+                            task.node_name))
 
         if error_count > 0:
             error_message = \
@@ -213,6 +235,6 @@ class Archiver(object):
                     self._key,
                     self._unified_id
                 )
-            self._log.error(error_message)
+            self._log.error("request {0}: {1}".format(self._user_request_id,
+                                                      error_message))
             raise ArchiveFailedError(error_message)
-

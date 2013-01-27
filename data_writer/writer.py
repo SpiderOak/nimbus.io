@@ -340,20 +340,22 @@ class Writer(object):
         segment_num,
         source_node_id,
         handoff_node_id,
+        user_request_id
     ):
         """
         Initiate storing a segment of data for a file
         """
         segment_key = (unified_id, conjoined_part, segment_num, )
-        self._log.info("start_new_segment %s %s %s %s %s %s %s" % (
-            collection_id, 
-            key, 
-            unified_id, 
-            timestamp_repr, 
-            conjoined_part,
-            segment_num, 
-            source_node_id,
-        ))
+        self._log.info("request {0}: " \
+                       "start_new_segment {1} {2} {3} {4} {5} {6} {7}".format(
+                       user_request_id,
+                       collection_id, 
+                       key, 
+                       unified_id, 
+                       timestamp_repr, 
+                       conjoined_part,
+                       segment_num, 
+                       source_node_id,))
         if segment_key in self._active_segments:
             raise ValueError("duplicate segment %s" % (segment_key, ))
 
@@ -384,21 +386,23 @@ class Writer(object):
         segment_md5_digest,
         segment_adler32,
         sequence_num, 
-        data
+        data,
+        user_request_id
     ):
         """
         store one piece (sequence) of segment data
         """
         segment_key = (unified_id, conjoined_part, segment_num, )
-        self._log.info("store_sequence %s %s %s %s %s: %s (%s)" % (
-            collection_id, 
-            key, 
-            unified_id,
-            timestamp_repr, 
-            segment_num, 
-            sequence_num,
-            segment_size
-        ))
+        self._log.info("request {0}: " \
+                       "store_sequence {1} {2} {3} {4} {5}: {6} ({7})".format(
+                       user_request_id,
+                       collection_id, 
+                       key, 
+                       unified_id,
+                       timestamp_repr, 
+                       segment_num, 
+                       sequence_num,
+                       segment_size))
         segment_entry = self._active_segments[segment_key]
 
         # if this write would put us over the max size,
@@ -438,7 +442,8 @@ class Writer(object):
         timestamp, 
         segment_num, 
         source_node_id,
-        handoff_node_id
+        handoff_node_id,
+        user_request_id,
     ):
         """
         mark a key as deleted

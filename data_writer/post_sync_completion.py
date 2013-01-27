@@ -68,7 +68,7 @@ def _finalize_segment_row(
         """, meta_row_dict)            
 
     # 2012-03-14 dougfort -- assume all completions are run in a
-    # transaction wioht the caller handling the database commit
+    # transaction with the caller handling the database commit
 
 class PostSyncCompletion(object):
     """
@@ -109,6 +109,8 @@ class PostSyncCompletion(object):
         """
         send archive_key_file_reply message to the caller
         """
+        self._log.info("request {0}".format(
+                       self._archive_message["user-request-id"]))
         self._resilient_server.send_reply(self._reply_message)
 
     def _finish_new_segment(

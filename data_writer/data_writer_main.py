@@ -58,22 +58,23 @@ _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 
 def _handle_archive_key_entire(state, message, data):
     log = logging.getLogger("_handle_archive_key_entire")
-    log.info("%s %s %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
-        message["segment-num"]
-    ))
+        message["segment-num"]))
 
     sequence_num = 0
 
     reply = {
-        "message-type"  : "archive-key-final-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : None,
-        "error-message" : None,
+        "message-type"      : "archive-key-final-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : None,
+        "error-message"     : None,
     }
 
     # we expect a list of blocks, but if the data is smaller than 
@@ -84,16 +85,15 @@ def _handle_archive_key_entire(state, message, data):
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
-        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+        error_message = "size mismatch ({0} != {1}) {2} {3} {4} {5}".format(
             len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
-            message["segment-num"]
-        )
-        log.error(error_message)
-        state["event-push-client"].error("size-mismatch", error_message)  
+            message["segment-num"])
+        log.error("request {0}: {1}".format(message["user-request-id"],
+                                            error_message))
         reply["result"] = "size-mismatch"
         reply["error-message"] = "segment size does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -103,14 +103,13 @@ def _handle_archive_key_entire(state, message, data):
     segment_md5 = hashlib.md5()
     segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
-        error_message = "md5 mismatch %s %s %s %s" % (
+        error_message = "md5 mismatch {0} {1} {2} {3}".format(
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
-            message["segment-num"]
-        )
-        log.error(error_message)
-        state["event-push-client"].error("md5-mismatch", error_message)  
+            message["segment-num"])
+        log.error("request {0}: {1}".format(message["user-request-id"],
+                                            error_message))
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -130,7 +129,8 @@ def _handle_archive_key_entire(state, message, data):
         message["conjoined-part"],
         message["segment-num"],
         source_node_id,
-        handoff_node_id
+        handoff_node_id,
+        message["user-request-id"]
     )
 
     state["writer"].store_sequence(
@@ -145,7 +145,8 @@ def _handle_archive_key_entire(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         sequence_num,
-        segment_data
+        segment_data,
+        message["user-request-id"]
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
@@ -164,20 +165,21 @@ def _handle_archive_key_entire(state, message, data):
 
 def _handle_archive_key_start(state, message, data):
     log = logging.getLogger("_handle_archive_key_start")
-    log.info("%s %s %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
-        message["segment-num"]
-    ))
+        message["segment-num"]))
 
     reply = {
-        "message-type"  : "archive-key-start-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : None,
-        "error-message" : None,
+        "message-type"      : "archive-key-start-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : None,
+        "error-message"     : None,
     }
 
     # we expect a list of blocks, but if the data is smaller than 
@@ -188,16 +190,15 @@ def _handle_archive_key_start(state, message, data):
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
-        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+        error_message = "size mismatch ({0} != {1}) {2} {3} {4} {5}".format(
             len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
-            message["segment-num"]
-        )
-        log.error(error_message)
-        state["event-push-client"].error("size-mismatch", error_message)  
+            message["segment-num"])
+        log.error("request {0}: {1}".format(message["user-request-id"],
+                                            error_message))
         reply["result"] = "size-mismatch"
         reply["error-message"] = "segment size does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -207,14 +208,13 @@ def _handle_archive_key_start(state, message, data):
     segment_md5 = hashlib.md5()
     segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
-        error_message = "md5 mismatch %s %s %s %s" % (
+        error_message = "md5 mismatch {0} {1} {2} {3}".format(
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
-            message["segment-num"]
-        )
-        log.error(error_message)
-        state["event-push-client"].error("md5-mismatch", error_message)  
+            message["segment-num"])
+        log.error("request {0}: {1}".format(message["user-request-id"], 
+                                            error_message))
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -234,7 +234,8 @@ def _handle_archive_key_start(state, message, data):
         message["conjoined-part"],
         message["segment-num"],
         source_node_id,
-        handoff_node_id
+        handoff_node_id,
+        message["user-request-id"]
     )
 
     state["writer"].store_sequence(
@@ -249,7 +250,8 @@ def _handle_archive_key_start(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        segment_data
+        segment_data,
+        message["user-request-id"]
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
@@ -260,20 +262,21 @@ def _handle_archive_key_start(state, message, data):
 
 def _handle_archive_key_next(state, message, data):
     log = logging.getLogger("_handle_archive_key_next")
-    log.info("%s %s %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
-        message["segment-num"]
-    ))
+        message["segment-num"]))
 
     reply = {
-        "message-type"  : "archive-key-next-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : None,
-        "error-message" : None,
+        "message-type"      : "archive-key-next-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : None,
+        "error-message"     : None,
     }
 
     # we expect a list of blocks, but if the data is smaller than 
@@ -284,7 +287,7 @@ def _handle_archive_key_next(state, message, data):
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
-        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+        error_message = "size mismatch ({0} != {1}) {2} {3} {4} {5}".format(
             len(segment_data),
             message["segment-size"],
             message["collection-id"], 
@@ -292,8 +295,8 @@ def _handle_archive_key_next(state, message, data):
             message["timestamp-repr"],
             message["segment-num"]
         )
-        log.error(error_message)
-        state["event-push-client"].error("size-mismatch", error_message)  
+        log.error("request {0}: {1}".format(message["user-request-id"],
+                                            error_message))
         reply["result"] = "size-mismatch"
         reply["error-message"] = "segment size does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -303,14 +306,14 @@ def _handle_archive_key_next(state, message, data):
     segment_md5 = hashlib.md5()
     segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
-        error_message = "md5 mismatch %s %s %s %s" % (
+        error_message = "md5 mismatch {0} {1} {2} {3}".format(
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
             message["segment-num"]
         )
-        log.error(error_message)
-        state["event-push-client"].error("md5-mismatch", error_message)  
+        log.error("request {0}: {1}".format(message["user-request-id"],
+                                            error_message))
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -328,7 +331,8 @@ def _handle_archive_key_next(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        segment_data
+        segment_data,
+        message["user-request-id"]
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
@@ -339,7 +343,8 @@ def _handle_archive_key_next(state, message, data):
 
 def _handle_archive_key_final(state, message, data):
     log = logging.getLogger("_handle_archive_key_final")
-    log.info("%s %s %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["timestamp-repr"],
@@ -347,12 +352,13 @@ def _handle_archive_key_final(state, message, data):
     ))
 
     reply = {
-        "message-type"  : "archive-key-final-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : None,
-        "error-message" : None,
+        "message-type"      : "archive-key-final-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : None,
+        "error-message"     : None,
     }
 
     # we expect a list of blocks, but if the data is smaller than 
@@ -363,16 +369,15 @@ def _handle_archive_key_final(state, message, data):
     segment_data = "".join(data)
 
     if len(segment_data) != message["segment-size"]:
-        error_message = "size mismatch (%s != %s) %s %s %s %s" % (
+        error_message = "size mismatch ({0} != {1}) {2} {3} {4} {4}".format(
             len(segment_data),
             message["segment-size"],
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
-            message["segment-num"]
-        )
-        log.error(error_message)
-        state["event-push-client"].error("size-mismatch", error_message)  
+            message["segment-num"])
+        log.error("request {0}: {1}".format(message["user-request-id"], 
+                                            error_message))
         reply["result"] = "size-mismatch"
         reply["error-message"] = "segment size does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -382,14 +387,13 @@ def _handle_archive_key_final(state, message, data):
     segment_md5 = hashlib.md5()
     segment_md5.update(segment_data)
     if segment_md5.digest() != expected_segment_md5_digest:
-        error_message = "md5 mismatch %s %s %s %s" % (
+        error_message = "md5 mismatch {0} {1} {2} {3}".format(
             message["collection-id"], 
             message["key"], 
             message["timestamp-repr"],
-            message["segment-num"]
-        )
-        log.error(error_message)
-        state["event-push-client"].error("md5-mismatch", error_message)  
+            message["segment-num"])
+        log.error("request {0}: {1}".format(message["user-request-id"], 
+                                            error_message))
         reply["result"] = "md5-mismatch"
         reply["error-message"] = "segment md5 does not match expected value"
         state["resilient-server"].send_reply(reply)
@@ -407,7 +411,8 @@ def _handle_archive_key_final(state, message, data):
         expected_segment_md5_digest,
         message["segment-adler32"],
         message["sequence-num"],
-        segment_data
+        segment_data,
+        message["user-request-id"]
     )
 
     Statgrabber.accumulate('nimbusio_write_requests', 1)
@@ -426,16 +431,21 @@ def _handle_archive_key_final(state, message, data):
 
 def _handle_archive_key_cancel(state, message, _data):
     log = logging.getLogger("_handle_archive_key_cancel")
-    log.info("%s %s" % ( message["unified-id"], message["segment-num"],))
+    log.info("request {0}: {1} {2}".format( 
+             message["user-request-id"],
+             message["unified-id"], 
+             message["segment-num"]))
     state["writer"].cancel_active_archive(
         message["unified-id"], 
         message["conjoined-part"], 
         message["segment-num"],
+        message["user-request-id"]
     )
 
 def _handle_destroy_key(state, message, _data):
     log = logging.getLogger("_handle_destroy_key")
-    log.info("%s %s %s %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4} {5}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["unified-id-to-delete"],
@@ -458,29 +468,31 @@ def _handle_destroy_key(state, message, _data):
         timestamp,
         message["segment-num"],
         source_node_id,
-        handoff_node_id
+        handoff_node_id,
+        message["user-request-id"]
     )
 
     reply = {
-        "message-type"  : "destroy-key-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "unified-id"    : message["unified-id"],
-        "result"        : "success",
-        "error-message" : None,
+        "message-type"      : "destroy-key-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "unified-id"        : message["unified-id"],
+        "result"            : "success",
+        "error-message"     : None,
     }
     state["resilient-server"].send_reply(reply)
 
 
 def _handle_start_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_start_conjoined_archive")
-    log.info("%r %r %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
-        message["timestamp-repr"],
-    ))
+        message["timestamp-repr"],))
 
     timestamp = parse_timestamp_repr(message["timestamp-repr"])
 
@@ -495,22 +507,23 @@ def _handle_start_conjoined_archive(state, message, _data):
         message["key"], 
         message["unified-id"],
         timestamp,
-        handoff_node_id
-    )
+        handoff_node_id)
 
     reply = {
-        "message-type"  : "start-conjoined-archive-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
+        "message-type"      : "start-conjoined-archive-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : "success",
+        "error-message"     : None,
     }
     state["resilient-server"].send_reply(reply)
 
 def _handle_abort_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_abort_conjoined_archive")
-    log.info("%r %r %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
@@ -530,22 +543,23 @@ def _handle_abort_conjoined_archive(state, message, _data):
         message["key"], 
         message["unified-id"],
         timestamp,
-        handoff_node_id
-    )
+        handoff_node_id)
 
     reply = {
-        "message-type"  : "abort-conjoined-archive-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
+        "message-type"      : "abort-conjoined-archive-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : "success",
+        "error-message"     : None,
     }
     state["resilient-server"].send_reply(reply)
 
 def _handle_finish_conjoined_archive(state, message, _data):
     log = logging.getLogger("_handle_finish_conjoined_archive")
-    log.info("%r %r %s %s" % (
+    log.info("request {0}: {1} {2} {3} {4}".format(
+        message["user-request-id"],
         message["collection-id"], 
         message["key"], 
         message["unified-id"],
@@ -565,16 +579,16 @@ def _handle_finish_conjoined_archive(state, message, _data):
         message["key"], 
         message["unified-id"],
         timestamp,
-        handoff_node_id
-    )
+        handoff_node_id)
 
     reply = {
-        "message-type"  : "finish-conjoined-archive-reply",
-        "client-tag"    : message["client-tag"],
-        "client-address": message["client-address"],
-        "message-id"    : message["message-id"],
-        "result"        : "success",
-        "error-message" : None,
+        "message-type"      : "finish-conjoined-archive-reply",
+        "client-tag"        : message["client-tag"],
+        "client-address"    : message["client-address"],
+        "user-request-id"   : message["user-request-id"],
+        "message-id"        : message["message-id"],
+        "result"            : "success",
+        "error-message"     : None,
     }
     state["resilient-server"].send_reply(reply)
 

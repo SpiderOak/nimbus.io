@@ -686,7 +686,8 @@ class Application(object):
                 unified_id,
                 collection_row["id"],
                 key,
-                timestamp
+                timestamp,
+                user_request_id
             )
         except ConjoinedFailedError, instance:
             self._log.error("request {0}: " \
@@ -799,7 +800,8 @@ class Application(object):
                 collection_row["id"],
                 key,
                 unified_id,
-                timestamp
+                timestamp,
+                user_request_id
             )
         except ConjoinedFailedError, instance:
             self._log.error("request {0}: " \
@@ -916,7 +918,8 @@ class Application(object):
                 collection_row["id"],
                 key,
                 unified_id,
-                timestamp
+                timestamp,
+                user_request_id
             )
         except ConjoinedFailedError, instance:
             self._log.error("request {0}: " \

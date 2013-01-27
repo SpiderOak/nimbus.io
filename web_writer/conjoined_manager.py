@@ -75,9 +75,12 @@ def list_conjoined_archives(
     
     return truncated, conjoined_list
 
-def start_conjoined_archive(
-    data_writers, unified_id, collection_id, key, timestamp
-):
+def start_conjoined_archive(data_writers, 
+                            unified_id, 
+                            collection_id, 
+                            key, 
+                            timestamp,
+                            user_request_id):
     """
     start a new conjoined archive
     """
@@ -85,6 +88,7 @@ def start_conjoined_archive(
 
     message = {
         "message-type"              : "start-conjoined-archive",
+        "user-request-id"           : user_request_id,
         "unified-id"                : unified_id,
         "collection-id"             : collection_id,
         "key"                       : key,
@@ -95,8 +99,12 @@ def start_conjoined_archive(
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
-def abort_conjoined_archive(
-    data_writers, collection_id, key, unified_id, timestamp
+def abort_conjoined_archive(data_writers, 
+                            collection_id, 
+                            key, 
+                            unified_id, 
+                            timestamp,
+                            user_request_id
 ):
     """
     mark a conjoined archive as aborted
@@ -105,6 +113,7 @@ def abort_conjoined_archive(
 
     message = {
         "message-type"              : "abort-conjoined-archive",
+        "user-request-id"           : user_request_id,
         "collection-id"             : collection_id,
         "key"                       : key,
         "unified-id"                : unified_id,
@@ -117,8 +126,12 @@ def abort_conjoined_archive(
     log.info(error_tag)
     _send_message_receive_reply(data_writers, message, error_tag)
 
-def finish_conjoined_archive(
-    data_writers, collection_id, key, unified_id, timestamp
+def finish_conjoined_archive(data_writers, 
+                             collection_id, 
+                             key, 
+                             unified_id, 
+                             timestamp,
+                             user_request_id
 ):
     """
     finish a conjoined archive
@@ -127,6 +140,7 @@ def finish_conjoined_archive(
 
     message = {
         "message-type"              : "finish-conjoined-archive",
+        "user-request-id"           : user_request_id,
         "collection-id"             : collection_id,
         "key"                       : key,
         "unified-id"                : unified_id,

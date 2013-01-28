@@ -162,14 +162,15 @@ def _create_data_writers(clients):
     # segment numbers get defined in
     return [data_writers_dict[node_name] for node_name in _node_names]
 
-def _send_archive_cancel(unified_id, conjoined_part, clients):
+def _send_archive_cancel(user_request_id, unified_id, conjoined_part, clients):
     # message sent to data writers telling them to cancel the archive
     for i, client in enumerate(clients):
         if not client.connected:
             continue
         cancel_message = {
-            "message-type"      : "archive-key-cancel",
+            "message-type"      : "archive-key-cancel",            
             "priority"          : create_priority(),
+            "user-request-id"   : user_request_id,
             "unified-id"        : unified_id,
             "conjoined-part"    : conjoined_part,
             "segment-num"       : i+1,
@@ -395,11 +396,11 @@ class Application(object):
         except gevent.queue.Empty, instance:
             # Ticket #69 Protection in Web Writer from Slow Uploads
             self._log.error("archive failed: {0} timeout {1}".format(
-                description, instance
-            ))
-            _send_archive_cancel(
-                unified_id, conjoined_part, self._data_writer_clients
-            )
+                description, instance))
+            _send_archive_cancel(user_request_id, 
+                                 unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -413,9 +414,10 @@ class Application(object):
             self._log.error("archive failed: {0} {1}".format(
                 description, instance, 
             ))
-            _send_archive_cancel(
-                unified_id, conjoined_part, self._data_writer_clients
-            )
+            _send_archive_cancel(user_request_id, 
+                                 unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -435,9 +437,10 @@ class Application(object):
             self._log.exception("archive failed: {0} {1}".format(
                 description, instance, 
             ))
-            _send_archive_cancel(
-                unified_id, conjoined_part, self._data_writer_clients
-            )
+            _send_archive_cancel(user_request_id, 
+                                 unified_id, 
+                                 conjoined_part, 
+                                 self._data_writer_clients)
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=timestamp,
                                         collection_id=collection_row["id"],
@@ -457,7 +460,8 @@ class Application(object):
                 actual_content_length, expected_content_length)
             self._log.error("request {0}: {1}".format(user_request_id, 
                                                       error_message))
-            _send_archive_cancel(unified_id, 
+            _send_archive_cancel(user_request_id, 
+                                 unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
             queue_entry = \
@@ -476,7 +480,8 @@ class Application(object):
             error_message = "body md5 does not match content-md5 header"
             self._log.error("request {0}: {1}".format(user_request_id, 
                                                       error_message))
-            _send_archive_cancel(unified_id, 
+            _send_archive_cancel(user_request_id, 
+                                 unified_id, 
                                  conjoined_part, 
                                  self._data_writer_clients)
             queue_entry = \

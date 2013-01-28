@@ -470,13 +470,19 @@ class Writer(object):
         """
         _cancel_segment_rows(self._connection, source_node_id, timestamp)
 
-    def cancel_active_archive(self, unified_id, conjoined_part, segment_num):
+    def cancel_active_archive(self, 
+                              unified_id, 
+                              conjoined_part, 
+                              segment_num,
+                              user_request_id):
         """
         cancel an archive that is in progress, presumably due to failure
         at the web server
         """
         segment_key = (unified_id, conjoined_part, segment_num, )
-        self._log.info("cancel_active_archive %s" % (segment_key, ))
+        self._log.info("request {0}: " \
+                       "cancel_active_archive {1}".format(user_request_id,
+                                                          segment_key))
         # 2012-02-27 dougfort -- there is a race condition where the web
         # server sends out cancellations on an archive that has completed
         # because it hasn't reveived the final message yet

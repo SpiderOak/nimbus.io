@@ -337,7 +337,7 @@ class Application(object):
         # so, don't let exceptions inside the generator by handled by webob
         # before we get a chance to log them! wrap it in this.
         retrieve_generator = iter_exception_logger(
-            "retrieve_generator", 
+            "internal_retrieve_generator", 
             "request %s: " % (user_request_id, ),
             app_iterator,
             response)

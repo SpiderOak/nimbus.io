@@ -18,6 +18,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
     a segment that was handed off to us
     """
     log = logging.getLogger("forwarder_coroutine")
+    user_request_id = str(uuid.uuid4())
     archive_priority = create_priority()
     retrieve_id = uuid.uuid1().hex
     retrieve_sequence = 0
@@ -25,6 +26,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
     # start retrieving from our reader
     message = {
         "message-type"              : "retrieve-key-start",
+        "user-request-id"           : user_request_id,
         "retrieve-id"               : retrieve_id,
         "retrieve-sequence"         : retrieve_sequence,
         "collection-id"             : segment_row["collection_id"],
@@ -37,15 +39,19 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
         "block-count"               : None,
     }
 
-    log.debug("sending retrieve-key-start {0} {1}".format(
-        segment_row["unified_id"], 
-        segment_row["segment_num"]))
+    log.debug("request {0}: " \
+              "sending retrieve-key-start {1} {2}".format(
+              user_request_id,
+              segment_row["unified_id"], 
+              segment_row["segment_num"]))
     
     reader_socket.send(message)
     try:
         reader_socket.wait_for_ack()
     except ReqSocketAckTimeOut as instance:
-        log.error("timeout waiting ack {0} {1}".format(str(reader_socket), 
+        log.error("request {0}: " \
+                  "timeout waiting ack {1} {2}".format(user_request_id,
+                                                       str(reader_socket), 
                                                        str(instance)))
         raise
 
@@ -60,6 +66,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
     if completed:
         message = {
             "message-type"      : "archive-key-entire",
+            "user-request-id"   : user_request_id,
             "priority"          : archive_priority,
             "collection-id"     : segment_row["collection_id"],
             "key"               : segment_row["key"], 
@@ -80,6 +87,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
     else:
         message = {
             "message-type"      : "archive-key-start",
+            "user-request-id"   : user_request_id,
             "priority"          : archive_priority,
             "collection-id"     : segment_row["collection_id"],
             "key"               : segment_row["key"], 
@@ -100,7 +108,9 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
     try:
         writer_socket.wait_for_ack()
     except ReqSocketAckTimeOut as instance:
-        log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
+        log.error("request {0}: " \
+                  "timeout waiting ack {1} {2}".format(user_request_id,
+                                                       str(writer_socket), 
                                                        str(instance)))
         raise
     reply, _ = yield
@@ -119,6 +129,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
 
         message = {
             "message-type"              : "retrieve-key-next",
+             "user-request-id"          : user_request_id,
             "retrieve-id"               : retrieve_id,
             "retrieve-sequence"         : retrieve_sequence,
             "collection-id"             : segment_row["collection_id"],
@@ -134,7 +145,9 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
         try:
             reader_socket.wait_for_ack()
         except ReqSocketAckTimeOut as instance:
-            log.error("timeout waiting ack {0} {1}".format(str(reader_socket), 
+            log.error("request {0}: " \
+                      "timeout waiting ack {1} {2}".format(user_request_id,
+                                                           str(reader_socket), 
                                                            str(instance)))
             raise
 
@@ -146,6 +159,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
         if completed:
             message = {
                 "message-type"      : "archive-key-final",
+                "user-request-id"   : user_request_id,
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row["collection_id"],
                 "key"               : segment_row["key"],
@@ -167,6 +181,7 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
         else:
             message = {
                 "message-type"      : "archive-key-next",
+                "user-request-id"   : user_request_id,
                 "priority"          : archive_priority,
                 "collection-id"     : segment_row["collection_id"],
                 "key"               : segment_row["key"],
@@ -187,7 +202,9 @@ def forwarder_coroutine(node_dict, segment_row, writer_socket, reader_socket):
         try:
             writer_socket.wait_for_ack()
         except ReqSocketAckTimeOut as instance:
-            log.error("timeout waiting ack {0} {1}".format(str(writer_socket), 
+            log.error("request {0}: " \
+                      "timeout waiting ack {1} {2}".format(user_request_id,
+                                                           str(writer_socket), 
                                                            str(instance)))
             raise
         reply, _ = yield

@@ -28,6 +28,7 @@ from tools.data_definitions import create_timestamp, \
         block_size
 
 from tools.zfec_segmenter import ZfecSegmenter
+from tools.iter_exception_logger import iter_exception_logger
 
 from web_public_reader.retriever import memcached_key_template
 
@@ -329,6 +330,18 @@ class Application(object):
         response.content_type = "application/octet-stream"
 
         response.status_int = status_int
-        response.app_iter = app_iterator(response)
+
+        # the exception blocks below will only catch exceptions before the
+        # first yield of the generator, at which point we hand the
+        # retrieve_generator off to webob.
+        # so, don't let exceptions inside the generator by handled by webob
+        # before we get a chance to log them! wrap it in this.
+        retrieve_generator = iter_exception_logger(
+            "retrieve_generator", 
+            "request %s: " % (user_request_id, ),
+            app_iterator,
+            response)
+
+        response.app_iter = retrieve_generator
         return  response
 

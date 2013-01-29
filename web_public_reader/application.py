@@ -182,7 +182,7 @@ class Application(object):
 
         return response
 
-    def _respond_to_ping(self, _req, _match_object, _user_request_id):
+    def _respond_to_ping(self, _req, _match_object, user_request_id):
         # self._log.debug("_respond_to_ping")
         # Ticket #44 We don't send Connection: close here
         # because this is an internal URI
@@ -190,9 +190,9 @@ class Application(object):
         response.body_file.write("ok")
         return response
 
-    def _list_versions(self, req, match_object, _user_request_id):
+    def _list_versions(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
-        self._log.debug("_list_versions")
+        self._log.debug("request {0}: _list_versions".format(user_request_id))
 
         try:
             collection_row = \
@@ -200,13 +200,15 @@ class Application(object):
                                                  list_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         variable_names = [
@@ -232,11 +234,13 @@ class Application(object):
                 kwargs["version_id_marker"]
             )
 
-        self._log.info("_list_versions: collection = ({0}) {1} {2} {3}".format(
-                collection_row["id"],
-                collection_row["name"],
-                collection_row["versioning"],
-                kwargs))
+        self._log.info("request {0}: " \
+                       "_list_versions: collection = ({1}) {2} {3} {4}".format(
+                       user_request_id,
+                       collection_row["id"],
+                       collection_row["name"],
+                       collection_row["versioning"],
+                       kwargs))
 
         queue_entry = \
             redis_queue_entry_tuple(timestamp=create_timestamp(),
@@ -251,10 +255,11 @@ class Application(object):
                                         **kwargs)
         # segment_visibility raises ValueError if it is unhappy
         except ValueError, instance:
-            self._log.error(instance)
+            self._log.error("request {0}: {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPBadRequest(instance)
-        except Exception, instance:
-            self._log.exception(instance)
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=create_timestamp(),
                                         collection_id=collection_row["id"],
@@ -302,7 +307,7 @@ class Application(object):
         self._redis_queue.put(("success_bytes_out", queue_entry, ))
         return response
 
-    def _list_keys(self, req, match_object, _user_request_id):
+    def _list_keys(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         self._log.debug("_list_keys")
 
@@ -312,13 +317,15 @@ class Application(object):
                                                  list_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         variable_names = [
@@ -337,14 +344,13 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
-        self._log.info(
-            "_list_keys: collection = ({0}) {1} {2} {3}".format(
-                collection_row["id"],
-                collection_row["name"],
-                collection_row["versioning"],
-                kwargs
-            )
-        )
+        self._log.info("request {0}: " \
+                       "_list_keys: collection = ({1}) {2} {3} {4}".format(
+                       user_request_id,
+                       collection_row["id"],
+                       collection_row["name"],
+                       collection_row["versioning"],
+                       kwargs))
 
         queue_entry = \
             redis_queue_entry_tuple(timestamp=create_timestamp(),
@@ -359,10 +365,10 @@ class Application(object):
                                     **kwargs)
         # segment_visibility raises ValueError if it is unhappy
         except ValueError, instance:
-            self._log.error(instance)
+            self._log.error("request {0}: {1}".format(user_request_id, instance))
             raise exc.HTTPBadRequest(instance)
-        except Exception, instance:
-            self._log.exception(instance)
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             queue_entry = \
                 redis_queue_entry_tuple(timestamp=create_timestamp(),
                                         collection_id=collection_row["id"],
@@ -647,10 +653,10 @@ class Application(object):
         
         return response
 
-    def _retrieve_meta(self, req, match_object, _user_request_id):
+    def _retrieve_meta(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        self._log.debug("_retrieve_meta")
+        self._log.debug("request {0}: _retrieve_meta".format(user_request_id))
 
         try:
             collection_row = \
@@ -658,13 +664,15 @@ class Application(object):
                                                  None,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
@@ -710,10 +718,10 @@ class Application(object):
 
         return response
 
-    def _head_key(self, req, match_object, _user_request_id):
+    def _head_key(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
-        self._log.debug("_head_key")
+        self._log.debug("request {0}: _head_key".format(user_request_id))
 
         try:
             collection_row = \
@@ -721,13 +729,15 @@ class Application(object):
                                                  read_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
@@ -742,12 +752,13 @@ class Application(object):
             version_identifier = urllib.unquote_plus(version_identifier)
             version_id = self._id_translator.internal_id(version_identifier)
 
-        self._log.info(
-            "head_key: collection = ({0}) {1} key = {2} {3}".format(
-            collection_row["id"], 
-            collection_row["name"],
-            key,
-            version_id))
+        self._log.info("request {0}: " \
+                       "head_key: collection = ({1}) {2} key = {3} {4}".format(
+                       user_request_id,
+                       collection_row["id"], 
+                       collection_row["name"],
+                       key,
+                       version_id))
 
         last_modified, content_length = \
             get_last_modified_and_content_length(self._interaction_pool,
@@ -778,8 +789,10 @@ class Application(object):
             try:
                 timestamp = parse_http_timestamp(timestamp_str)
             except Exception, instance:
-                self._log.error(
-                    "unparsable timestamp '{0}'".format(timestamp_str))
+                self._log.error("request {0}: " \
+                                "unparsable timestamp '{1}'".format(
+                                user_request_id,
+                                timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified < timestamp:
                 status = httplib.NOT_MODIFIED
@@ -789,8 +802,10 @@ class Application(object):
             try:
                 timestamp = parse_http_timestamp(timestamp_str)
             except Exception, instance:
-                self._log.error(
-                    "unparsable timestamp '{0}'".format(timestamp_str))
+                self._log.error("request {0}: " \
+                                "unparsable timestamp '{1}'".format(
+                                user_request_id,
+                                timestamp_str))
                 raise exc.HTTPServiceUnavailable(str(instance))
             if last_modified > timestamp:
                 status = httplib.PRECONDITION_FAILED
@@ -819,9 +834,9 @@ class Application(object):
 
         return response
 
-    def _list_conjoined(self, req, match_object, _user_request_id):
+    def _list_conjoined(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
-        self._log.debug("_list_conjoined")
+        self._log.debug("requesrt {0}: _list_conjoined".format(user_request_id))
 
         try:
             collection_row = \
@@ -829,13 +844,15 @@ class Application(object):
                                                  list_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         variable_names = [
@@ -853,11 +870,12 @@ class Application(object):
                 variable_value = variable_value.decode("utf-8")
                 kwargs[variable_name] = variable_value
 
-        self._log.info(
-            "list_conjoined: collection = ({0}) {1} {2}".format(
-            collection_row["id"], 
-            collection_row["name"],
-            kwargs,))
+        self._log.info("request {0}: " \
+                       "list_conjoined: collection = ({1}) {2} {3}".format(
+                        user_request_id,
+                        collection_row["id"], 
+                        collection_row["name"],
+                        kwargs))
 
         truncated, conjoined_entries = list_conjoined_archives(
             self._interaction_pool,
@@ -904,11 +922,12 @@ class Application(object):
 
         return response
 
-    def _list_upload_in_conjoined(self, req, match_object, _user_request_id):
+    def _list_upload_in_conjoined(self, req, match_object, user_request_id):
         collection_name = match_object.group("collection_name")
         key = match_object.group("key")
         conjoined_identifier = match_object.group("conjoined_identifier")
-        self._log.debug("_list_upload_in_conjoined")
+        self._log.debug("request {0}: _list_upload_in_conjoined".format(
+                        user_request_id))
 
         try:
             collection_row = \
@@ -916,13 +935,15 @@ class Application(object):
                                                  list_access,
                                                  req)
         except AccessForbidden, instance:
-            self._log.error("forbidden {0}".format(instance))
+            self._log.error("request {0}: forbidden {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPForbidden()
         except AccessUnauthorized, instance:
-            self._log.error("unauthorized {0}".format(instance))
+            self._log.error("request {0}: unauthorized {1}".format(
+                            user_request_id, instance))
             raise exc.HTTPUnauthorized()
-        except Exception, instance:
-            self._log.exception("%s" % (instance, ))
+        except Exception:
+            self._log.exception("request {0}".format(user_request_id))
             raise exc.HTTPBadRequest()
             
         try:
@@ -933,10 +954,10 @@ class Application(object):
 
         unified_id = self._id_translator.internal_id(conjoined_identifier)
 
-        self._log.info(
-            "list_upload: collection = ({0}) {1} key={2} {3}".format(
-            collection_row["id"], 
-            collection_row["name"],
-            key,
-            unified_id))
-
+        self._log.info("request {0}: " \
+                       "list_upload: collection = ({1}) {2} key={3} {4}".format(
+                       user_request_id,
+                       collection_row["id"], 
+                       collection_row["name"],
+                       key,
+                       unified_id))

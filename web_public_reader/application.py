@@ -763,6 +763,7 @@ class Application(object):
         last_modified, content_length = \
             get_last_modified_and_content_length(self._interaction_pool,
                                                  collection_row["id"],
+                                                 collection_row["versioning"],
                                                  key,
                                                  version_id)
         if last_modified is None or content_length is None:

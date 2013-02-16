@@ -9,8 +9,6 @@ import httplib
 import logging
 import os
 
-import pickle
-
 import urllib2
 
 import gevent
@@ -77,12 +75,6 @@ class Retriever(object):
 
         self._sequence = 0
                 
-        # the amount to chop off the front of the first block
-        self._offset_into_first_block = 0
-
-        # the amount to chop off the end of the last block
-        self._residue_from_last_block = 0
-
         # if we are looking for a specified slice, we can stop when
         # we find the last block
         self._last_block_in_slice_retrieved = False
@@ -185,8 +177,14 @@ class Retriever(object):
         # None means all blocks
         # note that we have to compute this for the last file only
         # but must allow for a possible short block at the end of each 
-        # preceding file
+        # preceding file        
         block_count = None
+
+        # the amount to chop off the front of the first block of a slice
+        offset_into_first_block = 0
+
+        # the amount keep from the last block of a slice
+        offset_into_last_block = 0
 
         for key_row in key_rows:
 
@@ -205,9 +203,8 @@ class Retriever(object):
                 assert current_file_offset >= 0
                 
                 block_offset = current_file_offset / block_size
-                self._offset_into_first_block = \
-                        current_file_offset \
-                      - (block_offset * block_size)
+                offset_into_first_block = current_file_offset - \
+                                          (block_offset * block_size)
 
             if self._slice_size is not None:
                 assert cumulative_slice_size < self._slice_size
@@ -218,30 +215,24 @@ class Retriever(object):
                     self._last_block_in_slice_retrieved = True
                     current_file_slice_size = \
                             self._slice_size - cumulative_slice_size
-                    block_count = current_file_slice_size / block_size
-                    if current_file_slice_size % block_size != 0:
+                            
+                    block_count = current_file_slice_size / block_size                    
+                    slice_remainder = current_file_slice_size % block_size
+
+                    if slice_remainder > 0:
+                        offset_into_last_block = slice_remainder
                         block_count += 1
-                    self._residue_from_last_block = \
-                            (block_count * block_size) - \
-                            current_file_slice_size
-                    # if we only have a single block, don't take
-                    # too big of a chunk out of it
-                    if cumulative_slice_size == 0 and block_count == 1:
-                        self._residue_from_last_block -= \
-                        self._offset_into_first_block
-                    self._log.debug("request {0}: "
-                                    "self._slice_size={1}, "
-                                    "next_slice_size={2}, "
-                                    "cumulative_slice_size={3}, "
-                                    "current_file_slice_size={4}, "
-                                    "residue_from_last_block={5}".format(
-                                    self.user_request_id,
-                                    self._slice_size,
-                                    next_slice_size,
-                                    cumulative_slice_size,
-                                    current_file_slice_size,
-                                    self._residue_from_last_block))
- 
+
+                    # if we have more than one block,  we need to make up for 
+                    # the piece we took out of the first block for 
+                    # offset_into_first_block
+                    if block_count > 1:
+                        offset_into_last_block += offset_into_first_block
+                        # if offset_into_first_block is big enough,
+                        # we could run over into yet another block
+                        if offset_into_last_block >= block_size:
+                            block_count += 1
+                            offset_into_last_block -= block_size 
                 else:
                     cumulative_slice_size = next_slice_size
 
@@ -252,17 +243,21 @@ class Retriever(object):
                            "block_offset={4}, "
                            "block_count={5}, "
                            "offset_into_first_block={6}, " 
-                           "residue_from_last_block={7}".format(
+                           "offset_into_last_block={7}".format(
                            self.user_request_id,
                            cumulative_file_size,
                            cumulative_slice_size,
                            current_file_offset,
                            block_offset,
                            block_count,
-                           self._offset_into_first_block,
-                           self._residue_from_last_block))
+                           offset_into_first_block,
+                           offset_into_last_block))
                     
-            yield key_row, block_offset, block_count
+            yield key_row, \
+                  block_offset, \
+                  block_count, \
+                  offset_into_first_block, \
+                  offset_into_last_block
 
             cumulative_file_size = next_cumulative_file_size
             current_file_offset = 0
@@ -302,8 +297,12 @@ class Retriever(object):
         self._log.debug("start key_rows loop")
         first_block = True
 
-        for key_row, block_offset, block_count in \
-            self._generate_key_rows(self._key_rows):
+        for entry in self._generate_key_rows(self._key_rows):
+            key_row, \
+            block_offset, \
+            block_count, \
+            offset_into_first_block, \
+            offset_into_last_block = entry
 
             self._log.debug("request {0}: {1} {2}".format(
                             self.user_request_id,
@@ -415,14 +414,14 @@ class Retriever(object):
                 if len(data) == 0: 
                     assert prev_data is not None
                     if self._last_block_in_slice_retrieved and \
-                    self._residue_from_last_block > 0:
+                    offset_into_last_block > 0:
                         self._log.debug("request {0}: " \
                                         "len(prev_data) = {1} " \
-                                        "_residue_from_last_block = {2}".format(
+                                        "offset_into_last_block = {2}".format(
                                         self.user_request_id, 
                                         len(prev_data),
-                                        self._residue_from_last_block))
-                        prev_data = prev_data[:-self._residue_from_last_block]
+                                        offset_into_last_block))
+                        prev_data = prev_data[:offset_into_last_block]
                     self._log.debug(
                         "request {0} yielding {1} bytes from last block".format(
                         self.user_request_id, len(prev_data)))
@@ -431,8 +430,8 @@ class Retriever(object):
                     break
                 if prev_data is None:
                     if first_block:
-                        assert len(data) > self._offset_into_first_block
-                        prev_data = data[self._offset_into_first_block:]
+                        assert len(data) > offset_into_first_block
+                        prev_data = data[offset_into_first_block:]
                     else:
                         prev_data = data
                     continue

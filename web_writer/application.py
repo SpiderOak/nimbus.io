@@ -25,7 +25,6 @@ import random
 import zlib
 import hashlib
 import json
-import time
 import urllib
 import uuid
 
@@ -98,7 +97,8 @@ _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
 _archive_retry_interval = 120
 _content_type_json = "application/json"
-_max_sequence_upload_interval = 300
+_max_sequence_upload_interval = int(os.environ.get("NIMBUSIO_REQUEST_TIMEOUT", 
+                                                   "1800"))
 
 def _fix_timestamp(timestamp):
     return (None if timestamp is None else http_timestamp_str(timestamp))
@@ -306,7 +306,6 @@ class Application(object):
         if "content-md5" in req.headers:
             expected_md5 = b64decode(req.headers["content-md5"])
 
-        start_time = time.time()
         description = "request {0}: " \
                       "archive: collection=({0}){1} key={2}, size={3}".format(
                       user_request_id,
@@ -453,8 +452,6 @@ class Application(object):
 
         assert reader.dead
         
-        end_time = time.time()
-
         if actual_content_length != expected_content_length:
             error_message = "actual content length {0} != expected {1}".format(
                 actual_content_length, expected_content_length)

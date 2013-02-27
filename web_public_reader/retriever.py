@@ -478,13 +478,13 @@ class Retriever(object):
                 retrieve_bytes += len(prev_data)
                 prev_data = data
 
+                first_block = False
+
             urllib_response.close()
 
             self._log.debug(
                 "request {0} internal request complete".format(
                 self.user_request_id))
-
-            first_block = False
 
         # end - for entry in self._generate_key_rows(self._key_rows):
 

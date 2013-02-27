@@ -223,38 +223,38 @@ class Retriever(object):
                         offset_into_last_block = slice_remainder
                         block_count += 1
 
-                    # if we have more than one block,  we need to make up for 
+                    # we need to make up for 
                     # the piece we took out of the first block for 
                     # offset_into_first_block
-                    if block_count > 1:
-                        offset_into_last_block += offset_into_first_block
-                        # if offset_into_first_block is big enough,
-                        # we could run over into yet another block
-                        if offset_into_last_block >= block_size:
-                            block_count += 1
-                            offset_into_last_block -= block_size 
+                    offset_into_last_block += offset_into_first_block
 
-                        # make sure we computed this right
-                        if offset_into_first_block != 0 or \
-                        offset_into_last_block != 0:
+                    # if offset_into_first_block is big enough,
+                    # we could run over into yet another block
+                    if offset_into_last_block >= block_size:
+                        block_count += 1
+                        offset_into_last_block -= block_size 
 
-                            computed_slice_size = \
-                                ((block_count-1) * block_size) - \
-                                    offset_into_first_block + \
-                                    offset_into_last_block
-                            if computed_slice_size != current_file_slice_size:
-                                error_message = \
-                                    "slice_size mismatch: computed_size = {0}; " \
-                                    "actual_size = {1}; block_count = {2}; " \
-                                    "offset_into_first_block = {3}; " \
-                                    "offset_into_last_block = {4}".format(
-                                    computed_slice_size,
-                                    current_file_slice_size,
-                                    block_count,
-                                    offset_into_first_block,
-                                    offset_into_last_block)
-                                self._log.error(error_message)
-                                raise RetrieveFailedError(error_message)
+                    # make sure we computed this right
+                    if offset_into_first_block != 0 or \
+                    offset_into_last_block != 0:
+
+                        computed_slice_size = \
+                            ((block_count-1) * block_size) - \
+                                offset_into_first_block + \
+                                offset_into_last_block
+                        if computed_slice_size != current_file_slice_size:
+                            error_message = \
+                                "slice_size mismatch: computed_size = {0}; " \
+                                "actual_size = {1}; block_count = {2}; " \
+                                "offset_into_first_block = {3}; " \
+                                "offset_into_last_block = {4}".format(
+                                computed_slice_size,
+                                current_file_slice_size,
+                                block_count,
+                                offset_into_first_block,
+                                offset_into_last_block)
+                            self._log.error(error_message)
+                            raise RetrieveFailedError(error_message)
                 else:
                     cumulative_slice_size = next_slice_size
 
@@ -350,22 +350,26 @@ class Retriever(object):
                 "request {0} internally requesting {1}".format(
                 self.user_request_id, uri))
 
-            headers = {"x-nimbus-io-expected-content-length" : \
-                            str(key_row["file_size"]),
-                       "x-nimbus-io-user-request-id":
-                            self.user_request_id, }
+            headers = {"x-nimbus-io-user-request-id" : self.user_request_id}
 
-            expected_status = httplib.OK
             if block_offset > 0 and block_count is None:
                 headers["range"] = \
                     "bytes={0}-".format(block_offset * block_size)
+                headers["x-nimbus-io-expected-content-length"] = \
+                    str(key_row["file_size"] - (block_offset * block_size))
                 expected_status = httplib.PARTIAL_CONTENT
             elif block_count is not None:
                 headers["range"] = \
                     "bytes={0}-{1}".format(
                         block_offset * block_size, 
                         (block_offset + block_count) * block_size - 1)
+                headers["x-nimbus-io-expected-content-length"] = \
+                    str(block_count * block_size)
                 expected_status = httplib.PARTIAL_CONTENT
+            else:
+                headers["x-nimbus-io-expected-content-length"] = \
+                            str(key_row["file_size"]),
+                expected_status = httplib.OK
                 
             request = urllib2.Request(uri, headers=headers)
             self._log.debug(
@@ -437,6 +441,16 @@ class Retriever(object):
                     assert prev_data is not None
                     if self._last_block_in_slice_retrieved and \
                     offset_into_last_block > 0:
+                        # if the first block is the only block, we must
+                        # decrement the offset_into_last_block
+                        # because we've already chopped offset_into_first_block
+                        if first_block:
+                            self._log.debug("request {0}: " \
+                                            "subtracting {1} bytes from " \
+                                            "offset_into_last_block".format(
+                                            self.user_request_id,
+                                            offset_into_first_block))
+                            offset_into_last_block -= offset_into_first_block
                         self._log.debug("request {0}: " \
                                         "len(prev_data) = {1} " \
                                         "offset_into_last_block = {2}".format(

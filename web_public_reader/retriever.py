@@ -285,6 +285,7 @@ class Retriever(object):
             current_file_offset = 0
             block_offset = 0
             block_count = None
+            offset_into_first_block = 0
 
     def retrieve(self, response, timeout):
         try:
@@ -438,6 +439,11 @@ class Retriever(object):
             while True:
                 data = urllib_response.read(block_size)
                 if len(data) == 0: 
+                    if self._last_block_in_slice_retrieved and \
+                    retrieve_bytes >= self._slice_size:
+                        self._log.debug("Ending slice at {0}".format(
+                                        retrieve_bytes))
+                        break
                     assert prev_data is not None
                     if self._last_block_in_slice_retrieved and \
                     offset_into_last_block > 0:

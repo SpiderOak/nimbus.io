@@ -177,8 +177,7 @@ class Archiver(object):
 
                 self._log.warn("request {0}: " \
                                "timeout waiting for completed task".format(
-                                self._user_request_id,
-                                error_message))
+                                self._user_request_id))
                 continue
 
             finished_count += 1

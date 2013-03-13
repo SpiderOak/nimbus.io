@@ -12,6 +12,7 @@ import os
 import urllib2
 
 import gevent
+import gevent.httplib
 
 from tools.data_definitions import block_size, \
         create_timestamp

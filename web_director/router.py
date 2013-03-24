@@ -43,6 +43,8 @@ if NIMBUSIO_URL_DEST_HASH_KEY is not None:
 else:
     NIMBUSIO_URL_DEST_HASH_KEY = os.urandom(32)
 
+NIMBUSIO_WEB_DIRECTOR_ALWAYS_FIRST_NODE = int(os.environ.get(
+    'NIMBUSIO_WEB_DIRECTOR_ALWAYS_FIRST_NODE', "0"))
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", str(6379)))
@@ -325,7 +327,7 @@ class Router(object):
         # we really only want to do consistent destination routing for requests
         # to retrieve an archive.  Other requests can go round robin like
         # usual.
-        if True:
+        if NIMBUSIO_WEB_DIRECTOR_ALWAYS_FIRST_NODE:
             routing_method = 'alwaysfirst'
             target = hosts[0]
         elif (

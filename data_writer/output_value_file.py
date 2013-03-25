@@ -15,6 +15,8 @@ from tools.data_definitions import compute_value_file_path, \
         value_file_template, \
         create_timestamp
 
+ENABLE_FSYNC = int(os.environ.get("NIMBUSIO_ENABLE_FSYNC", "1"))
+
 def _insert_value_file_default_row(connection, space_id):
     # Ticket #1646: insert a row of defaults right at open
     value_file_id = connection.execute_and_return_id("""
@@ -114,7 +116,8 @@ class OutputValueFile(object):
         sync this file to disk (if neccessary)
         """
         if not self._synced:
-            os.fsync(self._value_file_fd)
+            if ENABLE_FSYNC:
+                os.fsync(self._value_file_fd)
             self._synced = True
 
     @property

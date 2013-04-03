@@ -10,6 +10,7 @@ import time
 
 import psycopg2
 import psycopg2.extensions
+from psycopg2.extras import LoggingConnection
 
 central_database_name = "nimbusio_central"
 central_database_user = "nimbusio_central_user"
@@ -32,7 +33,8 @@ class DatabaseConnection(object):
             user=database_user, 
             password=database_password,
             host=database_host, 
-            port=database_port
+            port=database_port,
+            connection_factory=LoggingConnection
         )
         self._connection.set_isolation_level(
             psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
@@ -40,6 +42,10 @@ class DatabaseConnection(object):
         cursor = self._connection.cursor()
         cursor.execute("set time zone 'UTC'")
         cursor.close()
+
+    def set_logger(self, logger):
+        "log all database queries with the provided logger"
+        self._connection.initialize(logger)
 
     @property
     def status(self):

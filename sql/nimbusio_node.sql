@@ -114,8 +114,8 @@ create table garbage_segment_conjoined_recent as
            conjoined.abort_timestamp AS conjoined_abort_timestamp,
            conjoined.complete_timestamp AS conjoined_complete_timestamp,
            conjoined.delete_timestamp AS conjoined_delete_timestamp,
-           conjoined.combined_size,
-           conjoined.combined_hash,
+           conjoined.combined_size AS conjoined_combined_size,
+           conjoined.combined_hash AS conjoined_combined_hash,
            /* these are added during the garbage collection process */
            null::timestamp as collected_time,
            null::timestamp as collected_end_time,

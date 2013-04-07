@@ -25,17 +25,27 @@ class DatabaseConnection(object):
         database_user, 
         database_password, 
         database_host,
-        database_port
+        database_port,
+        logger=None
     ):
         """Create an instance of the connection"""
+        if logger is not None:
+            connection_factory = LoggingConnection
+        else:
+            connection_factory = None
+
         self._connection = psycopg2.connect(
             database=database_name, 
             user=database_user, 
             password=database_password,
             host=database_host, 
             port=database_port,
-            connection_factory=LoggingConnection
+            connection_factory=connection_factory
         )
+
+        if logger:
+            self.set_logger(logger)
+
         self._connection.set_isolation_level(
             psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT)
         self._in_transaction = False
@@ -165,7 +175,7 @@ def retry_central_connection(retry_delay=1.0, isolation_level=None):
             time.sleep(retry_delay)
     return conn
 
-def get_central_connection():
+def get_central_connection(logger=None):
     central_database_password = os.environ["NIMBUSIO_CENTRAL_USER_PASSWORD"]
     database_host = os.environ.get(
         "NIMBUSIO_CENTRAL_DATABASE_HOST", "localhost"
@@ -178,7 +188,8 @@ def get_central_connection():
         database_user=central_database_user,
         database_password=central_database_password,
         database_host=database_host,
-        database_port=database_port
+        database_port=database_port,
+        logger=logger
     )
     return connection
 
@@ -191,7 +202,7 @@ def _node_database_user(node_name):
     return database_user
 
 def get_node_connection(
-    node_name, database_password, database_host, database_port
+    node_name, database_password, database_host, database_port, logger=None
 ):
     database_name = _node_database_name(node_name)
     database_user = _node_database_user(node_name)
@@ -200,11 +211,12 @@ def get_node_connection(
         database_user=database_user,
         database_password=database_password,
         database_host=database_host,
-        database_port=database_port
+        database_port=database_port,
+        logger=logger
     )
     return connection
 
-def get_node_local_connection():
+def get_node_local_connection(logger=None):
     node_name = os.environ["NIMBUSIO_NODE_NAME"]
     database_password = os.environ['NIMBUSIO_NODE_USER_PASSWORD']
     database_host = os.environ.get("NIMBUSIO_NODE_DATABASE_HOST", "localhost")
@@ -213,7 +225,8 @@ def get_node_local_connection():
     return get_node_connection(node_name, 
                                database_password, 
                                database_host, 
-                               database_port)
+                               database_port,
+                               logger=logger)
 
 def get_central_database_dsn():
     """

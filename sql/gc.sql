@@ -21,6 +21,10 @@ collection pass anyway, or to check other results against.
 
 begin;
 set search_path to nimbusio_node, public;
+drop view gc_archive_batches_with_end_time;
+drop view gc_archive_batches;
+drop view gc_archive;
+drop view archive;
 
 create or replace view archive as 
 select 
@@ -43,8 +47,8 @@ select
     conjoined.abort_timestamp as conjoined_abort_timestamp,
     conjoined.complete_timestamp as conjoined_complete_timestamp,
     conjoined.delete_timestamp as conjoined_delete_timestamp,
-    conjoined.combined_size,
-    conjoined.combined_hash
+    conjoined.combined_size as conjoined_combined_size,
+    conjoined.combined_hash as conjoined_combined_hash
     /*  these are redundant 
     conjoined.collection_id,
     conjoined.key,
@@ -121,7 +125,7 @@ select
     end as gc_archive_timestamp
 from archive;
 
-create view gc_archive_batches as
+create or replace view gc_archive_batches as
     select 
         /* from the real segment table */
         gc_archive.*,
@@ -161,7 +165,7 @@ create view gc_archive_batches as
         range between unbounded preceding and unbounded following )
     order by collection_id, key, unified_id;
 
-create view gc_archive_batches_with_end_time as
+create or replace view gc_archive_batches_with_end_time as
     select 
         gc_archive_batches.*,
         /* several cases, for each of the possibilities */
@@ -195,6 +199,9 @@ create view gc_archive_batches_with_end_time as
 
         ) as versioned_end_time
     from gc_archive_batches; 
+
+grant select on gc_archive_batches_with_end_time to public;
+commit;
 
 /*
 explain analyze select * from gc_archive_batches_with_end_time;
@@ -325,8 +332,8 @@ SELECT segment_id,
        conjoined_abort_timestamp,
        conjoined_complete_timestamp,
        conjoined_delete_timestamp,
-       combined_size,
-       combined_hash
+       conjoined_combined_size,
+       conjoined_combined_hash
   FROM rows_with_rank 
  WHERE dense_rank <= $2
  ORDER BY key, unified_id
@@ -362,8 +369,8 @@ SELECT segment_id,
        conjoined_abort_timestamp,
        conjoined_complete_timestamp,
        conjoined_delete_timestamp,
-       combined_size,
-       combined_hash
+       conjoined_combined_size,
+       conjoined_combined_hash
   FROM rows_with_rank 
  WHERE dense_rank <= $2
  ORDER BY key, unified_id
@@ -403,8 +410,8 @@ SELECT segment_id,
        conjoined_abort_timestamp,
        conjoined_complete_timestamp,
        conjoined_delete_timestamp,
-       combined_size,
-       combined_hash
+       conjoined_combined_size,
+       conjoined_combined_hash
   FROM rows_with_rank 
  WHERE dense_rank <= $2
  ORDER BY key, unified_id
@@ -443,8 +450,8 @@ SELECT segment_id,
        conjoined_abort_timestamp,
        conjoined_complete_timestamp,
        conjoined_delete_timestamp,
-       combined_size,
-       combined_hash
+       conjoined_combined_size,
+       conjoined_combined_hash
   FROM rows_with_rank 
  WHERE dense_rank <= $2
  ORDER BY key, unified_id

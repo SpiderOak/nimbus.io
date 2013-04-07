@@ -58,78 +58,50 @@ _log_path = "{0}/nimbusio_db_maintenance_{1}.log".format(
 )
 
 _gc_queries = [
-"""
-CREATE temp table _tmp_new_garbage AS 
-SELECT segment_id,
-       collection_id,
-       key,
-       status,
-       unified_id,
-       timestamp,
-       segment_num,
-       conjoined_part,
-       file_size,
-       file_adler32,
-       file_hash,
-       file_tombstone_unified_id,
-       source_node_id,
-       handoff_node_id,
-       conjoined_id,
-       conjoined_create_timestamp,
-       conjoined_abort_timestamp,
-       conjoined_complete_timestamp,
-       conjoined_delete_timestamp,
-       combined_size,
-       combined_hash,
-       current_timestamp as collected_time,
-       CASE WHEN collection_deletion_time is not null 
-              THEN collection_deletion_time
-            WHEN (collection_is_versioned=true 
-                  and versioned_end_time is not null)
-              THEN versioned_end_time
-            WHEN (collection_is_versioned is null 
-                  and unversioned_end_time is not null)
-              THEN unversioned_end_time
-       END as collected_end_time,
-       null::int8 as collected_by_unified_id
-  FROM nimbusio_node.gc_archive_batches_with_end_time gcabwet
-  LEFT JOIN _tmp_versioned_collections 
-    ON (gcabwet.collection_id = _tmp_versioned_collections.collection_id)
-  LEFT JOIN _tmp_collection_del_times
-    ON (gcabwet.collection_id = _tmp_collection_del_times.collection_id)
- WHERE ((collection_deletion_time is not null) or
-        (collection_is_versioned=true and versioned_end_time is not null) or
-        (collection_is_versioned is null and unversioned_end_time is not null));
-""",
+
+open(
+   os.path.join(os.path.dirname(__file__), 
+   "gc_recent_garbage_select_query.sql"), "rb"
+).read().strip(),
 
 """
 CREATE INDEX _tmp_new_garbage_segment_idx on _tmp_new_garbage (segment_id)
-""",
+""".strip(),
 
 """
 CREATE INDEX _tmp_new_garbage_conjoined_id on _tmp_new_garbage (conjoined_id)
 """,
 
 """
-DELETE FROM segment where exists (
+INSERT INTO nimbusio_node.garbage_segment_conjoined_recent
+SELECT * FROM _tmp_new_garbage
+""".strip(),
+
+"""
+DELETE FROM nimbusio_node.segment where exists (
     SELECT 1
       FROM _tmp_new_garbage
      WHERE segment_id=segment.id)
-""",
+""".strip(),
 
 """
-DELETE FROM conjoined where exists (
+DELETE FROM nimbusio_node.conjoined where exists (
     SELECT 1
       FROM _tmp_new_garbage
      WHERE conjoined_id=conjoined.id);
-""",
+""".strip(),
 
 ]
 
 def get_versioned_collection_ids(central_conn):
     """
     """
-    sql = "select id from collection where versioning=true"
+    sql = """
+SELECT id 
+  FROM nimbusio_central.collection 
+ WHERE versioning=true
+    """.strip()
+
     rows = central_conn.fetch_all_rows(sql)
     return set([r[0] for r in rows])
 
@@ -138,8 +110,8 @@ def get_collection_deletion_times(central_conn):
     """
 
     sql = """
-SELECT id, deletion_time::text
-  FROM collection 
+SELECT id, deletion_time::timestamp with time zone::text
+  FROM nimbusio_central.collection
  WHERE deletion_time is not null
     """.strip()
 
@@ -155,13 +127,13 @@ def populate_collection_info_temp_tables(conn, versioned, deletion_times):
 
     setup_queries = [
 """
-create temp table _tmp_versioned_collections ( 
+CREATE TEMP TABLE _tmp_versioned_collections ( 
     collection_id int4 not null,
     collection_is_versioned bool not null default true
 )
 """.strip(),
 """
-create temp table _tmp_collection_del_times ( 
+CREATE TEMP TABLE _tmp_collection_del_times ( 
     collection_id int4 not null,
     collection_deletion_time timestamp not null
 )
@@ -170,11 +142,11 @@ create temp table _tmp_collection_del_times (
 
     index_queries = [
 """
-create index _tmp_versioned_collections_idx
-    on _tmp_versioned_collections_idx (collection_id)
+CREATE INDEX _tmp_versioned_collections_idx
+    on _tmp_versioned_collections (collection_id)
 """.strip(),
 """
-create index _tmp_collection_del_times_idx
+CREATE INDEX _tmp_collection_del_times_idx
     on _tmp_collection_del_times (collection_id)
 """.strip(),
     ]
@@ -197,11 +169,9 @@ create index _tmp_collection_del_times_idx
 def gc_pass():
     """
     """
-
-    central_conn = get_central_connection()
-    central_conn.set_logger(logging.getLogger("central_db"))
-    local_conn = get_node_local_connection()   
-    local_conn.set_logger(logging.getLogger("local_db"))
+    log = logging.getLogger("central_db")
+    central_conn = get_central_connection(logger=logging.getLogger("central_db"))
+    local_conn = get_node_local_connection(logger=logging.getLogger("local_db"))
     versioned_collections = get_versioned_collection_ids(central_conn)
     collection_deletion_times = get_collection_deletion_times(central_conn)
     central_conn.close()
@@ -209,7 +179,9 @@ def gc_pass():
     populate_collection_info_temp_tables(
         local_conn, versioned_collections, collection_deletion_times)
     for query in _gc_queries:
-        local_conn.execute(query)
+        rowcount = local_conn.execute(query)
+        log.info("rows: %d" % ( rowcount, ))
+    local_conn.commit()
 
 def main():
 

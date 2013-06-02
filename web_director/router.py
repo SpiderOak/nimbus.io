@@ -300,16 +300,16 @@ class Router(object):
         elif method in ('HEAD', 'GET', ):
             dest_port = self.read_dest_port
         else:
-            self._reject(httplib.BAD_REQUEST, "Unknown method")
+            return self._reject(httplib.BAD_REQUEST, "Unknown method")
 
         collection = self._parse_collection(hostname)
         if collection is None:
-            self._reject(httplib.NOT_FOUND, "No such collection")
+            return self._reject(httplib.NOT_FOUND, "No such collection")
 
         hosts = self._hosts_for_collection(collection)
 
         if hosts is None:
-            self._reject(httplib.NOT_FOUND, "No such collection")
+            return self._reject(httplib.NOT_FOUND, "No such collection")
 
         availability = self.check_availability(hosts, dest_port)    
 

@@ -164,6 +164,7 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
     log = logging.getLogger("_analyze_slice_offsets")
     pre_block_count = 0
     skip_count = 0
+    skip_block_count = 0
     left_offset = 0
     right_offset = 0
     index = 0
@@ -179,12 +180,13 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
         if pre_block_count < block_offset:
             index += 1
             skip_count += 1
+            skip_block_count = pre_block_count
 
     if block_offset > 0: 
         if skip_count == 0:
             left_offset = block_offset
         else:
-            left_offset = pre_block_count - block_offset
+            left_offset = block_offset - skip_block_count
       
     # index points to the first segment we are actually going to send
     if total_block_count is not None:

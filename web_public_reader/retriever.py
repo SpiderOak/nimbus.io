@@ -375,8 +375,8 @@ class Retriever(object):
                 
             request = urllib2.Request(uri, headers=headers)
             self._log.debug(
-                "request {0} start internal request expected_status={1}".format(
-                    self.user_request_id, repr(expected_status)))
+                "request {0} start internal; expected={1}; headers={2}".format(
+                    self.user_request_id, repr(expected_status), headers))
             try:
                 urllib_response = urllib2.urlopen(request, timeout=timeout)
             except urllib2.HTTPError, instance:
@@ -439,6 +439,8 @@ class Retriever(object):
             prev_data = None
             while True:
                 data = urllib_response.read(block_size)
+                self._log.debug("{0} retrieved {1} bytes from internal".format(
+                                self.user_request_id, len(data)))
                 if len(data) == 0: 
                     if self._last_block_in_slice_retrieved and \
                     retrieve_bytes >= self._slice_size:
@@ -473,7 +475,8 @@ class Retriever(object):
                     break
                 if prev_data is None:
                     if first_block:
-                        assert len(data) > offset_into_first_block
+                        assert len(data) > offset_into_first_block, (
+                            len(data), offset_into_first_block)
                         prev_data = data[offset_into_first_block:]
                     else:
                         prev_data = data

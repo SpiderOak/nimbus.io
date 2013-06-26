@@ -44,6 +44,7 @@ _resources_tuple = namedtuple("Resources",
 _retrieve_state_tuple = namedtuple("RetrieveState", 
                                    ["sequence_rows",
                                     "sequence_index",
+                                    "sequence_end",
                                     "left_offset",
                                     "right_offset",
                                     "timestamp", ])
@@ -164,11 +165,14 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
     log = logging.getLogger("_analyze_slice_offsets")
     pre_block_count = 0
     skip_count = 0
+    keep_count = 0
     skip_block_count = 0
     left_offset = 0
     right_offset = 0
     index = 0
-    skip_count = 0
+
+    log.debug("rows={0}, block_offset={1}, total_block_count={1}".format(
+              len(sequence_rows), block_offset, total_block_count))
 
     while pre_block_count < block_offset:
         sequence_row = sequence_rows[index]
@@ -177,7 +181,7 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
         log.debug("{0} blocks_in_sequence={1}, pre_block_count={2}".format(
             index, blocks_in_sequence, pre_block_count))
 
-        if pre_block_count < block_offset:
+        if pre_block_count <= block_offset:
             index += 1
             skip_count += 1
             skip_block_count = pre_block_count
@@ -201,16 +205,20 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
                 index, blocks_in_sequence, blocks_to_send))
 
             index += 1
+            keep_count += 1
 
         if blocks_to_send > total_block_count:
             right_offset = blocks_to_send - total_block_count
 
         assert blocks_to_send - right_offset == total_block_count, \
             (blocks_to_send, right_offset, total_block_count, )
+    else:
+        keep_count = len(sequence_rows) - skip_count
 
-    log.debug("skip_count={0}, left_offset={1}, right_offset={2}".format(
-        skip_count, left_offset, right_offset))
-    return (skip_count, left_offset, right_offset)
+    log.debug("skip_count={0}, keep_count={1}, " \
+              "left_offset={2}, right_offset={3}".format(
+        skip_count, keep_count, left_offset, right_offset))
+    return (skip_count, keep_count, left_offset, right_offset)
 
 def _send_error_reply(resources, message, control):
     """
@@ -274,22 +282,25 @@ def _read_router_socket(resources):
     assert  message["message-type"] == "retrieve-key-start", message
     assert sequence_rows is not None
 
-    row_skip_count, left_offset, right_offset = \
+    row_skip_count, row_keep_count, left_offset, right_offset = \
         _analyze_slice_offsets(sequence_rows, 
                                message["block-offset"],
                                message["block-count"])
     log.debug("user_request_id = {0}, " \
-              "{1} {2} rows; skip={3}, " \
-              "left_offset={4}, right_offset={5} ".format(
+              "{1} {2} rows; skip={3}, keep={4}, " \
+              "left_offset={5}, right_offset={6} ".format(
               message["user-request-id"],
               message["retrieve-id"],
               len(sequence_rows),
               row_skip_count,
+              row_keep_count,
               left_offset,
               right_offset))
 
     retrieve_state = _retrieve_state_tuple(sequence_rows=sequence_rows,
                                            sequence_index=row_skip_count,
+                                           sequence_end=\
+                                                row_skip_count+row_keep_count,
                                            left_offset=left_offset,
                                            right_offset=right_offset,
                                            timestamp=time.time())
@@ -317,8 +328,8 @@ def _send_request_to_io_controller(resources,
 
     next_sequence_index = retrieve_state.sequence_index + 1
     assert next_sequence_index <= len(retrieve_state.sequence_rows)
-    control["completed"] = \
-        next_sequence_index == len(retrieve_state.sequence_rows)
+    assert next_sequence_index <= retrieve_state.sequence_end
+    control["completed"] = next_sequence_index == retrieve_state.sequence_end
 
     if control["completed"]:
         control["right-offset"] = retrieve_state.right_offset

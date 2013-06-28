@@ -133,10 +133,21 @@ def _process_request(resources):
         sequence_row["value_file_offset"] + \
         (control["left-offset"] * encoded_block_slice_size)
 
+
     read_size = \
         sequence_row["size"] - \
         (control["left-offset"] * encoded_block_slice_size) - \
-        (control["right-offset"] * encoded_block_slice_size)
+        (control["right-offset"] * encoded_block_slice_size) 
+
+    # Ticket #84 handle a short block
+    # the last block in the file may be smaller than encoded_block_slice_size
+    # so we might have subtracted too much for the right offset
+    if control["right-offset"] > 0:
+        block_modulus = sequence_row["size"] % encoded_block_slice_size
+        last_block_size = (encoded_block_slice_size if block_modulus == 0 else \
+                           block_modulus)
+        last_block_delta = encoded_block_slice_size - last_block_size
+        read_size += last_block_delta 
 
     try:
         value_file.seek(read_offset)

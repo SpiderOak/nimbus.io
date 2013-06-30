@@ -235,27 +235,6 @@ class Retriever(object):
                         block_count += 1
                         offset_into_last_block -= block_size 
 
-                    # make sure we computed this right
-                    if offset_into_first_block != 0 or \
-                    offset_into_last_block != 0:
-
-                        computed_slice_size = \
-                            ((block_count-1) * block_size) - \
-                                offset_into_first_block + \
-                                offset_into_last_block
-                        if computed_slice_size != current_file_slice_size:
-                            error_message = \
-                                "slice_size mismatch: computed_size = {0}; " \
-                                "actual_size = {1}; block_count = {2}; " \
-                                "offset_into_first_block = {3}; " \
-                                "offset_into_last_block = {4}".format(
-                                computed_slice_size,
-                                current_file_slice_size,
-                                block_count,
-                                offset_into_first_block,
-                                offset_into_last_block)
-                            self._log.error(error_message)
-                            raise RetrieveFailedError(error_message)
                 else:
                     cumulative_slice_size = next_slice_size
 

@@ -26,7 +26,13 @@ where collection_id in (
 """.strip(),
 
 """
-delete from nimbusio_node.segment_archived
+delete from nimbusio_node.garbage_segment_conjoined_recent
+where collection_id in (
+    select collection_id from tmp_motoboto_collection_ids)
+""".strip(),
+
+"""
+delete from nimbusio_node.garbage_segment_conjoined_old
 where collection_id in (
     select collection_id from tmp_motoboto_collection_ids)
 """.strip(),

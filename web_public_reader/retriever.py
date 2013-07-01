@@ -224,6 +224,12 @@ class Retriever(object):
                         offset_into_last_block = slice_remainder
                         block_count += 1
 
+                    # Ticket #85: if we have a slice that fits exactly into N 
+                    # blocks, but which is offset into the blocks, we must 
+                    # retrieve N+1 blocks.
+                    if slice_remainder == 0 and offset_into_first_block > 0:
+                        block_count += 1
+
                     # we need to make up for 
                     # the piece we took out of the first block for 
                     # offset_into_first_block

@@ -6,6 +6,7 @@ a class that manages a zeromq SUB socket as a client,
 to a PUB server
 """
 import logging
+import sys
 
 import zmq
 
@@ -13,10 +14,10 @@ class SUBClient(object):
     """
     a class that manages a zeromq SUB socket as a client,
     """
-    def __init__(self, 
-                 context, 
-                 address, 
-                 topics, 
+    def __init__(self,
+                 context,
+                 address,
+                 topics,
                  receive_queue,
                  queue_action="append"):
         self._log = logging.getLogger("SUBClient-%s" % (address, ))
@@ -47,17 +48,18 @@ class SUBClient(object):
         self._sub_socket.close()
 
     def _pollster_callback(self, _active_socket, readable, writable):
-        message = self._receive_message()      
+        message = self._receive_message()
         # if we get None, that means the socket would have blocked
         # go back and wait for more
         if message is None:
             return None
         self._enque_function((message, None, ))
-            
+
     def _receive_message(self):
         try:
             topic = self._sub_socket.recv(zmq.NOBLOCK)
-        except zmq.ZMQError, instance:
+        except zmq.ZMQError:
+            instance = sys.exc_info()[1]
             if instance.errno == zmq.EAGAIN:
                 self._log.warn("socket would have blocked")
                 return None

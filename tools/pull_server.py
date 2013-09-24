@@ -12,6 +12,8 @@ import zmq
 from tools.zeromq_util import prepare_ipc_path
 from tools.data_definitions import message_format
 
+_pull_hwm = 100
+
 class PULLServer(object):
     """
     context
@@ -38,6 +40,7 @@ class PULLServer(object):
             prepare_ipc_path(address)
 
         self._pull_socket = context.socket(zmq.PULL)
+        self._pull_socket.setsockopt(zmq.HWM, _pull_hwm)
         self._log.debug("binding")
         self._pull_socket.bind(address)
 

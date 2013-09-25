@@ -144,9 +144,8 @@ class ResilientServer(object):
 
         return message_format(ident=None, control=control, body=body)
 
-    def _handle_ping(self, message, _data):
-        log = logging.getLogger("_handle_ping")
-        log.debug("{message-id}".format(**message))
+    def _handle_ping(self, _message, _data):
+        pass
 
     def _handle_resilient_server_handshake(self, message, _data):
         log = logging.getLogger("_handle_resilient_server_handshake")

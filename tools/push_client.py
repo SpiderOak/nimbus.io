@@ -17,7 +17,7 @@ class PUSHClient(object):
     The purpose is to have multiple clients pushing to a single PULL server
     """
     def __init__(self, context, address):
-        self._log = logging.getLogger("PUSH{0}".format(address))
+        self._log = logging.getLogger("PUSH.{0}".format(address))
 
         self._push_socket = context.socket(zmq.PUSH)
         self._push_socket.setsockopt(zmq.HWM, _push_hwm)

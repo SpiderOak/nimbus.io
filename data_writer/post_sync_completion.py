@@ -101,7 +101,7 @@ class PostSyncCompletion(object):
             self._archive_message["segment-num"],
             self._archive_message["file-size"],
             self._archive_message["file-adler32"],
-            b64decode(self._archive_message["file-hash"]),
+            b64decode(self._archive_message["file-hash"].encode("utf-8")),
             _extract_meta(self._archive_message),
         )
 

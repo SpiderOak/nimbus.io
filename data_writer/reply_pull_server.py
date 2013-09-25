@@ -66,7 +66,7 @@ class ReplyPULLServer(object):
         # go back and wait for more
         if message is None:
             return None
-        self._reply_function((message.control, message.body, ))
+        self._reply_function(message.control, data=message.body)
 
     def _receive_message(self):
         try:

@@ -20,20 +20,13 @@ import queue
 from threading import Thread
 import sys
 
-import zmq
-
-import Statgrabber
-
 from tools.file_space import load_file_space_info, file_space_sanity_check
 from tools.database_connection import get_node_local_connection
-from tools.push_client import PUSHClient
 from tools.data_definitions import parse_timestamp_repr
 
 from data_writer.output_value_file import mark_value_files_as_closed
 from data_writer.writer import Writer
 from data_writer.post_sync_completion import PostSyncCompletion
-
-writer_thread_reply_address = "inproc://writer_thread_reply"
 
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _queue_timeout = 1.0
@@ -42,19 +35,17 @@ class WriterThread(Thread):
     """
     manage writes to filesystem
     """
-    def __init__(self, halt_event, node_id_dict, message_queue):
+    def __init__(self, halt_event, node_id_dict, message_queue, push_client):
         Thread.__init__(self, name="WriterThread")
         self._halt_event = halt_event
         self._node_id_dict = node_id_dict
         self._message_queue = message_queue
         self._database_connection = get_node_local_connection()
-        self._zmq_context = zmq.Context()
         self._active_segments = dict()
         self._completions = list()
         self._writer = None
+        self._reply_pusher = push_client
 
-        self._reply_pusher = PUSHClient(self._zmq_context,
-                                        writer_thread_reply_address)
 
         self._dispatch_table = {
             "archive-key-entire"        : self._handle_archive_key_entire,
@@ -84,6 +75,9 @@ class WriterThread(Thread):
 
     def _run(self):
         log = logging.getLogger("WriterThread._run")
+
+        log.debug("thread starts")
+
         file_space_info = load_file_space_info(self._database_connection)
         file_space_sanity_check(file_space_info, _repository_path)
 
@@ -103,16 +97,14 @@ class WriterThread(Thread):
                                                         timeout=_queue_timeout)
             except queue.Empty:
                 pass
-            self._dispatch_table[message["message-type"]](message, data)
+            else:
+                self._dispatch_table[message["message-type"]](message, data)
         log.debug("end halt_event loop")
 
         # 2012-03-27 dougfort -- we stop the data writer first because it is
         # going to sync the value file and run the post_sync operations
         log.debug("stopping data writer")
         self._writer.close()
-
-        log.debug("term'ing zmq context")
-        self._zmq_context.term()
 
         log.debug("closing database connection")
         self._database_connection.close()
@@ -152,7 +144,7 @@ class WriterThread(Thread):
         if type(data) != list:
             data = [data, ]
 
-        segment_data = "".join(data)
+        segment_data = b"".join(data)
 
         if len(segment_data) != message["segment-size"]:
             error_message = "size mismatch ({0} != {1}) {2} {3} {4} {5}".format(
@@ -170,7 +162,8 @@ class WriterThread(Thread):
             self._reply_pusher.send(reply)
             return
 
-        expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+        expected_segment_md5_digest = b64decode(
+            message["segment-md5-digest"].encode("utf-8"))
         segment_md5 = hashlib.md5()
         segment_md5.update(segment_data)
         if segment_md5.digest() != expected_segment_md5_digest:
@@ -220,9 +213,6 @@ class WriterThread(Thread):
             message["user-request-id"]
         )
 
-        Statgrabber.accumulate('nimbusio_write_requests', 1)
-        Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
-
         reply["result"] = "success"
         # we don't send the reply until all value file dependencies have
         # been synced
@@ -258,7 +248,7 @@ class WriterThread(Thread):
         if type(data) != list:
             data = [data, ]
 
-        segment_data = "".join(data)
+        segment_data = b"".join(data)
 
         if len(segment_data) != message["segment-size"]:
             error_message = "size mismatch ({0} != {1}) {2} {3} {4} {5}".format(
@@ -276,7 +266,8 @@ class WriterThread(Thread):
             self._reply_pusher.send(reply)
             return
 
-        expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+        expected_segment_md5_digest = b64decode(
+            message["segment-md5-digest"].encode("utf-8"))
         segment_md5 = hashlib.md5()
         segment_md5.update(segment_data)
         if segment_md5.digest() != expected_segment_md5_digest:
@@ -326,9 +317,6 @@ class WriterThread(Thread):
             message["user-request-id"]
         )
 
-        Statgrabber.accumulate('nimbusio_write_requests', 1)
-        Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
-
         reply["result"] = "success"
         self._reply_pusher.send(reply)
 
@@ -356,7 +344,7 @@ class WriterThread(Thread):
         if type(data) != list:
             data = [data, ]
 
-        segment_data = "".join(data)
+        segment_data = b"".join(data)
 
         if len(segment_data) != message["segment-size"]:
             error_message = "size mismatch ({0} != {1}) {2} {3} {4} {5}".format(
@@ -375,7 +363,8 @@ class WriterThread(Thread):
             self._reply_pusher.send(reply)
             return
 
-        expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+        expected_segment_md5_digest = b64decode(
+            message["segment-md5-digest"].encode("utf-8"))
         segment_md5 = hashlib.md5()
         segment_md5.update(segment_data)
         if segment_md5.digest() != expected_segment_md5_digest:
@@ -407,9 +396,6 @@ class WriterThread(Thread):
             segment_data,
             message["user-request-id"]
         )
-
-        Statgrabber.accumulate('nimbusio_write_requests', 1)
-        Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
         reply["result"] = "success"
         self._reply_pusher.send(reply)
@@ -439,7 +425,7 @@ class WriterThread(Thread):
         if type(data) != list:
             data = [data, ]
 
-        segment_data = "".join(data)
+        segment_data = b"".join(data)
 
         if len(segment_data) != message["segment-size"]:
             error_message = "size mismatch ({0} != {1}) {2} {3} {4} {4}".format(
@@ -457,7 +443,8 @@ class WriterThread(Thread):
             self._reply_pusher.send(reply)
             return
 
-        expected_segment_md5_digest = b64decode(message["segment-md5-digest"])
+        expected_segment_md5_digest = b64decode(
+            message["segment-md5-digest"].encode("utf-8"))
         segment_md5 = hashlib.md5()
         segment_md5.update(segment_data)
         if segment_md5.digest() != expected_segment_md5_digest:
@@ -488,9 +475,6 @@ class WriterThread(Thread):
             segment_data,
             message["user-request-id"]
         )
-
-        Statgrabber.accumulate('nimbusio_write_requests', 1)
-        Statgrabber.accumulate('nimbusio_write_bytes', len(segment_data))
 
         reply["result"] = "success"
         # we don't send the reply until all value file dependencies have

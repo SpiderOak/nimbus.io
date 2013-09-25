@@ -16,7 +16,9 @@ import zmq
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
 from tools.rep_server import REPServer
+from tools.standard_logging import initialize_logging
 from tools.sub_client import SUBClient
+from tools.push_client import PUSHClient
 from tools.event_push_client import EventPushClient
 from tools.database_connection import get_central_connection
 from tools.process_util import set_signal_handler
@@ -25,7 +27,7 @@ from web_public_reader.central_database_util import get_cluster_row, \
         get_node_rows
 
 from data_writer.reply_pull_server import ReplyPULLServer
-from data_writer.writer_thread import writer_thread_reply_address, WriterThread
+from data_writer.writer_thread import WriterThread
 from data_writer.sync_thread import SyncThread
 
 class AppendQueue(queue.Queue):
@@ -44,6 +46,7 @@ _data_writer_anti_entropy_address = \
         os.environ["NIMBUSIO_DATA_WRITER_ANTI_ENTROPY_ADDRESS"]
 _event_aggregator_pub_address = \
         os.environ["NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS"]
+_writer_thread_reply_address = "inproc://writer_thread_reply"
 
 def _create_state():
     return {
@@ -82,10 +85,10 @@ def _setup(state):
     state["resilient-server"].register(state["pollster"])
 
     log.info("binding reply-pull-server to {0}".format(
-        writer_thread_reply_address))
+        _writer_thread_reply_address))
     state["reply-pull-server"] = ReplyPULLServer(
         state["zmq-context"],
-        writer_thread_reply_address,
+        _writer_thread_reply_address,
         state["resilient-server"].send_reply
     )
     state["reply-pull-server"].register(state["pollster"])
@@ -124,9 +127,14 @@ def _setup(state):
 
     state["event-push-client"].info("program-start", "data_writer starts")
 
+
+    state["reply-push-client"] = PUSHClient(state["zmq-context"],
+                                            _writer_thread_reply_address)
+
     state["writer-thread"] = WriterThread(state["halt-event"],
                                           state["node-id-dict"],
-                                          state["message-queue"])
+                                          state["message-queue"],
+                                          state["reply-push-client"])
     state["writer-thread"].start()
 
     state["sync-thread"] = SyncThread(state["halt-event"],
@@ -148,6 +156,7 @@ def _tear_down(state):
     state["anti-entropy-server"].close()
     state["sub-client"].close()
     state["event-push-client"].close()
+    state["reply-push-client"].close()
 
     state["zmq-context"].term()
 
@@ -158,11 +167,22 @@ def main():
     main entry point
     """
     returncode = 0
+    
+    initialize_logging(_log_path)
+
     log = logging.getLogger("main")
     state = _create_state()
     set_signal_handler(state["halt-event"])
 
-    _setup(state)
+    try:
+        _setup(state)
+    except Exception:
+        instance = sys.exc_info()[1]
+        log.exception("unhandled exception in _setup")
+        log.critical("unhandled exception in _setup {0}".format(
+            instance))
+        state["halt-event"].set()
+        returncode = 1
 
     log.debug("start halt_event loop")
     while not state["halt-event"].is_set():
@@ -175,10 +195,17 @@ def main():
                 instance))
             state["halt-event"].set()
             returncode = 1
-
     log.debug("end halt_event loop")
 
-    _tear_down(state)
+    try:
+        _tear_down(state)
+    except Exception:
+        instance = sys.exc_info()[1]
+        log.exception("unhandled exception in _tear_down")
+        log.critical("unhandled exception in _tear_down {0}".format(
+            instance))
+        returncode = 1
+
     return returncode
 
 if __name__ == "__main__":

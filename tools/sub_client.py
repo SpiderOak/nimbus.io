@@ -28,7 +28,7 @@ class SUBClient(object):
         if type(topics) == str:
             topics = [topics, ]
         for topic in topics:
-            self._sub_socket.setsockopt(zmq.SUBSCRIBE, topic)
+            self._sub_socket.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
 
         self._receive_queue = receive_queue
         if queue_action == "append":
@@ -66,8 +66,9 @@ class SUBClient(object):
             raise
 
         assert self._sub_socket.rcvmore, "expecting actual message"
+        topic = topic.decode("utf-8")
         message = self._sub_socket.recv_json()
-        assert message["message-type"] == topic, message
+        assert message["message-type"] == topic, (topic, message, )
 
         return message
 

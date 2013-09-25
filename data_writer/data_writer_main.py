@@ -5,31 +5,35 @@ data_writer_main.py
 
 message handling for data writer
 """
-from base64 import b64decode
-import hashlib
 import logging
 import os
+import queue
 import sys
-import time
+from threading import Event
 
 import zmq
-
-import Statgrabber
 
 from tools.zeromq_pollster import ZeroMQPollster
 from tools.resilient_server import ResilientServer
 from tools.rep_server import REPServer
 from tools.sub_client import SUBClient
-from tools.event_push_client import EventPushClient, exception_event
-from tools.priority_queue import PriorityQueue
-from tools.deque_dispatcher import DequeDispatcher
+from tools.event_push_client import EventPushClient
 from tools.database_connection import get_central_connection
-from tools.data_definitions import parse_timestamp_repr
+from tools.process_util import set_signal_handler
 
 from web_public_reader.central_database_util import get_cluster_row, \
         get_node_rows
 
+from data_writer.reply_pull_server import ReplyPULLServer
 from data_writer.writer_thread import writer_thread_reply_address, WriterThread
+from data_writer.sync_thread import SyncThread
+
+class AppendQueue(queue.Queue):
+    """
+    adapter to give a Queue an 'append' member.
+    """
+    def append(self, item):
+        self.put(item)
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_data_writer_{1}.log".format(
@@ -43,20 +47,23 @@ _event_aggregator_pub_address = \
 
 def _create_state():
     return {
-        "halt-event"            : Event()
+        "halt-event"            : Event(),
         "zmq-context"           : zmq.Context(),
         "pollster"              : ZeroMQPollster(),
         "resilient-server"      : None,
+        "reply-pull-server"     : None,
         "anti-entropy-server"   : None,
         "sub-client"            : None,
         "event-push-client"     : None,
-        "receive-queue"         : PriorityQueue(),
+        "message-queue"         : AppendQueue(),
         "cluster-row"           : None,
         "node-rows"             : None,
         "node-id-dict"          : None,
+        "writer-thread"         : None,
+        "sync-thread"           : None,
     }
 
-def _setup(_halt_event, state):
+def _setup(state):
     log = logging.getLogger("_setup")
 
     # do the event push client first, because we may need to
@@ -66,20 +73,29 @@ def _setup(_halt_event, state):
         "data_writer"
     )
 
-    log.info("binding resilient-server to %{0}".format(_data_writer_address))
+    log.info("binding resilient-server to {0}".format(_data_writer_address))
     state["resilient-server"] = ResilientServer(
         state["zmq-context"],
         _data_writer_address,
-        state["receive-queue"]
+        state["message-queue"]
     )
     state["resilient-server"].register(state["pollster"])
+
+    log.info("binding reply-pull-server to {0}".format(
+        writer_thread_reply_address))
+    state["reply-pull-server"] = ReplyPULLServer(
+        state["zmq-context"],
+        writer_thread_reply_address,
+        state["resilient-server"].send_reply
+    )
+    state["reply-pull-server"].register(state["pollster"])
 
     log.info("binding anti-entropy-server to {0}".format(
         _data_writer_anti_entropy_address))
     state["anti-entropy-server"] = REPServer(
         state["zmq-context"],
         _data_writer_anti_entropy_address,
-        state["receive-queue"]
+        state["message-queue"]
     )
     state["anti-entropy-server"].register(state["pollster"])
 
@@ -91,8 +107,7 @@ def _setup(_halt_event, state):
         state["zmq-context"],
         _event_aggregator_pub_address,
         topics,
-        state["receive-queue"],
-        queue_action="prepend"
+        state["message-queue"]
     )
     state["sub-client"].register(state["pollster"])
 
@@ -107,25 +122,29 @@ def _setup(_halt_event, state):
         [(node_row.name, node_row.id, ) for node_row in state["node-rows"]]
     )
 
-    state["sync-manager"] = SyncManager(state["writer"])
-
     state["event-push-client"].info("program-start", "data_writer starts")
 
-    return [
-        (state["pollster"].run, time.time(), ),
-        (state["queue-dispatcher"].run, time.time(), ),
-        (state["stats-reporter"].run, state["stats-reporter"].next_run(), ),
-        (state["sync-manager"].run, state["sync-manager"].next_run(), ),
-    ]
+    state["writer-thread"] = WriterThread(state["halt-event"],
+                                          state["node-id-dict"],
+                                          state["message-queue"])
+    state["writer-thread"].start()
 
-def _tear_down(_state):
+    state["sync-thread"] = SyncThread(state["halt-event"],
+                                      state["message-queue"])
+    state["sync-thread"].start()
+
+def _tear_down(state):
     log = logging.getLogger("_tear_down")
 
-    log.debug("stopping writer thread")
+    log.debug("joining writer thread")
     state["writer-thread"].join(timeout=3.0)
+
+    log.debug("joining sync thread")
+    state["sync-thread"].join(timeout=3.0)
 
     log.debug("stopping resilient server")
     state["resilient-server"].close()
+    state["reply-pull-server"].close()
     state["anti-entropy-server"].close()
     state["sub-client"].close()
     state["event-push-client"].close()
@@ -138,11 +157,29 @@ def main():
     """
     main entry point
     """
+    returncode = 0
+    log = logging.getLogger("main")
     state = _create_state()
-    _setup()
+    set_signal_handler(state["halt-event"])
 
+    _setup(state)
 
-    _teardown()
+    log.debug("start halt_event loop")
+    while not state["halt-event"].is_set():
+        try:
+            state["pollster"].run(state["halt-event"])
+        except Exception:
+            instance = sys.exc_info()[1]
+            log.exception("unhandled exception in pollster")
+            log.critical("unhandled exception in pollster {0}".format(
+                instance))
+            state["halt-event"].set()
+            returncode = 1
+
+    log.debug("end halt_event loop")
+
+    _tear_down(state)
+    return returncode
 
 if __name__ == "__main__":
     sys.exit(main())

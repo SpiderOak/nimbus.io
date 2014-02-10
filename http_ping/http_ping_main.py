@@ -8,7 +8,6 @@ The ZMQ check works like this:
  - Along with every status message, send a sequential number, 
 """
 import argparse
-import errno
 import logging
 import socket
 import sys
@@ -20,6 +19,7 @@ import zmq
 
 from tools.standard_logging import _log_format_template
 from tools.process_util import set_signal_handler
+from tools.zeromq_util import set_send_hwm
 
 class CommandLineError(Exception):
     pass
@@ -80,14 +80,14 @@ def _process_one_ping(halt_event,
     try:
         with urllib.request.urlopen(url, timeout=args.timeout) as r:
             r.read()
+    except urllib.error.HTTPError as http_error:
+        result_message["result"] = "HTTP code {0}".format(http_error.code)
     except urllib.error.URLError as url_error:
         if type(url_error) == socket.error:
             result_message["result"] = "URLError socket.error {0} {1}".format(
                 url_error.errno, url_error.strerror)
         else:
             result_message["result"] = "URLError {0}".format(url_error.reason)
-    except urllib.error.HTTPError as http_error:
-        result_message["result"] = "HTTP code {0}".format(http_error.code)
     except socket.error as socket_error:
         # URLLib does not catch all socket errors
         result_message["result"] = "socket.error {0} {1}".format(
@@ -111,7 +111,7 @@ def main():
 
     reporting_socket = zeromq_context.socket(zmq.PUSH)
     reporting_socket.setsockopt(zmq.LINGER, 5000)
-    reporting_socket.setsockopt(zmq.HWM, args.hwm)
+    set_send_hwm(reporting_socket, args.hwm)
     reporting_socket.connect(args.reporting_url)
 
     result_message = {"message-type"    : "ping-result",

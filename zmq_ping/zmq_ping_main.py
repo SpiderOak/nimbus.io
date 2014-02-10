@@ -19,7 +19,7 @@ import zmq
 
 from tools.standard_logging import _log_format_template
 from tools.process_util import set_signal_handler
-from tools.zeromq_util import is_interrupted_system_call
+from tools.zeromq_util import is_interrupted_system_call, set_send_hwm
 
 class CommandLineError(Exception):
     pass
@@ -132,7 +132,7 @@ def main():
 
     reporting_socket = zeromq_context.socket(zmq.PUSH)
     reporting_socket.setsockopt(zmq.LINGER, 5000)
-    reporting_socket.setsockopt(zmq.HWM, args.hwm)
+    set_send_hwm(reporting_socket, args.hwm)
     reporting_socket.connect(args.reporting_url)
 
     req_socket = None

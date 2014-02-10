@@ -8,6 +8,16 @@ import logging
 import os
 import os.path
 
+import zmq
+
+try:
+    _snd_hwm = zmq.HWM 
+    _rcv_hwm = zmq.HWM 
+except AttributeError: 
+    _snd_hwm = zmq.SNDHWM 
+    _rcv_hwm = zmq.RCVHWM 
+ 
+
 class PollError(Exception):
     pass
 
@@ -35,10 +45,22 @@ def prepare_ipc_path(address):
     path = address[len("ipc://"):]
     dir_name = os.path.dirname(path)
     if not os.path.exists(dir_name):
-        log.debug("creating %r" % (dir_name, ))
+        log.debug("creating {0}".format(dir_name))
         os.makedirs(dir_name)
     if not os.path.exists(path):
-        log.debug("opening %r" % (path, ))
+        log.debug("opening {0}".format(path))
         with open(path, "w") as output_file:
             output_file.write("pork")
 
+
+def set_send_hwm(s, value):
+    """
+    set the high water mark in a way that works with zmq 3 and zmq 4
+    """
+    s.setsockopt(_snd_hwm, value)
+
+def set_receive_hwm(s, value):
+    """
+    set the high water mark in a way that works with zmq 3 and zmq 4
+    """
+    s.setsockopt(_rcv_hwm, value)

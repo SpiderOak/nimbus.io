@@ -20,7 +20,8 @@ import zmq
 from tools.standard_logging import initialize_logging
 from tools.zeromq_util import is_interrupted_system_call, \
         prepare_ipc_path, \
-        ipc_socket_uri
+        ipc_socket_uri, \
+        set_receive_hwm
 from tools.process_util import identify_program_dir, \
         set_signal_handler, \
         poll_subprocess
@@ -61,7 +62,7 @@ def _bind_pull_socket(zeromq_context):
     log = logging.getLogger("_bind_pull_socket")
 
     pull_socket = zeromq_context.socket(zmq.PULL)
-    pull_socket.setsockopt(zmq.HWM, _pull_socket_hwm)
+    set_receive_hwm(pull_socket, _pull_socket_hwm)
     log.info("binding to {0} hwm = {1}".format(_pull_socket_uri,
                                                _pull_socket_hwm))
     pull_socket.bind(_pull_socket_uri)

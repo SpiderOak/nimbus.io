@@ -16,7 +16,8 @@ import zmq
 
 from tools.process_util import set_signal_handler
 from tools.standard_logging import initialize_logging, _log_format_template
-from tools.zeromq_util import is_interrupted_system_call
+from tools.zeromq_util import is_interrupted_system_call, set_send_hwm, \
+    set_receive_hwm
 
 from handoff_client.forwarder_coroutine import forwarder_coroutine
 from handoff_client.req_socket import ReqSocket
@@ -135,12 +136,12 @@ def main(worker_id, host_name, base_port, dest_node_name, rep_socket_uri):
                                              base_port+worker_id)
 
     pull_socket = zeromq_context.socket(zmq.PULL)
-    pull_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    set_receive_hwm(pull_socket, _socket_high_water_mark)
     log.info("binding pull socket to {0}".format(pull_socket_uri))
     pull_socket.bind(pull_socket_uri)
 
     req_socket = zeromq_context.socket(zmq.REQ)
-    req_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    set_send_hwm(req_socket, _socket_high_water_mark)
     req_socket.connect(rep_socket_uri)
 
     log.info("sending 'start' message")

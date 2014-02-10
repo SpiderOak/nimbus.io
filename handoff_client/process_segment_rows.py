@@ -14,7 +14,8 @@ import zmq
 
 from tools.zeromq_util import ipc_socket_uri, \
         prepare_ipc_path, \
-        is_interrupted_system_call
+        is_interrupted_system_call, \
+        set_receive_hwm
 from tools.process_util import identify_program_dir, \
         terminate_subprocess
 from tools.data_definitions import segment_status_final, \
@@ -153,7 +154,7 @@ def process_segment_rows(halt_event,
     prepare_ipc_path(rep_socket_uri)
 
     rep_socket = zeromq_context.socket(zmq.REP)
-    rep_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    set_receive_hwm(rep_socket, _socket_high_water_mark)
     log.info("binding rep socket to {0}".format(rep_socket_uri))
     rep_socket.bind(rep_socket_uri)
 

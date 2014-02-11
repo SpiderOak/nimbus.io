@@ -8,7 +8,11 @@ to multiple PUSH clients
 import logging
 
 from  gevent.greenlet import Greenlet
-from gevent_zeromq import zmq
+
+try:
+    from gevent_zeromq import zmq
+except ImportError:
+    import zmq
 
 from tools.zeromq_util import prepare_ipc_path
 from tools.data_definitions import message_format

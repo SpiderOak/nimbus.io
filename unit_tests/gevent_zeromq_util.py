@@ -10,8 +10,11 @@ import logging
 from gevent import monkey
 monkey.patch_all()
 
-import gevent_zeromq
-gevent_zeromq.monkey_patch()
+try:
+    import gevent_zeromq
+    gevent_zeromq.monkey_patch()
+except ImportError:
+    import zmq
 
 import gevent
 from gevent_zeromq import zmq

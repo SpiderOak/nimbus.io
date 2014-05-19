@@ -257,9 +257,14 @@ def _defrag_pass(connection, file_space_info, event_push_client):
 
     input_value_files = dict()
     for value_file_row in value_file_rows:
-        input_value_file = InputValueFile(
-            connection, _repository_path, value_file_row
-        )
+        try:
+            input_value_file = InputValueFile(
+                connection, _repository_path, value_file_row
+            )
+        except IOError as instance:
+            log.error("Error opening {0} {1}".format(value_file_row, instance))
+            continue
+
         input_value_files[input_value_file.value_file_id] = input_value_file
 
     bytes_defragged = 0

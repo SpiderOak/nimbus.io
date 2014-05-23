@@ -11,15 +11,17 @@ import (
 
 type Message map[string]string
 
+type ackOnlyMessageHandler func(Message)
+
 // NewWriterSocketHandler returns a function suitable for use as a handler
 // by zmq.Reactor
 func NewWriterSocketHandler(writerSocket *zmq4.Socket) func(zmq4.State) error {
 
 	// these messages get only and ack, not a reply
-	var ackOnlyMessageMap = map[string]struct{}{
-		"ping": struct{}{},
-		"resilient-server-handshake": struct{}{},
-		"resilient-server-signoff":   struct{}{}}
+	var ackOnlyMessageMap = map[string]ackOnlyMessageHandler{
+		"ping": handlePing,
+		"resilient-server-handshake": handleHandshake,
+		"resilient-server-signoff":   handleSignoff}
 
 	return func(_ zmq4.State) error {
 		rawMessage, err := writerSocket.RecvMessage(0)
@@ -32,9 +34,6 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket) func(zmq4.State) error {
 		if err != nil {
 			return fmt.Errorf("Unmarshal %s", err)
 		}
-
-		fog.Debug("writer-socket-handler received %s %s",
-			message["message-type"], message["message-id"])
 
 		reply := Message{
 			"message-type":  "resilient-server-ack",
@@ -59,10 +58,15 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket) func(zmq4.State) error {
 		** that here because every message contains "client-address"
 		** so we can decouple the reply.
 		** -------------------------------------------------------------*/
-		_, ok := ackOnlyMessageMap[message["message-type"]]
+		handler, ok := ackOnlyMessageMap[message["message-type"]]
 		if ok {
+			handler(message)
 			return nil
 		}
+
+		fog.Debug("writer-socket-handler received %s from %s %s",
+			message["message-type"], message["client-address"],
+			message["message-id"])
 
 		/*
 				body := make([][]byte, len(rawMessage)-1)
@@ -74,4 +78,16 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket) func(zmq4.State) error {
 		*/
 		return nil
 	}
+}
+
+func handlePing(_ Message) {
+
+}
+
+func handleHandshake(message Message) {
+	fog.Info("handshake from %s", message["client-address"])
+}
+
+func handleSignoff(message Message) {
+	fog.Info("signoff from   %s", message["client-address"])
 }

@@ -71,7 +71,9 @@ def start_data_writer(
     cluster_name, 
     node_name, 
     address, 
+    anti_entropy_address,
     event_publisher_pull_address, 
+    event_aggregator_pub_address,
     repository_path,
     central_db_pw = "pork", 
     central_db_port = 5432,
@@ -98,8 +100,11 @@ def start_data_writer(
             "NIMBUSIO_REPOSITORY_PATH"            : repository_path,
             "NIMBUSIO_EVENT_PUBLISHER_PULL_ADDRESS" : \
                 event_publisher_pull_address,
+            "NIMBUSIO_DATA_WRITER_ANTI_ENTROPY_ADDRESS" : \
+                anti_entropy_address,
             "NIMBUSIO_CENTRAL_USER_PASSWORD"          : central_db_pw,
             "NIMBUSIO_NODE_USER_PASSWORD"             : node_db_pw,
+            "NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS": event_aggregator_pub_address,
         }        
 
     log.info("starting %s %s" % (args, environment, ))

@@ -56,6 +56,8 @@ class TestDataWriter(unittest.TestCase):
         poll_result = poll_process(self._event_publisher_process)
         self.assertEqual(poll_result, None)
 
+    data_writer_type = os.environ["NIMBUSIO_DATA_WRITER"]
+    if data_writer_type == "python":
         self._data_writer_process = start_data_writer(
             _cluster_name,
             _local_node_name, 
@@ -126,8 +128,8 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=content_item
         )
-        self.assertEqual(reply["user-request-id"], user_request_id)
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
+        self.assertEqual(reply["user-request-id"], user_request_id)
         self.assertEqual(reply["result"], "success")
 
     def xxxtest_archive_key_entire_with_meta(self):

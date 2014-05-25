@@ -55,10 +55,12 @@ func main() {
 		fog.Critical("Bind(%s) %s", dataWriterAddress, err)
 	}
 
+	messageChan := NewMessageHandler()
+
 	reactor := zmq4.NewReactor()
 	reactor.AddChannel(tools.NewSignalWatcher(), 1, tools.SigtermHandler)
 	reactor.AddSocket(writerSocket, zmq4.POLLIN,
-		NewWriterSocketHandler(writerSocket))
+		NewWriterSocketHandler(writerSocket, messageChan))
 
 	fog.Debug("starting reactor.Run")
 	reactor.SetVerbose(true)

@@ -12,6 +12,8 @@ import sys
 
 from tools.process_util import identify_program_dir
 
+
+
 def generate_key():
     """generate a unique key for data storage"""
     n = 0
@@ -82,13 +84,16 @@ def start_data_writer(
     environment = None,
 ):
     log = logging.getLogger("start_data_writer_%s" % (node_name, ))
-    server_dir = identify_program_dir(u"data_writer")
-    server_path = os.path.join(server_dir, "data_writer_main.py")
+
+    args = list()
+    data_writer_type = os.environ["NIMBUSIO_DATA_WRITER"]
+    if data_writer_type == "python":
+        server_dir = identify_program_dir(u"data_writer")
+        server_path = os.path.join(server_dir, "data_writer_main.py")
     
-    args = [
-        sys.executable,
-        server_path,
-    ]
+        args = [sys.executable, server_path, ]
+    else:
+        raise AttrubuteError("unknown NIMBUSIO_DATA_WRITER '%s'", (data_writer_type, ))
 
     if environment is None:
         environment = {

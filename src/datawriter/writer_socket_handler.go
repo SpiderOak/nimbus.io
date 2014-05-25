@@ -9,37 +9,60 @@ import (
 	"fog"
 )
 
-type Message map[string]string
+type MessageMap map[string]interface{}
+type Message struct {
+	Type          string
+	ID            string
+	ClientTag     string
+	ClientAddress string
+	UserRequestID string
+	Map           MessageMap
+	Data          [][]byte
+}
 
 type ackOnlyMessageHandler func(Message)
 
 // NewWriterSocketHandler returns a function suitable for use as a handler
 // by zmq.Reactor
-func NewWriterSocketHandler(writerSocket *zmq4.Socket) func(zmq4.State) error {
+func NewWriterSocketHandler(writerSocket *zmq4.Socket,
+	messageChan chan<- Message) func(zmq4.State) error {
 
 	// these messages get only and ack, not a reply
-	var ackOnlyMessageMap = map[string]ackOnlyMessageHandler{
+	var ackOnlyMessages = map[string]ackOnlyMessageHandler{
 		"ping": handlePing,
 		"resilient-server-handshake": handleHandshake,
 		"resilient-server-signoff":   handleSignoff}
 
 	return func(_ zmq4.State) error {
-		rawMessage, err := writerSocket.RecvMessage(0)
+		var err error
+		var ok bool
+
+		marshalledMessage, err := writerSocket.RecvMessage(0)
 		if err != nil {
 			return fmt.Errorf("RecvMessage %s", err)
 		}
 
 		var message Message
-		err = json.Unmarshal([]byte(rawMessage[0]), &message)
+		err = json.Unmarshal([]byte(marshalledMessage[0]), &message.Map)
 		if err != nil {
 			return fmt.Errorf("Unmarshal %s", err)
 		}
 
-		reply := Message{
+		// we need to cast the common items used in a reply
+		if err = castCommonItems(&message); err != nil {
+			return err
+		}
+
+		message.Data = make([][]byte, len(marshalledMessage)-1)
+		for i := 1; i < len(marshalledMessage); i++ {
+			message.Data[i-1] = []byte(marshalledMessage[i])
+		}
+
+		reply := MessageMap{
 			"message-type":  "resilient-server-ack",
-			"message-id":    message["message-id"],
-			"incoming-type": message["message-type"],
-			"accepted":      "true"}
+			"message-id":    message.ID,
+			"incoming-type": message.Type,
+			"accepted":      true}
 
 		marshalledReply, err := json.Marshal(reply)
 		if err != nil {
@@ -58,26 +81,54 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket) func(zmq4.State) error {
 		** that here because every message contains "client-address"
 		** so we can decouple the reply.
 		** -------------------------------------------------------------*/
-		handler, ok := ackOnlyMessageMap[message["message-type"]]
+		handler, ok := ackOnlyMessages[message.Type]
 		if ok {
 			handler(message)
 			return nil
 		}
 
-		fog.Debug("writer-socket-handler received %s from %s %s",
-			message["message-type"], message["client-address"],
-			message["message-id"])
+		fog.Debug("writer-socket-handler received %s %s",
+			message.Type, message.ID)
 
-		/*
-				body := make([][]byte, len(rawMessage)-1)
-				for i := 1; i < len(rawMessage); i++ {
-					body[i-1] = []byte(rawMessage[i])
-				}
-				messageChan <- MessageWithBody{Message: message, Body: body}
-			}
-		*/
 		return nil
 	}
+}
+
+func castCommonItems(message *Message) error {
+	var ok bool
+
+	message.Type, ok = message.Map["message-type"].(string)
+	if !ok {
+		return fmt.Errorf("unparseable message-type %T, %s",
+			message.Map["message-type"], message.Map["message-type"])
+	}
+
+	message.ID, ok = message.Map["message-id"].(string)
+	if !ok {
+		return fmt.Errorf("unparseable message-id %T, %s",
+			message.Map["message-id"], message.Map["message-id"])
+	}
+
+	message.ClientTag, ok = message.Map["client-tag"].(string)
+	if !ok {
+		return fmt.Errorf("unparseable client-tag %T, %s",
+			message.Map["client-tag"], message.Map["client-tag"])
+	}
+
+	message.ClientAddress, ok = message.Map["client-address"].(string)
+	if !ok {
+		return fmt.Errorf("unparseable client-address %T, %s",
+			message.Map["client-address"], message.Map["client-address"])
+	}
+
+	message.UserRequestID, ok = message.Map["user-request-id"].(string)
+	if !ok {
+		return fmt.Errorf("unparseable user-request-id %T, %s",
+			message.Map["user-request-id"], message.Map["user-request-id"])
+	}
+
+	return nil
+
 }
 
 func handlePing(_ Message) {
@@ -85,9 +136,9 @@ func handlePing(_ Message) {
 }
 
 func handleHandshake(message Message) {
-	fog.Info("handshake from %s", message["client-address"])
+	fog.Info("handshake from %s", message.ClientAddress)
 }
 
 func handleSignoff(message Message) {
-	fog.Info("signoff from   %s", message["client-address"])
+	fog.Info("signoff from   %s", message.ClientAddress)
 }

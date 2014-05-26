@@ -89,6 +89,7 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 
 		fog.Debug("writer-socket-handler received %s %s",
 			message.Type, message.ID)
+		messageChan <- message
 
 		return nil
 	}
@@ -96,35 +97,35 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 
 func castCommonItems(message *Message) error {
 	var ok bool
+	var userRequestID interface{}
 
-	message.Type, ok = message.Map["message-type"].(string)
-	if !ok {
+	if message.Type, ok = message.Map["message-type"].(string); !ok {
 		return fmt.Errorf("unparseable message-type %T, %s",
 			message.Map["message-type"], message.Map["message-type"])
 	}
 
-	message.ID, ok = message.Map["message-id"].(string)
-	if !ok {
+	if message.ID, ok = message.Map["message-id"].(string); !ok {
 		return fmt.Errorf("unparseable message-id %T, %s",
 			message.Map["message-id"], message.Map["message-id"])
 	}
 
-	message.ClientTag, ok = message.Map["client-tag"].(string)
-	if !ok {
+	if message.ClientTag, ok = message.Map["client-tag"].(string); !ok {
 		return fmt.Errorf("unparseable client-tag %T, %s",
 			message.Map["client-tag"], message.Map["client-tag"])
 	}
 
-	message.ClientAddress, ok = message.Map["client-address"].(string)
-	if !ok {
+	if message.ClientAddress, ok = message.Map["client-address"].(string); !ok {
 		return fmt.Errorf("unparseable client-address %T, %s",
 			message.Map["client-address"], message.Map["client-address"])
 	}
 
-	message.UserRequestID, ok = message.Map["user-request-id"].(string)
-	if !ok {
-		return fmt.Errorf("unparseable user-request-id %T, %s",
-			message.Map["user-request-id"], message.Map["user-request-id"])
+	// the handshake message doesn't have user-request-id
+	userRequestID, ok = message.Map["user-request-id"]
+	if ok {
+		if message.UserRequestID, ok = userRequestID.(string); !ok {
+			return fmt.Errorf("unparseable user-request-id %T, %s",
+				message.Map["user-request-id"], message.Map)
+		}
 	}
 
 	return nil

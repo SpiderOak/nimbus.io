@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"runtime"
 	"syscall"
@@ -14,6 +15,8 @@ import (
 
 const (
 	signalChannelCapacity  = 1
+	writerSocketReceiveHWM = 100
+	writerSocketSendHWM    = 10
 	reactorPollingInterval = time.Second
 )
 
@@ -45,8 +48,8 @@ func main() {
 
 	fog.Info("program starts %s", tools.GetZMQVersion())
 
-	if writerSocket, err = zmq4.NewSocket(zmq4.REP); err != nil {
-		fog.Critical("NewSocket %s", err)
+	if writerSocket, err = createWriterSocket(); err != nil {
+		fog.Critical("createWriterSocket %s", err)
 	}
 	defer writerSocket.Close()
 
@@ -78,4 +81,25 @@ func main() {
 	} else {
 		fog.Error("reactor.Run returns %T %s", err, err)
 	}
+}
+
+func createWriterSocket() (*zmq4.Socket, error) {
+	var err error
+	var writerSocket *zmq4.Socket
+
+	if writerSocket, err = zmq4.NewSocket(zmq4.REP); err != nil {
+		return nil, fmt.Errorf("NewSocket %s", err)
+	}
+
+	if err = writerSocket.SetRcvhwm(writerSocketReceiveHWM); err != nil {
+		return nil, fmt.Errorf("writerSocket.SetRcvhwm(%d) %s",
+			writerSocketReceiveHWM, err)
+	}
+
+	if err = writerSocket.SetSndhwm(writerSocketSendHWM); err != nil {
+		return nil, fmt.Errorf("writerSocket.SetSndhwm(%d) %s",
+			writerSocketSendHWM, err)
+	}
+
+	return writerSocket, nil
 }

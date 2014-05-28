@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -149,15 +152,26 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 		return reply
 	}
 
-	fog.Debug("segment: %s", segmentEntry)
-
 	if sequenceEntry, err = parseSequenceEntry(message); err != nil {
 		reply["result"] = "error"
 		reply["error-message"] = err.Error()
 		return reply
 	}
 
-	fog.Debug("sequence: %s", sequenceEntry)
+	if sequenceEntry.SegmentSize != uint64(len(message.Data)) {
+		fog.Error("%s size mismatch (%d != %d)", segmentEntry,
+			sequenceEntry.SegmentSize, len(message.Data))
+		reply["result"] = "size-mismatch"
+		reply["error-message"] = "segment size does not match expected value"
+		return reply
+	}
+
+	if !MD5DigestMatches(message.Data, sequenceEntry.MD5Digest) {
+		fog.Error("%s md5 mismatch", segmentEntry)
+		reply["result"] = "md5-mismatch"
+		reply["error-message"] = "segment md5 does not match expected value"
+		return reply
+	}
 
 	reply["result"] = "error"
 	reply["error-message"] = "not implemented"
@@ -235,12 +249,13 @@ func parseSegmentEntry(message Message) (SegmentEntry, error) {
 
 func parseSequenceEntry(message Message) (SequenceEntry, error) {
 	var entry SequenceEntry
+	var err error
 	var ok bool
 	var rawSequenceNum interface{}
 	var sequenceNum float64
 	var segmentSize float64
 	var zfecPaddingSize float64
-	var md5Digest string
+	var encodedMD5Digest string
 	var adler32 float64
 
 	// if we don't have a sequence num, use 0 (archive-key-entire)
@@ -265,11 +280,15 @@ func parseSequenceEntry(message Message) (SequenceEntry, error) {
 	}
 	entry.ZfecPaddingSize = uint32(zfecPaddingSize)
 
-	if md5Digest, ok = message.Map["segment-md5-digest"].(string); !ok {
+	if encodedMD5Digest, ok = message.Map["segment-md5-digest"].(string); !ok {
 		return entry, fmt.Errorf("unparseable segment-md5-digest %T, %s",
 			message.Map["segment-md5-digest"], message.Map["segment-md5-digest"])
 	}
-	entry.MD5Digest = []byte(md5Digest)
+	entry.MD5Digest, err = base64.StdEncoding.DecodeString(encodedMD5Digest)
+	if err != nil {
+		return entry, fmt.Errorf("can't decode segment-md5-digest %s",
+			encodedMD5Digest)
+	}
 
 	if adler32, ok = message.Map["segment-adler32"].(float64); !ok {
 		return entry, fmt.Errorf("unparseable segment-adler32 %T, %s",
@@ -278,4 +297,12 @@ func parseSequenceEntry(message Message) (SequenceEntry, error) {
 	entry.Adler32 = uint32(adler32)
 
 	return entry, nil
+}
+
+func MD5DigestMatches(data []byte, md5Digest []byte) bool {
+	hasher := md5.New()
+	hasher.Write(data)
+	dataMd5Digest := hasher.Sum(nil)
+
+	return bytes.Equal(dataMd5Digest, md5Digest)
 }

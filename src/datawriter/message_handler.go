@@ -8,6 +8,7 @@ import (
 	"github.com/pebbe/zmq4"
 
 	"fog"
+	"tools"
 )
 
 const (
@@ -37,8 +38,19 @@ func (entry SegmentEntry) String() string {
 // message handler takes a message and returns a reply
 type messageHandler func(message Message) MessageMap
 
+var (
+	nodeIDMap map[string]uint32
+)
+
 func NewMessageHandler() chan<- Message {
+	var err error
+
 	messageChan := make(chan Message, messageChanCapacity)
+
+	if nodeIDMap, err = tools.GetNodeIDMap(); err != nil {
+		fog.Critical("NewMessageHandler: tools.GetNodeIDMap() failed %s", err)
+	}
+
 	dispatchTable := map[string]messageHandler{
 		"archive-key-entire": handleArchiveKeyEntire}
 	pushSockets := make(map[string]*zmq4.Socket)

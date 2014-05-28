@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/pebbe/zmq4"
 
@@ -17,7 +18,7 @@ type Message struct {
 	ClientAddress string
 	UserRequestID string
 	Map           MessageMap
-	Data          [][]byte
+	Data          []byte
 }
 
 type ackOnlyMessageHandler func(Message)
@@ -53,10 +54,7 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 			return err
 		}
 
-		message.Data = make([][]byte, len(marshalledMessage)-1)
-		for i := 1; i < len(marshalledMessage); i++ {
-			message.Data[i-1] = []byte(marshalledMessage[i])
-		}
+		message.Data = []byte(strings.Join(marshalledMessage[1:], ""))
 
 		reply := MessageMap{
 			"message-type":  "resilient-server-ack",

@@ -130,7 +130,7 @@ class TestDataWriter(unittest.TestCase):
         )
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
         self.assertEqual(reply["user-request-id"], user_request_id)
-        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def xxxtest_archive_key_entire_with_meta(self):
         """

@@ -10,10 +10,10 @@ import (
 	_ "github.com/jbarham/gopgsqldriver"
 )
 
-// OpenCentralDatabase returns a *sql.DB pointer.
+// OpenNodeDatabase returns a *sql.DB pointer.
 // This is NOT a database connection
 // see http://go-database-sql.org/accessing.html
-func OpenCentralDatabase() (*sql.DB, error) {
+func OpenNodeDatabase(nodeName string) (*sql.DB, error) {
 	databaseName := "nimbusio_central"
 
 	databaseHost := os.Getenv("NIMBUSIO_CENTRAL_DATABASE_HOST")

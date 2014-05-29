@@ -70,6 +70,7 @@ func NewMessageHandler() chan<- Message {
 	if nodeIDMap, err = tools.GetNodeIDMap(); err != nil {
 		fog.Critical("NewMessageHandler: tools.GetNodeIDMap() failed %s", err)
 	}
+	fog.Debug("nodeIDMap = %s", nodeIDMap)
 
 	dispatchTable := map[string]messageHandler{
 		"archive-key-entire": handleArchiveKeyEntire}

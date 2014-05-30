@@ -5,12 +5,6 @@ import (
 	"os"
 )
 
-const (
-	nodeQuery = `
-		select id, name from nimbusio_central.node where cluster_id = (
-			select id from nimbusio_central.cluster where name = $1)`
-)
-
 // GetNodeIDMap returns a map of node id keyed by node name, based on the
 // NIMBUSIO_CLUSTER_NAME environment variable
 func GetNodeIDMap() (map[string]uint32, error) {
@@ -27,7 +21,10 @@ func GetNodeIDMap() (map[string]uint32, error) {
 	}
 	defer sqlDB.Close()
 
-	rows, err := sqlDB.Query(nodeQuery, clusterName)
+	rows, err := sqlDB.Query(
+		`select id, name from nimbusio_central.node where cluster_id = (
+			select id from nimbusio_central.cluster where name = $1)`,
+		clusterName)
 	if err != nil {
 		return nodeIDMap, err
 	}

@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 import (
@@ -13,29 +14,40 @@ import (
 // OpenNodeDatabase returns a *sql.DB pointer.
 // This is NOT a database connection
 // see http://go-database-sql.org/accessing.html
-func OpenNodeDatabase(nodeName string) (*sql.DB, error) {
-	databaseName := "nimbusio_central"
+func OpenNodeDatabase(nodeName, password, host, port string) (*sql.DB, error) {
+	databaseName := fmt.Sprintf("nimbusio_node.%s", nodeName)
 
-	databaseHost := os.Getenv("NIMBUSIO_CENTRAL_DATABASE_HOST")
-	if databaseHost == "" {
-		databaseHost = "localhost"
-	}
-	databasePort := os.Getenv("NIMBUSIO_CENTRAL_DATABASE_PORT")
-	if databasePort == "" {
-		databasePort = "5432"
-	}
-	databaseUser := "nimbusio_central_user"
-	databasePassword := os.Getenv("NIMBUSIO_CENTRAL_USER_PASSWORD")
+	databaseUser := fmt.Sprintf("nimbusio_node_user_%s",
+		strings.Replace(nodeName, "-", "_", -1))
 
 	// go-pgsql gets a kernal panic if password is an empty string
-	if databasePassword == "" {
-		databasePassword = "none"
+	if password == "" {
+		password = "none"
 	}
 
 	dataSourceName := fmt.Sprintf(
 		"dbname=%s host=%s port=%s user=%s password=%s",
-		databaseName, databaseHost, databasePort, databaseUser,
-		databasePassword)
+		databaseName, host, port, databaseUser, password)
 
 	return sql.Open("postgres", dataSourceName)
+}
+
+// OpenLocalNodeDatabase returns a *sql.DB pointer.
+// This is NOT a database connection
+// see http://go-database-sql.org/accessing.html
+func OpenLocalNodeDatabase() (*sql.DB, error) {
+	nodeName := os.Getenv("NIMBUSIO_NODE_NAME")
+	password := os.Getenv("NIMBUSIO_NODE_USER_PASSWORD")
+
+	host := os.Getenv("NIMBUSIO_NODE_DATABASE_HOST")
+	if host == "" {
+		host = "localhost"
+	}
+
+	port := os.Getenv("NIMBUSIO_NODE_DATABASE_PORT")
+	if port == "" {
+		port = "5432"
+	}
+
+	return OpenNodeDatabase(nodeName, password, host, port)
 }

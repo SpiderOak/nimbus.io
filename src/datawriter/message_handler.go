@@ -26,6 +26,8 @@ type SegmentEntry struct {
 	Timestamp     time.Time
 	ConjoinedPart uint32
 	SegmentNum    uint8
+	SourceNodeID  uint32
+	HandoffNodeID uint32
 }
 
 func (entry SegmentEntry) String() string {
@@ -207,6 +209,8 @@ func parseSegmentEntry(message Message) (SegmentEntry, error) {
 	var conjoinedPart float64
 	var segmentNum float64
 	var timestampRepr string
+	var sourceNodeName string
+	var handoffNodeName string
 
 	if collectionID, ok = message.Map["collection-id"].(float64); !ok {
 		return entry, fmt.Errorf("unparseable collection-id %T, %s",
@@ -244,6 +248,30 @@ func parseSegmentEntry(message Message) (SegmentEntry, error) {
 			message.Map["segment-num"], message.Map["segment-num"])
 	}
 	entry.SegmentNum = uint8(segmentNum)
+
+	sourceNodeName, ok = message.Map["source-node-name"].(string)
+	if !ok {
+		return entry, fmt.Errorf("unparseable source-node-name %T, %s",
+			message.Map["source-node-name"], message.Map["source-node-name"])
+	}
+	entry.SourceNodeID, ok = nodeIDMap[sourceNodeName]
+	if !ok {
+		return entry, fmt.Errorf("unknown source-node-name %s",
+			message.Map["source-node-name"])
+	}
+
+	if message.Map["handoff-node-name"] != nil {
+		handoffNodeName, ok = message.Map["handoff-node-name"].(string)
+		if !ok {
+			return entry, fmt.Errorf("unparseable handoff-node-name %T, %s",
+				message.Map["handoff-node-name"], message.Map["handoff-node-name"])
+		}
+		entry.HandoffNodeID, ok = nodeIDMap[handoffNodeName]
+		if !ok {
+			return entry, fmt.Errorf("unknown handoff-node-name %s",
+				message.Map["handoff-node-name"])
+		}
+	}
 
 	return entry, nil
 }

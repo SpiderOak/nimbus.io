@@ -148,7 +148,7 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 		return reply
 	}
 
-	if err = writer.StartSegment(segmentEntry); err != nil {
+	if err = nimbusioWriter.StartSegment(segmentEntry); err != nil {
 		reply["result"] = "error"
 		reply["error-message"] = err.Error()
 		return reply

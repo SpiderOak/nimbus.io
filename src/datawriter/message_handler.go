@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/pebbe/zmq4"
 
@@ -14,6 +13,8 @@ import (
 	"tools"
 
 	"datawriter/nodedb"
+	"datawriter/types"
+	"datawriter/writer"
 )
 
 const (
@@ -21,49 +22,12 @@ const (
 	pushSocketSendHWM   = 10
 )
 
-type SegmentEntry struct {
-	CollectionID  uint32
-	Key           string
-	UnifiedID     uint64
-	Timestamp     time.Time
-	ConjoinedPart uint32
-	SegmentNum    uint8
-	SourceNodeID  uint32
-	HandoffNodeID uint32
-}
-
-func (entry SegmentEntry) String() string {
-	return fmt.Sprintf("(%d) %s %d %s %d %d",
-		entry.CollectionID,
-		entry.Key,
-		entry.UnifiedID,
-		entry.Timestamp,
-		entry.ConjoinedPart,
-		entry.SegmentNum)
-}
-
-type SequenceEntry struct {
-	SequenceNum     uint32
-	SegmentSize     uint64
-	ZfecPaddingSize uint32
-	MD5Digest       []byte
-	Adler32         uint32
-}
-
-func (entry SequenceEntry) String() string {
-	return fmt.Sprintf("%d %d %d %x %d",
-		entry.SequenceNum,
-		entry.SegmentSize,
-		entry.ZfecPaddingSize,
-		entry.MD5Digest,
-		entry.Adler32)
-}
-
 // message handler takes a message and returns a reply
 type messageHandler func(message Message) MessageMap
 
 var (
-	nodeIDMap map[string]uint32
+	nodeIDMap      map[string]uint32
+	nimbusioWriter writer.NimbusioWriter
 )
 
 func NewMessageHandler() chan<- Message {
@@ -75,6 +39,8 @@ func NewMessageHandler() chan<- Message {
 		fog.Critical("NewMessageHandler: tools.GetNodeIDMap() failed %s", err)
 	}
 	fog.Debug("nodeIDMap = %s", nodeIDMap)
+
+	nimbusioWriter = writer.NewNimbusioWriter()
 
 	if err = nodedb.Initialize(); err != nil {
 		fog.Critical("NewMessageHandler: nodedb.Initialize failed %s", err)
@@ -149,10 +115,9 @@ func createPushSocket() (*zmq4.Socket, error) {
 }
 
 func handleArchiveKeyEntire(message Message) MessageMap {
-	var segmentEntry SegmentEntry
-	var sequenceEntry SequenceEntry
+	var segmentEntry types.SegmentEntry
+	var sequenceEntry types.SequenceEntry
 	var err error
-	var segmentID uint64
 
 	reply := createReply(message)
 
@@ -183,7 +148,7 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 		return reply
 	}
 
-	if segmentID, err = NewSegment(sequenceEntry); err != nil {
+	if err = writer.StartSegment(segmentEntry); err != nil {
 		reply["result"] = "error"
 		reply["error-message"] = err.Error()
 		return reply
@@ -213,8 +178,8 @@ func createReply(message Message) MessageMap {
 	return reply
 }
 
-func parseSegmentEntry(message Message) (SegmentEntry, error) {
-	var entry SegmentEntry
+func parseSegmentEntry(message Message) (types.SegmentEntry, error) {
+	var entry types.SegmentEntry
 	var ok bool
 	var err error
 	var collectionID float64
@@ -289,8 +254,8 @@ func parseSegmentEntry(message Message) (SegmentEntry, error) {
 	return entry, nil
 }
 
-func parseSequenceEntry(message Message) (SequenceEntry, error) {
-	var entry SequenceEntry
+func parseSequenceEntry(message Message) (types.SequenceEntry, error) {
+	var entry types.SequenceEntry
 	var err error
 	var ok bool
 	var rawSequenceNum interface{}

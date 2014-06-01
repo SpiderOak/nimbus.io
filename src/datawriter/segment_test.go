@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"datawriter/nodedb"
+	"datawriter/types"
 )
 
 func TestNewSegment(t *testing.T) {
@@ -13,7 +14,7 @@ func TestNewSegment(t *testing.T) {
 	}
 	defer nodedb.Close()
 
-	var entry SegmentEntry
+	var entry types.SegmentEntry
 	entry.CollectionID = 1
 	entry.Key = "test key"
 	entry.UnifiedID = 2

@@ -2,6 +2,7 @@ package main
 
 import (
 	"datawriter/nodedb"
+	"datawriter/types"
 )
 
 const (
@@ -12,7 +13,7 @@ const (
 )
 
 // NewSegment starts a new segment and returns the  segmentID
-func NewSegment(entry SegmentEntry) (uint64, error) {
+func NewSegment(entry types.SegmentEntry) (uint64, error) {
 	stmt := nodedb.Stmts["new-segment"]
 	row := stmt.QueryRow(
 		entry.CollectionID,

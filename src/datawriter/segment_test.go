@@ -2,33 +2,31 @@ package main
 
 import (
 	"testing"
-)
+	"time"
 
-const (
-	testString = "datetime.datetime(2011, 6, 30, 13, 52, 34, 720271)"
+	"datawriter/nodedb"
 )
 
 func TestNewSegment(t *testing.T) {
-	timestamp, err := ParseTimestampRepr(testString)
-	if err != nil {
-		t.Fatalf("ParsetimestampRepr(%s) failed %s", testString, err)
+	if err := nodedb.Initialize(); err != nil {
+		t.Fatalf("nodedb.Initialize() %s", err)
 	}
-	if timestamp.Year() != 2011 {
-		t.Fatalf("invalid year %s", timestamp)
+	defer nodedb.Close()
+
+	var entry SegmentEntry
+	entry.CollectionID = 1
+	entry.Key = "test key"
+	entry.UnifiedID = 2
+	entry.Timestamp = time.Time.UTC(time.Now())
+	entry.ConjoinedPart = 0
+	entry.SegmentNum = 1
+	entry.SourceNodeID = 5
+	entry.HandoffNodeID = 0
+
+	var segmentID uint64
+	var err error
+	if segmentID, err = NewSegment(entry); err != nil {
+		t.Fatalf("NewSegment %s", err)
 	}
-	if timestamp.Month() != 6 {
-		t.Fatalf("invalid month %s", timestamp)
-	}
-	if timestamp.Day() != 30 {
-		t.Fatalf("invalid day %s", timestamp)
-	}
-	if timestamp.Hour() != 13 {
-		t.Fatalf("invalid hour %s", timestamp)
-	}
-	if timestamp.Minute() != 52 {
-		t.Fatalf("invalid minute %s", timestamp)
-	}
-	if timestamp.Second() != 34 {
-		t.Fatalf("invalid second %s", timestamp)
-	}
+	t.Logf("segment id = %d", segmentID)
 }

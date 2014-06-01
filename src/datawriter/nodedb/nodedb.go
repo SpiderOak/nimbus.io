@@ -24,7 +24,7 @@ const (
             conjoined_part,
             source_node_id,
             handoff_node_id) 
-        values (%s, %s, %s, %s, %s, %s, %s, %s, %s) 
+        values ($1, $2, 'A', $3, $4, $5, $6, $7, $8) 
         returning id`
 )
 
@@ -40,6 +40,8 @@ var (
 func Initialize() error {
 	var err error
 
+	Stmts = make(map[string]*sql.Stmt, len(queryItems))
+
 	if NodeDB, err = tools.OpenLocalNodeDatabase(); err != nil {
 		return err
 	}
@@ -51,4 +53,13 @@ func Initialize() error {
 	}
 
 	return nil
+}
+
+func Close() {
+	for key := range Stmts {
+		stmt := Stmts[key]
+		stmt.Close()
+	}
+
+	NodeDB.Close()
 }

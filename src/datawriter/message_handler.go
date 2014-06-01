@@ -12,6 +12,8 @@ import (
 
 	"fog"
 	"tools"
+
+	"datawriter/nodedb"
 )
 
 const (
@@ -73,6 +75,10 @@ func NewMessageHandler() chan<- Message {
 		fog.Critical("NewMessageHandler: tools.GetNodeIDMap() failed %s", err)
 	}
 	fog.Debug("nodeIDMap = %s", nodeIDMap)
+
+	if err = nodedb.Initialize(); err != nil {
+		fog.Critical("NewMessageHandler: nodedb.Initialize failed %s", err)
+	}
 
 	dispatchTable := map[string]messageHandler{
 		"archive-key-entire": handleArchiveKeyEntire}

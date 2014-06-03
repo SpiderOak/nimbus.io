@@ -40,10 +40,12 @@ func NewMessageHandler() chan<- Message {
 	}
 	fog.Debug("nodeIDMap = %s", nodeIDMap)
 
-	nimbusioWriter = writer.NewNimbusioWriter()
-
 	if err = nodedb.Initialize(); err != nil {
 		fog.Critical("NewMessageHandler: nodedb.Initialize failed %s", err)
+	}
+
+	if nimbusioWriter, err = writer.NewNimbusioWriter(); err != nil {
+		fog.Critical("NewMessageHandler: NewNimbusioWriter() failed %s", err)
 	}
 
 	dispatchTable := map[string]messageHandler{

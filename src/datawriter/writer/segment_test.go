@@ -2,7 +2,8 @@ package writer
 
 import (
 	"testing"
-	"time"
+
+	"tools"
 
 	"datawriter/nodedb"
 	"datawriter/types"
@@ -18,7 +19,7 @@ func TestNewSegment(t *testing.T) {
 	entry.CollectionID = 1
 	entry.Key = "test key"
 	entry.UnifiedID = 2
-	entry.Timestamp = time.Time.UTC(time.Now())
+	entry.Timestamp = tools.Timestamp()
 	entry.ConjoinedPart = 0
 	entry.SegmentNum = 1
 	entry.SourceNodeID = 5

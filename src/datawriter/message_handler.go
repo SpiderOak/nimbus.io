@@ -12,6 +12,7 @@ import (
 	"fog"
 	"tools"
 
+	"datawriter/logger"
 	"datawriter/nodedb"
 	"datawriter/types"
 	"datawriter/writer"
@@ -135,22 +136,27 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 		return reply
 	}
 
+	lgr := logger.NewLogger(message.UserRequestID, segmentEntry.UnifiedID,
+		segmentEntry.ConjoinedPart, segmentEntry.SegmentNum, segmentEntry.Key)
+	lgr.Info("archive-key-entire")
+
 	if sequenceEntry.SegmentSize != uint64(len(message.Data)) {
-		fog.Error("%s size mismatch (%d != %d)", segmentEntry,
-			sequenceEntry.SegmentSize, len(message.Data))
+		lgr.Error("size mismatch (%d != %d)", sequenceEntry.SegmentSize,
+			len(message.Data))
 		reply["result"] = "size-mismatch"
 		reply["error-message"] = "segment size does not match expected value"
 		return reply
 	}
 
 	if !MD5DigestMatches(message.Data, sequenceEntry.MD5Digest) {
-		fog.Error("%s md5 mismatch", segmentEntry)
+		lgr.Error("md5 mismatch")
 		reply["result"] = "md5-mismatch"
 		reply["error-message"] = "segment md5 does not match expected value"
 		return reply
 	}
 
-	if err = nimbusioWriter.StartSegment(segmentEntry); err != nil {
+	if err = nimbusioWriter.StartSegment(lgr, segmentEntry); err != nil {
+		lgr.Error("StartSegment: %s", err)
 		reply["result"] = "error"
 		reply["error-message"] = err.Error()
 		return reply

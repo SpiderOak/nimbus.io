@@ -66,7 +66,7 @@ func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, err
 	fog.Debug("NewOutputValueFile %s", valueFile.filePath)
 
 	dirPath := path.Dir(valueFile.filePath)
-	if err = os.MkdirAll(dirPath, os.ModeDir|0700); err != nil {
+	if err = os.MkdirAll(dirPath, os.ModeDir|0755); err != nil {
 		return nil, fmt.Errorf("os.MkdirAll(%s...", err)
 	}
 

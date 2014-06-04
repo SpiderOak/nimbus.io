@@ -6,6 +6,7 @@ import (
 
 	"tools"
 
+	"datawriter/logger"
 	"datawriter/nodedb"
 	"datawriter/types"
 )
@@ -14,10 +15,10 @@ type NimbusioWriter interface {
 
 	// StartSegment initializes a new segment and prepares to receive data
 	// for it
-	StartSegment(segmentEntry types.SegmentEntry) error
+	StartSegment(lgr logger.Logger, segmentEntry types.SegmentEntry) error
 
 	// StoreSequence stores data for  an initialized segment
-	StoreSequence(segmentEntry types.SegmentEntry,
+	StoreSequence(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		sequenceEntry types.SequenceEntry, data []byte) error
 }
 
@@ -56,7 +57,8 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 	return &writer, nil
 }
 
-func (writer *nimbusioWriter) StartSegment(segmentEntry types.SegmentEntry) error {
+func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
+	segmentEntry types.SegmentEntry) error {
 	var entry segmentMapEntry
 	var err error
 
@@ -73,7 +75,8 @@ func (writer *nimbusioWriter) StartSegment(segmentEntry types.SegmentEntry) erro
 	return nil
 }
 
-func (writer *nimbusioWriter) StoreSequence(segmentEntry types.SegmentEntry,
+func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
+	segmentEntry types.SegmentEntry,
 	sequenceEntry types.SequenceEntry, data []byte) error {
 	return fmt.Errorf("StoreSequence not implemented")
 }

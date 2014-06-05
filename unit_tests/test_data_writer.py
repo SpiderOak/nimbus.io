@@ -132,7 +132,7 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["user-request-id"], user_request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def test_archive_key_entire_with_meta(self):
+    def xxxtest_archive_key_entire_with_meta(self):
         """
         test archiving a key in a single message, including meta data
         """
@@ -163,7 +163,7 @@ class TestDataWriter(unittest.TestCase):
             "unified-id"        : unified_id,
             "timestamp-repr"    : repr(timestamp),
             "conjoined-part"    : 0,
-             "segment-num"       : segment_num,
+            "segment-num"       : segment_num,
             "segment-size"      : file_size,
             "zfec-padding-size" : 4,
             "segment-adler32"   : file_adler32,
@@ -187,7 +187,7 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["user-request-id"], user_request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def xxxtest_large_archive(self):
+    def test_large_archive(self):
 
         """
         test archiving a file that needs more than one message.
@@ -198,6 +198,8 @@ class TestDataWriter(unittest.TestCase):
         slice_count = 10
         total_size = slice_size * slice_count
         test_data = random_string(total_size)
+
+        user_request_id = uuid.uuid1().hex
 
         collection_id = 1001
         archive_priority = create_priority()
@@ -215,19 +217,26 @@ class TestDataWriter(unittest.TestCase):
         segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
         segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
 
-        message_id = uuid.uuid1().hex
+        unified_id_factory = UnifiedIDFactory(1)
+        unified_id = unified_id_factory.next()
+
         message = {
             "message-type"      : "archive-key-start",
-            "message-id"        : message_id,
             "priority"          : archive_priority,
+            "user-request-id"   : user_request_id,
             "collection-id"     : collection_id,
             "key"               : key, 
+            "unified-id"        : unified_id,
             "timestamp-repr"    : repr(timestamp),
+            "conjoined-part"    : 0,
             "segment-num"       : segment_num,
             "segment-size"      : len(test_data[slice_start:slice_end]),
-            "segment-adler32"   : segment_adler32,
+            "zfec-padding-size" : 4,
             "segment-md5-digest": b64encode(segment_md5.digest()),
+            "segment-adler32"   : segment_adler32,
             "sequence-num"      : sequence_num,
+            "source-node-name"  : _local_node_name,
+            "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -237,9 +246,9 @@ class TestDataWriter(unittest.TestCase):
             message, 
             data=test_data[slice_start:slice_end]
         )
-        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "archive-key-start-reply")
-        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["user-request-id"], user_request_id)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
 
         for _ in range(slice_count-2):
             sequence_num += 1
@@ -252,16 +261,21 @@ class TestDataWriter(unittest.TestCase):
             message_id = uuid.uuid1().hex
             message = {
                 "message-type"      : "archive-key-next",
-                "message-id"        : message_id,
                 "priority"          : archive_priority,
+                "user-request-id"   : user_request_id,
                 "collection-id"     : collection_id,
                 "key"               : key, 
+                "unified-id"        : unified_id,
                 "timestamp-repr"    : repr(timestamp),
+                "conjoined-part"    : 0,
                 "segment-num"       : segment_num,
                 "segment-size"      : len(test_data[slice_start:slice_end]),
-                "segment-adler32"   : segment_adler32,
+                "zfec-padding-size" : 4,
                 "segment-md5-digest": b64encode(segment_md5.digest()),
+                "segment-adler32"   : segment_adler32,
                 "sequence-num"      : sequence_num,
+                "source-node-name"  : _local_node_name,
+                "handoff-node-name" : None,
             }
             reply = send_request_and_get_reply(
                 _local_node_name,
@@ -271,9 +285,9 @@ class TestDataWriter(unittest.TestCase):
                 message, 
                 data=test_data[slice_start:slice_end]
             )
-            self.assertEqual(reply["message-id"], message_id)
             self.assertEqual(reply["message-type"], "archive-key-next-reply")
-            self.assertEqual(reply["result"], "success")
+            self.assertEqual(reply["user-request-id"], user_request_id)
+            self.assertEqual(reply["result"], "success", reply["error-message"])
         
         sequence_num += 1
         slice_start += slice_size
@@ -282,22 +296,25 @@ class TestDataWriter(unittest.TestCase):
         segment_adler32 = zlib.adler32(test_data[slice_start:slice_end])
         segment_md5 = hashlib.md5(test_data[slice_start:slice_end])
 
-        message_id = uuid.uuid1().hex
         message = {
             "message-type"      : "archive-key-final",
-            "message-id"        : message_id,
             "priority"          : archive_priority,
+            "user-request-id"   : user_request_id,
             "collection-id"     : collection_id,
             "key"               : key, 
+            "unified-id"        : unified_id,
             "timestamp-repr"    : repr(timestamp),
+            "conjoined-part"    : 0,
             "segment-num"       : segment_num,
             "segment-size"      : len(test_data[slice_start:slice_end]),
-            "segment-adler32"   : segment_adler32,
+            "zfec-padding-size" : 4,
             "segment-md5-digest": b64encode(segment_md5.digest()),
+            "segment-adler32"   : segment_adler32,
             "sequence-num"      : sequence_num,
             "file-size"         : total_size,
             "file-adler32"      : file_adler32,
             "file-hash"         : b64encode(file_md5.digest()),
+            "source-node-name"  : _local_node_name,
             "handoff-node-name" : None,
         }
         reply = send_request_and_get_reply(
@@ -306,11 +323,12 @@ class TestDataWriter(unittest.TestCase):
             _local_node_name,
             _client_address,
             message, 
-            data=test_data[-1]
+            data=test_data[slice_start:slice_end]
         )
-        self.assertEqual(reply["message-id"], message_id)
+
         self.assertEqual(reply["message-type"], "archive-key-final-reply")
-        self.assertEqual(reply["result"], "success")
+        self.assertEqual(reply["user-request-id"], user_request_id)
+        self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def _destroy(self, collection_id, key, timestamp, segment_num):
         message_id = uuid.uuid1().hex

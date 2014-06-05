@@ -78,7 +78,7 @@ var (
 		queryItem{Name: "finish-segment", Query: finishSegment},
 		queryItem{Name: "new-value-file", Query: newValueFile},
 		queryItem{Name: "update-value-file", Query: updateValueFile},
-		queryItem{Name: "new-segment-sequence", Query: updateValueFile},
+		queryItem{Name: "new-segment-sequence", Query: newSegmentSequence},
 		queryItem{Name: "new-meta-data", Query: newMetaData}}
 )
 

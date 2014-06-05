@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/pebbe/zmq4"
 
@@ -120,6 +121,7 @@ func createPushSocket() (*zmq4.Socket, error) {
 func handleArchiveKeyEntire(message Message) MessageMap {
 	var segmentEntry types.SegmentEntry
 	var sequenceEntry types.SequenceEntry
+	var fileEntry types.FileEntry
 	var err error
 
 	reply := createReply(message)
@@ -131,6 +133,12 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 	}
 
 	if sequenceEntry, err = parseSequenceEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	if fileEntry, err = parseFileEntry(message); err != nil {
 		reply["result"] = "error"
 		reply["error-message"] = err.Error()
 		return reply
@@ -162,8 +170,15 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 		return reply
 	}
 
-	reply["result"] = "error"
-	reply["error-message"] = "not implemented"
+	if err = nimbusioWriter.FinishSegment(lgr, segmentEntry, fileEntry); err != nil {
+		lgr.Error("FinishSegment: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
 
 	return reply
 }
@@ -309,7 +324,52 @@ func parseSequenceEntry(message Message) (types.SequenceEntry, error) {
 		return entry, fmt.Errorf("unparseable segment-adler32 %T, %s",
 			message.Map["segment-adler32"], message.Map["segment-adler32"])
 	}
-	entry.Adler32 = uint32(adler32)
+	entry.Adler32 = int32(adler32)
+
+	return entry, nil
+}
+
+func parseFileEntry(message Message) (types.FileEntry, error) {
+	var entry types.FileEntry
+	var err error
+	var ok bool
+	var fileSize float64
+	var encodedMD5Digest string
+	var adler32 float64
+
+	if fileSize, ok = message.Map["file-size"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable file-size %T, %s",
+			message.Map["file-size"], message.Map["file-size"])
+	}
+	entry.FileSize = uint64(fileSize)
+
+	if encodedMD5Digest, ok = message.Map["file-hash"].(string); !ok {
+		return entry, fmt.Errorf("unparseable file-hash %T, %s",
+			message.Map["file-hash"], message.Map["file-hash"])
+	}
+	entry.MD5Digest, err = base64.StdEncoding.DecodeString(encodedMD5Digest)
+	if err != nil {
+		return entry, fmt.Errorf("can't decode segment-md5-digest %s",
+			encodedMD5Digest)
+	}
+
+	if adler32, ok = message.Map["file-adler32"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable file-adler32 %T, %s",
+			message.Map["file-adler32"], message.Map["file-adler32"])
+	}
+	entry.Adler32 = int32(adler32)
+
+	for key := range message.Map {
+		if strings.HasPrefix(key, "__nimbus_io__") {
+			var metaEntry types.MetaEntry
+			metaEntry.Key = key[len("__nimbus_io__"):]
+			if metaEntry.Value, ok = message.Map[key].(string); !ok {
+				return entry, fmt.Errorf("unparseable %s %T, %s",
+					key, message.Map[key], message.Map[key])
+			}
+			entry.MetaData = append(entry.MetaData, metaEntry)
+		}
+	}
 
 	return entry, nil
 }

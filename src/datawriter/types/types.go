@@ -35,7 +35,7 @@ type SequenceEntry struct {
 	SegmentSize     uint64
 	ZfecPaddingSize uint32
 	MD5Digest       []byte
-	Adler32         uint32
+	Adler32         int32
 }
 
 func (entry SequenceEntry) String() string {
@@ -45,4 +45,26 @@ func (entry SequenceEntry) String() string {
 		entry.ZfecPaddingSize,
 		entry.MD5Digest,
 		entry.Adler32)
+}
+
+// MetaEntry meta data for a segment
+type MetaEntry struct {
+	Key   string
+	Value string
+}
+
+// FileEntry for a segment
+type FileEntry struct {
+	FileSize  uint64
+	MD5Digest []byte
+	Adler32   int32
+	MetaData  []MetaEntry
+}
+
+func (entry FileEntry) String() string {
+	return fmt.Sprintf("%d %x %d [%s]",
+		entry.FileSize,
+		entry.MD5Digest,
+		entry.Adler32,
+		entry.MetaData)
 }

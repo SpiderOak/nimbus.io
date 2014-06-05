@@ -21,6 +21,9 @@ type OutputValueFile interface {
 	// Size returns the amount of data written so far
 	Size() uint64
 
+	// ID is the unique identifier for this value file
+	ID() uint32
+
 	// Store the data for one sequence
 	Store(collectionID uint32, segmentID uint64, data []byte) error
 
@@ -81,6 +84,11 @@ func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, err
 // Size returns the amount of data written so far
 func (valueFile *outputValueFile) Size() uint64 {
 	return valueFile.bytesWritten
+}
+
+// ID is the unique identifier for this value file
+func (valueFile *outputValueFile) ID() uint32 {
+	return valueFile.valueFileID
 }
 
 // Store the data for one sequence

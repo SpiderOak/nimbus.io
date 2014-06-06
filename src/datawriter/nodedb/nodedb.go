@@ -33,6 +33,29 @@ const (
             file_adler32 = $2,
             file_hash = $3
         where id = $4`
+	newTombstone = `
+        insert into nimbusio_node.segment (
+            collection_id,
+            key,
+            status,
+            unified_id,
+            timestamp,
+            segment_num,
+            source_node_id,
+            handoff_node_id) 
+        values ($1, $2, 'T', $3, $4, $5, $6, $7)`
+	newTombstoneForUnifiedID = `
+        insert into nimbusio_node.segment (
+            collection_id,
+            key,
+            status,
+            unified_id,
+            timestamp,
+            segment_num,
+            file_tombstone_unified_id,
+            source_node_id,
+            handoff_node_id) 
+        values ($1, $2, 'T', $3, $4, $5, $6, $7, $8)`
 	newValueFile = `
         insert into nimbusio_node.value_file (space_id) values ($1) returning id`
 	updateValueFile = `
@@ -67,6 +90,18 @@ const (
             meta_value,
             timestamp
         ) values ($1, $2, $3, $4, $5)`
+	deleteConjoined = `
+        update nimbusio_node.conjoined 
+        set delete_timestamp = $1
+        where collection_id = $2
+          and key = $3
+          and unified_id < $4`
+	deleteConjoinedForUnifiedID = `
+        update nimbusio_node.conjoined 
+        set delete_timestamp = $1
+        where collection_id = $2
+          and key = $3
+          and unified_id = $4`
 )
 
 var (
@@ -76,10 +111,16 @@ var (
 	queryItems = []queryItem{
 		queryItem{Name: "new-segment", Query: newSegment},
 		queryItem{Name: "finish-segment", Query: finishSegment},
+		queryItem{Name: "new-tombstone", Query: newTombstone},
+		queryItem{Name: "new-tombstone-for-unified-id",
+			Query: newTombstoneForUnifiedID},
 		queryItem{Name: "new-value-file", Query: newValueFile},
 		queryItem{Name: "update-value-file", Query: updateValueFile},
 		queryItem{Name: "new-segment-sequence", Query: newSegmentSequence},
-		queryItem{Name: "new-meta-data", Query: newMetaData}}
+		queryItem{Name: "new-meta-data", Query: newMetaData},
+		queryItem{Name: "delete-conjoined", Query: deleteConjoined},
+		queryItem{Name: "delete-conjoined-for-unified-id",
+			Query: deleteConjoinedForUnifiedID}}
 )
 
 // Initialize prepares the database for use

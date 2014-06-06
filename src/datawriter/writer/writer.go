@@ -26,6 +26,10 @@ type NimbusioWriter interface {
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		fileEntry types.FileEntry) error
+
+	// DestroyKey makes a key inaccessible
+	DestroyKey(lgr logger.Logger, segmentEntry types.SegmentEntry,
+		unifiedIDToDestroy uint64) error
 }
 
 type segmentKey struct {
@@ -197,6 +201,75 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 			return fmt.Errorf("new-meta-data %s", err)
 		}
 	}
+
+	return nil
+}
+
+// DestroyKey makes a key inaccessible
+func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
+	segmentEntry types.SegmentEntry,
+	unifiedIDToDestroy uint64) error {
+
+	var err error
+
+	lgr.Debug("DestroyKey (%d)", unifiedIDToDestroy)
+
+	if unifiedIDToDestroy > 0 {
+		stmt := nodedb.Stmts["new-tombstone-for-unified-id"]
+		_, err = stmt.Exec(
+			segmentEntry.CollectionID,
+			segmentEntry.Key,
+			segmentEntry.UnifiedID,
+			segmentEntry.Timestamp,
+			segmentEntry.SegmentNum,
+			unifiedIDToDestroy,
+			segmentEntry.SourceNodeID,
+			segmentEntry.HandoffNodeID)
+
+		if err != nil {
+			return fmt.Errorf("new-tombstone-for-unified-id %d %s",
+				unifiedIDToDestroy, err)
+		}
+
+		stmt = nodedb.Stmts["delete-conjoined-for-unified-id"]
+		_, err = stmt.Exec(
+			segmentEntry.Timestamp,
+			segmentEntry.CollectionID,
+			segmentEntry.Key,
+			unifiedIDToDestroy)
+
+		if err != nil {
+			return fmt.Errorf("delete-conjoined-for-unified-id %d %s",
+				unifiedIDToDestroy, err)
+		}
+	} else {
+		stmt := nodedb.Stmts["new-tombstone"]
+		_, err = stmt.Exec(
+			segmentEntry.CollectionID,
+			segmentEntry.Key,
+			segmentEntry.UnifiedID,
+			segmentEntry.Timestamp,
+			segmentEntry.SegmentNum,
+			segmentEntry.SourceNodeID,
+			segmentEntry.HandoffNodeID)
+
+		if err != nil {
+			return fmt.Errorf("new-tombstone %s", err)
+		}
+
+		stmt = nodedb.Stmts["delete-conjoined"]
+		_, err = stmt.Exec(
+			segmentEntry.Timestamp,
+			segmentEntry.CollectionID,
+			segmentEntry.Key,
+			segmentEntry.UnifiedID)
+
+		if err != nil {
+			return fmt.Errorf("delete-conjoined %s", err)
+		}
+	}
+	// Set delete_timestamp on all conjoined rows for this key
+	// that are older than this tombstone
 
 	return nil
 }

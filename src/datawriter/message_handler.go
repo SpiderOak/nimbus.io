@@ -54,7 +54,8 @@ func NewMessageHandler() chan<- Message {
 		"archive-key-entire": handleArchiveKeyEntire,
 		"archive-key-start":  handleArchiveKeyStart,
 		"archive-key-next":   handleArchiveKeyNext,
-		"archive-key-final":  handleArchiveKeyFinal}
+		"archive-key-final":  handleArchiveKeyFinal,
+		"destroy-key":        handleDestroyKey}
 	pushSockets := make(map[string]*zmq4.Socket)
 
 	go func() {
@@ -375,6 +376,47 @@ func handleArchiveKeyFinal(message Message) MessageMap {
 	return reply
 }
 
+func handleDestroyKey(message Message) MessageMap {
+	var segmentEntry types.SegmentEntry
+	var rawUnifiedIDToDestroy float64
+	var unifiedIDToDestroy uint64
+	var err error
+	var ok bool
+
+	reply := createReply(message)
+
+	if segmentEntry, err = parseSegmentEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	if message.Map["unified-id-to-Destroy"] != nil {
+		if rawUnifiedIDToDestroy, ok = message.Map["unified-id-to-Destroy"].(float64); !ok {
+			reply["result"] = "error"
+			reply["error-message"] = err.Error()
+			return reply
+		}
+		unifiedIDToDestroy = uint64(rawUnifiedIDToDestroy)
+	}
+
+	lgr := logger.NewLogger(message.UserRequestID, segmentEntry.UnifiedID,
+		segmentEntry.ConjoinedPart, segmentEntry.SegmentNum, segmentEntry.Key)
+	lgr.Info("destroy-key (%d)", unifiedIDToDestroy)
+
+	if err = nimbusioWriter.DestroyKey(lgr, segmentEntry, unifiedIDToDestroy); err != nil {
+		lgr.Error("DestroyKey: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
+
+	return reply
+}
+
 func createReply(message Message) MessageMap {
 	reply := make(MessageMap)
 	if message.Type == "archive-key-entire" {
@@ -430,11 +472,13 @@ func parseSegmentEntry(message Message) (types.SegmentEntry, error) {
 		return entry, fmt.Errorf("unable to parse %s %s", timestampRepr, err)
 	}
 
-	if conjoinedPart, ok = message.Map["conjoined-part"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable conjoined-part %T, %s",
-			message.Map["conjoined-part"], message.Map["conjoined-part"])
+	if message.Map["conjoined-part"] != nil {
+		if conjoinedPart, ok = message.Map["conjoined-part"].(float64); !ok {
+			return entry, fmt.Errorf("unparseable conjoined-part %T, %s",
+				message.Map["conjoined-part"], message.Map["conjoined-part"])
+		}
+		entry.ConjoinedPart = uint32(conjoinedPart)
 	}
-	entry.ConjoinedPart = uint32(conjoinedPart)
 
 	if segmentNum, ok = message.Map["segment-num"].(float64); !ok {
 		return entry, fmt.Errorf("unparseable segment-num %T, %s",

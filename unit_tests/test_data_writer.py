@@ -187,7 +187,7 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["user-request-id"], user_request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def test_large_archive(self):
+    def xxxtest_large_archive(self):
 
         """
         test archiving a file that needs more than one message.
@@ -330,17 +330,26 @@ class TestDataWriter(unittest.TestCase):
         self.assertEqual(reply["user-request-id"], user_request_id)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def _destroy(self, collection_id, key, timestamp, segment_num):
-        message_id = uuid.uuid1().hex
+    def _destroy(self, collection_id, key, unified_id_to_delete, timestamp, 
+        segment_num):
+        user_request_id = uuid.uuid1().hex
         archive_priority = create_priority()
+
+        unified_id_factory = UnifiedIDFactory(1)
+        unified_id = unified_id_factory.next()
+
         message = {
-            "message-type"      : "destroy-key",
-            "message-id"        : message_id,
-            "priority"          : archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
+            "message-type"          : "destroy-key",
+            "priority"              : archive_priority,
+            "user-request-id"       : user_request_id,
+            "collection-id"         : collection_id,
+            "key"                   : key,
+            "unified-id-to-delete"  : unified_id_to_delete,
+            "unified-id"            : unified_id,
+            "timestamp-repr"        : repr(timestamp),
+            "segment-num"           : segment_num,
+            "source-node-name"      : _local_node_name,
+            "handoff-node-name"     : None,
         }
         reply = send_request_and_get_reply(
             _local_node_name,
@@ -349,42 +358,22 @@ class TestDataWriter(unittest.TestCase):
             _client_address,
             message
         )
-        self.assertEqual(reply["message-id"], message_id)
         self.assertEqual(reply["message-type"], "destroy-key-reply")
+        self.assertEqual(reply["user-request-id"], user_request_id)
         
         return reply
 
-    def _purge(self, collection_id, key, timestamp, segment_num):
-        message_id = uuid.uuid1().hex
-        archive_priority = create_priority()
-        message = {
-            "message-type"      : "purge-key",
-            "message-id"        : message_id,
-            "priority"          : archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key,
-            "timestamp-repr"    : repr(timestamp),
-            "segment-num"       : segment_num,
-        }
-        reply = send_request_and_get_reply(
-            _local_node_name,
-            _data_writer_address, 
-            _local_node_name,
-            _client_address,
-            message
-        )
-        self.assertEqual(reply["message-id"], message_id)
-        self.assertEqual(reply["message-type"], "purge-key-reply")
-
-        return reply
-
-    def xxxtest_destroy_nonexistent_key(self):
+    def test_destroy_nonexistent_key(self):
         """test destroying a key that does not exist, with no complications"""
+        unified_id_factory = UnifiedIDFactory(1)
+        unified_id = unified_id_factory.next()
+
         collection_id = 1001
         key  = self._key_generator.next()
         segment_num = 4
         timestamp = create_timestamp()
-        reply = self._destroy(collection_id, key, timestamp, segment_num)
+        reply = self._destroy(collection_id, key, unified_id, timestamp, 
+            segment_num)
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
     def xxxtest_simple_destroy(self):
@@ -540,59 +529,6 @@ class TestDataWriter(unittest.TestCase):
         )
         self.assertEqual(reply["result"], "success", reply["error-message"])
 
-    def xxxtest_purge_nonexistent_key(self):
-        """test purgeing a key that does not exist, with no complicatons"""
-        collection_id = 1001
-        key  = self._key_generator.next()
-        segment_num = 4
-        timestamp = create_timestamp()
-        reply = self._purge(collection_id, key, timestamp, segment_num)
-        self.assertEqual(reply["result"], "success", reply)
-
-    def xxxtest_simple_purge(self):
-        """test purging a key that exists, with no complicatons"""
-        file_size = 10 * 64 * 1024
-        content_item = random_string(file_size) 
-        message_id = uuid.uuid1().hex
-        collection_id = 1001
-        key  = self._key_generator.next()
-        archive_priority = create_priority()
-        archive_timestamp = create_timestamp()
-        segment_num = 2
-
-        file_adler32 = zlib.adler32(content_item)
-        file_md5 = hashlib.md5(content_item)
-
-        message = {
-            "message-type"      : "archive-key-entire",
-            "message-id"        : message_id,
-            "priority"          : archive_priority,
-            "collection-id"     : collection_id,
-            "key"               : key, 
-            "timestamp-repr"    : repr(archive_timestamp),
-            "segment-num"       : segment_num,
-            "segment-size"      : file_size,
-            "segment-adler32"   : file_adler32,
-            "segment-md5-digest": b64encode(file_md5.digest()),
-            "file-size"         : file_size,
-            "file-adler32"      : file_adler32,
-            "file-hash"         : b64encode(file_md5.digest()),
-            "handoff-node-name" : None,
-        }
-        reply = send_request_and_get_reply(
-            _local_node_name,
-            _data_writer_address, 
-            _local_node_name,
-            _client_address,
-            message, 
-            data=content_item
-        )
-        self.assertEqual(reply["message-id"], message_id)
-        self.assertEqual(reply["message-type"], "archive-key-final-reply")
-        self.assertEqual(reply["result"], "success")
-
-        reply = self._purge(collection_id, key, archive_timestamp, segment_num)
-        self.assertEqual(reply["result"], "success", reply["error-message"])
 
 if __name__ == "__main__":
     initialize_logging(_log_path)

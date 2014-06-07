@@ -26,6 +26,12 @@ const (
             handoff_node_id) 
         values ($1, $2, 'A', $3, $4, $5, $6, $7, $8) 
         returning id`
+	cancelSegment = `
+       update nimbusio_node.segment
+        set status = 'C'
+        where unified_id = $1
+        and conjoined_part = $2
+        and segment_num = $3`
 	finishSegment = `
         update nimbusio_node.segment 
         set status = 'F',
@@ -110,6 +116,7 @@ var (
 
 	queryItems = []queryItem{
 		queryItem{Name: "new-segment", Query: newSegment},
+		queryItem{Name: "cancel-segment", Query: cancelSegment},
 		queryItem{Name: "finish-segment", Query: finishSegment},
 		queryItem{Name: "new-tombstone", Query: newTombstone},
 		queryItem{Name: "new-tombstone-for-unified-id",

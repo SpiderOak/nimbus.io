@@ -55,6 +55,7 @@ func NewMessageHandler() chan<- Message {
 		"archive-key-start":  handleArchiveKeyStart,
 		"archive-key-next":   handleArchiveKeyNext,
 		"archive-key-final":  handleArchiveKeyFinal,
+		"archive-key-cancel": handleArchiveKeyCancel,
 		"destroy-key":        handleDestroyKey}
 	pushSockets := make(map[string]*zmq4.Socket)
 
@@ -376,6 +377,35 @@ func handleArchiveKeyFinal(message Message) MessageMap {
 	return reply
 }
 
+func handleArchiveKeyCancel(message Message) MessageMap {
+	var cancelEntry types.CancelEntry
+	var err error
+
+	reply := createReply(message)
+
+	if cancelEntry, err = parseCancelEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	lgr := logger.NewLogger(message.UserRequestID, cancelEntry.UnifiedID,
+		cancelEntry.ConjoinedPart, cancelEntry.SegmentNum, "")
+	lgr.Info("archive-key-cancel")
+
+	if err = nimbusioWriter.CancelSegment(lgr, cancelEntry); err != nil {
+		lgr.Error("CancelSegment: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
+
+	return reply
+}
+
 func handleDestroyKey(message Message) MessageMap {
 	var segmentEntry types.SegmentEntry
 	var rawUnifiedIDToDestroy float64
@@ -610,6 +640,35 @@ func parseFileEntry(message Message) (types.FileEntry, error) {
 	return entry, nil
 }
 
+func parseCancelEntry(message Message) (types.CancelEntry, error) {
+	var entry types.CancelEntry
+	var ok bool
+	var unifiedID float64
+	var conjoinedPart float64
+	var segmentNum float64
+
+	if unifiedID, ok = message.Map["unified-id"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable unified-id %T, %s",
+			message.Map["unified-id"], message.Map["unified-id"])
+	}
+	entry.UnifiedID = uint64(unifiedID)
+
+	if message.Map["conjoined-part"] != nil {
+		if conjoinedPart, ok = message.Map["conjoined-part"].(float64); !ok {
+			return entry, fmt.Errorf("unparseable conjoined-part %T, %s",
+				message.Map["conjoined-part"], message.Map["conjoined-part"])
+		}
+		entry.ConjoinedPart = uint32(conjoinedPart)
+	}
+
+	if segmentNum, ok = message.Map["segment-num"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable segment-num %T, %s",
+			message.Map["segment-num"], message.Map["segment-num"])
+	}
+	entry.SegmentNum = uint8(segmentNum)
+
+	return entry, nil
+}
 func MD5DigestMatches(data []byte, md5Digest []byte) bool {
 	hasher := md5.New()
 	hasher.Write(data)

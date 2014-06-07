@@ -23,6 +23,9 @@ type NimbusioWriter interface {
 	StoreSequence(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		sequenceEntry types.SequenceEntry, data []byte) error
 
+	// CancelSegment stops processing the segment
+	CancelSegment(lgr logger.Logger, cancelEntry types.CancelEntry) error
+
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		fileEntry types.FileEntry) error
@@ -157,6 +160,30 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 
 	entry.LastActionTime = tools.Timestamp()
 	writer.SegmentMap[key] = entry
+
+	return nil
+}
+
+// CancelSegment stops storing the segment
+func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
+	cancelEntry types.CancelEntry) error {
+	var err error
+
+	lgr.Debug("CancelSegment")
+
+	key := segmentKey{cancelEntry.UnifiedID, cancelEntry.ConjoinedPart,
+		cancelEntry.SegmentNum}
+	delete(writer.SegmentMap, key)
+
+	stmt := nodedb.Stmts["cancel-segment"]
+	_, err = stmt.Exec(
+		cancelEntry.UnifiedID,
+		cancelEntry.ConjoinedPart,
+		cancelEntry.SegmentNum)
+
+	if err != nil {
+		return fmt.Errorf("cancel-segment %s", err)
+	}
 
 	return nil
 }

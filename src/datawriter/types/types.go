@@ -68,3 +68,17 @@ func (entry FileEntry) String() string {
 		entry.Adler32,
 		entry.MetaData)
 }
+
+// CancelEntry tells us to cancel a specific archive
+type CancelEntry struct {
+	UnifiedID     uint64
+	ConjoinedPart uint32
+	SegmentNum    uint8
+}
+
+func (entry CancelEntry) String() string {
+	return fmt.Sprintf("%d %d %d",
+		entry.UnifiedID,
+		entry.ConjoinedPart,
+		entry.SegmentNum)
+}

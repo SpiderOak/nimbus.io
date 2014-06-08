@@ -25,17 +25,17 @@ const (
 )
 
 // message handler takes a message and returns a reply
-type messageHandler func(message Message) MessageMap
+type messageHandler func(message types.Message) types.MessageMap
 
 var (
 	nodeIDMap      map[string]uint32
 	nimbusioWriter writer.NimbusioWriter
 )
 
-func NewMessageHandler() chan<- Message {
+func NewMessageHandler() chan<- types.Message {
 	var err error
 
-	messageChan := make(chan Message, messageChanCapacity)
+	messageChan := make(chan types.Message, messageChanCapacity)
 
 	if nodeIDMap, err = tools.GetNodeIDMap(); err != nil {
 		fog.Critical("NewMessageHandler: tools.GetNodeIDMap() failed %s", err)
@@ -127,7 +127,7 @@ func createPushSocket() (*zmq4.Socket, error) {
 	return pushSocket, nil
 }
 
-func handleArchiveKeyEntire(message Message) MessageMap {
+func handleArchiveKeyEntire(message types.Message) types.MessageMap {
 	var segmentEntry types.SegmentEntry
 	var sequenceEntry types.SequenceEntry
 	var fileEntry types.FileEntry
@@ -201,7 +201,7 @@ func handleArchiveKeyEntire(message Message) MessageMap {
 	return reply
 }
 
-func handleArchiveKeyStart(message Message) MessageMap {
+func handleArchiveKeyStart(message types.Message) types.MessageMap {
 	var segmentEntry types.SegmentEntry
 	var sequenceEntry types.SequenceEntry
 	var err error
@@ -261,7 +261,7 @@ func handleArchiveKeyStart(message Message) MessageMap {
 	return reply
 }
 
-func handleArchiveKeyNext(message Message) MessageMap {
+func handleArchiveKeyNext(message types.Message) types.MessageMap {
 	var segmentEntry types.SegmentEntry
 	var sequenceEntry types.SequenceEntry
 	var err error
@@ -314,7 +314,7 @@ func handleArchiveKeyNext(message Message) MessageMap {
 	return reply
 }
 
-func handleArchiveKeyFinal(message Message) MessageMap {
+func handleArchiveKeyFinal(message types.Message) types.MessageMap {
 	var segmentEntry types.SegmentEntry
 	var sequenceEntry types.SequenceEntry
 	var fileEntry types.FileEntry
@@ -381,7 +381,7 @@ func handleArchiveKeyFinal(message Message) MessageMap {
 	return reply
 }
 
-func handleArchiveKeyCancel(message Message) MessageMap {
+func handleArchiveKeyCancel(message types.Message) types.MessageMap {
 	var cancelEntry types.CancelEntry
 	var err error
 
@@ -410,7 +410,7 @@ func handleArchiveKeyCancel(message Message) MessageMap {
 	return reply
 }
 
-func handleDestroyKey(message Message) MessageMap {
+func handleDestroyKey(message types.Message) types.MessageMap {
 	var segmentEntry types.SegmentEntry
 	var rawUnifiedIDToDestroy float64
 	var unifiedIDToDestroy uint64
@@ -451,7 +451,7 @@ func handleDestroyKey(message Message) MessageMap {
 	return reply
 }
 
-func handleStartConjoinedArchive(message Message) MessageMap {
+func handleStartConjoinedArchive(message types.Message) types.MessageMap {
 	var conjoinedEntry types.ConjoinedEntry
 	var err error
 
@@ -480,7 +480,7 @@ func handleStartConjoinedArchive(message Message) MessageMap {
 	return reply
 }
 
-func handleAbortConjoinedArchive(message Message) MessageMap {
+func handleAbortConjoinedArchive(message types.Message) types.MessageMap {
 	var conjoinedEntry types.ConjoinedEntry
 	var err error
 
@@ -509,7 +509,7 @@ func handleAbortConjoinedArchive(message Message) MessageMap {
 	return reply
 }
 
-func handleFinishConjoinedArchive(message Message) MessageMap {
+func handleFinishConjoinedArchive(message types.Message) types.MessageMap {
 	var conjoinedEntry types.ConjoinedEntry
 	var err error
 
@@ -538,7 +538,7 @@ func handleFinishConjoinedArchive(message Message) MessageMap {
 	return reply
 }
 
-func handleWebWriterStart(message Message) MessageMap {
+func handleWebWriterStart(message types.Message) types.MessageMap {
 	var webWriterStartEntry types.WebWriterStartEntry
 	var err error
 
@@ -567,8 +567,8 @@ func handleWebWriterStart(message Message) MessageMap {
 	return reply
 }
 
-func createReply(message Message) MessageMap {
-	reply := make(MessageMap)
+func createReply(message types.Message) types.MessageMap {
+	reply := make(types.MessageMap)
 	if message.Type == "archive-key-entire" {
 		reply["message-type"] = "archive-key-final-reply"
 	} else {
@@ -585,7 +585,7 @@ func createReply(message Message) MessageMap {
 	return reply
 }
 
-func parseSegmentEntry(message Message) (types.SegmentEntry, error) {
+func parseSegmentEntry(message types.Message) (types.SegmentEntry, error) {
 	var entry types.SegmentEntry
 	var ok bool
 	var err error
@@ -663,7 +663,7 @@ func parseSegmentEntry(message Message) (types.SegmentEntry, error) {
 	return entry, nil
 }
 
-func parseSequenceEntry(message Message) (types.SequenceEntry, error) {
+func parseSequenceEntry(message types.Message) (types.SequenceEntry, error) {
 	var entry types.SequenceEntry
 	var err error
 	var ok bool
@@ -715,7 +715,7 @@ func parseSequenceEntry(message Message) (types.SequenceEntry, error) {
 	return entry, nil
 }
 
-func parseFileEntry(message Message) (types.FileEntry, error) {
+func parseFileEntry(message types.Message) (types.FileEntry, error) {
 	var entry types.FileEntry
 	var err error
 	var ok bool
@@ -760,7 +760,7 @@ func parseFileEntry(message Message) (types.FileEntry, error) {
 	return entry, nil
 }
 
-func parseCancelEntry(message Message) (types.CancelEntry, error) {
+func parseCancelEntry(message types.Message) (types.CancelEntry, error) {
 	var entry types.CancelEntry
 	var ok bool
 	var unifiedID float64
@@ -790,7 +790,7 @@ func parseCancelEntry(message Message) (types.CancelEntry, error) {
 	return entry, nil
 }
 
-func parseConjoinedEntry(message Message) (types.ConjoinedEntry, error) {
+func parseConjoinedEntry(message types.Message) (types.ConjoinedEntry, error) {
 	var entry types.ConjoinedEntry
 	var ok bool
 	var err error
@@ -840,7 +840,7 @@ func parseConjoinedEntry(message Message) (types.ConjoinedEntry, error) {
 	return entry, nil
 }
 
-func parseWebWriterStartEntry(message Message) (types.WebWriterStartEntry, error) {
+func parseWebWriterStartEntry(message types.Message) (types.WebWriterStartEntry, error) {
 	var entry types.WebWriterStartEntry
 	var ok bool
 	var err error

@@ -8,25 +8,16 @@ import (
 	"github.com/pebbe/zmq4"
 
 	"fog"
+
+	"datawriter/types"
 )
 
-type MessageMap map[string]interface{}
-type Message struct {
-	Type          string
-	ID            string
-	ClientTag     string
-	ClientAddress string
-	UserRequestID string
-	Map           MessageMap
-	Data          []byte
-}
-
-type ackOnlyMessageHandler func(Message)
+type ackOnlyMessageHandler func(types.Message)
 
 // NewWriterSocketHandler returns a function suitable for use as a handler
 // by zmq.Reactor
 func NewWriterSocketHandler(writerSocket *zmq4.Socket,
-	messageChan chan<- Message) func(zmq4.State) error {
+	messageChan chan<- types.Message) func(zmq4.State) error {
 
 	// these messages get only and ack, not a reply
 	var ackOnlyMessages = map[string]ackOnlyMessageHandler{
@@ -43,7 +34,7 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 			return fmt.Errorf("RecvMessage %s", err)
 		}
 
-		var message Message
+		var message types.Message
 		err = json.Unmarshal([]byte(marshalledMessage[0]), &message.Map)
 		if err != nil {
 			return fmt.Errorf("Unmarshal %s", err)
@@ -56,7 +47,7 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 
 		message.Data = []byte(strings.Join(marshalledMessage[1:], ""))
 
-		reply := MessageMap{
+		reply := types.MessageMap{
 			"message-type":  "resilient-server-ack",
 			"message-id":    message.ID,
 			"incoming-type": message.Type,
@@ -93,7 +84,7 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 	}
 }
 
-func castCommonItems(message *Message) error {
+func castCommonItems(message *types.Message) error {
 	var ok bool
 	var userRequestID interface{}
 
@@ -130,14 +121,14 @@ func castCommonItems(message *Message) error {
 
 }
 
-func handlePing(_ Message) {
+func handlePing(_ types.Message) {
 
 }
 
-func handleHandshake(message Message) {
+func handleHandshake(message types.Message) {
 	fog.Info("handshake from %s", message.ClientAddress)
 }
 
-func handleSignoff(message Message) {
+func handleSignoff(message types.Message) {
 	fog.Info("signoff from   %s", message.ClientAddress)
 }

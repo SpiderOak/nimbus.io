@@ -5,6 +5,21 @@ import (
 	"time"
 )
 
+// MessageMap is a raw message as it comes from JSON
+type MessageMap map[string]interface{}
+
+// Message is a partially parsed message, specifically with Type available
+// for directing the message to a handler
+type Message struct {
+	Type          string
+	ID            string
+	ClientTag     string
+	ClientAddress string
+	UserRequestID string
+	Map           MessageMap
+	Data          []byte
+}
+
 // SegmentEntry contains the data from messages identifying segment level
 // information
 type SegmentEntry struct {

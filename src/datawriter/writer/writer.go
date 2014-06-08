@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
@@ -26,6 +27,14 @@ type NimbusioWriter interface {
 	// CancelSegment stops processing the segment
 	CancelSegment(lgr logger.Logger, cancelEntry types.CancelEntry) error
 
+	// CancelSegmentsFromNode cancels all all segment rows
+	//    * from a specifiic source node
+	//    * are in active status
+	//    * with a timestamp earlier than the specified time.
+	// This is triggered by a web server restart
+	CancelSegmentsFromNode(lgr logger.Logger,
+		webWriterStartEntry types.WebWriterStartEntry) error
+
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		fileEntry types.FileEntry) error
@@ -33,6 +42,18 @@ type NimbusioWriter interface {
 	// DestroyKey makes a key inaccessible
 	DestroyKey(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		unifiedIDToDestroy uint64) error
+
+	// StartConjoinedArchive begins a conjoined archive
+	StartConjoinedArchive(lgr logger.Logger,
+		conjoinedEntry types.ConjoinedEntry) error
+
+	// AbortConjoinedArchive cancels conjoined archive
+	AbortConjoinedArchive(lgr logger.Logger,
+		conjoinedEntry types.ConjoinedEntry) error
+
+	// FinishConjoinedArchive completes a conjoined archive
+	FinishConjoinedArchive(lgr logger.Logger,
+		conjoinedEntry types.ConjoinedEntry) error
 }
 
 type segmentKey struct {
@@ -188,6 +209,29 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 	return nil
 }
 
+// CancelSegmentsFromNode cancels all all segment rows
+//    * from a specifiic source node
+//    * are in active status
+//    * with a timestamp earlier than the specified time.
+// This is triggered by a web server restart
+func (writer *nimbusioWriter) CancelSegmentsFromNode(lgr logger.Logger,
+	webWriterStartEntry types.WebWriterStartEntry) error {
+	var err error
+
+	lgr.Debug("CancelSegmentsFromNode %s", webWriterStartEntry.SourceNodeID)
+
+	stmt := nodedb.Stmts["cancel-segments-from-node"]
+	_, err = stmt.Exec(
+		webWriterStartEntry.SourceNodeID,
+		webWriterStartEntry.Timestamp)
+
+	if err != nil {
+		return fmt.Errorf("cancel-segments-from-node %s", err)
+	}
+
+	return nil
+}
+
 // FinishSegment finishes storing the segment
 func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 	segmentEntry types.SegmentEntry, fileEntry types.FileEntry) error {
@@ -297,6 +341,109 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 	}
 	// Set delete_timestamp on all conjoined rows for this key
 	// that are older than this tombstone
+
+	return nil
+}
+
+// StartConjoinedArchive begins a conjoined archive
+func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
+	conjoinedEntry types.ConjoinedEntry) error {
+	var err error
+
+	lgr.Debug("StartConjoinedArchive %s", conjoinedEntry)
+
+	var nullHandoffNodeID sql.NullInt64
+	if conjoinedEntry.HandoffNodeID > 0 {
+		nullHandoffNodeID.Int64 = int64(conjoinedEntry.HandoffNodeID)
+	}
+
+	stmt := nodedb.Stmts["start-conjoined"]
+	_, err = stmt.Exec(
+		conjoinedEntry.CollectionID,
+		conjoinedEntry.Key,
+		conjoinedEntry.UnifiedID,
+		conjoinedEntry.Timestamp,
+		nullHandoffNodeID)
+
+	if err != nil {
+		return fmt.Errorf("start-conjoined %s", err)
+	}
+
+	return nil
+}
+
+// AbortConjoinedArchive cancels conjoined archive
+func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
+	conjoinedEntry types.ConjoinedEntry) error {
+	var err error
+
+	lgr.Debug("StartConjoinedArchive %s", conjoinedEntry)
+
+	if conjoinedEntry.HandoffNodeID > 0 {
+
+		stmt := nodedb.Stmts["abort-conjoined-for-handoff-node-id"]
+		_, err = stmt.Exec(
+			conjoinedEntry.Timestamp,
+			conjoinedEntry.CollectionID,
+			conjoinedEntry.Key,
+			conjoinedEntry.UnifiedID,
+			conjoinedEntry.HandoffNodeID)
+
+		if err != nil {
+			return fmt.Errorf("abort-conjoined-for-handoff-node-id %s", err)
+		}
+	} else {
+
+		stmt := nodedb.Stmts["abort-conjoined"]
+		_, err = stmt.Exec(
+			conjoinedEntry.Timestamp,
+			conjoinedEntry.CollectionID,
+			conjoinedEntry.Key,
+			conjoinedEntry.UnifiedID)
+
+		if err != nil {
+			return fmt.Errorf("abort-conjoined %s", err)
+		}
+
+	}
+
+	return nil
+}
+
+// FinishConjoinedArchive completes a conjoined archive
+func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
+	conjoinedEntry types.ConjoinedEntry) error {
+	var err error
+
+	lgr.Debug("FinishConjoinedArchive %s", conjoinedEntry)
+
+	if conjoinedEntry.HandoffNodeID > 0 {
+
+		stmt := nodedb.Stmts["finish-conjoined-for-handoff-node-id"]
+		_, err = stmt.Exec(
+			conjoinedEntry.Timestamp,
+			conjoinedEntry.CollectionID,
+			conjoinedEntry.Key,
+			conjoinedEntry.UnifiedID,
+			conjoinedEntry.HandoffNodeID)
+
+		if err != nil {
+			return fmt.Errorf("finish-conjoined-for-handoff-node-id %s", err)
+		}
+	} else {
+
+		stmt := nodedb.Stmts["finish-conjoined"]
+		_, err = stmt.Exec(
+			conjoinedEntry.Timestamp,
+			conjoinedEntry.CollectionID,
+			conjoinedEntry.Key,
+			conjoinedEntry.UnifiedID)
+
+		if err != nil {
+			return fmt.Errorf("finish-conjoined %s", err)
+		}
+
+	}
 
 	return nil
 }

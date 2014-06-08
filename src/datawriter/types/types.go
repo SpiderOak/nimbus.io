@@ -82,3 +82,35 @@ func (entry CancelEntry) String() string {
 		entry.ConjoinedPart,
 		entry.SegmentNum)
 }
+
+// ConjoinedEntry identifies a conjoined upload
+type ConjoinedEntry struct {
+	CollectionID  uint32
+	Key           string
+	UnifiedID     uint64
+	Timestamp     time.Time
+	HandoffNodeID uint32
+}
+
+func (entry ConjoinedEntry) String() string {
+	return fmt.Sprintf("%d %s %d %s %d",
+		entry.CollectionID,
+		entry.Key,
+		entry.UnifiedID,
+		entry.Timestamp,
+		entry.HandoffNodeID)
+}
+
+// WebWriterStartEntry identifies a web writer (re)start
+type WebWriterStartEntry struct {
+	UnifiedID    uint64
+	Timestamp    time.Time
+	SourceNodeID uint32
+}
+
+func (entry WebWriterStartEntry) String() string {
+	return fmt.Sprintf("%d %s %d",
+		entry.UnifiedID,
+		entry.Timestamp,
+		entry.SourceNodeID)
+}

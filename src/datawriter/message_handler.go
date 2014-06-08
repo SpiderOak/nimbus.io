@@ -51,12 +51,16 @@ func NewMessageHandler() chan<- Message {
 	}
 
 	dispatchTable := map[string]messageHandler{
-		"archive-key-entire": handleArchiveKeyEntire,
-		"archive-key-start":  handleArchiveKeyStart,
-		"archive-key-next":   handleArchiveKeyNext,
-		"archive-key-final":  handleArchiveKeyFinal,
-		"archive-key-cancel": handleArchiveKeyCancel,
-		"destroy-key":        handleDestroyKey}
+		"archive-key-entire":       handleArchiveKeyEntire,
+		"archive-key-start":        handleArchiveKeyStart,
+		"archive-key-next":         handleArchiveKeyNext,
+		"archive-key-final":        handleArchiveKeyFinal,
+		"archive-key-cancel":       handleArchiveKeyCancel,
+		"destroy-key":              handleDestroyKey,
+		"start-conjoined-archive":  handleStartConjoinedArchive,
+		"abort-conjoined-archive":  handleAbortConjoinedArchive,
+		"finish-conjoined-archive": handleFinishConjoinedArchive,
+		"web-writer-start":         handleWebWriterStart}
 	pushSockets := make(map[string]*zmq4.Socket)
 
 	go func() {
@@ -447,6 +451,122 @@ func handleDestroyKey(message Message) MessageMap {
 	return reply
 }
 
+func handleStartConjoinedArchive(message Message) MessageMap {
+	var conjoinedEntry types.ConjoinedEntry
+	var err error
+
+	reply := createReply(message)
+
+	if conjoinedEntry, err = parseConjoinedEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	lgr := logger.NewLogger(message.UserRequestID, conjoinedEntry.UnifiedID,
+		0, 0, conjoinedEntry.Key)
+	lgr.Info("start-conjoined-archive (%d)", conjoinedEntry.CollectionID)
+
+	if err = nimbusioWriter.StartConjoinedArchive(lgr, conjoinedEntry); err != nil {
+		lgr.Error("StartConjoinedArchive: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
+
+	return reply
+}
+
+func handleAbortConjoinedArchive(message Message) MessageMap {
+	var conjoinedEntry types.ConjoinedEntry
+	var err error
+
+	reply := createReply(message)
+
+	if conjoinedEntry, err = parseConjoinedEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	lgr := logger.NewLogger(message.UserRequestID, conjoinedEntry.UnifiedID,
+		0, 0, conjoinedEntry.Key)
+	lgr.Info("abort-conjoined-archive (%d)", conjoinedEntry.CollectionID)
+
+	if err = nimbusioWriter.AbortConjoinedArchive(lgr, conjoinedEntry); err != nil {
+		lgr.Error("StartConjoinedArchive: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
+
+	return reply
+}
+
+func handleFinishConjoinedArchive(message Message) MessageMap {
+	var conjoinedEntry types.ConjoinedEntry
+	var err error
+
+	reply := createReply(message)
+
+	if conjoinedEntry, err = parseConjoinedEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	lgr := logger.NewLogger(message.UserRequestID, conjoinedEntry.UnifiedID,
+		0, 0, conjoinedEntry.Key)
+	lgr.Info("finish-conjoined-archive (%d)", conjoinedEntry.CollectionID)
+
+	if err = nimbusioWriter.FinishConjoinedArchive(lgr, conjoinedEntry); err != nil {
+		lgr.Error("StartConjoinedArchive: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
+
+	return reply
+}
+
+func handleWebWriterStart(message Message) MessageMap {
+	var webWriterStartEntry types.WebWriterStartEntry
+	var err error
+
+	reply := createReply(message)
+
+	if webWriterStartEntry, err = parseWebWriterStartEntry(message); err != nil {
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	lgr := logger.NewLogger(message.UserRequestID, webWriterStartEntry.UnifiedID,
+		0, 0, "")
+	lgr.Info("web-writer-start %d", webWriterStartEntry.SourceNodeID)
+
+	if err = nimbusioWriter.CancelSegmentsFromNode(lgr, webWriterStartEntry); err != nil {
+		lgr.Error("CancelSegmentsFromNode: %s", err)
+		reply["result"] = "error"
+		reply["error-message"] = err.Error()
+		return reply
+	}
+
+	reply["result"] = "success"
+	reply["error-message"] = ""
+
+	return reply
+}
+
 func createReply(message Message) MessageMap {
 	reply := make(MessageMap)
 	if message.Type == "archive-key-entire" {
@@ -669,6 +789,93 @@ func parseCancelEntry(message Message) (types.CancelEntry, error) {
 
 	return entry, nil
 }
+
+func parseConjoinedEntry(message Message) (types.ConjoinedEntry, error) {
+	var entry types.ConjoinedEntry
+	var ok bool
+	var err error
+	var collectionID float64
+	var unifiedID float64
+	var timestampRepr string
+	var handoffNodeName string
+
+	if collectionID, ok = message.Map["collection-id"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable collection-id %T, %s",
+			message.Map["collection-id"], message.Map["collection-id"])
+	}
+	entry.CollectionID = uint32(collectionID)
+
+	if entry.Key, ok = message.Map["key"].(string); !ok {
+		return entry, fmt.Errorf("unparseable key %T, %s",
+			message.Map["key"], message.Map["key"])
+	}
+
+	if unifiedID, ok = message.Map["unified-id"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable unified-id %T, %s",
+			message.Map["unified-id"], message.Map["unified-id"])
+	}
+	entry.UnifiedID = uint64(unifiedID)
+
+	if timestampRepr, ok = message.Map["timestamp-repr"].(string); !ok {
+		return entry, fmt.Errorf("unparseable timestamp-repr %T, %s",
+			message.Map["timestamp-repr"], message.Map["timestamp-repr"])
+	}
+	if entry.Timestamp, err = ParseTimestampRepr(timestampRepr); err != nil {
+		return entry, fmt.Errorf("unable to parse %s %s", timestampRepr, err)
+	}
+
+	if message.Map["handoff-node-name"] != nil {
+		handoffNodeName, ok = message.Map["handoff-node-name"].(string)
+		if !ok {
+			return entry, fmt.Errorf("unparseable handoff-node-name %T, %s",
+				message.Map["handoff-node-name"], message.Map["handoff-node-name"])
+		}
+		entry.HandoffNodeID, ok = nodeIDMap[handoffNodeName]
+		if !ok {
+			return entry, fmt.Errorf("unknown handoff-node-name %s",
+				message.Map["handoff-node-name"])
+		}
+	}
+
+	return entry, nil
+}
+
+func parseWebWriterStartEntry(message Message) (types.WebWriterStartEntry, error) {
+	var entry types.WebWriterStartEntry
+	var ok bool
+	var err error
+	var unifiedID float64
+	var timestampRepr string
+	var sourceNodeName string
+
+	if unifiedID, ok = message.Map["unified_id"].(float64); !ok {
+		return entry, fmt.Errorf("unparseable unified_id %T, %s",
+			message.Map["unified_id"], message.Map["unified_id"])
+	}
+	entry.UnifiedID = uint64(unifiedID)
+
+	if timestampRepr, ok = message.Map["timestamp_repr"].(string); !ok {
+		return entry, fmt.Errorf("unparseable timestamp_repr %T, %s",
+			message.Map["timestamp_repr"], message.Map["timestamp_repr"])
+	}
+	if entry.Timestamp, err = ParseTimestampRepr(timestampRepr); err != nil {
+		return entry, fmt.Errorf("unable to parse %s %s", timestampRepr, err)
+	}
+
+	sourceNodeName, ok = message.Map["source_node_name"].(string)
+	if !ok {
+		return entry, fmt.Errorf("unparseable source_node_name %T, %s",
+			message.Map["source_node_name"], message.Map["source_node_name"])
+	}
+	entry.SourceNodeID, ok = nodeIDMap[sourceNodeName]
+	if !ok {
+		return entry, fmt.Errorf("unknown source_node_name %s",
+			message.Map["source_node_name"])
+	}
+
+	return entry, nil
+}
+
 func MD5DigestMatches(data []byte, md5Digest []byte) bool {
 	hasher := md5.New()
 	hasher.Write(data)

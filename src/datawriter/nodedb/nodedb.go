@@ -32,6 +32,12 @@ const (
         where unified_id = $1
         and conjoined_part = $2
         and segment_num = $3`
+	cancelSegmentsFromNode = `
+        update nimbusio_node.segment
+        set status = 'C'
+        where source_node_id = $1 
+        and status = 'A' 
+        and timestamp < $2`
 	finishSegment = `
         update nimbusio_node.segment 
         set status = 'F',
@@ -96,6 +102,38 @@ const (
             meta_value,
             timestamp
         ) values ($1, $2, $3, $4, $5)`
+	startConjoined = `
+        insert into nimbusio_node.conjoined (
+            collection_id, key, unified_id, create_timestamp, handoff_node_id
+        ) values ($1, $2, $3, $4, $5)`
+	abortConjoined = `
+        update nimbusio_node.conjoined 
+        set abort_timestamp = $1
+        where collection_id = $2
+        and key = $3
+        and unified_id = $4
+        and handoff_node_id is null`
+	abortConjoinedForHandoffNodeID = `
+        update nimbusio_node.conjoined 
+        set abort_timestamp = $1
+        where collection_id = $2
+        and key = $3
+        and unified_id = $4
+        and handoff_node_id = $5`
+	finishConjoined = `
+        update nimbusio_node.conjoined 
+        set complete_timestamp = $1
+        where collection_id = $2
+        and key = $3
+        and unified_id = $4
+        and handoff_node_id is null`
+	finishConjoinedForHandoffNodeID = `
+        update nimbusio_node.conjoined 
+        set complete_timestamp = $1
+        where collection_id = $2
+        and key = $3
+        and unified_id = $4
+        and handoff_node_id = $5`
 	deleteConjoined = `
         update nimbusio_node.conjoined 
         set delete_timestamp = $1
@@ -117,6 +155,8 @@ var (
 	queryItems = []queryItem{
 		queryItem{Name: "new-segment", Query: newSegment},
 		queryItem{Name: "cancel-segment", Query: cancelSegment},
+		queryItem{Name: "cancel-segments-from-node",
+			Query: cancelSegmentsFromNode},
 		queryItem{Name: "finish-segment", Query: finishSegment},
 		queryItem{Name: "new-tombstone", Query: newTombstone},
 		queryItem{Name: "new-tombstone-for-unified-id",
@@ -125,6 +165,13 @@ var (
 		queryItem{Name: "update-value-file", Query: updateValueFile},
 		queryItem{Name: "new-segment-sequence", Query: newSegmentSequence},
 		queryItem{Name: "new-meta-data", Query: newMetaData},
+		queryItem{Name: "start-conjoined", Query: startConjoined},
+		queryItem{Name: "abort-conjoined", Query: abortConjoined},
+		queryItem{Name: "abort-conjoined-for-handoff-node-id",
+			Query: abortConjoinedForHandoffNodeID},
+		queryItem{Name: "finish-conjoined", Query: finishConjoined},
+		queryItem{Name: "finish-conjoined-for-handoff-node-id",
+			Query: finishConjoinedForHandoffNodeID},
 		queryItem{Name: "delete-conjoined", Query: deleteConjoined},
 		queryItem{Name: "delete-conjoined-for-unified-id",
 			Query: deleteConjoinedForUnifiedID}}

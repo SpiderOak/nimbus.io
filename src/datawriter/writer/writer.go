@@ -27,14 +27,6 @@ type NimbusioWriter interface {
 	// CancelSegment stops processing the segment
 	CancelSegment(lgr logger.Logger, cancelEntry types.CancelEntry) error
 
-	// CancelSegmentsFromNode cancels all all segment rows
-	//    * from a specifiic source node
-	//    * are in active status
-	//    * with a timestamp earlier than the specified time.
-	// This is triggered by a web server restart
-	CancelSegmentsFromNode(lgr logger.Logger,
-		webWriterStartEntry types.WebWriterStartEntry) error
-
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segmentEntry types.SegmentEntry,
 		fileEntry types.FileEntry) error
@@ -204,29 +196,6 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 
 	if err != nil {
 		return fmt.Errorf("cancel-segment %s", err)
-	}
-
-	return nil
-}
-
-// CancelSegmentsFromNode cancels all all segment rows
-//    * from a specifiic source node
-//    * are in active status
-//    * with a timestamp earlier than the specified time.
-// This is triggered by a web server restart
-func (writer *nimbusioWriter) CancelSegmentsFromNode(lgr logger.Logger,
-	webWriterStartEntry types.WebWriterStartEntry) error {
-	var err error
-
-	lgr.Debug("CancelSegmentsFromNode %s", webWriterStartEntry.SourceNodeID)
-
-	stmt := nodedb.Stmts["cancel-segments-from-node"]
-	_, err = stmt.Exec(
-		webWriterStartEntry.SourceNodeID,
-		webWriterStartEntry.Timestamp)
-
-	if err != nil {
-		return fmt.Errorf("cancel-segments-from-node %s", err)
 	}
 
 	return nil

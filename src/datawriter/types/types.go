@@ -115,17 +115,3 @@ func (entry ConjoinedEntry) String() string {
 		entry.Timestamp,
 		entry.HandoffNodeID)
 }
-
-// WebWriterStartEntry identifies a web writer (re)start
-type WebWriterStartEntry struct {
-	UnifiedID    uint64
-	Timestamp    time.Time
-	SourceNodeID uint32
-}
-
-func (entry WebWriterStartEntry) String() string {
-	return fmt.Sprintf("%d %s %d",
-		entry.UnifiedID,
-		entry.Timestamp,
-		entry.SourceNodeID)
-}

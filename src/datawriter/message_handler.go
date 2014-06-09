@@ -59,8 +59,7 @@ func NewMessageHandler() chan<- types.Message {
 		"destroy-key":              handleDestroyKey,
 		"start-conjoined-archive":  handleStartConjoinedArchive,
 		"abort-conjoined-archive":  handleAbortConjoinedArchive,
-		"finish-conjoined-archive": handleFinishConjoinedArchive,
-		"web-writer-start":         handleWebWriterStart}
+		"finish-conjoined-archive": handleFinishConjoinedArchive}
 	pushSockets := make(map[string]*zmq4.Socket)
 
 	go func() {
@@ -538,35 +537,6 @@ func handleFinishConjoinedArchive(message types.Message) types.MessageMap {
 	return reply
 }
 
-func handleWebWriterStart(message types.Message) types.MessageMap {
-	var webWriterStartEntry types.WebWriterStartEntry
-	var err error
-
-	reply := createReply(message)
-
-	if webWriterStartEntry, err = parseWebWriterStartEntry(message); err != nil {
-		reply["result"] = "error"
-		reply["error-message"] = err.Error()
-		return reply
-	}
-
-	lgr := logger.NewLogger(message.UserRequestID, webWriterStartEntry.UnifiedID,
-		0, 0, "")
-	lgr.Info("web-writer-start %d", webWriterStartEntry.SourceNodeID)
-
-	if err = nimbusioWriter.CancelSegmentsFromNode(lgr, webWriterStartEntry); err != nil {
-		lgr.Error("CancelSegmentsFromNode: %s", err)
-		reply["result"] = "error"
-		reply["error-message"] = err.Error()
-		return reply
-	}
-
-	reply["result"] = "success"
-	reply["error-message"] = ""
-
-	return reply
-}
-
 func createReply(message types.Message) types.MessageMap {
 	reply := make(types.MessageMap)
 	if message.Type == "archive-key-entire" {
@@ -835,42 +805,6 @@ func parseConjoinedEntry(message types.Message) (types.ConjoinedEntry, error) {
 			return entry, fmt.Errorf("unknown handoff-node-name %s",
 				message.Map["handoff-node-name"])
 		}
-	}
-
-	return entry, nil
-}
-
-func parseWebWriterStartEntry(message types.Message) (types.WebWriterStartEntry, error) {
-	var entry types.WebWriterStartEntry
-	var ok bool
-	var err error
-	var unifiedID float64
-	var timestampRepr string
-	var sourceNodeName string
-
-	if unifiedID, ok = message.Map["unified_id"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable unified_id %T, %s",
-			message.Map["unified_id"], message.Map["unified_id"])
-	}
-	entry.UnifiedID = uint64(unifiedID)
-
-	if timestampRepr, ok = message.Map["timestamp_repr"].(string); !ok {
-		return entry, fmt.Errorf("unparseable timestamp_repr %T, %s",
-			message.Map["timestamp_repr"], message.Map["timestamp_repr"])
-	}
-	if entry.Timestamp, err = ParseTimestampRepr(timestampRepr); err != nil {
-		return entry, fmt.Errorf("unable to parse %s %s", timestampRepr, err)
-	}
-
-	sourceNodeName, ok = message.Map["source_node_name"].(string)
-	if !ok {
-		return entry, fmt.Errorf("unparseable source_node_name %T, %s",
-			message.Map["source_node_name"], message.Map["source_node_name"])
-	}
-	entry.SourceNodeID, ok = nodeIDMap[sourceNodeName]
-	if !ok {
-		return entry, fmt.Errorf("unknown source_node_name %s",
-			message.Map["source_node_name"])
 	}
 
 	return entry, nil

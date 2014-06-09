@@ -86,6 +86,8 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 
 func castCommonItems(message *types.Message) error {
 	var ok bool
+	var clientTag interface{}
+	var clientAddress interface{}
 	var userRequestID interface{}
 
 	if message.Type, ok = message.Map["message-type"].(string); !ok {
@@ -98,14 +100,22 @@ func castCommonItems(message *types.Message) error {
 			message.Map["message-id"], message.Map["message-id"])
 	}
 
-	if message.ClientTag, ok = message.Map["client-tag"].(string); !ok {
-		return fmt.Errorf("unparseable client-tag %T, %s",
-			message.Map["client-tag"], message.Map["client-tag"])
+	// the ping message doesn't have a client tag
+	clientTag, ok = message.Map["client-tag"]
+	if ok {
+		if message.ClientTag, ok = clientTag.(string); !ok {
+			return fmt.Errorf("unparseable client-tag %T, %s",
+				message.Map["client-tag"], message.Map["client-tag"])
+		}
 	}
 
-	if message.ClientAddress, ok = message.Map["client-address"].(string); !ok {
-		return fmt.Errorf("unparseable client-address %T, %s",
-			message.Map["client-address"], message.Map["client-address"])
+	// the ping message doesn't have a client address
+	clientAddress, ok = message.Map["client-address"]
+	if ok {
+		if message.ClientAddress, ok = clientAddress.(string); !ok {
+			return fmt.Errorf("unparseable client-address %T, %s",
+				message.Map["client-address"], message.Map["client-address"])
+		}
 	}
 
 	// the handshake message doesn't have user-request-id

@@ -1,7 +1,6 @@
 package writer
 
 import (
-	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
@@ -321,21 +320,30 @@ func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
 
 	lgr.Debug("StartConjoinedArchive %s", conjoinedEntry)
 
-	var nullHandoffNodeID sql.NullInt64
 	if conjoinedEntry.HandoffNodeID > 0 {
-		nullHandoffNodeID.Int64 = int64(conjoinedEntry.HandoffNodeID)
-	}
+		stmt := nodedb.Stmts["start-conjoined-for-handoff"]
+		_, err = stmt.Exec(
+			conjoinedEntry.CollectionID,
+			conjoinedEntry.Key,
+			conjoinedEntry.UnifiedID,
+			conjoinedEntry.Timestamp,
+			conjoinedEntry.HandoffNodeID)
 
-	stmt := nodedb.Stmts["start-conjoined"]
-	_, err = stmt.Exec(
-		conjoinedEntry.CollectionID,
-		conjoinedEntry.Key,
-		conjoinedEntry.UnifiedID,
-		conjoinedEntry.Timestamp,
-		nullHandoffNodeID)
+		if err != nil {
+			return fmt.Errorf("start-conjoined-for-handoff %s", err)
+		}
+	} else {
+		stmt := nodedb.Stmts["start-conjoined"]
+		_, err = stmt.Exec(
+			conjoinedEntry.CollectionID,
+			conjoinedEntry.Key,
+			conjoinedEntry.UnifiedID,
+			conjoinedEntry.Timestamp)
 
-	if err != nil {
-		return fmt.Errorf("start-conjoined %s", err)
+		if err != nil {
+			return fmt.Errorf("start-conjoined %s", err)
+		}
+
 	}
 
 	return nil
@@ -350,7 +358,7 @@ func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
 
 	if conjoinedEntry.HandoffNodeID > 0 {
 
-		stmt := nodedb.Stmts["abort-conjoined-for-handoff-node-id"]
+		stmt := nodedb.Stmts["abort-conjoined-for-handoff"]
 		_, err = stmt.Exec(
 			conjoinedEntry.Timestamp,
 			conjoinedEntry.CollectionID,
@@ -359,7 +367,7 @@ func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
 			conjoinedEntry.HandoffNodeID)
 
 		if err != nil {
-			return fmt.Errorf("abort-conjoined-for-handoff-node-id %s", err)
+			return fmt.Errorf("abort-conjoined-for-handoff %s", err)
 		}
 	} else {
 
@@ -388,7 +396,7 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 
 	if conjoinedEntry.HandoffNodeID > 0 {
 
-		stmt := nodedb.Stmts["finish-conjoined-for-handoff-node-id"]
+		stmt := nodedb.Stmts["finish-conjoined-for-handoff"]
 		_, err = stmt.Exec(
 			conjoinedEntry.Timestamp,
 			conjoinedEntry.CollectionID,
@@ -397,7 +405,7 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 			conjoinedEntry.HandoffNodeID)
 
 		if err != nil {
-			return fmt.Errorf("finish-conjoined-for-handoff-node-id %s", err)
+			return fmt.Errorf("finish-conjoined-for-handoff %s", err)
 		}
 	} else {
 

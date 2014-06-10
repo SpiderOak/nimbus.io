@@ -104,6 +104,10 @@ const (
         ) values ($1, $2, $3, $4, $5)`
 	startConjoined = `
         insert into nimbusio_node.conjoined (
+            collection_id, key, unified_id, create_timestamp
+        ) values ($1, $2, $3, $4)`
+	startConjoinedForHandoff = `
+        insert into nimbusio_node.conjoined (
             collection_id, key, unified_id, create_timestamp, handoff_node_id
         ) values ($1, $2, $3, $4, $5)`
 	abortConjoined = `
@@ -113,7 +117,7 @@ const (
         and key = $3
         and unified_id = $4
         and handoff_node_id is null`
-	abortConjoinedForHandoffNodeID = `
+	abortConjoinedForHandoff = `
         update nimbusio_node.conjoined 
         set abort_timestamp = $1
         where collection_id = $2
@@ -127,7 +131,7 @@ const (
         and key = $3
         and unified_id = $4
         and handoff_node_id is null`
-	finishConjoinedForHandoffNodeID = `
+	finishConjoinedForHandoff = `
         update nimbusio_node.conjoined 
         set complete_timestamp = $1
         where collection_id = $2
@@ -166,12 +170,14 @@ var (
 		queryItem{Name: "new-segment-sequence", Query: newSegmentSequence},
 		queryItem{Name: "new-meta-data", Query: newMetaData},
 		queryItem{Name: "start-conjoined", Query: startConjoined},
+		queryItem{Name: "start-conjoined-for-handoff",
+			Query: startConjoinedForHandoff},
 		queryItem{Name: "abort-conjoined", Query: abortConjoined},
-		queryItem{Name: "abort-conjoined-for-handoff-node-id",
-			Query: abortConjoinedForHandoffNodeID},
+		queryItem{Name: "abort-conjoined-for-handoff",
+			Query: abortConjoinedForHandoff},
 		queryItem{Name: "finish-conjoined", Query: finishConjoined},
-		queryItem{Name: "finish-conjoined-for-handoff-node-id",
-			Query: finishConjoinedForHandoffNodeID},
+		queryItem{Name: "finish-conjoined-for-handoff",
+			Query: finishConjoinedForHandoff},
 		queryItem{Name: "delete-conjoined", Query: deleteConjoined},
 		queryItem{Name: "delete-conjoined-for-unified-id",
 			Query: deleteConjoinedForUnifiedID}}

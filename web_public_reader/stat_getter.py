@@ -23,8 +23,6 @@ def get_last_modified_and_content_length(interaction_pool,
                                key=key,
                                unified_id=version_id)
 
-    log.debug("sql_text = '{0}'".format(sql_text))
-
     args = {"collection_id" : collection_id,
             "key"           : key, 
             "unified_id"    : version_id}

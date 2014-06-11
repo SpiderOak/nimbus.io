@@ -254,23 +254,41 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 	lgr.Debug("DestroyKey (%d)", unifiedIDToDestroy)
 
 	if unifiedIDToDestroy > 0 {
-		stmt := nodedb.Stmts["new-tombstone-for-unified-id"]
-		_, err = stmt.Exec(
-			segmentEntry.CollectionID,
-			segmentEntry.Key,
-			segmentEntry.UnifiedID,
-			segmentEntry.Timestamp,
-			segmentEntry.SegmentNum,
-			unifiedIDToDestroy,
-			segmentEntry.SourceNodeID,
-			segmentEntry.HandoffNodeID)
+		if segmentEntry.HandoffNodeID > 0 {
+			stmt := nodedb.Stmts["new-tombstone-for-unified-id-for-handoff"]
+			_, err = stmt.Exec(
+				segmentEntry.CollectionID,
+				segmentEntry.Key,
+				segmentEntry.UnifiedID,
+				segmentEntry.Timestamp,
+				segmentEntry.SegmentNum,
+				unifiedIDToDestroy,
+				segmentEntry.SourceNodeID,
+				segmentEntry.HandoffNodeID)
 
-		if err != nil {
-			return fmt.Errorf("new-tombstone-for-unified-id %d %s",
-				unifiedIDToDestroy, err)
+			if err != nil {
+				return fmt.Errorf("new-tombstone-for-unified-id-for-handoff %d %s",
+					unifiedIDToDestroy, err)
+			}
+		} else {
+			stmt := nodedb.Stmts["new-tombstone-for-unified-id"]
+			_, err = stmt.Exec(
+				segmentEntry.CollectionID,
+				segmentEntry.Key,
+				segmentEntry.UnifiedID,
+				segmentEntry.Timestamp,
+				segmentEntry.SegmentNum,
+				unifiedIDToDestroy,
+				segmentEntry.SourceNodeID,
+				segmentEntry.HandoffNodeID)
+
+			if err != nil {
+				return fmt.Errorf("new-tombstone-for-unified-id %d %s",
+					unifiedIDToDestroy, err)
+			}
 		}
 
-		stmt = nodedb.Stmts["delete-conjoined-for-unified-id"]
+		stmt := nodedb.Stmts["delete-conjoined-for-unified-id"]
 		_, err = stmt.Exec(
 			segmentEntry.Timestamp,
 			segmentEntry.CollectionID,
@@ -282,21 +300,36 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 				unifiedIDToDestroy, err)
 		}
 	} else {
-		stmt := nodedb.Stmts["new-tombstone"]
-		_, err = stmt.Exec(
-			segmentEntry.CollectionID,
-			segmentEntry.Key,
-			segmentEntry.UnifiedID,
-			segmentEntry.Timestamp,
-			segmentEntry.SegmentNum,
-			segmentEntry.SourceNodeID,
-			segmentEntry.HandoffNodeID)
+		if segmentEntry.HandoffNodeID > 0 {
+			stmt := nodedb.Stmts["new-tombstone-for-handoff"]
+			_, err = stmt.Exec(
+				segmentEntry.CollectionID,
+				segmentEntry.Key,
+				segmentEntry.UnifiedID,
+				segmentEntry.Timestamp,
+				segmentEntry.SegmentNum,
+				segmentEntry.SourceNodeID,
+				segmentEntry.HandoffNodeID)
 
-		if err != nil {
-			return fmt.Errorf("new-tombstone %s", err)
+			if err != nil {
+				return fmt.Errorf("new-tombstone-for-handoff %s", err)
+			}
+		} else {
+			stmt := nodedb.Stmts["new-tombstone"]
+			_, err = stmt.Exec(
+				segmentEntry.CollectionID,
+				segmentEntry.Key,
+				segmentEntry.UnifiedID,
+				segmentEntry.Timestamp,
+				segmentEntry.SegmentNum,
+				segmentEntry.SourceNodeID)
+
+			if err != nil {
+				return fmt.Errorf("new-tombstone %s", err)
+			}
 		}
 
-		stmt = nodedb.Stmts["delete-conjoined"]
+		stmt := nodedb.Stmts["delete-conjoined"]
 		_, err = stmt.Exec(
 			segmentEntry.Timestamp,
 			segmentEntry.CollectionID,

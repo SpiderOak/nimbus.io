@@ -22,6 +22,18 @@ const (
             timestamp,
             segment_num,
             conjoined_part,
+            source_node_id) 
+        values ($1, $2, 'A', $3, $4, $5, $6, $7) 
+        returning id`
+	newSegmentForHandoff = `
+        insert into nimbusio_node.segment (
+            collection_id,
+            key,
+            status,
+            unified_id,
+            timestamp,
+            segment_num,
+            conjoined_part,
             source_node_id,
             handoff_node_id) 
         values ($1, $2, 'A', $3, $4, $5, $6, $7, $8) 
@@ -53,10 +65,31 @@ const (
             unified_id,
             timestamp,
             segment_num,
+            source_node_id) 
+        values ($1, $2, 'T', $3, $4, $5, $6)`
+	newTombstoneForHandoff = `
+        insert into nimbusio_node.segment (
+            collection_id,
+            key,
+            status,
+            unified_id,
+            timestamp,
+            segment_num,
             source_node_id,
             handoff_node_id) 
         values ($1, $2, 'T', $3, $4, $5, $6, $7)`
 	newTombstoneForUnifiedID = `
+        insert into nimbusio_node.segment (
+            collection_id,
+            key,
+            status,
+            unified_id,
+            timestamp,
+            segment_num,
+            file_tombstone_unified_id,
+            source_node_id) 
+        values ($1, $2, 'T', $3, $4, $5, $6, $7)`
+	newTombstoneForUnifiedIDForHandoff = `
         insert into nimbusio_node.segment (
             collection_id,
             key,
@@ -158,13 +191,18 @@ var (
 
 	queryItems = []queryItem{
 		queryItem{Name: "new-segment", Query: newSegment},
+		queryItem{Name: "new-segment-for-handoff", Query: newSegmentForHandoff},
 		queryItem{Name: "cancel-segment", Query: cancelSegment},
 		queryItem{Name: "cancel-segments-from-node",
 			Query: cancelSegmentsFromNode},
 		queryItem{Name: "finish-segment", Query: finishSegment},
 		queryItem{Name: "new-tombstone", Query: newTombstone},
+		queryItem{Name: "new-tombstone-for-handoff",
+			Query: newTombstoneForHandoff},
 		queryItem{Name: "new-tombstone-for-unified-id",
 			Query: newTombstoneForUnifiedID},
+		queryItem{Name: "new-tombstone-for-unified-id-for-handoff",
+			Query: newTombstoneForUnifiedIDForHandoff},
 		queryItem{Name: "new-value-file", Query: newValueFile},
 		queryItem{Name: "update-value-file", Query: updateValueFile},
 		queryItem{Name: "new-segment-sequence", Query: newSegmentSequence},

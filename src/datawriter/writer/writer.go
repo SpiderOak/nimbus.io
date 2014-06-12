@@ -9,6 +9,7 @@ import (
 	"tools"
 
 	"datawriter/logger"
+	"datawriter/msg"
 	"datawriter/nodedb"
 	"datawriter/types"
 )
@@ -17,34 +18,36 @@ type NimbusioWriter interface {
 
 	// StartSegment initializes a new segment and prepares to receive data
 	// for it
-	StartSegment(lgr logger.Logger, segmentEntry types.SegmentEntry) error
+	StartSegment(lgr logger.Logger, segment msg.Segment,
+		nodeNames msg.NodeNames) error
 
 	// StoreSequence stores data for  an initialized segment
-	StoreSequence(lgr logger.Logger, segmentEntry types.SegmentEntry,
-		sequenceEntry types.SequenceEntry, data []byte) error
-
-	// CancelSegment stops processing the segment
-	CancelSegment(lgr logger.Logger, cancelEntry types.CancelEntry) error
-
+	StoreSequence(lgr logger.Logger, segment msg.Segment,
+		sequence msg.Sequence, data []byte) error
+	/*
+		// CancelSegment stops processing the segment
+		CancelSegment(lgr logger.Logger, cancel msg.Cancel) error
+	*/
 	// FinishSegment finishes storing the segment
-	FinishSegment(lgr logger.Logger, segmentEntry types.SegmentEntry,
-		fileEntry types.FileEntry) error
+	FinishSegment(lgr logger.Logger, segment msg.Segment,
+		file msg.File) error
+	/*
+		// DestroyKey makes a key inaccessible
+		DestroyKey(lgr logger.Logger, segment msg.Segment,
+			unifiedIDToDestroy uint64) error
 
-	// DestroyKey makes a key inaccessible
-	DestroyKey(lgr logger.Logger, segmentEntry types.SegmentEntry,
-		unifiedIDToDestroy uint64) error
+		// StartConjoinedArchive begins a conjoined archive
+		StartConjoinedArchive(lgr logger.Logger,
+			conjoinedEntry types.ConjoinedEntry) error
 
-	// StartConjoinedArchive begins a conjoined archive
-	StartConjoinedArchive(lgr logger.Logger,
-		conjoinedEntry types.ConjoinedEntry) error
+		// AbortConjoinedArchive cancels conjoined archive
+		AbortConjoinedArchive(lgr logger.Logger,
+			conjoinedEntry types.ConjoinedEntry) error
 
-	// AbortConjoinedArchive cancels conjoined archive
-	AbortConjoinedArchive(lgr logger.Logger,
-		conjoinedEntry types.ConjoinedEntry) error
-
-	// FinishConjoinedArchive completes a conjoined archive
-	FinishConjoinedArchive(lgr logger.Logger,
-		conjoinedEntry types.ConjoinedEntry) error
+		// FinishConjoinedArchive completes a conjoined archive
+		FinishConjoinedArchive(lgr logger.Logger,
+			conjoinedEntry types.ConjoinedEntry) error
+	*/
 }
 
 type segmentKey struct {
@@ -65,6 +68,7 @@ type segmentMapEntry struct {
 
 // map data contained in messages onto our internal segment id
 type nimbusioWriter struct {
+	NodeIDMap        map[string]uint32
 	SegmentMap       map[segmentKey]segmentMapEntry
 	FileSpaceInfo    tools.FileSpaceInfo
 	ValueFile        OutputValueFile
@@ -76,6 +80,10 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 	var err error
 	var writer nimbusioWriter
 	writer.SegmentMap = make(map[segmentKey]segmentMapEntry)
+
+	if writer.NodeIDMap, err = tools.GetNodeIDMap(); err != nil {
+		return nil, fmt.Errorf("tools.GetNodeIDMap() failed %s", err)
+	}
 
 	maxValueFileSizeStr := os.Getenv("NIMBUS_IO_MAX_VALUE_FILE_SIZE")
 	if maxValueFileSizeStr == "" {
@@ -102,19 +110,54 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 }
 
 func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
-	segmentEntry types.SegmentEntry) error {
+	segment msg.Segment, nodeNames msg.NodeNames) error {
+
 	var entry segmentMapEntry
 	var err error
+	var sourceNodeID uint32
+	var ok bool
 
 	lgr.Debug("StartSegment")
 
-	if entry.SegmentID, err = NewSegment(segmentEntry); err != nil {
+	if sourceNodeID, ok = writer.NodeIDMap[nodenames.SourceNodeName]; !ok {
+		return fmt.Errorf("unknown source node %s", nodenames.SourceNodeName)
+	}
+
+	if nodeNames.HandoffNodeName != "" {
+		if handoffNodeID, ok = writer.NodeIDMap[nodenames.HandoffNodeName]; !ok {
+			return fmt.Errorf("unknown handoff node %s", nodenames.HandoffNodeName)
+		}
+
+		stmt := nodedb.Stmts["new-segment-for-handoff"]
+		row := stmt.QueryRow(
+			segment.CollectionID,
+			segment.Key,
+			segment.UnifiedID,
+			entry.Timestamp,
+			entry.SegmentNum,
+			entry.ConjoinedPart,
+			sourceNodeID,
+			handoffNodeID)
+		err = row.Scan(&segmentID)
+	} else {
+		stmt := nodedb.Stmts["new-segment"]
+		row := stmt.QueryRow(
+			entry.CollectionID,
+			entry.Key,
+			entry.UnifiedID,
+			entry.Timestamp,
+			entry.SegmentNum,
+			entry.ConjoinedPart,
+			sourceNodeID)
+		err = row.Scan(&segmentID)
+	}
+	if entry.SegmentID, err = NewSegment(segment); err != nil {
 		return err
 	}
 	entry.LastActionTime = tools.Timestamp()
 
-	key := segmentKey{segmentEntry.UnifiedID, segmentEntry.ConjoinedPart,
-		segmentEntry.SegmentNum}
+	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
+		segment.SegmentNum}
 
 	writer.SegmentMap[key] = entry
 
@@ -122,13 +165,13 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 }
 
 func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
-	segmentEntry types.SegmentEntry,
-	sequenceEntry types.SequenceEntry, data []byte) error {
+	segment msg.Segment,
+	sequence msg.Sequence, data []byte) error {
 	var err error
 
-	lgr.Debug("StoreSequence #%d", sequenceEntry.SequenceNum)
+	lgr.Debug("StoreSequence #%d", sequence.SequenceNum)
 
-	if writer.ValueFile.Size()+sequenceEntry.SegmentSize >= writer.MaxValueFileSize {
+	if writer.ValueFile.Size()+sequence.SegmentSize >= writer.MaxValueFileSize {
 		lgr.Info("value file full")
 		if err = writer.ValueFile.Close(); err != nil {
 			return fmt.Errorf("error closing value file %s", err)
@@ -138,8 +181,8 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 		}
 	}
 
-	key := segmentKey{segmentEntry.UnifiedID, segmentEntry.ConjoinedPart,
-		segmentEntry.SegmentNum}
+	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
+		segment.SegmentNum}
 	entry, ok := writer.SegmentMap[key]
 	if !ok {
 		return fmt.Errorf("StoreSequence unknown segment %s", key)
@@ -151,20 +194,20 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 
 	stmt := nodedb.Stmts["new-segment-sequence"]
 	_, err = stmt.Exec(
-		segmentEntry.CollectionID,
+		segment.CollectionID,
 		entry.SegmentID,
-		sequenceEntry.ZfecPaddingSize,
+		sequence.ZfecPaddingSize,
 		writer.ValueFile.ID(),
-		sequenceEntry.SequenceNum,
+		sequence.SequenceNum,
 		writer.ValueFile.Size(),
-		sequenceEntry.SegmentSize,
-		sequenceEntry.MD5Digest,
-		sequenceEntry.Adler32)
+		sequence.SegmentSize,
+		sequence.MD5Digest,
+		sequence.Adler32)
 	if err != nil {
 		return fmt.Errorf("new-segment-sequence %s", err)
 	}
 
-	err = writer.ValueFile.Store(segmentEntry.CollectionID, entry.SegmentID,
+	err = writer.ValueFile.Store(segment.CollectionID, entry.SegmentID,
 		data)
 	if err != nil {
 		return fmt.Errorf("ValueFile.Store %s", err)
@@ -178,20 +221,20 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 
 // CancelSegment stops storing the segment
 func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
-	cancelEntry types.CancelEntry) error {
+	cancel msg.Cancel) error {
 	var err error
 
 	lgr.Debug("CancelSegment")
 
-	key := segmentKey{cancelEntry.UnifiedID, cancelEntry.ConjoinedPart,
-		cancelEntry.SegmentNum}
+	key := segmentKey{cancel.UnifiedID, cancel.ConjoinedPart,
+		cancel.SegmentNum}
 	delete(writer.SegmentMap, key)
 
 	stmt := nodedb.Stmts["cancel-segment"]
 	_, err = stmt.Exec(
-		cancelEntry.UnifiedID,
-		cancelEntry.ConjoinedPart,
-		cancelEntry.SegmentNum)
+		cancel.UnifiedID,
+		cancel.ConjoinedPart,
+		cancel.SegmentNum)
 
 	if err != nil {
 		return fmt.Errorf("cancel-segment %s", err)
@@ -202,13 +245,13 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 
 // FinishSegment finishes storing the segment
 func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
-	segmentEntry types.SegmentEntry, fileEntry types.FileEntry) error {
+	segment msg.Segment, file msg.File) error {
 	var err error
 
 	lgr.Debug("FinishSegment")
 
-	key := segmentKey{segmentEntry.UnifiedID, segmentEntry.ConjoinedPart,
-		segmentEntry.SegmentNum}
+	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
+		segment.SegmentNum}
 	entry, ok := writer.SegmentMap[key]
 	if !ok {
 		return fmt.Errorf("FinishSegment unknown segment %s", key)
@@ -218,23 +261,23 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 
 	stmt := nodedb.Stmts["finish-segment"]
 	_, err = stmt.Exec(
-		fileEntry.FileSize,
-		fileEntry.Adler32,
-		fileEntry.MD5Digest,
+		file.FileSize,
+		file.Adler32,
+		file.MD5Digest,
 		entry.SegmentID)
 
 	if err != nil {
 		return fmt.Errorf("finish-segment %s", err)
 	}
 
-	for _, metaEntry := range fileEntry.MetaData {
+	for _, metaEntry := range file.MetaData {
 		stmt := nodedb.Stmts["new-meta-data"]
 		_, err = stmt.Exec(
-			segmentEntry.CollectionID,
+			segment.CollectionID,
 			entry.SegmentID,
 			metaEntry.Key,
 			metaEntry.Value,
-			segmentEntry.Timestamp)
+			segment.Timestamp)
 
 		if err != nil {
 			return fmt.Errorf("new-meta-data %s", err)
@@ -246,7 +289,7 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 
 // DestroyKey makes a key inaccessible
 func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
-	segmentEntry types.SegmentEntry,
+	segment msg.Segment,
 	unifiedIDToDestroy uint64) error {
 
 	var err error
@@ -254,17 +297,17 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 	lgr.Debug("DestroyKey (%d)", unifiedIDToDestroy)
 
 	if unifiedIDToDestroy > 0 {
-		if segmentEntry.HandoffNodeID > 0 {
+		if segment.HandoffNodeID > 0 {
 			stmt := nodedb.Stmts["new-tombstone-for-unified-id-for-handoff"]
 			_, err = stmt.Exec(
-				segmentEntry.CollectionID,
-				segmentEntry.Key,
-				segmentEntry.UnifiedID,
-				segmentEntry.Timestamp,
-				segmentEntry.SegmentNum,
+				segment.CollectionID,
+				segment.Key,
+				segment.UnifiedID,
+				segment.Timestamp,
+				segment.SegmentNum,
 				unifiedIDToDestroy,
-				segmentEntry.SourceNodeID,
-				segmentEntry.HandoffNodeID)
+				segment.SourceNodeID,
+				segment.HandoffNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone-for-unified-id-for-handoff %d %s",
@@ -273,14 +316,14 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 		} else {
 			stmt := nodedb.Stmts["new-tombstone-for-unified-id"]
 			_, err = stmt.Exec(
-				segmentEntry.CollectionID,
-				segmentEntry.Key,
-				segmentEntry.UnifiedID,
-				segmentEntry.Timestamp,
-				segmentEntry.SegmentNum,
+				segment.CollectionID,
+				segment.Key,
+				segment.UnifiedID,
+				segment.Timestamp,
+				segment.SegmentNum,
 				unifiedIDToDestroy,
-				segmentEntry.SourceNodeID,
-				segmentEntry.HandoffNodeID)
+				segment.SourceNodeID,
+				segment.HandoffNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone-for-unified-id %d %s",
@@ -290,9 +333,9 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 
 		stmt := nodedb.Stmts["delete-conjoined-for-unified-id"]
 		_, err = stmt.Exec(
-			segmentEntry.Timestamp,
-			segmentEntry.CollectionID,
-			segmentEntry.Key,
+			segment.Timestamp,
+			segment.CollectionID,
+			segment.Key,
 			unifiedIDToDestroy)
 
 		if err != nil {
@@ -300,16 +343,16 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 				unifiedIDToDestroy, err)
 		}
 	} else {
-		if segmentEntry.HandoffNodeID > 0 {
+		if segment.HandoffNodeID > 0 {
 			stmt := nodedb.Stmts["new-tombstone-for-handoff"]
 			_, err = stmt.Exec(
-				segmentEntry.CollectionID,
-				segmentEntry.Key,
-				segmentEntry.UnifiedID,
-				segmentEntry.Timestamp,
-				segmentEntry.SegmentNum,
-				segmentEntry.SourceNodeID,
-				segmentEntry.HandoffNodeID)
+				segment.CollectionID,
+				segment.Key,
+				segment.UnifiedID,
+				segment.Timestamp,
+				segment.SegmentNum,
+				segment.SourceNodeID,
+				segment.HandoffNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone-for-handoff %s", err)
@@ -317,12 +360,12 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 		} else {
 			stmt := nodedb.Stmts["new-tombstone"]
 			_, err = stmt.Exec(
-				segmentEntry.CollectionID,
-				segmentEntry.Key,
-				segmentEntry.UnifiedID,
-				segmentEntry.Timestamp,
-				segmentEntry.SegmentNum,
-				segmentEntry.SourceNodeID)
+				segment.CollectionID,
+				segment.Key,
+				segment.UnifiedID,
+				segment.Timestamp,
+				segment.SegmentNum,
+				segment.SourceNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone %s", err)
@@ -331,10 +374,10 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 
 		stmt := nodedb.Stmts["delete-conjoined"]
 		_, err = stmt.Exec(
-			segmentEntry.Timestamp,
-			segmentEntry.CollectionID,
-			segmentEntry.Key,
-			segmentEntry.UnifiedID)
+			segment.Timestamp,
+			segment.CollectionID,
+			segment.Key,
+			segment.UnifiedID)
 
 		if err != nil {
 			return fmt.Errorf("delete-conjoined %s", err)

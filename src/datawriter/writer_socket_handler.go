@@ -9,6 +9,7 @@ import (
 
 	"fog"
 
+	"datawriter/msg"
 	"datawriter/types"
 )
 
@@ -28,29 +29,28 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 	return func(_ zmq4.State) error {
 		var err error
 		var ok bool
+		var rawMessage []string
+		var message types.Message
 
-		marshalledMessage, err := writerSocket.RecvMessage(0)
-		if err != nil {
+		if rawMessage, err = writerSocket.RecvMessage(0); err != nil {
 			return fmt.Errorf("RecvMessage %s", err)
 		}
 
-		var message types.Message
-		err = json.Unmarshal([]byte(marshalledMessage[0]), &message.Map)
-		if err != nil {
-			return fmt.Errorf("Unmarshal %s", err)
+		message.Marshalled = rawMessage[0]
+		message.Data = []byte(strings.Join(rawMessage[1:], ""))
+
+		if message.Type, err = msg.GetMessageType(message.Marshalled); err != nil {
+			return fmt.Errorf("GetMessageType %s", err)
 		}
 
-		// we need to cast the common items used in a reply
-		if err = castCommonItems(&message); err != nil {
-			return err
+		if message.ID, err = msg.GetMessageID(message.Marshalled); err != nil {
+			return fmt.Errorf("GetMessageID %s", err)
 		}
-
-		message.Data = []byte(strings.Join(marshalledMessage[1:], ""))
 
 		reply := types.MessageMap{
 			"message-type":  "resilient-server-ack",
-			"message-id":    message.ID,
-			"incoming-type": message.Type,
+			"message-id":    messageID,
+			"incoming-type": messageType,
 			"accepted":      true}
 
 		marshalledReply, err := json.Marshal(reply)
@@ -84,61 +84,24 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 	}
 }
 
-func castCommonItems(message *types.Message) error {
-	var ok bool
-	var clientTag interface{}
-	var clientAddress interface{}
-	var userRequestID interface{}
-
-	if message.Type, ok = message.Map["message-type"].(string); !ok {
-		return fmt.Errorf("unparseable message-type %T, %s",
-			message.Map["message-type"], message.Map["message-type"])
-	}
-
-	if message.ID, ok = message.Map["message-id"].(string); !ok {
-		return fmt.Errorf("unparseable message-id %T, %s",
-			message.Map["message-id"], message.Map["message-id"])
-	}
-
-	// the ping message doesn't have a client tag
-	clientTag, ok = message.Map["client-tag"]
-	if ok {
-		if message.ClientTag, ok = clientTag.(string); !ok {
-			return fmt.Errorf("unparseable client-tag %T, %s",
-				message.Map["client-tag"], message.Map["client-tag"])
-		}
-	}
-
-	// the ping message doesn't have a client address
-	clientAddress, ok = message.Map["client-address"]
-	if ok {
-		if message.ClientAddress, ok = clientAddress.(string); !ok {
-			return fmt.Errorf("unparseable client-address %T, %s",
-				message.Map["client-address"], message.Map["client-address"])
-		}
-	}
-
-	// the handshake message doesn't have user-request-id
-	userRequestID, ok = message.Map["user-request-id"]
-	if ok {
-		if message.UserRequestID, ok = userRequestID.(string); !ok {
-			return fmt.Errorf("unparseable user-request-id %T, %s",
-				message.Map["user-request-id"], message.Map)
-		}
-	}
-
-	return nil
-
-}
-
 func handlePing(_ types.Message) {
 
 }
 
 func handleHandshake(message types.Message) {
-	fog.Info("handshake from %s", message.ClientAddress)
+	returnAddress, err := msg.UnmarshalReturnAddress(message.Marshalled)
+	if err != nil {
+		fog.Error("handleHandshake: unable to unmarshall %s", err)
+		return
+	}
+	fog.Info("handshake from %s", returnAddress.ClientAddress)
 }
 
 func handleSignoff(message types.Message) {
-	fog.Info("signoff from   %s", message.ClientAddress)
+	returnAddress, err := msg.UnmarshalReturnAddress(message.Marshalled)
+	if err != nil {
+		fog.Error("handleSignoff: unable to unmarshall %s", err)
+		return
+	}
+	fog.Info("signoff from %s", message.ClientAddress)
 }

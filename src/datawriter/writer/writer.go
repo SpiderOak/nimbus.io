@@ -116,11 +116,16 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 	var err error
 	var sourceNodeID uint32
 	var ok bool
+	var timestamp time.Time
 
 	lgr.Debug("StartSegment")
 
 	if sourceNodeID, ok = writer.NodeIDMap[nodenames.SourceNodeName]; !ok {
 		return fmt.Errorf("unknown source node %s", nodenames.SourceNodeName)
+	}
+
+	if timestamp, err = ParseTimestampRepr(segment.TimestampRepr); err != nil {
+		return fmt.Errorf("unable to parse timestamp %s", err)
 	}
 
 	if nodeNames.HandoffNodeName != "" {
@@ -133,26 +138,27 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 			segment.CollectionID,
 			segment.Key,
 			segment.UnifiedID,
-			entry.Timestamp,
+			timestamp,
 			entry.SegmentNum,
 			entry.ConjoinedPart,
 			sourceNodeID,
 			handoffNodeID)
-		err = row.Scan(&segmentID)
+		if err = row.Scan(&entry.SegmentID); err != nil {
+			return err
+		}
 	} else {
 		stmt := nodedb.Stmts["new-segment"]
 		row := stmt.QueryRow(
-			entry.CollectionID,
-			entry.Key,
-			entry.UnifiedID,
-			entry.Timestamp,
-			entry.SegmentNum,
-			entry.ConjoinedPart,
+			segment.CollectionID,
+			segment.Key,
+			segment.UnifiedID,
+			timestamp,
+			segment.SegmentNum,
+			segment.ConjoinedPart,
 			sourceNodeID)
-		err = row.Scan(&segmentID)
-	}
-	if entry.SegmentID, err = NewSegment(segment); err != nil {
-		return err
+		if err = row.Scan(&entry.SegmentID); err != nil {
+			return err
+		}
 	}
 	entry.LastActionTime = tools.Timestamp()
 

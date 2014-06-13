@@ -8,23 +8,27 @@ import (
 	"github.com/pebbe/zmq4"
 
 	"fog"
+	"tools"
 
+	"datawriter/msg"
 	"datawriter/nodedb"
-	"datawriter/types"
 )
 
 // NewEventSubSocketHandler returns a function that handles event notifications
 func NewEventSubSocketHandler(eventSubSocket *zmq4.Socket) func(zmq4.State) error {
+	var nodeIDMap map[string]uint32
+	var err error
+
+	if nodeIDMap, err = tools.GetNodeIDMap(); err != nil {
+		fog.Critical("tools.GetNodeIDMap() failed %s", err)
+	}
 
 	return func(_ zmq4.State) error {
 		var err error
 		var ok bool
-		var messageMap types.MessageMap
-		var messageType string
-		var timestampRepr string
+		var webWriterStart msg.WebWriterStart
 		var timestamp time.Time
 		var sourceNodeID uint32
-		var sourceNodeName string
 
 		marshalledMessage, err := eventSubSocket.RecvMessage(0)
 		if err != nil {
@@ -33,40 +37,29 @@ func NewEventSubSocketHandler(eventSubSocket *zmq4.Socket) func(zmq4.State) erro
 
 		// the 0th part should be the topic, we skip that
 
-		err = json.Unmarshal([]byte(marshalledMessage[1]), &messageMap)
+		err = json.Unmarshal([]byte(marshalledMessage[1]), &webWriterStart)
 		if err != nil {
 			return fmt.Errorf("Unmarshal %s", err)
 		}
 
-		if messageType, ok = messageMap["message-type"].(string); !ok {
-			return fmt.Errorf("unparseable message-type %T, %s",
-				messageMap["message-type"], messageMap["message-type"])
+		if webWriterStart.MessageType != "web-writer-start" {
+			return fmt.Errorf("unknown message type '%s'",
+				webWriterStart.MessageType)
 		}
 
-		if messageType != "web-writer-start" {
-			return fmt.Errorf("unknown message type '%s'", messageType)
+		timestamp, err = tools.ParseTimestampRepr(webWriterStart.TimestampRepr)
+		if err != nil {
+			return fmt.Errorf("unable to parse %s %s",
+				webWriterStart.TimestampRepr, err)
 		}
 
-		if timestampRepr, ok = messageMap["timestamp_repr"].(string); !ok {
-			return fmt.Errorf("unparseable timestamp_repr %T, %s",
-				messageMap["timestamp_repr"], messageMap["timestamp_repr"])
-		}
-		if timestamp, err = ParseTimestampRepr(timestampRepr); err != nil {
-			return fmt.Errorf("unable to parse %s %s", timestampRepr, err)
-		}
-
-		sourceNodeName, ok = messageMap["source_node_name"].(string)
-		if !ok {
-			return fmt.Errorf("unparseable source_node_name %T, %s",
-				messageMap["source_node_name"], messageMap["source_node_name"])
-		}
-		sourceNodeID, ok = nodeIDMap[sourceNodeName]
+		sourceNodeID, ok = nodeIDMap[webWriterStart.SourceNodeName]
 		if !ok {
 			return fmt.Errorf("unknown source_node_name %s",
-				messageMap["source_node_name"])
+				webWriterStart.SourceNodeName)
 		}
 
-		fog.Debug("cancel-segments-from-node %s", sourceNodeName)
+		fog.Debug("cancel-segments-from-node %s", webWriterStart.SourceNodeName)
 
 		// cancel all all segment rows
 		//    * from a specifiic source node

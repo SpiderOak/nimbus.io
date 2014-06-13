@@ -47,10 +47,10 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 			return fmt.Errorf("GetMessageID %s", err)
 		}
 
-		reply := types.MessageMap{
+		reply := map[string]interface{}{
 			"message-type":  "resilient-server-ack",
-			"message-id":    messageID,
-			"incoming-type": messageType,
+			"message-id":    message.ID,
+			"incoming-type": message.Type,
 			"accepted":      true}
 
 		marshalledReply, err := json.Marshal(reply)
@@ -103,5 +103,5 @@ func handleSignoff(message types.Message) {
 		fog.Error("handleSignoff: unable to unmarshall %s", err)
 		return
 	}
-	fog.Info("signoff from %s", message.ClientAddress)
+	fog.Info("signoff from %s", returnAddress.ClientAddress)
 }

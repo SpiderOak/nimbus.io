@@ -6,14 +6,13 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/pebbe/zmq4"
 
 	"fog"
-	"tools"
 
 	"datawriter/logger"
+	"datawriter/msg"
 	"datawriter/nodedb"
 	"datawriter/types"
 	"datawriter/writer"
@@ -30,7 +29,7 @@ type Reply struct {
 }
 
 // message handler takes a message and returns a reply
-type messageHandler func(message types.Message) Reply
+type messageHandler func(message types.Message) (Reply, error)
 
 var (
 	nimbusioWriter writer.NimbusioWriter
@@ -50,7 +49,8 @@ func NewMessageHandler() chan<- types.Message {
 	}
 
 	dispatchTable := map[string]messageHandler{
-		"archive-key-entire":       handleArchiveKeyEntire,
+		"archive-key-entire": handleArchiveKeyEntire}
+	/*
 		"archive-key-start":        handleArchiveKeyStart,
 		"archive-key-next":         handleArchiveKeyNext,
 		"archive-key-final":        handleArchiveKeyFinal,
@@ -59,6 +59,7 @@ func NewMessageHandler() chan<- types.Message {
 		"start-conjoined-archive":  handleStartConjoinedArchive,
 		"abort-conjoined-archive":  handleAbortConjoinedArchive,
 		"finish-conjoined-archive": handleFinishConjoinedArchive}
+	*/
 	pushSockets := make(map[string]*zmq4.Socket)
 
 	go func() {
@@ -69,7 +70,11 @@ func NewMessageHandler() chan<- types.Message {
 					message.Type, message.Marshalled)
 				continue
 			}
-			reply := handler(message)
+			reply, err := handler(message)
+			if err != nil {
+				fog.Error("error handling '%s' %s", message.Type, err)
+				continue
+			}
 
 			marshalledReply, err := json.Marshal(reply.MessageMap)
 			if err != nil {
@@ -125,14 +130,14 @@ func createPushSocket() (*zmq4.Socket, error) {
 	return pushSocket, nil
 }
 
-func handleArchiveKeyEntire(message types.Message) Reply {
+func handleArchiveKeyEntire(message types.Message) (Reply, error) {
 	var archiveKeyEntire msg.ArchiveKeyEntire
+	var md5Digest []byte
 	var err error
 
-	archiveKeyEntire, err = msg.UnmarshalArchiveKeyEntire(message.RawMessage)
+	archiveKeyEntire, err = msg.UnmarshalArchiveKeyEntire(message.Marshalled)
 	if err != nil {
-		fog.Error("UnmarshalArchiveKeyEntire failed %s", err)
-		return
+		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyEntire failed %s", err)
 	}
 
 	reply := createReply("archive-key-final", message.ID,
@@ -147,21 +152,27 @@ func handleArchiveKeyEntire(message types.Message) Reply {
 			len(message.Data))
 		reply.MessageMap["result"] = "size-mismatch"
 		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	if !MD5DigestMatches(message.Data, archiveKeyEntire.SegmentMD5Digest) {
+	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyEntire.EncodedSegmentMD5Digest)
+	if err != nil {
+		return Reply{}, err
+	}
+	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
 		reply.MessageMap["result"] = "md5-mismatch"
 		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	if err = nimbusioWriter.StartSegment(lgr, archiveKeyEntire.Segment); err != nil {
+	err = nimbusioWriter.StartSegment(lgr, archiveKeyEntire.Segment,
+		archiveKeyEntire.NodeNames)
+	if err != nil {
 		lgr.Error("StartSegment: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	err = nimbusioWriter.StoreSequence(lgr, archiveKeyEntire.Segment,
@@ -170,7 +181,7 @@ func handleArchiveKeyEntire(message types.Message) Reply {
 		lgr.Error("StoreSequence: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	err = nimbusioWriter.FinishSegment(lgr, archiveKeyEntire.Segment,
@@ -179,13 +190,13 @@ func handleArchiveKeyEntire(message types.Message) Reply {
 		lgr.Error("FinishSegment: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
 /*

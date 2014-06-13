@@ -1,6 +1,7 @@
 package writer
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	"datawriter/logger"
 	"datawriter/msg"
 	"datawriter/nodedb"
-	"datawriter/types"
 )
 
 type NimbusioWriter interface {
@@ -115,22 +115,23 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 	var entry segmentMapEntry
 	var err error
 	var sourceNodeID uint32
+	var handoffNodeID uint32
 	var ok bool
 	var timestamp time.Time
 
 	lgr.Debug("StartSegment")
 
-	if sourceNodeID, ok = writer.NodeIDMap[nodenames.SourceNodeName]; !ok {
-		return fmt.Errorf("unknown source node %s", nodenames.SourceNodeName)
+	if sourceNodeID, ok = writer.NodeIDMap[nodeNames.SourceNodeName]; !ok {
+		return fmt.Errorf("unknown source node %s", nodeNames.SourceNodeName)
 	}
 
-	if timestamp, err = ParseTimestampRepr(segment.TimestampRepr); err != nil {
+	if timestamp, err = tools.ParseTimestampRepr(segment.TimestampRepr); err != nil {
 		return fmt.Errorf("unable to parse timestamp %s", err)
 	}
 
 	if nodeNames.HandoffNodeName != "" {
-		if handoffNodeID, ok = writer.NodeIDMap[nodenames.HandoffNodeName]; !ok {
-			return fmt.Errorf("unknown handoff node %s", nodenames.HandoffNodeName)
+		if handoffNodeID, ok = writer.NodeIDMap[nodeNames.HandoffNodeName]; !ok {
+			return fmt.Errorf("unknown handoff node %s", nodeNames.HandoffNodeName)
 		}
 
 		stmt := nodedb.Stmts["new-segment-for-handoff"]
@@ -139,8 +140,8 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 			segment.Key,
 			segment.UnifiedID,
 			timestamp,
-			entry.SegmentNum,
-			entry.ConjoinedPart,
+			segment.SegmentNum,
+			segment.ConjoinedPart,
 			sourceNodeID,
 			handoffNodeID)
 		if err = row.Scan(&entry.SegmentID); err != nil {
@@ -174,6 +175,7 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 	segment msg.Segment,
 	sequence msg.Sequence, data []byte) error {
 	var err error
+	var md5Digest []byte
 
 	lgr.Debug("StoreSequence #%d", sequence.SequenceNum)
 
@@ -185,6 +187,11 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 		if writer.ValueFile, err = NewOutputValueFile(writer.FileSpaceInfo); err != nil {
 			return fmt.Errorf("error opening value file %s", err)
 		}
+	}
+
+	md5Digest, err = base64.StdEncoding.DecodeString(sequence.EncodedSegmentMD5Digest)
+	if err != nil {
+		return err
 	}
 
 	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
@@ -207,8 +214,8 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 		sequence.SequenceNum,
 		writer.ValueFile.Size(),
 		sequence.SegmentSize,
-		sequence.MD5Digest,
-		sequence.Adler32)
+		md5Digest,
+		sequence.SegmentAdler32)
 	if err != nil {
 		return fmt.Errorf("new-segment-sequence %s", err)
 	}
@@ -225,6 +232,7 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 	return nil
 }
 
+/*
 // CancelSegment stops storing the segment
 func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 	cancel msg.Cancel) error {
@@ -248,11 +256,12 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 
 	return nil
 }
-
+*/
 // FinishSegment finishes storing the segment
 func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 	segment msg.Segment, file msg.File) error {
 	var err error
+	var md5Digest []byte
 
 	lgr.Debug("FinishSegment")
 
@@ -265,34 +274,41 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 
 	delete(writer.SegmentMap, key)
 
+	md5Digest, err = base64.StdEncoding.DecodeString(file.EncodedFileMD5Digest)
+	if err != nil {
+		return err
+	}
+
 	stmt := nodedb.Stmts["finish-segment"]
 	_, err = stmt.Exec(
 		file.FileSize,
-		file.Adler32,
-		file.MD5Digest,
+		file.FileAdler32,
+		md5Digest,
 		entry.SegmentID)
 
 	if err != nil {
 		return fmt.Errorf("finish-segment %s", err)
 	}
 
-	for _, metaEntry := range file.MetaData {
-		stmt := nodedb.Stmts["new-meta-data"]
-		_, err = stmt.Exec(
-			segment.CollectionID,
-			entry.SegmentID,
-			metaEntry.Key,
-			metaEntry.Value,
-			segment.Timestamp)
+	/*
+		for _, metaEntry := range file.MetaData {
+			stmt := nodedb.Stmts["new-meta-data"]
+			_, err = stmt.Exec(
+				segment.CollectionID,
+				entry.SegmentID,
+				metaEntry.Key,
+				metaEntry.Value,
+				segment.Timestamp)
 
-		if err != nil {
-			return fmt.Errorf("new-meta-data %s", err)
+			if err != nil {
+				return fmt.Errorf("new-meta-data %s", err)
+			}
 		}
-	}
-
+	*/
 	return nil
 }
 
+/*
 // DestroyKey makes a key inaccessible
 func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 	segment msg.Segment,
@@ -506,3 +522,4 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 
 	return nil
 }
+*/

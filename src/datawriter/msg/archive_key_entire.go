@@ -8,7 +8,7 @@ import (
 type ArchiveKeyEntire struct {
 	UserRequestID string `json:"user_request_id"`
 	ReturnAddress
-	Node
+	NodeNames
 	Segment
 	Sequence
 	File

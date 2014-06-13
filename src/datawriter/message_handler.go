@@ -541,6 +541,7 @@ func createReply(messageType, messageID, userRequestID string,
 	returnAddress msg.ReturnAddress) Reply {
 	var reply Reply
 
+	reply.ClientAddress = returnAddress.ClientAddress
 	reply.MessageMap = make(map[string]interface{})
 
 	reply.MessageMap["message-type"] = messageType + "-reply"

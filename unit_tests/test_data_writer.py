@@ -83,7 +83,7 @@ class TestDataWriter(unittest.TestCase):
             terminate_process(self._event_publisher_process)
             self._event_publisher_process = None
 
-    def xxxtest_archive_key_entire(self):
+    def test_archive_key_entire(self):
         """test archiving all data for a key in a single message"""
         file_size = 10 * 64 * 1024
         content_item = random_string(file_size) 

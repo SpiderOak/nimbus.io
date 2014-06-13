@@ -11,7 +11,7 @@ var (
 
 func init() {
 	// "message-type": "start-conjoined-archive"
-	messageIDRegexp = regexp.MustCompile(`"message-id"\: "(.+?)"`)
+	messageIDRegexp = regexp.MustCompile(`"message-id"\s*\:\s*"(.+?)"`)
 }
 
 // GetMessageID parses a JSON string to retrieve the message-id

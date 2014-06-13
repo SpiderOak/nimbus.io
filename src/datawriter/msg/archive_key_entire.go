@@ -6,7 +6,7 @@ import (
 )
 
 type ArchiveKeyEntire struct {
-	UserRequestID string `json:"user_request_id"`
+	UserRequestID string `json:"user-request-id"`
 	ReturnAddress
 	NodeNames
 	Segment

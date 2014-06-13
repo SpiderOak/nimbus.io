@@ -184,8 +184,10 @@ func handleArchiveKeyEntire(message types.Message) (Reply, error) {
 		return reply, nil
 	}
 
+	metaData := msg.GetMetaFromJSON(message.Marshalled)
+
 	err = nimbusioWriter.FinishSegment(lgr, archiveKeyEntire.Segment,
-		archiveKeyEntire.File)
+		archiveKeyEntire.File, metaData)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
 		reply.MessageMap["result"] = "error"

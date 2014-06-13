@@ -30,7 +30,7 @@ type NimbusioWriter interface {
 	*/
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segment msg.Segment,
-		file msg.File) error
+		file msg.File, metaData []msg.MetaPair) error
 	/*
 		// DestroyKey makes a key inaccessible
 		DestroyKey(lgr logger.Logger, segment msg.Segment,
@@ -259,9 +259,10 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 */
 // FinishSegment finishes storing the segment
 func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
-	segment msg.Segment, file msg.File) error {
+	segment msg.Segment, file msg.File, metaData []msg.MetaPair) error {
 	var err error
 	var md5Digest []byte
+	var timestamp time.Time
 
 	lgr.Debug("FinishSegment")
 
@@ -279,6 +280,10 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 		return err
 	}
 
+	if timestamp, err = tools.ParseTimestampRepr(segment.TimestampRepr); err != nil {
+		return fmt.Errorf("unable to parse timestamp %s", err)
+	}
+
 	stmt := nodedb.Stmts["finish-segment"]
 	_, err = stmt.Exec(
 		file.FileSize,
@@ -290,21 +295,20 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 		return fmt.Errorf("finish-segment %s", err)
 	}
 
-	/*
-		for _, metaEntry := range file.MetaData {
-			stmt := nodedb.Stmts["new-meta-data"]
-			_, err = stmt.Exec(
-				segment.CollectionID,
-				entry.SegmentID,
-				metaEntry.Key,
-				metaEntry.Value,
-				segment.Timestamp)
+	for _, metaEntry := range metaData {
+		stmt := nodedb.Stmts["new-meta-data"]
+		_, err = stmt.Exec(
+			segment.CollectionID,
+			entry.SegmentID,
+			metaEntry.Key,
+			metaEntry.Value,
+			timestamp)
 
-			if err != nil {
-				return fmt.Errorf("new-meta-data %s", err)
-			}
+		if err != nil {
+			return fmt.Errorf("new-meta-data %s", err)
 		}
-	*/
+	}
+
 	return nil
 }
 

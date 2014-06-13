@@ -49,12 +49,12 @@ func NewMessageHandler() chan<- types.Message {
 	}
 
 	dispatchTable := map[string]messageHandler{
-		"archive-key-entire": handleArchiveKeyEntire}
+		"archive-key-entire": handleArchiveKeyEntire,
+		"archive-key-start":  handleArchiveKeyStart,
+		"archive-key-next":   handleArchiveKeyNext,
+		"archive-key-final":  handleArchiveKeyFinal,
+		"archive-key-cancel": handleArchiveKeyCancel}
 	/*
-		"archive-key-start":        handleArchiveKeyStart,
-		"archive-key-next":         handleArchiveKeyNext,
-		"archive-key-final":        handleArchiveKeyFinal,
-		"archive-key-cancel":       handleArchiveKeyCancel,
 		"destroy-key":              handleDestroyKey,
 		"start-conjoined-archive":  handleStartConjoinedArchive,
 		"abort-conjoined-archive":  handleAbortConjoinedArchive,
@@ -201,216 +201,209 @@ func handleArchiveKeyEntire(message types.Message) (Reply, error) {
 	return reply, nil
 }
 
-/*
-func handleArchiveKeyStart(message types.Message) Reply {
-	var segmentEntry types.SegmentEntry
-	var sequenceEntry types.SequenceEntry
+func handleArchiveKeyStart(message types.Message) (Reply, error) {
+	var archiveKeyStart msg.ArchiveKeyStart
+	var md5Digest []byte
 	var err error
 
-	reply := createReply(message)
-
-	if segmentEntry, err = parseSegmentEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	archiveKeyStart, err = msg.UnmarshalArchiveKeyStart(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyStart failed %s", err)
 	}
 
-	if sequenceEntry, err = parseSequenceEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
-	}
+	reply := createReply("archive-key-final", message.ID,
+		archiveKeyStart.UserRequestID, archiveKeyStart.ReturnAddress)
 
-	lgr := logger.NewLogger(message.UserRequestID, segmentEntry.UnifiedID,
-		segmentEntry.ConjoinedPart, segmentEntry.SegmentNum, segmentEntry.Key)
-	lgr.Info("archive-key-start")
+	lgr := logger.NewLogger(archiveKeyStart.UserRequestID, archiveKeyStart.UnifiedID,
+		archiveKeyStart.ConjoinedPart, archiveKeyStart.SegmentNum, archiveKeyStart.Key)
+	lgr.Info("archive-key-Start")
 
-	if sequenceEntry.SegmentSize != uint64(len(message.Data)) {
-		lgr.Error("size mismatch (%d != %d)", sequenceEntry.SegmentSize,
+	if archiveKeyStart.SegmentSize != uint64(len(message.Data)) {
+		lgr.Error("size mismatch (%d != %d)", archiveKeyStart.SegmentSize,
 			len(message.Data))
 		reply.MessageMap["result"] = "size-mismatch"
 		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	if !MD5DigestMatches(message.Data, sequenceEntry.MD5Digest) {
+	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyStart.EncodedSegmentMD5Digest)
+	if err != nil {
+		return Reply{}, err
+	}
+	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
 		reply.MessageMap["result"] = "md5-mismatch"
 		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	if err = nimbusioWriter.StartSegment(lgr, segmentEntry); err != nil {
+	err = nimbusioWriter.StartSegment(lgr, archiveKeyStart.Segment,
+		archiveKeyStart.NodeNames)
+	if err != nil {
 		lgr.Error("StartSegment: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, segmentEntry, sequenceEntry,
-		message.Data)
+	err = nimbusioWriter.StoreSequence(lgr, archiveKeyStart.Segment,
+		archiveKeyStart.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
-func handleArchiveKeyNext(message types.Message) Reply {
-	var segmentEntry types.SegmentEntry
-	var sequenceEntry types.SequenceEntry
+func handleArchiveKeyNext(message types.Message) (Reply, error) {
+	var archiveKeyNext msg.ArchiveKeyNext
+	var md5Digest []byte
 	var err error
 
-	reply := createReply(message)
-
-	if segmentEntry, err = parseSegmentEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	archiveKeyNext, err = msg.UnmarshalArchiveKeyNext(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyNext failed %s", err)
 	}
 
-	if sequenceEntry, err = parseSequenceEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
-	}
+	reply := createReply("archive-key-final", message.ID,
+		archiveKeyNext.UserRequestID, archiveKeyNext.ReturnAddress)
 
-	lgr := logger.NewLogger(message.UserRequestID, segmentEntry.UnifiedID,
-		segmentEntry.ConjoinedPart, segmentEntry.SegmentNum, segmentEntry.Key)
-	lgr.Info("archive-key-next")
+	lgr := logger.NewLogger(archiveKeyNext.UserRequestID, archiveKeyNext.UnifiedID,
+		archiveKeyNext.ConjoinedPart, archiveKeyNext.SegmentNum, archiveKeyNext.Key)
+	lgr.Info("archive-key-Next")
 
-	if sequenceEntry.SegmentSize != uint64(len(message.Data)) {
-		lgr.Error("size mismatch (%d != %d)", sequenceEntry.SegmentSize,
+	if archiveKeyNext.SegmentSize != uint64(len(message.Data)) {
+		lgr.Error("size mismatch (%d != %d)", archiveKeyNext.SegmentSize,
 			len(message.Data))
 		reply.MessageMap["result"] = "size-mismatch"
 		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	if !MD5DigestMatches(message.Data, sequenceEntry.MD5Digest) {
+	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyNext.EncodedSegmentMD5Digest)
+	if err != nil {
+		return Reply{}, err
+	}
+	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
 		reply.MessageMap["result"] = "md5-mismatch"
 		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, segmentEntry, sequenceEntry,
-		message.Data)
+	err = nimbusioWriter.StoreSequence(lgr, archiveKeyNext.Segment,
+		archiveKeyNext.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
-func handleArchiveKeyFinal(message types.Message) Reply {
-	var segmentEntry types.SegmentEntry
-	var sequenceEntry types.SequenceEntry
-	var fileEntry types.FileEntry
+func handleArchiveKeyFinal(message types.Message) (Reply, error) {
+	var archiveKeyFinal msg.ArchiveKeyFinal
+	var md5Digest []byte
 	var err error
 
-	reply := createReply(message)
-
-	if segmentEntry, err = parseSegmentEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	archiveKeyFinal, err = msg.UnmarshalArchiveKeyFinal(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyFinal failed %s", err)
 	}
 
-	if sequenceEntry, err = parseSequenceEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
-	}
+	reply := createReply("archive-key-final", message.ID,
+		archiveKeyFinal.UserRequestID, archiveKeyFinal.ReturnAddress)
 
-	if fileEntry, err = parseFileEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
-	}
+	lgr := logger.NewLogger(archiveKeyFinal.UserRequestID, archiveKeyFinal.UnifiedID,
+		archiveKeyFinal.ConjoinedPart, archiveKeyFinal.SegmentNum, archiveKeyFinal.Key)
+	lgr.Info("archive-key-Final")
 
-	lgr := logger.NewLogger(message.UserRequestID, segmentEntry.UnifiedID,
-		segmentEntry.ConjoinedPart, segmentEntry.SegmentNum, segmentEntry.Key)
-	lgr.Info("archive-key-final")
-
-	if sequenceEntry.SegmentSize != uint64(len(message.Data)) {
-		lgr.Error("size mismatch (%d != %d)", sequenceEntry.SegmentSize,
+	if archiveKeyFinal.SegmentSize != uint64(len(message.Data)) {
+		lgr.Error("size mismatch (%d != %d)", archiveKeyFinal.SegmentSize,
 			len(message.Data))
 		reply.MessageMap["result"] = "size-mismatch"
 		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	if !MD5DigestMatches(message.Data, sequenceEntry.MD5Digest) {
+	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyFinal.EncodedSegmentMD5Digest)
+	if err != nil {
+		return Reply{}, err
+	}
+	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
 		reply.MessageMap["result"] = "md5-mismatch"
 		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply
+		return reply, nil
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, segmentEntry, sequenceEntry,
-		message.Data)
+	err = nimbusioWriter.StoreSequence(lgr, archiveKeyFinal.Segment,
+		archiveKeyFinal.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
-	if err = nimbusioWriter.FinishSegment(lgr, segmentEntry, fileEntry); err != nil {
+	metaData := msg.GetMetaFromJSON(message.Marshalled)
+
+	err = nimbusioWriter.FinishSegment(lgr, archiveKeyFinal.Segment,
+		archiveKeyFinal.File, metaData)
+	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
-func handleArchiveKeyCancel(message types.Message) Reply {
-	var cancelEntry types.CancelEntry
+func handleArchiveKeyCancel(message types.Message) (Reply, error) {
+	var archiveKeyCancel msg.ArchiveKeyCancel
 	var err error
 
-	reply := createReply(message)
-
-	if cancelEntry, err = parseCancelEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	archiveKeyCancel, err = msg.UnmarshalArchiveKeyCancel(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyCancel failed %s", err)
 	}
 
-	lgr := logger.NewLogger(message.UserRequestID, cancelEntry.UnifiedID,
-		cancelEntry.ConjoinedPart, cancelEntry.SegmentNum, "")
+	reply := createReply("archive-key-Cancel", message.ID,
+		archiveKeyCancel.UserRequestID, archiveKeyCancel.ReturnAddress)
+
+	lgr := logger.NewLogger(archiveKeyCancel.UserRequestID, archiveKeyCancel.UnifiedID,
+		archiveKeyCancel.ConjoinedPart, archiveKeyCancel.SegmentNum, "")
 	lgr.Info("archive-key-cancel")
 
-	if err = nimbusioWriter.CancelSegment(lgr, cancelEntry); err != nil {
+	if err = nimbusioWriter.CancelSegment(lgr, archiveKeyCancel); err != nil {
 		lgr.Error("CancelSegment: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
+/*
 func handleDestroyKey(message types.Message) Reply {
 	var segmentEntry types.SegmentEntry
 	var rawUnifiedIDToDestroy float64

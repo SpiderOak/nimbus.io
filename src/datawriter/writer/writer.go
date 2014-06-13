@@ -24,10 +24,10 @@ type NimbusioWriter interface {
 	// StoreSequence stores data for  an initialized segment
 	StoreSequence(lgr logger.Logger, segment msg.Segment,
 		sequence msg.Sequence, data []byte) error
-	/*
-		// CancelSegment stops processing the segment
-		CancelSegment(lgr logger.Logger, cancel msg.Cancel) error
-	*/
+
+	// CancelSegment stops processing the segment
+	CancelSegment(lgr logger.Logger, cancel msg.ArchiveKeyCancel) error
+
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segment msg.Segment,
 		file msg.File, metaData []msg.MetaPair) error
@@ -232,10 +232,9 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 	return nil
 }
 
-/*
 // CancelSegment stops storing the segment
 func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
-	cancel msg.Cancel) error {
+	cancel msg.ArchiveKeyCancel) error {
 	var err error
 
 	lgr.Debug("CancelSegment")
@@ -256,7 +255,7 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 
 	return nil
 }
-*/
+
 // FinishSegment finishes storing the segment
 func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 	segment msg.Segment, file msg.File, metaData []msg.MetaPair) error {

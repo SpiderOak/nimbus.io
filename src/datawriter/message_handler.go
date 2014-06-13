@@ -53,9 +53,9 @@ func NewMessageHandler() chan<- types.Message {
 		"archive-key-start":  handleArchiveKeyStart,
 		"archive-key-next":   handleArchiveKeyNext,
 		"archive-key-final":  handleArchiveKeyFinal,
-		"archive-key-cancel": handleArchiveKeyCancel}
+		"archive-key-cancel": handleArchiveKeyCancel,
+		"destroy-key":        handleDestroyKey}
 	/*
-		"destroy-key":              handleDestroyKey,
 		"start-conjoined-archive":  handleStartConjoinedArchive,
 		"abort-conjoined-archive":  handleAbortConjoinedArchive,
 		"finish-conjoined-archive": handleFinishConjoinedArchive}
@@ -383,7 +383,7 @@ func handleArchiveKeyCancel(message types.Message) (Reply, error) {
 		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyCancel failed %s", err)
 	}
 
-	reply := createReply("archive-key-Cancel", message.ID,
+	reply := createReply("archive-key-cancel", message.ID,
 		archiveKeyCancel.UserRequestID, archiveKeyCancel.ReturnAddress)
 
 	lgr := logger.NewLogger(archiveKeyCancel.UserRequestID, archiveKeyCancel.UnifiedID,
@@ -403,48 +403,36 @@ func handleArchiveKeyCancel(message types.Message) (Reply, error) {
 	return reply, nil
 }
 
-/*
-func handleDestroyKey(message types.Message) Reply {
-	var segmentEntry types.SegmentEntry
-	var rawUnifiedIDToDestroy float64
-	var unifiedIDToDestroy uint64
+func handleDestroyKey(message types.Message) (Reply, error) {
+	var destroyKey msg.DestroyKey
 	var err error
-	var ok bool
 
-	reply := createReply(message)
-
-	if segmentEntry, err = parseSegmentEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	destroyKey, err = msg.UnmarshalDestroyKey(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalDestroyKey failed %s", err)
 	}
 
-	if message.Map["unified-id-to-Destroy"] != nil {
-		if rawUnifiedIDToDestroy, ok = message.Map["unified-id-to-Destroy"].(float64); !ok {
-			reply.MessageMap["result"] = "error"
-			reply.MessageMap["error-message"] = err.Error()
-			return reply
-		}
-		unifiedIDToDestroy = uint64(rawUnifiedIDToDestroy)
-	}
+	reply := createReply("destroy-key", message.ID,
+		destroyKey.UserRequestID, destroyKey.ReturnAddress)
 
-	lgr := logger.NewLogger(message.UserRequestID, segmentEntry.UnifiedID,
-		segmentEntry.ConjoinedPart, segmentEntry.SegmentNum, segmentEntry.Key)
-	lgr.Info("destroy-key (%d)", unifiedIDToDestroy)
+	lgr := logger.NewLogger(destroyKey.UserRequestID, destroyKey.UnifiedID,
+		destroyKey.ConjoinedPart, destroyKey.SegmentNum, destroyKey.Key)
+	lgr.Info("archive-key-cancel")
 
-	if err = nimbusioWriter.DestroyKey(lgr, segmentEntry, unifiedIDToDestroy); err != nil {
+	if err = nimbusioWriter.DestroyKey(lgr, destroyKey); err != nil {
 		lgr.Error("DestroyKey: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
+/*
 func handleStartConjoinedArchive(message types.Message) Reply {
 	var conjoinedEntry types.ConjoinedEntry
 	var err error

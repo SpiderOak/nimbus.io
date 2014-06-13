@@ -31,11 +31,11 @@ type NimbusioWriter interface {
 	// FinishSegment finishes storing the segment
 	FinishSegment(lgr logger.Logger, segment msg.Segment,
 		file msg.File, metaData []msg.MetaPair) error
-	/*
-		// DestroyKey makes a key inaccessible
-		DestroyKey(lgr logger.Logger, segment msg.Segment,
-			unifiedIDToDestroy uint64) error
 
+	// DestroyKey makes a key inaccessible
+	DestroyKey(lgr logger.Logger, destroyKey msg.DestroyKey) error
+
+	/*
 		// StartConjoinedArchive begins a conjoined archive
 		StartConjoinedArchive(lgr logger.Logger,
 			conjoinedEntry types.ConjoinedEntry) error
@@ -311,73 +311,88 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 	return nil
 }
 
-/*
 // DestroyKey makes a key inaccessible
 func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
-	segment msg.Segment,
-	unifiedIDToDestroy uint64) error {
+	destroyKey msg.DestroyKey) error {
 
 	var err error
+	var ok bool
+	var timestamp time.Time
+	var sourceNodeID uint32
+	var handoffNodeID uint32
 
-	lgr.Debug("DestroyKey (%d)", unifiedIDToDestroy)
+	lgr.Debug("DestroyKey (%d)", destroyKey.UnifiedIDToDestroy)
 
-	if unifiedIDToDestroy > 0 {
-		if segment.HandoffNodeID > 0 {
+	if sourceNodeID, ok = writer.NodeIDMap[destroyKey.SourceNodeName]; !ok {
+		return fmt.Errorf("unknown source node %s", destroyKey.SourceNodeName)
+	}
+
+	if timestamp, err = tools.ParseTimestampRepr(destroyKey.TimestampRepr); err != nil {
+		return fmt.Errorf("unable to parse timestamp %s", err)
+	}
+
+	if destroyKey.UnifiedIDToDestroy > 0 {
+		if destroyKey.HandoffNodeName != "" {
+			if handoffNodeID, ok = writer.NodeIDMap[destroyKey.HandoffNodeName]; !ok {
+				return fmt.Errorf("unknown handoff node %s", destroyKey.HandoffNodeName)
+			}
 			stmt := nodedb.Stmts["new-tombstone-for-unified-id-for-handoff"]
 			_, err = stmt.Exec(
-				segment.CollectionID,
-				segment.Key,
-				segment.UnifiedID,
-				segment.Timestamp,
-				segment.SegmentNum,
-				unifiedIDToDestroy,
-				segment.SourceNodeID,
-				segment.HandoffNodeID)
+				destroyKey.CollectionID,
+				destroyKey.Key,
+				destroyKey.UnifiedID,
+				timestamp,
+				destroyKey.SegmentNum,
+				destroyKey.UnifiedIDToDestroy,
+				sourceNodeID,
+				handoffNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone-for-unified-id-for-handoff %d %s",
-					unifiedIDToDestroy, err)
+					destroyKey.UnifiedIDToDestroy, err)
 			}
 		} else {
 			stmt := nodedb.Stmts["new-tombstone-for-unified-id"]
 			_, err = stmt.Exec(
-				segment.CollectionID,
-				segment.Key,
-				segment.UnifiedID,
-				segment.Timestamp,
-				segment.SegmentNum,
-				unifiedIDToDestroy,
-				segment.SourceNodeID,
-				segment.HandoffNodeID)
+				destroyKey.CollectionID,
+				destroyKey.Key,
+				destroyKey.UnifiedID,
+				timestamp,
+				destroyKey.SegmentNum,
+				destroyKey.UnifiedIDToDestroy,
+				sourceNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone-for-unified-id %d %s",
-					unifiedIDToDestroy, err)
+					destroyKey.UnifiedIDToDestroy, err)
 			}
 		}
 
 		stmt := nodedb.Stmts["delete-conjoined-for-unified-id"]
 		_, err = stmt.Exec(
-			segment.Timestamp,
-			segment.CollectionID,
-			segment.Key,
-			unifiedIDToDestroy)
+			timestamp,
+			destroyKey.CollectionID,
+			destroyKey.Key,
+			destroyKey.UnifiedIDToDestroy)
 
 		if err != nil {
 			return fmt.Errorf("delete-conjoined-for-unified-id %d %s",
-				unifiedIDToDestroy, err)
+				destroyKey.UnifiedIDToDestroy, err)
 		}
 	} else {
-		if segment.HandoffNodeID > 0 {
+		if destroyKey.HandoffNodeName != "" {
+			if handoffNodeID, ok = writer.NodeIDMap[destroyKey.HandoffNodeName]; !ok {
+				return fmt.Errorf("unknown handoff node %s", destroyKey.HandoffNodeName)
+			}
 			stmt := nodedb.Stmts["new-tombstone-for-handoff"]
 			_, err = stmt.Exec(
-				segment.CollectionID,
-				segment.Key,
-				segment.UnifiedID,
-				segment.Timestamp,
-				segment.SegmentNum,
-				segment.SourceNodeID,
-				segment.HandoffNodeID)
+				destroyKey.CollectionID,
+				destroyKey.Key,
+				destroyKey.UnifiedID,
+				timestamp,
+				destroyKey.SegmentNum,
+				sourceNodeID,
+				handoffNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone-for-handoff %s", err)
@@ -385,12 +400,12 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 		} else {
 			stmt := nodedb.Stmts["new-tombstone"]
 			_, err = stmt.Exec(
-				segment.CollectionID,
-				segment.Key,
-				segment.UnifiedID,
-				segment.Timestamp,
-				segment.SegmentNum,
-				segment.SourceNodeID)
+				destroyKey.CollectionID,
+				destroyKey.Key,
+				destroyKey.UnifiedID,
+				timestamp,
+				destroyKey.SegmentNum,
+				sourceNodeID)
 
 			if err != nil {
 				return fmt.Errorf("new-tombstone %s", err)
@@ -399,21 +414,20 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 
 		stmt := nodedb.Stmts["delete-conjoined"]
 		_, err = stmt.Exec(
-			segment.Timestamp,
-			segment.CollectionID,
-			segment.Key,
-			segment.UnifiedID)
+			timestamp,
+			destroyKey.CollectionID,
+			destroyKey.Key,
+			destroyKey.UnifiedID)
 
 		if err != nil {
 			return fmt.Errorf("delete-conjoined %s", err)
 		}
 	}
-	// Set delete_timestamp on all conjoined rows for this key
-	// that are older than this tombstone
 
 	return nil
 }
 
+/*
 // StartConjoinedArchive begins a conjoined archive
 func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
 	conjoinedEntry types.ConjoinedEntry) error {

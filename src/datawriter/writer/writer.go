@@ -35,19 +35,14 @@ type NimbusioWriter interface {
 	// DestroyKey makes a key inaccessible
 	DestroyKey(lgr logger.Logger, destroyKey msg.DestroyKey) error
 
-	/*
-		// StartConjoinedArchive begins a conjoined archive
-		StartConjoinedArchive(lgr logger.Logger,
-			conjoinedEntry types.ConjoinedEntry) error
+	// StartConjoinedArchive begins a conjoined archive
+	StartConjoinedArchive(lgr logger.Logger, conjoined msg.Conjoined) error
 
-		// AbortConjoinedArchive cancels conjoined archive
-		AbortConjoinedArchive(lgr logger.Logger,
-			conjoinedEntry types.ConjoinedEntry) error
+	// AbortConjoinedArchive cancels conjoined archive
+	AbortConjoinedArchive(lgr logger.Logger, conjoined msg.Conjoined) error
 
-		// FinishConjoinedArchive completes a conjoined archive
-		FinishConjoinedArchive(lgr logger.Logger,
-			conjoinedEntry types.ConjoinedEntry) error
-	*/
+	// FinishConjoinedArchive completes a conjoined archive
+	FinishConjoinedArchive(lgr logger.Logger, conjoined msg.Conjoined) error
 }
 
 type segmentKey struct {
@@ -427,22 +422,31 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 	return nil
 }
 
-/*
 // StartConjoinedArchive begins a conjoined archive
 func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
-	conjoinedEntry types.ConjoinedEntry) error {
+	conjoined msg.Conjoined) error {
 	var err error
+	var ok bool
+	var handoffNodeID uint32
+	var timestamp time.Time
 
-	lgr.Debug("StartConjoinedArchive %s", conjoinedEntry)
+	lgr.Debug("StartConjoinedArchive %s", conjoined)
 
-	if conjoinedEntry.HandoffNodeID > 0 {
+	if timestamp, err = tools.ParseTimestampRepr(conjoined.TimestampRepr); err != nil {
+		return fmt.Errorf("unable to parse timestamp %s", err)
+	}
+
+	if conjoined.HandoffNodeName != "" {
+		if handoffNodeID, ok = writer.NodeIDMap[conjoined.HandoffNodeName]; !ok {
+			return fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+		}
 		stmt := nodedb.Stmts["start-conjoined-for-handoff"]
 		_, err = stmt.Exec(
-			conjoinedEntry.CollectionID,
-			conjoinedEntry.Key,
-			conjoinedEntry.UnifiedID,
-			conjoinedEntry.Timestamp,
-			conjoinedEntry.HandoffNodeID)
+			conjoined.CollectionID,
+			conjoined.Key,
+			conjoined.UnifiedID,
+			timestamp,
+			handoffNodeID)
 
 		if err != nil {
 			return fmt.Errorf("start-conjoined-for-handoff %s", err)
@@ -450,10 +454,10 @@ func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
 	} else {
 		stmt := nodedb.Stmts["start-conjoined"]
 		_, err = stmt.Exec(
-			conjoinedEntry.CollectionID,
-			conjoinedEntry.Key,
-			conjoinedEntry.UnifiedID,
-			conjoinedEntry.Timestamp)
+			conjoined.CollectionID,
+			conjoined.Key,
+			conjoined.UnifiedID,
+			timestamp)
 
 		if err != nil {
 			return fmt.Errorf("start-conjoined %s", err)
@@ -466,20 +470,29 @@ func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
 
 // AbortConjoinedArchive cancels conjoined archive
 func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
-	conjoinedEntry types.ConjoinedEntry) error {
+	conjoined msg.Conjoined) error {
 	var err error
+	var ok bool
+	var handoffNodeID uint32
+	var timestamp time.Time
 
-	lgr.Debug("StartConjoinedArchive %s", conjoinedEntry)
+	lgr.Debug("StartConjoinedArchive %s", conjoined)
 
-	if conjoinedEntry.HandoffNodeID > 0 {
+	if timestamp, err = tools.ParseTimestampRepr(conjoined.TimestampRepr); err != nil {
+		return fmt.Errorf("unable to parse timestamp %s", err)
+	}
 
+	if conjoined.HandoffNodeName != "" {
+		if handoffNodeID, ok = writer.NodeIDMap[conjoined.HandoffNodeName]; !ok {
+			return fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+		}
 		stmt := nodedb.Stmts["abort-conjoined-for-handoff"]
 		_, err = stmt.Exec(
-			conjoinedEntry.Timestamp,
-			conjoinedEntry.CollectionID,
-			conjoinedEntry.Key,
-			conjoinedEntry.UnifiedID,
-			conjoinedEntry.HandoffNodeID)
+			timestamp,
+			conjoined.CollectionID,
+			conjoined.Key,
+			conjoined.UnifiedID,
+			handoffNodeID)
 
 		if err != nil {
 			return fmt.Errorf("abort-conjoined-for-handoff %s", err)
@@ -488,10 +501,10 @@ func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
 
 		stmt := nodedb.Stmts["abort-conjoined"]
 		_, err = stmt.Exec(
-			conjoinedEntry.Timestamp,
-			conjoinedEntry.CollectionID,
-			conjoinedEntry.Key,
-			conjoinedEntry.UnifiedID)
+			timestamp,
+			conjoined.CollectionID,
+			conjoined.Key,
+			conjoined.UnifiedID)
 
 		if err != nil {
 			return fmt.Errorf("abort-conjoined %s", err)
@@ -504,20 +517,29 @@ func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
 
 // FinishConjoinedArchive completes a conjoined archive
 func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
-	conjoinedEntry types.ConjoinedEntry) error {
+	conjoined msg.Conjoined) error {
 	var err error
+	var ok bool
+	var handoffNodeID uint32
+	var timestamp time.Time
 
-	lgr.Debug("FinishConjoinedArchive %s", conjoinedEntry)
+	lgr.Debug("FinishConjoinedArchive %s", conjoined)
 
-	if conjoinedEntry.HandoffNodeID > 0 {
+	if timestamp, err = tools.ParseTimestampRepr(conjoined.TimestampRepr); err != nil {
+		return fmt.Errorf("unable to parse timestamp %s", err)
+	}
 
+	if conjoined.HandoffNodeName != "" {
+		if handoffNodeID, ok = writer.NodeIDMap[conjoined.HandoffNodeName]; !ok {
+			return fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+		}
 		stmt := nodedb.Stmts["finish-conjoined-for-handoff"]
 		_, err = stmt.Exec(
-			conjoinedEntry.Timestamp,
-			conjoinedEntry.CollectionID,
-			conjoinedEntry.Key,
-			conjoinedEntry.UnifiedID,
-			conjoinedEntry.HandoffNodeID)
+			timestamp,
+			conjoined.CollectionID,
+			conjoined.Key,
+			conjoined.UnifiedID,
+			handoffNodeID)
 
 		if err != nil {
 			return fmt.Errorf("finish-conjoined-for-handoff %s", err)
@@ -526,10 +548,10 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 
 		stmt := nodedb.Stmts["finish-conjoined"]
 		_, err = stmt.Exec(
-			conjoinedEntry.Timestamp,
-			conjoinedEntry.CollectionID,
-			conjoinedEntry.Key,
-			conjoinedEntry.UnifiedID)
+			timestamp,
+			conjoined.CollectionID,
+			conjoined.Key,
+			conjoined.UnifiedID)
 
 		if err != nil {
 			return fmt.Errorf("finish-conjoined %s", err)
@@ -539,4 +561,3 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 
 	return nil
 }
-*/

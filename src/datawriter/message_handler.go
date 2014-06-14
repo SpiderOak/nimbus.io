@@ -432,94 +432,93 @@ func handleDestroyKey(message types.Message) (Reply, error) {
 	return reply, nil
 }
 
-/*
-func handleStartConjoinedArchive(message types.Message) Reply {
-	var conjoinedEntry types.ConjoinedEntry
+func handleStartConjoinedArchive(message types.Message) (Reply, error) {
+	var conjoined msg.Conjoined
 	var err error
 
-	reply := createReply(message)
-
-	if conjoinedEntry, err = parseConjoinedEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalConjoined failed %s", err)
 	}
 
-	lgr := logger.NewLogger(message.UserRequestID, conjoinedEntry.UnifiedID,
-		0, 0, conjoinedEntry.Key)
-	lgr.Info("start-conjoined-archive (%d)", conjoinedEntry.CollectionID)
+	reply := createReply("start-conjoined-archive", message.ID,
+		conjoined.UserRequestID, conjoined.ReturnAddress)
 
-	if err = nimbusioWriter.StartConjoinedArchive(lgr, conjoinedEntry); err != nil {
+	lgr := logger.NewLogger(conjoined.UserRequestID, conjoined.UnifiedID,
+		0, 0, conjoined.Key)
+	lgr.Info("start-conjoined-archive (%d)", conjoined.CollectionID)
+
+	if err = nimbusioWriter.StartConjoinedArchive(lgr, conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
-func handleAbortConjoinedArchive(message types.Message) Reply {
-	var conjoinedEntry types.ConjoinedEntry
+func handleAbortConjoinedArchive(message types.Message) (Reply, error) {
+	var conjoined msg.Conjoined
 	var err error
 
-	reply := createReply(message)
-
-	if conjoinedEntry, err = parseConjoinedEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalConjoined failed %s", err)
 	}
 
-	lgr := logger.NewLogger(message.UserRequestID, conjoinedEntry.UnifiedID,
-		0, 0, conjoinedEntry.Key)
-	lgr.Info("abort-conjoined-archive (%d)", conjoinedEntry.CollectionID)
+	reply := createReply("abort-conjoined-archive", message.ID,
+		conjoined.UserRequestID, conjoined.ReturnAddress)
 
-	if err = nimbusioWriter.AbortConjoinedArchive(lgr, conjoinedEntry); err != nil {
+	lgr := logger.NewLogger(conjoined.UserRequestID, conjoined.UnifiedID,
+		0, 0, conjoined.Key)
+	lgr.Info("abort-conjoined-archive (%d)", conjoined.CollectionID)
+
+	if err = nimbusioWriter.AbortConjoinedArchive(lgr, conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
 
-func handleFinishConjoinedArchive(message types.Message) Reply {
-	var conjoinedEntry types.ConjoinedEntry
+func handleFinishConjoinedArchive(message types.Message) (Reply, error) {
+	var conjoined msg.Conjoined
 	var err error
 
-	reply := createReply(message)
-
-	if conjoinedEntry, err = parseConjoinedEntry(message); err != nil {
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply
+	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
+	if err != nil {
+		return Reply{}, fmt.Errorf("UnmarshalConjoined failed %s", err)
 	}
 
-	lgr := logger.NewLogger(message.UserRequestID, conjoinedEntry.UnifiedID,
-		0, 0, conjoinedEntry.Key)
-	lgr.Info("finish-conjoined-archive (%d)", conjoinedEntry.CollectionID)
+	reply := createReply("finish-conjoined-archive", message.ID,
+		conjoined.UserRequestID, conjoined.ReturnAddress)
 
-	if err = nimbusioWriter.FinishConjoinedArchive(lgr, conjoinedEntry); err != nil {
+	lgr := logger.NewLogger(conjoined.UserRequestID, conjoined.UnifiedID,
+		0, 0, conjoined.Key)
+	lgr.Info("finish-conjoined-archive (%d)", conjoined.CollectionID)
+
+	if err = nimbusioWriter.FinishConjoinedArchive(lgr, conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
 		reply.MessageMap["result"] = "error"
 		reply.MessageMap["error-message"] = err.Error()
-		return reply
+		return reply, nil
 	}
 
 	reply.MessageMap["result"] = "success"
 	reply.MessageMap["error-message"] = ""
 
-	return reply
+	return reply, nil
 }
-*/
+
 func createReply(messageType, messageID, userRequestID string,
 	returnAddress msg.ReturnAddress) Reply {
 	var reply Reply
@@ -538,262 +537,6 @@ func createReply(messageType, messageID, userRequestID string,
 	return reply
 }
 
-/*
-func parseSegmentEntry(message types.Message) (types.SegmentEntry, error) {
-	var entry types.SegmentEntry
-	var ok bool
-	var err error
-	var collectionID float64
-	var unifiedID float64
-	var conjoinedPart float64
-	var segmentNum float64
-	var timestampRepr string
-	var sourceNodeName string
-	var handoffNodeName string
-
-	if collectionID, ok = message.Map["collection-id"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable collection-id %T, %s",
-			message.Map["collection-id"], message.Map["collection-id"])
-	}
-	entry.CollectionID = uint32(collectionID)
-
-	if entry.Key, ok = message.Map["key"].(string); !ok {
-		return entry, fmt.Errorf("unparseable key %T, %s",
-			message.Map["key"], message.Map["key"])
-	}
-
-	if unifiedID, ok = message.Map["unified-id"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable unified-id %T, %s",
-			message.Map["unified-id"], message.Map["unified-id"])
-	}
-	entry.UnifiedID = uint64(unifiedID)
-
-	if timestampRepr, ok = message.Map["timestamp-repr"].(string); !ok {
-		return entry, fmt.Errorf("unparseable timestamp-repr %T, %s",
-			message.Map["timestamp-repr"], message.Map["timestamp-repr"])
-	}
-	if entry.Timestamp, err = ParseTimestampRepr(timestampRepr); err != nil {
-		return entry, fmt.Errorf("unable to parse %s %s", timestampRepr, err)
-	}
-
-	if message.Map["conjoined-part"] != nil {
-		if conjoinedPart, ok = message.Map["conjoined-part"].(float64); !ok {
-			return entry, fmt.Errorf("unparseable conjoined-part %T, %s",
-				message.Map["conjoined-part"], message.Map["conjoined-part"])
-		}
-		entry.ConjoinedPart = uint32(conjoinedPart)
-	}
-
-	if segmentNum, ok = message.Map["segment-num"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable segment-num %T, %s",
-			message.Map["segment-num"], message.Map["segment-num"])
-	}
-	entry.SegmentNum = uint8(segmentNum)
-
-	sourceNodeName, ok = message.Map["source-node-name"].(string)
-	if !ok {
-		return entry, fmt.Errorf("unparseable source-node-name %T, %s",
-			message.Map["source-node-name"], message.Map["source-node-name"])
-	}
-	entry.SourceNodeID, ok = nodeIDMap[sourceNodeName]
-	if !ok {
-		return entry, fmt.Errorf("unknown source-node-name %s",
-			message.Map["source-node-name"])
-	}
-
-	if message.Map["handoff-node-name"] != nil {
-		handoffNodeName, ok = message.Map["handoff-node-name"].(string)
-		if !ok {
-			return entry, fmt.Errorf("unparseable handoff-node-name %T, %s",
-				message.Map["handoff-node-name"], message.Map["handoff-node-name"])
-		}
-		entry.HandoffNodeID, ok = nodeIDMap[handoffNodeName]
-		if !ok {
-			return entry, fmt.Errorf("unknown handoff-node-name %s",
-				message.Map["handoff-node-name"])
-		}
-	}
-
-	return entry, nil
-}
-
-func parseSequenceEntry(message types.Message) (types.SequenceEntry, error) {
-	var entry types.SequenceEntry
-	var err error
-	var ok bool
-	var rawSequenceNum interface{}
-	var sequenceNum float64
-	var segmentSize float64
-	var zfecPaddingSize float64
-	var encodedMD5Digest string
-	var adler32 float64
-
-	// if we don't have a sequence num, use 0 (archive-key-entire)
-	rawSequenceNum, ok = message.Map["sequence-num"]
-	if ok {
-		if sequenceNum, ok = rawSequenceNum.(float64); !ok {
-			return entry, fmt.Errorf("unparseable sequence-num %T, %s",
-				message.Map["sequence-num"], message.Map["sequence-num"])
-		}
-		entry.SequenceNum = uint32(sequenceNum)
-	}
-
-	if segmentSize, ok = message.Map["segment-size"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable segment-size %T, %s",
-			message.Map["segment-size"], message.Map["segment-size"])
-	}
-	entry.SegmentSize = uint64(segmentSize)
-
-	if zfecPaddingSize, ok = message.Map["zfec-padding-size"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable zfec-padding-size %T, %s",
-			message.Map["zfec-padding-size"], message.Map["zfec-padding-size"])
-	}
-	entry.ZfecPaddingSize = uint32(zfecPaddingSize)
-
-	if encodedMD5Digest, ok = message.Map["segment-md5-digest"].(string); !ok {
-		return entry, fmt.Errorf("unparseable segment-md5-digest %T, %s",
-			message.Map["segment-md5-digest"], message.Map["segment-md5-digest"])
-	}
-	entry.MD5Digest, err = base64.StdEncoding.DecodeString(encodedMD5Digest)
-	if err != nil {
-		return entry, fmt.Errorf("can't decode segment-md5-digest %s",
-			encodedMD5Digest)
-	}
-
-	if adler32, ok = message.Map["segment-adler32"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable segment-adler32 %T, %s",
-			message.Map["segment-adler32"], message.Map["segment-adler32"])
-	}
-	entry.Adler32 = int32(adler32)
-
-	return entry, nil
-}
-
-func parseFileEntry(message types.Message) (types.FileEntry, error) {
-	var entry types.FileEntry
-	var err error
-	var ok bool
-	var fileSize float64
-	var encodedMD5Digest string
-	var adler32 float64
-
-	if fileSize, ok = message.Map["file-size"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable file-size %T, %s",
-			message.Map["file-size"], message.Map["file-size"])
-	}
-	entry.FileSize = uint64(fileSize)
-
-	if encodedMD5Digest, ok = message.Map["file-hash"].(string); !ok {
-		return entry, fmt.Errorf("unparseable file-hash %T, %s",
-			message.Map["file-hash"], message.Map["file-hash"])
-	}
-	entry.MD5Digest, err = base64.StdEncoding.DecodeString(encodedMD5Digest)
-	if err != nil {
-		return entry, fmt.Errorf("can't decode segment-md5-digest %s",
-			encodedMD5Digest)
-	}
-
-	if adler32, ok = message.Map["file-adler32"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable file-adler32 %T, %s",
-			message.Map["file-adler32"], message.Map["file-adler32"])
-	}
-	entry.Adler32 = int32(adler32)
-
-	for key := range message.Map {
-		if strings.HasPrefix(key, "__nimbus_io__") {
-			var metaEntry types.MetaEntry
-			metaEntry.Key = key[len("__nimbus_io__"):]
-			if metaEntry.Value, ok = message.Map[key].(string); !ok {
-				return entry, fmt.Errorf("unparseable %s %T, %s",
-					key, message.Map[key], message.Map[key])
-			}
-			entry.MetaData = append(entry.MetaData, metaEntry)
-		}
-	}
-
-	return entry, nil
-}
-
-func parseCancelEntry(message types.Message) (types.CancelEntry, error) {
-	var entry types.CancelEntry
-	var ok bool
-	var unifiedID float64
-	var conjoinedPart float64
-	var segmentNum float64
-
-	if unifiedID, ok = message.Map["unified-id"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable unified-id %T, %s",
-			message.Map["unified-id"], message.Map["unified-id"])
-	}
-	entry.UnifiedID = uint64(unifiedID)
-
-	if message.Map["conjoined-part"] != nil {
-		if conjoinedPart, ok = message.Map["conjoined-part"].(float64); !ok {
-			return entry, fmt.Errorf("unparseable conjoined-part %T, %s",
-				message.Map["conjoined-part"], message.Map["conjoined-part"])
-		}
-		entry.ConjoinedPart = uint32(conjoinedPart)
-	}
-
-	if segmentNum, ok = message.Map["segment-num"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable segment-num %T, %s",
-			message.Map["segment-num"], message.Map["segment-num"])
-	}
-	entry.SegmentNum = uint8(segmentNum)
-
-	return entry, nil
-}
-
-func parseConjoinedEntry(message types.Message) (types.ConjoinedEntry, error) {
-	var entry types.ConjoinedEntry
-	var ok bool
-	var err error
-	var collectionID float64
-	var unifiedID float64
-	var timestampRepr string
-	var handoffNodeName string
-
-	if collectionID, ok = message.Map["collection-id"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable collection-id %T, %s",
-			message.Map["collection-id"], message.Map["collection-id"])
-	}
-	entry.CollectionID = uint32(collectionID)
-
-	if entry.Key, ok = message.Map["key"].(string); !ok {
-		return entry, fmt.Errorf("unparseable key %T, %s",
-			message.Map["key"], message.Map["key"])
-	}
-
-	if unifiedID, ok = message.Map["unified-id"].(float64); !ok {
-		return entry, fmt.Errorf("unparseable unified-id %T, %s",
-			message.Map["unified-id"], message.Map["unified-id"])
-	}
-	entry.UnifiedID = uint64(unifiedID)
-
-	if timestampRepr, ok = message.Map["timestamp-repr"].(string); !ok {
-		return entry, fmt.Errorf("unparseable timestamp-repr %T, %s",
-			message.Map["timestamp-repr"], message.Map["timestamp-repr"])
-	}
-	if entry.Timestamp, err = ParseTimestampRepr(timestampRepr); err != nil {
-		return entry, fmt.Errorf("unable to parse %s %s", timestampRepr, err)
-	}
-
-	if message.Map["handoff-node-name"] != nil {
-		handoffNodeName, ok = message.Map["handoff-node-name"].(string)
-		if !ok {
-			return entry, fmt.Errorf("unparseable handoff-node-name %T, %s",
-				message.Map["handoff-node-name"], message.Map["handoff-node-name"])
-		}
-		entry.HandoffNodeID, ok = nodeIDMap[handoffNodeName]
-		if !ok {
-			return entry, fmt.Errorf("unknown handoff-node-name %s",
-				message.Map["handoff-node-name"])
-		}
-	}
-
-	return entry, nil
-}
-*/
 func MD5DigestMatches(data []byte, md5Digest []byte) bool {
 	hasher := md5.New()
 	hasher.Write(data)

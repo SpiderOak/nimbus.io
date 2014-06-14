@@ -49,17 +49,16 @@ func NewMessageHandler() chan<- types.Message {
 	}
 
 	dispatchTable := map[string]messageHandler{
-		"archive-key-entire": handleArchiveKeyEntire,
-		"archive-key-start":  handleArchiveKeyStart,
-		"archive-key-next":   handleArchiveKeyNext,
-		"archive-key-final":  handleArchiveKeyFinal,
-		"archive-key-cancel": handleArchiveKeyCancel,
-		"destroy-key":        handleDestroyKey}
-	/*
+		"archive-key-entire":       handleArchiveKeyEntire,
+		"archive-key-start":        handleArchiveKeyStart,
+		"archive-key-next":         handleArchiveKeyNext,
+		"archive-key-final":        handleArchiveKeyFinal,
+		"archive-key-cancel":       handleArchiveKeyCancel,
+		"destroy-key":              handleDestroyKey,
 		"start-conjoined-archive":  handleStartConjoinedArchive,
 		"abort-conjoined-archive":  handleAbortConjoinedArchive,
 		"finish-conjoined-archive": handleFinishConjoinedArchive}
-	*/
+
 	pushSockets := make(map[string]*zmq4.Socket)
 
 	go func() {

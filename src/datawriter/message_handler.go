@@ -4,35 +4,27 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/base64"
-	"encoding/json"
-	"fmt"
-
-	"github.com/pebbe/zmq4"
 
 	"fog"
 
 	"datawriter/logger"
 	"datawriter/msg"
 	"datawriter/nodedb"
+	"datawriter/reply"
 	"datawriter/types"
 	"datawriter/writer"
 )
 
 const (
 	messageChanCapacity = 100
-	pushSocketSendHWM   = 10
 )
 
-type Reply struct {
-	ClientAddress string
-	MessageMap    map[string]interface{}
-}
-
 // message handler takes a message and returns a reply
-type messageHandler func(message types.Message) (Reply, error)
+type messageHandler func(message types.Message)
 
 var (
 	nimbusioWriter writer.NimbusioWriter
+	replyChan      chan<- *reply.ReplyMessage
 )
 
 func NewMessageHandler() chan<- types.Message {
@@ -48,6 +40,8 @@ func NewMessageHandler() chan<- types.Message {
 		fog.Critical("NewMessageHandler: NewNimbusioWriter() failed %s", err)
 	}
 
+	replyChan = reply.NewReplyHandler()
+
 	dispatchTable := map[string]messageHandler{
 		"archive-key-entire":       handleArchiveKeyEntire,
 		"archive-key-start":        handleArchiveKeyStart,
@@ -59,8 +53,6 @@ func NewMessageHandler() chan<- types.Message {
 		"abort-conjoined-archive":  handleAbortConjoinedArchive,
 		"finish-conjoined-archive": handleFinishConjoinedArchive}
 
-	pushSockets := make(map[string]*zmq4.Socket)
-
 	go func() {
 		for message := range messageChan {
 			handler, ok := dispatchTable[message.Type]
@@ -69,77 +61,25 @@ func NewMessageHandler() chan<- types.Message {
 					message.Type, message.Marshalled)
 				continue
 			}
-			reply, err := handler(message)
-			if err != nil {
-				fog.Error("error handling '%s' %s", message.Type, err)
-				continue
-			}
-
-			marshalledReply, err := json.Marshal(reply.MessageMap)
-			if err != nil {
-				fog.Error("unable to marshall reply %s %s", reply, err)
-				continue
-			}
-
-			var pushSocket *zmq4.Socket
-			pushSocket, ok = pushSockets[reply.ClientAddress]
-			if !ok {
-				fog.Info("creating PUSH socket to %s", reply.ClientAddress)
-				if pushSocket, err = createPushSocket(); err != nil {
-					fog.Error("Unable to create PUSH socket for %s %s",
-						reply.ClientAddress, err)
-					continue
-				}
-				if err = pushSocket.Connect(reply.ClientAddress); err != nil {
-					fog.Error("Unable to Connect PUSH socket to %s %s",
-						reply.ClientAddress, err)
-					pushSocket.Close()
-					continue
-				}
-				pushSockets[reply.ClientAddress] = pushSocket
-			}
-
-			if _, err = pushSocket.SendMessage(marshalledReply); err != nil {
-				fog.Error("pushSocket SendMessage to %s failed %s",
-					reply.ClientAddress, err)
-				pushSocket.Close()
-				delete(pushSockets, reply.ClientAddress)
-				continue
-			}
+			handler(message)
 		}
-
 	}()
 
 	return messageChan
 }
 
-func createPushSocket() (*zmq4.Socket, error) {
-	var err error
-	var pushSocket *zmq4.Socket
-
-	if pushSocket, err = zmq4.NewSocket(zmq4.PUSH); err != nil {
-		return nil, fmt.Errorf("NewSocket %s", err)
-	}
-
-	if err = pushSocket.SetSndhwm(pushSocketSendHWM); err != nil {
-		return nil, fmt.Errorf("pushSocket.SetSndhwm(%d) %s",
-			pushSocketSendHWM, err)
-	}
-
-	return pushSocket, nil
-}
-
-func handleArchiveKeyEntire(message types.Message) (Reply, error) {
+func handleArchiveKeyEntire(message types.Message) {
 	var archiveKeyEntire msg.ArchiveKeyEntire
 	var md5Digest []byte
 	var err error
 
 	archiveKeyEntire, err = msg.UnmarshalArchiveKeyEntire(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyEntire failed %s", err)
+		fog.Error("UnmarshalArchiveKeyEntire failed %s", err)
+		return
 	}
 
-	reply := createReply("archive-key-final", message.ID,
+	replyMessage := reply.NewReplyMessage("archive-key-final", message.ID,
 		archiveKeyEntire.UserRequestID, archiveKeyEntire.ReturnAddress)
 
 	lgr := logger.NewLogger(archiveKeyEntire.UserRequestID, archiveKeyEntire.UnifiedID,
@@ -149,38 +89,42 @@ func handleArchiveKeyEntire(message types.Message) (Reply, error) {
 	if archiveKeyEntire.SegmentSize != uint64(len(message.Data)) {
 		lgr.Error("size mismatch (%d != %d)", archiveKeyEntire.SegmentSize,
 			len(message.Data))
-		reply.MessageMap["result"] = "size-mismatch"
-		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply, nil
+		replyMessage.Error("size-mismatch", "segment size does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyEntire.EncodedSegmentMD5Digest)
 	if err != nil {
-		return Reply{}, err
+		lgr.Error("base64.StdEncoding.DecodeString %s", err)
+		replyMessage.Error("base64", "base64.StdEncoding.DecodeString")
+		replyChan <- replyMessage
+		return
 	}
+
 	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
-		reply.MessageMap["result"] = "md5-mismatch"
-		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply, nil
+		replyMessage.Error("md5-mismatch", "segment md5 does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	err = nimbusioWriter.StartSegment(lgr, archiveKeyEntire.Segment,
 		archiveKeyEntire.NodeNames)
 	if err != nil {
 		lgr.Error("StartSegment: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
 	err = nimbusioWriter.StoreSequence(lgr, archiveKeyEntire.Segment,
 		archiveKeyEntire.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
 	metaData := msg.GetMetaFromJSON(message.Marshalled)
@@ -189,28 +133,28 @@ func handleArchiveKeyEntire(message types.Message) (Reply, error) {
 		archiveKeyEntire.File, metaData)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleArchiveKeyStart(message types.Message) (Reply, error) {
+func handleArchiveKeyStart(message types.Message) {
 	var archiveKeyStart msg.ArchiveKeyStart
 	var md5Digest []byte
 	var err error
 
 	archiveKeyStart, err = msg.UnmarshalArchiveKeyStart(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyStart failed %s", err)
+		fog.Error("UnmarshalArchiveKeyStart failed %s", err)
+		return
 	}
 
-	reply := createReply("archive-key-final", message.ID,
+	replyMessage := reply.NewReplyMessage("archive-key-final", message.ID,
 		archiveKeyStart.UserRequestID, archiveKeyStart.ReturnAddress)
 
 	lgr := logger.NewLogger(archiveKeyStart.UserRequestID, archiveKeyStart.UnifiedID,
@@ -220,57 +164,61 @@ func handleArchiveKeyStart(message types.Message) (Reply, error) {
 	if archiveKeyStart.SegmentSize != uint64(len(message.Data)) {
 		lgr.Error("size mismatch (%d != %d)", archiveKeyStart.SegmentSize,
 			len(message.Data))
-		reply.MessageMap["result"] = "size-mismatch"
-		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply, nil
+		replyMessage.Error("size-mismatch", "segment size does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyStart.EncodedSegmentMD5Digest)
 	if err != nil {
-		return Reply{}, err
+		lgr.Error("base64.StdEncoding.DecodeString %s", err)
+		replyMessage.Error("base64", "base64.StdEncoding.DecodeString")
+		replyChan <- replyMessage
+		return
 	}
+
 	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
-		reply.MessageMap["result"] = "md5-mismatch"
-		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply, nil
+		replyMessage.Error("md5-mismatch", "segment md5 does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	err = nimbusioWriter.StartSegment(lgr, archiveKeyStart.Segment,
 		archiveKeyStart.NodeNames)
 	if err != nil {
 		lgr.Error("StartSegment: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
 	err = nimbusioWriter.StoreSequence(lgr, archiveKeyStart.Segment,
 		archiveKeyStart.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleArchiveKeyNext(message types.Message) (Reply, error) {
+func handleArchiveKeyNext(message types.Message) {
 	var archiveKeyNext msg.ArchiveKeyNext
 	var md5Digest []byte
 	var err error
 
 	archiveKeyNext, err = msg.UnmarshalArchiveKeyNext(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyNext failed %s", err)
+		fog.Error("UnmarshalArchiveKeyNext failed %s", err)
+		return
 	}
 
-	reply := createReply("archive-key-final", message.ID,
+	replyMessage := reply.NewReplyMessage("archive-key-final", message.ID,
 		archiveKeyNext.UserRequestID, archiveKeyNext.ReturnAddress)
 
 	lgr := logger.NewLogger(archiveKeyNext.UserRequestID, archiveKeyNext.UnifiedID,
@@ -280,48 +228,52 @@ func handleArchiveKeyNext(message types.Message) (Reply, error) {
 	if archiveKeyNext.SegmentSize != uint64(len(message.Data)) {
 		lgr.Error("size mismatch (%d != %d)", archiveKeyNext.SegmentSize,
 			len(message.Data))
-		reply.MessageMap["result"] = "size-mismatch"
-		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply, nil
+		replyMessage.Error("size-mismatch", "segment size does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyNext.EncodedSegmentMD5Digest)
 	if err != nil {
-		return Reply{}, err
+		lgr.Error("base64.StdEncoding.DecodeString %s", err)
+		replyMessage.Error("base64", "base64.StdEncoding.DecodeString")
+		replyChan <- replyMessage
+		return
 	}
+
 	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
-		reply.MessageMap["result"] = "md5-mismatch"
-		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply, nil
+		replyMessage.Error("md5-mismatch", "segment md5 does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	err = nimbusioWriter.StoreSequence(lgr, archiveKeyNext.Segment,
 		archiveKeyNext.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleArchiveKeyFinal(message types.Message) (Reply, error) {
+func handleArchiveKeyFinal(message types.Message) {
 	var archiveKeyFinal msg.ArchiveKeyFinal
 	var md5Digest []byte
 	var err error
 
 	archiveKeyFinal, err = msg.UnmarshalArchiveKeyFinal(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyFinal failed %s", err)
+		fog.Error("UnmarshalArchiveKeyFinal failed %s", err)
+		return
 	}
 
-	reply := createReply("archive-key-final", message.ID,
+	replyMessage := reply.NewReplyMessage("archive-key-final", message.ID,
 		archiveKeyFinal.UserRequestID, archiveKeyFinal.ReturnAddress)
 
 	lgr := logger.NewLogger(archiveKeyFinal.UserRequestID, archiveKeyFinal.UnifiedID,
@@ -331,29 +283,33 @@ func handleArchiveKeyFinal(message types.Message) (Reply, error) {
 	if archiveKeyFinal.SegmentSize != uint64(len(message.Data)) {
 		lgr.Error("size mismatch (%d != %d)", archiveKeyFinal.SegmentSize,
 			len(message.Data))
-		reply.MessageMap["result"] = "size-mismatch"
-		reply.MessageMap["error-message"] = "segment size does not match expected value"
-		return reply, nil
+		replyMessage.Error("size-mismatch", "segment size does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	md5Digest, err = base64.StdEncoding.DecodeString(archiveKeyFinal.EncodedSegmentMD5Digest)
 	if err != nil {
-		return Reply{}, err
+		lgr.Error("base64.StdEncoding.DecodeString %s", err)
+		replyMessage.Error("base64", "base64.StdEncoding.DecodeString")
+		replyChan <- replyMessage
+		return
 	}
+
 	if !MD5DigestMatches(message.Data, md5Digest) {
 		lgr.Error("md5 mismatch")
-		reply.MessageMap["result"] = "md5-mismatch"
-		reply.MessageMap["error-message"] = "segment md5 does not match expected value"
-		return reply, nil
+		replyMessage.Error("md5-mismatch", "segment md5 does not match expected value")
+		replyChan <- replyMessage
+		return
 	}
 
 	err = nimbusioWriter.StoreSequence(lgr, archiveKeyFinal.Segment,
 		archiveKeyFinal.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
 	metaData := msg.GetMetaFromJSON(message.Marshalled)
@@ -362,27 +318,27 @@ func handleArchiveKeyFinal(message types.Message) (Reply, error) {
 		archiveKeyFinal.File, metaData)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleArchiveKeyCancel(message types.Message) (Reply, error) {
+func handleArchiveKeyCancel(message types.Message) {
 	var archiveKeyCancel msg.ArchiveKeyCancel
 	var err error
 
 	archiveKeyCancel, err = msg.UnmarshalArchiveKeyCancel(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalArchiveKeyCancel failed %s", err)
+		fog.Error("UnmarshalArchiveKeyCancel failed %s", err)
+		return
 	}
 
-	reply := createReply("archive-key-cancel", message.ID,
+	replyMessage := reply.NewReplyMessage("archive-key-cancel", message.ID,
 		archiveKeyCancel.UserRequestID, archiveKeyCancel.ReturnAddress)
 
 	lgr := logger.NewLogger(archiveKeyCancel.UserRequestID, archiveKeyCancel.UnifiedID,
@@ -391,27 +347,27 @@ func handleArchiveKeyCancel(message types.Message) (Reply, error) {
 
 	if err = nimbusioWriter.CancelSegment(lgr, archiveKeyCancel); err != nil {
 		lgr.Error("CancelSegment: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleDestroyKey(message types.Message) (Reply, error) {
+func handleDestroyKey(message types.Message) {
 	var destroyKey msg.DestroyKey
 	var err error
 
 	destroyKey, err = msg.UnmarshalDestroyKey(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalDestroyKey failed %s", err)
+		fog.Error("UnmarshalDestroyKey failed %s", err)
+		return
 	}
 
-	reply := createReply("destroy-key", message.ID,
+	replyMessage := reply.NewReplyMessage("destroy-key", message.ID,
 		destroyKey.UserRequestID, destroyKey.ReturnAddress)
 
 	lgr := logger.NewLogger(destroyKey.UserRequestID, destroyKey.UnifiedID,
@@ -420,27 +376,27 @@ func handleDestroyKey(message types.Message) (Reply, error) {
 
 	if err = nimbusioWriter.DestroyKey(lgr, destroyKey); err != nil {
 		lgr.Error("DestroyKey: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleStartConjoinedArchive(message types.Message) (Reply, error) {
+func handleStartConjoinedArchive(message types.Message) {
 	var conjoined msg.Conjoined
 	var err error
 
 	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalConjoined failed %s", err)
+		fog.Error("UnmarshalConjoined failed %s", err)
+		return
 	}
 
-	reply := createReply("start-conjoined-archive", message.ID,
+	replyMessage := reply.NewReplyMessage("start-conjoined-archive", message.ID,
 		conjoined.UserRequestID, conjoined.ReturnAddress)
 
 	lgr := logger.NewLogger(conjoined.UserRequestID, conjoined.UnifiedID,
@@ -449,27 +405,27 @@ func handleStartConjoinedArchive(message types.Message) (Reply, error) {
 
 	if err = nimbusioWriter.StartConjoinedArchive(lgr, conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleAbortConjoinedArchive(message types.Message) (Reply, error) {
+func handleAbortConjoinedArchive(message types.Message) {
 	var conjoined msg.Conjoined
 	var err error
 
 	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalConjoined failed %s", err)
+		fog.Error("UnmarshalConjoined failed %s", err)
+		return
 	}
 
-	reply := createReply("abort-conjoined-archive", message.ID,
+	replyMessage := reply.NewReplyMessage("abort-conjoined-archive", message.ID,
 		conjoined.UserRequestID, conjoined.ReturnAddress)
 
 	lgr := logger.NewLogger(conjoined.UserRequestID, conjoined.UnifiedID,
@@ -478,27 +434,27 @@ func handleAbortConjoinedArchive(message types.Message) (Reply, error) {
 
 	if err = nimbusioWriter.AbortConjoinedArchive(lgr, conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
-func handleFinishConjoinedArchive(message types.Message) (Reply, error) {
+func handleFinishConjoinedArchive(message types.Message) {
 	var conjoined msg.Conjoined
 	var err error
 
 	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
 	if err != nil {
-		return Reply{}, fmt.Errorf("UnmarshalConjoined failed %s", err)
+		fog.Error("UnmarshalConjoined failed %s", err)
+		return
 	}
 
-	reply := createReply("finish-conjoined-archive", message.ID,
+	replyMessage := reply.NewReplyMessage("finish-conjoined-archive", message.ID,
 		conjoined.UserRequestID, conjoined.ReturnAddress)
 
 	lgr := logger.NewLogger(conjoined.UserRequestID, conjoined.UnifiedID,
@@ -507,33 +463,14 @@ func handleFinishConjoinedArchive(message types.Message) (Reply, error) {
 
 	if err = nimbusioWriter.FinishConjoinedArchive(lgr, conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
-		reply.MessageMap["result"] = "error"
-		reply.MessageMap["error-message"] = err.Error()
-		return reply, nil
+		replyMessage.Error("error", err.Error())
+		replyChan <- replyMessage
+		return
 	}
 
-	reply.MessageMap["result"] = "success"
-	reply.MessageMap["error-message"] = ""
-
-	return reply, nil
-}
-
-func createReply(messageType, messageID, userRequestID string,
-	returnAddress msg.ReturnAddress) Reply {
-	var reply Reply
-
-	reply.ClientAddress = returnAddress.ClientAddress
-	reply.MessageMap = make(map[string]interface{})
-
-	reply.MessageMap["message-type"] = messageType + "-reply"
-	reply.MessageMap["client-tag"] = returnAddress.ClientTag
-	reply.MessageMap["client-address"] = returnAddress.ClientAddress
-	reply.MessageMap["user-request-id"] = userRequestID
-	reply.MessageMap["message-id"] = messageID
-	reply.MessageMap["result"] = nil
-	reply.MessageMap["error-message"] = nil
-
-	return reply
+	replyMessage.Success()
+	replyChan <- replyMessage
+	return
 }
 
 func MD5DigestMatches(data []byte, md5Digest []byte) bool {

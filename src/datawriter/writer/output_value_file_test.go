@@ -29,7 +29,7 @@ func TestOutputValueFile(t *testing.T) {
 	dataSize := 1024
 	data := bytes.Repeat([]byte{'a'}, dataSize)
 
-	if err := valueFile.Store(collectionID, segmentID, data); err != nil {
+	if _, err := valueFile.Store(collectionID, segmentID, data); err != nil {
 		t.Fatalf("valueFile.Store %s", err)
 	}
 

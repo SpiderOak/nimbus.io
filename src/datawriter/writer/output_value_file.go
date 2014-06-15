@@ -24,8 +24,8 @@ type OutputValueFile interface {
 	// ID is the unique identifier for this value file
 	ID() uint32
 
-	// Store the data for one sequence
-	Store(collectionID uint32, segmentID uint64, data []byte) error
+	// Store the data for one sequence, return the offset into the value file
+	Store(collectionID uint32, segmentID uint64, data []byte) (uint64, error)
 
 	// Close the underling file and update the database row
 	Close() error
@@ -91,13 +91,15 @@ func (valueFile *outputValueFile) ID() uint32 {
 	return valueFile.valueFileID
 }
 
-// Store the data for one sequence
+// Store the data for one sequence, return the starting offset
 func (valueFile *outputValueFile) Store(collectionID uint32, segmentID uint64,
-	data []byte) error {
+	data []byte) (uint64, error) {
 	var err error
 
+	offset := valueFile.bytesWritten
+
 	if _, err = valueFile.fileHandle.Write(data); err != nil {
-		return err
+		return offset, err
 	}
 	valueFile.md5Sum.Write(data)
 
@@ -114,7 +116,7 @@ func (valueFile *outputValueFile) Store(collectionID uint32, segmentID uint64,
 
 	valueFile.collectionIDSet[collectionID] = struct{}{}
 
-	return nil
+	return offset, nil
 }
 
 // Close the underling file and update the database row

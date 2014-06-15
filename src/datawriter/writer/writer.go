@@ -171,6 +171,7 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 	sequence msg.Sequence, data []byte) error {
 	var err error
 	var md5Digest []byte
+	var offset uint64
 
 	lgr.Debug("StoreSequence #%d", sequence.SequenceNum)
 
@@ -196,9 +197,11 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 		return fmt.Errorf("StoreSequence unknown segment %s", key)
 	}
 
-	// we need to store new-segment-sequence in the database before
-	// ValueFile.Store, because we are using  writer.ValueFile.Size()
-	// as the offset
+	offset, err = writer.ValueFile.Store(segment.CollectionID, entry.SegmentID,
+		data)
+	if err != nil {
+		return fmt.Errorf("ValueFile.Store %s", err)
+	}
 
 	stmt := nodedb.Stmts["new-segment-sequence"]
 	_, err = stmt.Exec(
@@ -207,18 +210,12 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 		sequence.ZfecPaddingSize,
 		writer.ValueFile.ID(),
 		sequence.SequenceNum,
-		writer.ValueFile.Size(),
+		offset,
 		sequence.SegmentSize,
 		md5Digest,
 		sequence.SegmentAdler32)
 	if err != nil {
 		return fmt.Errorf("new-segment-sequence %s", err)
-	}
-
-	err = writer.ValueFile.Store(segment.CollectionID, entry.SegmentID,
-		data)
-	if err != nil {
-		return fmt.Errorf("ValueFile.Store %s", err)
 	}
 
 	entry.LastActionTime = tools.Timestamp()

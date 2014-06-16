@@ -109,7 +109,7 @@ func handleArchiveKeyEntire(message types.Message) {
 		return
 	}
 
-	err = nimbusioWriter.StartSegment(lgr, archiveKeyEntire.Segment,
+	err = nimbusioWriter.StartSegment(archiveKeyEntire.UserRequestID, archiveKeyEntire.Segment,
 		archiveKeyEntire.NodeNames)
 	if err != nil {
 		lgr.Error("StartSegment: %s", err)
@@ -118,7 +118,8 @@ func handleArchiveKeyEntire(message types.Message) {
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, archiveKeyEntire.Segment,
+	err = nimbusioWriter.StoreSequence(archiveKeyEntire.UserRequestID,
+		archiveKeyEntire.Segment,
 		archiveKeyEntire.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
@@ -129,7 +130,8 @@ func handleArchiveKeyEntire(message types.Message) {
 
 	metaData := msg.GetMetaFromJSON(message.Marshalled)
 
-	err = nimbusioWriter.FinishSegment(lgr, archiveKeyEntire.Segment,
+	err = nimbusioWriter.FinishSegment(archiveKeyEntire.UserRequestID,
+		archiveKeyEntire.Segment,
 		archiveKeyEntire.File, metaData)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
@@ -184,7 +186,8 @@ func handleArchiveKeyStart(message types.Message) {
 		return
 	}
 
-	err = nimbusioWriter.StartSegment(lgr, archiveKeyStart.Segment,
+	err = nimbusioWriter.StartSegment(archiveKeyStart.UserRequestID,
+		archiveKeyStart.Segment,
 		archiveKeyStart.NodeNames)
 	if err != nil {
 		lgr.Error("StartSegment: %s", err)
@@ -193,7 +196,8 @@ func handleArchiveKeyStart(message types.Message) {
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, archiveKeyStart.Segment,
+	err = nimbusioWriter.StoreSequence(archiveKeyStart.UserRequestID,
+		archiveKeyStart.Segment,
 		archiveKeyStart.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
@@ -248,7 +252,8 @@ func handleArchiveKeyNext(message types.Message) {
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, archiveKeyNext.Segment,
+	err = nimbusioWriter.StoreSequence(archiveKeyNext.UserRequestID,
+		archiveKeyNext.Segment,
 		archiveKeyNext.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
@@ -303,7 +308,8 @@ func handleArchiveKeyFinal(message types.Message) {
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(lgr, archiveKeyFinal.Segment,
+	err = nimbusioWriter.StoreSequence(archiveKeyFinal.UserRequestID,
+		archiveKeyFinal.Segment,
 		archiveKeyFinal.Sequence, message.Data)
 	if err != nil {
 		lgr.Error("StoreSequence: %s", err)
@@ -314,7 +320,8 @@ func handleArchiveKeyFinal(message types.Message) {
 
 	metaData := msg.GetMetaFromJSON(message.Marshalled)
 
-	err = nimbusioWriter.FinishSegment(lgr, archiveKeyFinal.Segment,
+	err = nimbusioWriter.FinishSegment(archiveKeyFinal.UserRequestID,
+		archiveKeyFinal.Segment,
 		archiveKeyFinal.File, metaData)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
@@ -345,7 +352,7 @@ func handleArchiveKeyCancel(message types.Message) {
 		archiveKeyCancel.ConjoinedPart, archiveKeyCancel.SegmentNum, "")
 	lgr.Info("archive-key-cancel")
 
-	if err = nimbusioWriter.CancelSegment(lgr, archiveKeyCancel); err != nil {
+	if err = nimbusioWriter.CancelSegment(archiveKeyCancel); err != nil {
 		lgr.Error("CancelSegment: %s", err)
 		replyMessage.Error("error", err.Error())
 		replyChan <- replyMessage
@@ -374,7 +381,7 @@ func handleDestroyKey(message types.Message) {
 		destroyKey.ConjoinedPart, destroyKey.SegmentNum, destroyKey.Key)
 	lgr.Info("archive-key-cancel")
 
-	if err = nimbusioWriter.DestroyKey(lgr, destroyKey); err != nil {
+	if err = nimbusioWriter.DestroyKey(destroyKey); err != nil {
 		lgr.Error("DestroyKey: %s", err)
 		replyMessage.Error("error", err.Error())
 		replyChan <- replyMessage
@@ -403,7 +410,7 @@ func handleStartConjoinedArchive(message types.Message) {
 		0, 0, conjoined.Key)
 	lgr.Info("start-conjoined-archive (%d)", conjoined.CollectionID)
 
-	if err = nimbusioWriter.StartConjoinedArchive(lgr, conjoined); err != nil {
+	if err = nimbusioWriter.StartConjoinedArchive(conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
 		replyMessage.Error("error", err.Error())
 		replyChan <- replyMessage
@@ -432,7 +439,7 @@ func handleAbortConjoinedArchive(message types.Message) {
 		0, 0, conjoined.Key)
 	lgr.Info("abort-conjoined-archive (%d)", conjoined.CollectionID)
 
-	if err = nimbusioWriter.AbortConjoinedArchive(lgr, conjoined); err != nil {
+	if err = nimbusioWriter.AbortConjoinedArchive(conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
 		replyMessage.Error("error", err.Error())
 		replyChan <- replyMessage
@@ -461,7 +468,7 @@ func handleFinishConjoinedArchive(message types.Message) {
 		0, 0, conjoined.Key)
 	lgr.Info("finish-conjoined-archive (%d)", conjoined.CollectionID)
 
-	if err = nimbusioWriter.FinishConjoinedArchive(lgr, conjoined); err != nil {
+	if err = nimbusioWriter.FinishConjoinedArchive(conjoined); err != nil {
 		lgr.Error("StartConjoinedArchive: %s", err)
 		replyMessage.Error("error", err.Error())
 		replyChan <- replyMessage

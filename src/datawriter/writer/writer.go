@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	"fog"
 	"tools"
 
-	"datawriter/logger"
 	"datawriter/msg"
 	"datawriter/nodedb"
 )
@@ -18,32 +18,34 @@ type NimbusioWriter interface {
 
 	// StartSegment initializes a new segment and prepares to receive data
 	// for it
-	StartSegment(lgr logger.Logger, segment msg.Segment,
-		nodeNames msg.NodeNames) error
+	StartSegment(userRequestID string, segment msg.Segment, nodeNames msg.NodeNames) error
 
 	// StoreSequence stores data for  an initialized segment
-	StoreSequence(lgr logger.Logger, segment msg.Segment,
+	StoreSequence(userRequestID string, segment msg.Segment,
 		sequence msg.Sequence, data []byte) error
 
 	// CancelSegment stops processing the segment
-	CancelSegment(lgr logger.Logger, cancel msg.ArchiveKeyCancel) error
+	CancelSegment(cancel msg.ArchiveKeyCancel) error
 
 	// FinishSegment finishes storing the segment
-	FinishSegment(lgr logger.Logger, segment msg.Segment,
-		file msg.File, metaData []msg.MetaPair) error
+	FinishSegment(userRequestID string, segment msg.Segment, file msg.File, metaData []msg.MetaPair) error
 
 	// DestroyKey makes a key inaccessible
-	DestroyKey(lgr logger.Logger, destroyKey msg.DestroyKey) error
+	DestroyKey(destroyKey msg.DestroyKey) error
 
 	// StartConjoinedArchive begins a conjoined archive
-	StartConjoinedArchive(lgr logger.Logger, conjoined msg.Conjoined) error
+	StartConjoinedArchive(conjoined msg.Conjoined) error
 
 	// AbortConjoinedArchive cancels conjoined archive
-	AbortConjoinedArchive(lgr logger.Logger, conjoined msg.Conjoined) error
+	AbortConjoinedArchive(conjoined msg.Conjoined) error
 
 	// FinishConjoinedArchive completes a conjoined archive
-	FinishConjoinedArchive(lgr logger.Logger, conjoined msg.Conjoined) error
+	FinishConjoinedArchive(conjoined msg.Conjoined) error
 }
+
+const (
+	writerChanCapacity = 1000
+)
 
 type segmentKey struct {
 	UnifiedID     uint64
@@ -61,8 +63,8 @@ type segmentMapEntry struct {
 	LastActionTime time.Time
 }
 
-// map data contained in messages onto our internal segment id
-type nimbusioWriter struct {
+type writerState struct {
+	// map data contained in messages onto our internal segment id
 	NodeIDMap        map[string]uint32
 	SegmentMap       map[segmentKey]segmentMapEntry
 	FileSpaceInfo    tools.FileSpaceInfo
@@ -70,19 +72,69 @@ type nimbusioWriter struct {
 	MaxValueFileSize uint64
 }
 
+type requestStartSegment struct {
+	UserRequestID string
+	Segment       msg.Segment
+	NodeNames     msg.NodeNames
+	resultChan    chan<- error
+}
+
+type requestStoreSequence struct {
+	UserRequestID string
+	Segment       msg.Segment
+	Sequence      msg.Sequence
+	Data          []byte
+	resultChan    chan<- error
+}
+
+type requestCancelSegment struct {
+	Cancel     msg.ArchiveKeyCancel
+	resultChan chan<- error
+}
+
+type requestFinishSegment struct {
+	UserRequestID string
+	Segment       msg.Segment
+	File          msg.File
+	MetaData      []msg.MetaPair
+	resultChan    chan<- error
+}
+
+type requestDestroyKey struct {
+	DestroyKey msg.DestroyKey
+	resultChan chan<- error
+}
+
+type requestStartConjoinedArchive struct {
+	Conjoined  msg.Conjoined
+	resultChan chan<- error
+}
+
+type requestAbortConjoinedArchive struct {
+	Conjoined  msg.Conjoined
+	resultChan chan<- error
+}
+
+type requestFinishConjoinedArchive struct {
+	Conjoined  msg.Conjoined
+	resultChan chan<- error
+}
+
+type nimbusioWriterChan chan<- interface{}
+
 // NewNimbusioWriter returns an entity that implements the NimbusioWriter interface
 func NewNimbusioWriter() (NimbusioWriter, error) {
 	var err error
-	var writer nimbusioWriter
-	writer.SegmentMap = make(map[segmentKey]segmentMapEntry)
+	var state writerState
+	state.SegmentMap = make(map[segmentKey]segmentMapEntry)
 
-	if writer.NodeIDMap, err = tools.GetNodeIDMap(); err != nil {
+	if state.NodeIDMap, err = tools.GetNodeIDMap(); err != nil {
 		return nil, fmt.Errorf("tools.GetNodeIDMap() failed %s", err)
 	}
 
 	maxValueFileSizeStr := os.Getenv("NIMBUS_IO_MAX_VALUE_FILE_SIZE")
 	if maxValueFileSizeStr == "" {
-		writer.MaxValueFileSize = uint64(1024 * 1024 * 1024)
+		state.MaxValueFileSize = uint64(1024 * 1024 * 1024)
 	} else {
 		var intSize int
 		intSize, err = strconv.Atoi(maxValueFileSizeStr)
@@ -90,22 +142,51 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 			return nil, fmt.Errorf("invalid NIMBUS_IO_MAX_VALUE_FILE_SIZE '%s'",
 				maxValueFileSizeStr)
 		}
-		writer.MaxValueFileSize = uint64(intSize)
+		state.MaxValueFileSize = uint64(intSize)
 	}
 
-	if writer.FileSpaceInfo, err = tools.NewFileSpaceInfo(nodedb.NodeDB); err != nil {
+	if state.FileSpaceInfo, err = tools.NewFileSpaceInfo(nodedb.NodeDB); err != nil {
 		return nil, err
 	}
 
-	if writer.ValueFile, err = NewOutputValueFile(writer.FileSpaceInfo); err != nil {
+	if state.ValueFile, err = NewOutputValueFile(state.FileSpaceInfo); err != nil {
 		return nil, err
 	}
 
-	return &writer, nil
+	writerChan := make(chan interface{}, writerChanCapacity)
+
+	go func() {
+		for item := range writerChan {
+			switch request := item.(type) {
+			case requestStartSegment:
+				handleStartSegment(&state, request)
+			case requestStoreSequence:
+				handleStoreSequence(&state, request)
+			case requestCancelSegment:
+				handleCancelSegment(&state, request)
+			case requestFinishSegment:
+				handleFinishSegment(&state, request)
+			case requestDestroyKey:
+				handleDestroyKey(&state, request)
+			case requestStartConjoinedArchive:
+				handleStartConjoinedArchive(&state, request)
+			case requestAbortConjoinedArchive:
+				handleAbortConjoinedArchive(&state, request)
+			case requestFinishConjoinedArchive:
+				handleFinishConjoinedArchive(&state, request)
+			default:
+				fog.Error("unknown request type %T", item)
+			}
+		}
+	}()
+
+	return nimbusioWriterChan(writerChan), nil
 }
 
-func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
-	segment msg.Segment, nodeNames msg.NodeNames) error {
+func handleStartSegment(state *writerState, request requestStartSegment) {
+	userRequestID := request.UserRequestID
+	segment := request.Segment
+	nodeNames := request.NodeNames
 
 	var entry segmentMapEntry
 	var err error
@@ -114,19 +195,22 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 	var ok bool
 	var timestamp time.Time
 
-	lgr.Debug("StartSegment")
+	fog.Debug("%s StartSegment", userRequestID)
 
-	if sourceNodeID, ok = writer.NodeIDMap[nodeNames.SourceNodeName]; !ok {
-		return fmt.Errorf("unknown source node %s", nodeNames.SourceNodeName)
+	if sourceNodeID, ok = state.NodeIDMap[nodeNames.SourceNodeName]; !ok {
+		request.resultChan <- fmt.Errorf("unknown source node %s", nodeNames.SourceNodeName)
+		return
 	}
 
 	if timestamp, err = tools.ParseTimestampRepr(segment.TimestampRepr); err != nil {
-		return fmt.Errorf("unable to parse timestamp %s", err)
+		request.resultChan <- fmt.Errorf("unable to parse timestamp %s", err)
+		return
 	}
 
 	if nodeNames.HandoffNodeName != "" {
-		if handoffNodeID, ok = writer.NodeIDMap[nodeNames.HandoffNodeName]; !ok {
-			return fmt.Errorf("unknown handoff node %s", nodeNames.HandoffNodeName)
+		if handoffNodeID, ok = state.NodeIDMap[nodeNames.HandoffNodeName]; !ok {
+			request.resultChan <- fmt.Errorf("unknown handoff node %s", nodeNames.HandoffNodeName)
+			return
 		}
 
 		stmt := nodedb.Stmts["new-segment-for-handoff"]
@@ -140,7 +224,8 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 			sourceNodeID,
 			handoffNodeID)
 		if err = row.Scan(&entry.SegmentID); err != nil {
-			return err
+			request.resultChan <- err
+			return
 		}
 	} else {
 		stmt := nodedb.Stmts["new-segment"]
@@ -153,7 +238,8 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 			segment.ConjoinedPart,
 			sourceNodeID)
 		if err = row.Scan(&entry.SegmentID); err != nil {
-			return err
+			request.resultChan <- err
+			return
 		}
 	}
 	entry.LastActionTime = tools.Timestamp()
@@ -161,46 +247,53 @@ func (writer *nimbusioWriter) StartSegment(lgr logger.Logger,
 	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
 		segment.SegmentNum}
 
-	writer.SegmentMap[key] = entry
+	state.SegmentMap[key] = entry
 
-	return nil
+	request.resultChan <- nil
 }
 
-func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
-	segment msg.Segment,
-	sequence msg.Sequence, data []byte) error {
+func handleStoreSequence(state *writerState, request requestStoreSequence) {
+	userRequestID := request.UserRequestID
+	segment := request.Segment
+	sequence := request.Sequence
+	data := request.Data
 	var err error
 	var md5Digest []byte
 	var offset uint64
 
-	lgr.Debug("StoreSequence #%d", sequence.SequenceNum)
+	fog.Debug("%s StoreSequence #%d", userRequestID, sequence.SequenceNum)
 
-	if writer.ValueFile.Size()+sequence.SegmentSize >= writer.MaxValueFileSize {
-		lgr.Info("value file full")
-		if err = writer.ValueFile.Close(); err != nil {
-			return fmt.Errorf("error closing value file %s", err)
+	if state.ValueFile.Size()+sequence.SegmentSize >= state.MaxValueFileSize {
+		fog.Info("value file full")
+		if err = state.ValueFile.Close(); err != nil {
+			request.resultChan <- fmt.Errorf("error closing value file %s", err)
+			return
 		}
-		if writer.ValueFile, err = NewOutputValueFile(writer.FileSpaceInfo); err != nil {
-			return fmt.Errorf("error opening value file %s", err)
+		if state.ValueFile, err = NewOutputValueFile(state.FileSpaceInfo); err != nil {
+			request.resultChan <- fmt.Errorf("error opening value file %s", err)
+			return
 		}
 	}
 
 	md5Digest, err = base64.StdEncoding.DecodeString(sequence.EncodedSegmentMD5Digest)
 	if err != nil {
-		return err
+		request.resultChan <- err
+		return
 	}
 
 	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
 		segment.SegmentNum}
-	entry, ok := writer.SegmentMap[key]
+	entry, ok := state.SegmentMap[key]
 	if !ok {
-		return fmt.Errorf("StoreSequence unknown segment %s", key)
+		request.resultChan <- fmt.Errorf("StoreSequence unknown segment %s", key)
+		return
 	}
 
-	offset, err = writer.ValueFile.Store(segment.CollectionID, entry.SegmentID,
+	offset, err = state.ValueFile.Store(segment.CollectionID, entry.SegmentID,
 		data)
 	if err != nil {
-		return fmt.Errorf("ValueFile.Store %s", err)
+		request.resultChan <- fmt.Errorf("ValueFile.Store %s", err)
+		return
 	}
 
 	stmt := nodedb.Stmts["new-segment-sequence"]
@@ -208,32 +301,32 @@ func (writer *nimbusioWriter) StoreSequence(lgr logger.Logger,
 		segment.CollectionID,
 		entry.SegmentID,
 		sequence.ZfecPaddingSize,
-		writer.ValueFile.ID(),
+		state.ValueFile.ID(),
 		sequence.SequenceNum,
 		offset,
 		sequence.SegmentSize,
 		md5Digest,
 		sequence.SegmentAdler32)
 	if err != nil {
-		return fmt.Errorf("new-segment-sequence %s", err)
+		request.resultChan <- fmt.Errorf("new-segment-sequence %s", err)
 	}
 
 	entry.LastActionTime = tools.Timestamp()
-	writer.SegmentMap[key] = entry
+	state.SegmentMap[key] = entry
 
-	return nil
+	request.resultChan <- nil
 }
 
 // CancelSegment stops storing the segment
-func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
-	cancel msg.ArchiveKeyCancel) error {
+func handleCancelSegment(state *writerState, request requestCancelSegment) {
+	cancel := request.Cancel
 	var err error
 
-	lgr.Debug("CancelSegment")
+	fog.Debug("%s CancelSegment", cancel.UserRequestID)
 
 	key := segmentKey{cancel.UnifiedID, cancel.ConjoinedPart,
 		cancel.SegmentNum}
-	delete(writer.SegmentMap, key)
+	delete(state.SegmentMap, key)
 
 	stmt := nodedb.Stmts["cancel-segment"]
 	_, err = stmt.Exec(
@@ -242,37 +335,44 @@ func (writer *nimbusioWriter) CancelSegment(lgr logger.Logger,
 		cancel.SegmentNum)
 
 	if err != nil {
-		return fmt.Errorf("cancel-segment %s", err)
+		request.resultChan <- fmt.Errorf("cancel-segment %s", err)
+		return
 	}
 
-	return nil
+	request.resultChan <- nil
 }
 
 // FinishSegment finishes storing the segment
-func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
-	segment msg.Segment, file msg.File, metaData []msg.MetaPair) error {
+func handleFinishSegment(state *writerState, request requestFinishSegment) {
+	userRequestID := request.UserRequestID
+	segment := request.Segment
+	file := request.File
+	metaData := request.MetaData
 	var err error
 	var md5Digest []byte
 	var timestamp time.Time
 
-	lgr.Debug("FinishSegment")
+	fog.Debug("%s FinishSegment", userRequestID)
 
 	key := segmentKey{segment.UnifiedID, segment.ConjoinedPart,
 		segment.SegmentNum}
-	entry, ok := writer.SegmentMap[key]
+	entry, ok := state.SegmentMap[key]
 	if !ok {
-		return fmt.Errorf("FinishSegment unknown segment %s", key)
+		request.resultChan <- fmt.Errorf("FinishSegment unknown segment %s", key)
+		return
 	}
 
-	delete(writer.SegmentMap, key)
+	delete(state.SegmentMap, key)
 
 	md5Digest, err = base64.StdEncoding.DecodeString(file.EncodedFileMD5Digest)
 	if err != nil {
-		return err
+		request.resultChan <- err
+		return
 	}
 
 	if timestamp, err = tools.ParseTimestampRepr(segment.TimestampRepr); err != nil {
-		return fmt.Errorf("unable to parse timestamp %s", err)
+		request.resultChan <- fmt.Errorf("unable to parse timestamp %s", err)
+		return
 	}
 
 	stmt := nodedb.Stmts["finish-segment"]
@@ -283,7 +383,8 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 		entry.SegmentID)
 
 	if err != nil {
-		return fmt.Errorf("finish-segment %s", err)
+		request.resultChan <- fmt.Errorf("finish-segment %s", err)
+		return
 	}
 
 	for _, metaEntry := range metaData {
@@ -296,37 +397,40 @@ func (writer *nimbusioWriter) FinishSegment(lgr logger.Logger,
 			timestamp)
 
 		if err != nil {
-			return fmt.Errorf("new-meta-data %s", err)
+			request.resultChan <- fmt.Errorf("new-meta-data %s", err)
+			return
 		}
 	}
 
-	return nil
+	request.resultChan <- nil
 }
 
 // DestroyKey makes a key inaccessible
-func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
-	destroyKey msg.DestroyKey) error {
-
+func handleDestroyKey(state *writerState, request requestDestroyKey) {
+	destroyKey := request.DestroyKey
 	var err error
 	var ok bool
 	var timestamp time.Time
 	var sourceNodeID uint32
 	var handoffNodeID uint32
 
-	lgr.Debug("DestroyKey (%d)", destroyKey.UnifiedIDToDestroy)
+	fog.Debug("DestroyKey (%d)", destroyKey.UnifiedIDToDestroy)
 
-	if sourceNodeID, ok = writer.NodeIDMap[destroyKey.SourceNodeName]; !ok {
-		return fmt.Errorf("unknown source node %s", destroyKey.SourceNodeName)
+	if sourceNodeID, ok = state.NodeIDMap[destroyKey.SourceNodeName]; !ok {
+		request.resultChan <- fmt.Errorf("unknown source node %s", destroyKey.SourceNodeName)
+		return
 	}
 
 	if timestamp, err = tools.ParseTimestampRepr(destroyKey.TimestampRepr); err != nil {
-		return fmt.Errorf("unable to parse timestamp %s", err)
+		request.resultChan <- fmt.Errorf("unable to parse timestamp %s", err)
+		return
 	}
 
 	if destroyKey.UnifiedIDToDestroy > 0 {
 		if destroyKey.HandoffNodeName != "" {
-			if handoffNodeID, ok = writer.NodeIDMap[destroyKey.HandoffNodeName]; !ok {
-				return fmt.Errorf("unknown handoff node %s", destroyKey.HandoffNodeName)
+			if handoffNodeID, ok = state.NodeIDMap[destroyKey.HandoffNodeName]; !ok {
+				request.resultChan <- fmt.Errorf("unknown handoff node %s", destroyKey.HandoffNodeName)
+				return
 			}
 			stmt := nodedb.Stmts["new-tombstone-for-unified-id-for-handoff"]
 			_, err = stmt.Exec(
@@ -340,8 +444,9 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 				handoffNodeID)
 
 			if err != nil {
-				return fmt.Errorf("new-tombstone-for-unified-id-for-handoff %d %s",
+				request.resultChan <- fmt.Errorf("new-tombstone-for-unified-id-for-handoff %d %s",
 					destroyKey.UnifiedIDToDestroy, err)
+				return
 			}
 		} else {
 			stmt := nodedb.Stmts["new-tombstone-for-unified-id"]
@@ -355,8 +460,9 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 				sourceNodeID)
 
 			if err != nil {
-				return fmt.Errorf("new-tombstone-for-unified-id %d %s",
+				request.resultChan <- fmt.Errorf("new-tombstone-for-unified-id %d %s",
 					destroyKey.UnifiedIDToDestroy, err)
+				return
 			}
 		}
 
@@ -368,13 +474,15 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 			destroyKey.UnifiedIDToDestroy)
 
 		if err != nil {
-			return fmt.Errorf("delete-conjoined-for-unified-id %d %s",
+			request.resultChan <- fmt.Errorf("delete-conjoined-for-unified-id %d %s",
 				destroyKey.UnifiedIDToDestroy, err)
+			return
 		}
 	} else {
 		if destroyKey.HandoffNodeName != "" {
-			if handoffNodeID, ok = writer.NodeIDMap[destroyKey.HandoffNodeName]; !ok {
-				return fmt.Errorf("unknown handoff node %s", destroyKey.HandoffNodeName)
+			if handoffNodeID, ok = state.NodeIDMap[destroyKey.HandoffNodeName]; !ok {
+				request.resultChan <- fmt.Errorf("unknown handoff node %s", destroyKey.HandoffNodeName)
+				return
 			}
 			stmt := nodedb.Stmts["new-tombstone-for-handoff"]
 			_, err = stmt.Exec(
@@ -387,7 +495,8 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 				handoffNodeID)
 
 			if err != nil {
-				return fmt.Errorf("new-tombstone-for-handoff %s", err)
+				request.resultChan <- fmt.Errorf("new-tombstone-for-handoff %s", err)
+				return
 			}
 		} else {
 			stmt := nodedb.Stmts["new-tombstone"]
@@ -400,7 +509,8 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 				sourceNodeID)
 
 			if err != nil {
-				return fmt.Errorf("new-tombstone %s", err)
+				request.resultChan <- fmt.Errorf("new-tombstone %s", err)
+				return
 			}
 		}
 
@@ -412,30 +522,33 @@ func (writer *nimbusioWriter) DestroyKey(lgr logger.Logger,
 			destroyKey.UnifiedID)
 
 		if err != nil {
-			return fmt.Errorf("delete-conjoined %s", err)
+			request.resultChan <- fmt.Errorf("delete-conjoined %s", err)
+			return
 		}
 	}
 
-	return nil
+	request.resultChan <- nil
 }
 
 // StartConjoinedArchive begins a conjoined archive
-func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
-	conjoined msg.Conjoined) error {
+func handleStartConjoinedArchive(state *writerState, request requestStartConjoinedArchive) {
+	conjoined := request.Conjoined
 	var err error
 	var ok bool
 	var handoffNodeID uint32
 	var timestamp time.Time
 
-	lgr.Debug("StartConjoinedArchive %s", conjoined)
+	fog.Debug("%s StartConjoinedArchive %s", conjoined.UserRequestID, conjoined)
 
 	if timestamp, err = tools.ParseTimestampRepr(conjoined.TimestampRepr); err != nil {
-		return fmt.Errorf("unable to parse timestamp %s", err)
+		request.resultChan <- fmt.Errorf("unable to parse timestamp %s", err)
+		return
 	}
 
 	if conjoined.HandoffNodeName != "" {
-		if handoffNodeID, ok = writer.NodeIDMap[conjoined.HandoffNodeName]; !ok {
-			return fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+		if handoffNodeID, ok = state.NodeIDMap[conjoined.HandoffNodeName]; !ok {
+			request.resultChan <- fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+			return
 		}
 		stmt := nodedb.Stmts["start-conjoined-for-handoff"]
 		_, err = stmt.Exec(
@@ -446,7 +559,8 @@ func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
 			handoffNodeID)
 
 		if err != nil {
-			return fmt.Errorf("start-conjoined-for-handoff %s", err)
+			request.resultChan <- fmt.Errorf("start-conjoined-for-handoff %s", err)
+			return
 		}
 	} else {
 		stmt := nodedb.Stmts["start-conjoined"]
@@ -457,31 +571,33 @@ func (writer *nimbusioWriter) StartConjoinedArchive(lgr logger.Logger,
 			timestamp)
 
 		if err != nil {
-			return fmt.Errorf("start-conjoined %s", err)
+			request.resultChan <- fmt.Errorf("start-conjoined %s", err)
+			return
 		}
-
 	}
 
-	return nil
+	request.resultChan <- nil
 }
 
 // AbortConjoinedArchive cancels conjoined archive
-func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
-	conjoined msg.Conjoined) error {
+func handleAbortConjoinedArchive(state *writerState, request requestAbortConjoinedArchive) {
+	conjoined := request.Conjoined
 	var err error
 	var ok bool
 	var handoffNodeID uint32
 	var timestamp time.Time
 
-	lgr.Debug("StartConjoinedArchive %s", conjoined)
+	fog.Debug("%s AbortConjoinedArchive %s", conjoined.UserRequestID, conjoined)
 
 	if timestamp, err = tools.ParseTimestampRepr(conjoined.TimestampRepr); err != nil {
-		return fmt.Errorf("unable to parse timestamp %s", err)
+		request.resultChan <- fmt.Errorf("unable to parse timestamp %s", err)
+		return
 	}
 
 	if conjoined.HandoffNodeName != "" {
-		if handoffNodeID, ok = writer.NodeIDMap[conjoined.HandoffNodeName]; !ok {
-			return fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+		if handoffNodeID, ok = state.NodeIDMap[conjoined.HandoffNodeName]; !ok {
+			request.resultChan <- fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+			return
 		}
 		stmt := nodedb.Stmts["abort-conjoined-for-handoff"]
 		_, err = stmt.Exec(
@@ -492,7 +608,8 @@ func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
 			handoffNodeID)
 
 		if err != nil {
-			return fmt.Errorf("abort-conjoined-for-handoff %s", err)
+			request.resultChan <- fmt.Errorf("abort-conjoined-for-handoff %s", err)
+			return
 		}
 	} else {
 
@@ -504,31 +621,32 @@ func (writer *nimbusioWriter) AbortConjoinedArchive(lgr logger.Logger,
 			conjoined.UnifiedID)
 
 		if err != nil {
-			return fmt.Errorf("abort-conjoined %s", err)
+			request.resultChan <- fmt.Errorf("abort-conjoined %s", err)
+			return
 		}
-
 	}
 
-	return nil
+	request.resultChan <- nil
 }
 
 // FinishConjoinedArchive completes a conjoined archive
-func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
-	conjoined msg.Conjoined) error {
+func handleFinishConjoinedArchive(state *writerState, request requestFinishConjoinedArchive) {
+	conjoined := request.Conjoined
 	var err error
 	var ok bool
 	var handoffNodeID uint32
 	var timestamp time.Time
 
-	lgr.Debug("FinishConjoinedArchive %s", conjoined)
+	fog.Debug("%s FinishConjoinedArchive %s", conjoined.UserRequestID, conjoined)
 
 	if timestamp, err = tools.ParseTimestampRepr(conjoined.TimestampRepr); err != nil {
-		return fmt.Errorf("unable to parse timestamp %s", err)
+		request.resultChan <- fmt.Errorf("unable to parse timestamp %s", err)
+		return
 	}
 
 	if conjoined.HandoffNodeName != "" {
-		if handoffNodeID, ok = writer.NodeIDMap[conjoined.HandoffNodeName]; !ok {
-			return fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
+		if handoffNodeID, ok = state.NodeIDMap[conjoined.HandoffNodeName]; !ok {
+			request.resultChan <- fmt.Errorf("unknown handoff node %s", conjoined.HandoffNodeName)
 		}
 		stmt := nodedb.Stmts["finish-conjoined-for-handoff"]
 		_, err = stmt.Exec(
@@ -539,7 +657,8 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 			handoffNodeID)
 
 		if err != nil {
-			return fmt.Errorf("finish-conjoined-for-handoff %s", err)
+			request.resultChan <- fmt.Errorf("finish-conjoined-for-handoff %s", err)
+			return
 		}
 	} else {
 
@@ -551,10 +670,110 @@ func (writer *nimbusioWriter) FinishConjoinedArchive(lgr logger.Logger,
 			conjoined.UnifiedID)
 
 		if err != nil {
-			return fmt.Errorf("finish-conjoined %s", err)
+			request.resultChan <- fmt.Errorf("finish-conjoined %s", err)
+			return
 		}
 
 	}
 
-	return nil
+	request.resultChan <- nil
+}
+
+func (writerChan nimbusioWriterChan) StartSegment(userRequestID string,
+	segment msg.Segment, nodeNames msg.NodeNames) error {
+
+	resultChan := make(chan error)
+	request := requestStartSegment{
+		UserRequestID: userRequestID,
+		Segment:       segment,
+		NodeNames:     nodeNames,
+		resultChan:    resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+func (writerChan nimbusioWriterChan) StoreSequence(userRequestID string,
+	segment msg.Segment,
+	sequence msg.Sequence, data []byte) error {
+	resultChan := make(chan error)
+	request := requestStoreSequence{
+		UserRequestID: userRequestID,
+		Segment:       segment,
+		Sequence:      sequence,
+		Data:          data,
+		resultChan:    resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+// CancelSegment stops storing the segment
+func (writerChan nimbusioWriterChan) CancelSegment(cancel msg.ArchiveKeyCancel) error {
+	resultChan := make(chan error)
+	request := requestCancelSegment{
+		Cancel:     cancel,
+		resultChan: resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+// FinishSegment finishes storing the segment
+func (writerChan nimbusioWriterChan) FinishSegment(userRequestID string,
+	segment msg.Segment, file msg.File, metaData []msg.MetaPair) error {
+	resultChan := make(chan error)
+	request := requestFinishSegment{
+		UserRequestID: userRequestID,
+		Segment:       segment,
+		File:          file,
+		MetaData:      metaData,
+		resultChan:    resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+// DestroyKey makes a key inaccessible
+func (writerChan nimbusioWriterChan) DestroyKey(destroyKey msg.DestroyKey) error {
+	resultChan := make(chan error)
+	request := requestDestroyKey{
+		DestroyKey: destroyKey,
+		resultChan: resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+// StartConjoinedArchive begins a conjoined archive
+func (writerChan nimbusioWriterChan) StartConjoinedArchive(conjoined msg.Conjoined) error {
+	resultChan := make(chan error)
+	request := requestStartConjoinedArchive{
+		Conjoined:  conjoined,
+		resultChan: resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+// AbortConjoinedArchive cancels conjoined archive
+func (writerChan nimbusioWriterChan) AbortConjoinedArchive(conjoined msg.Conjoined) error {
+	resultChan := make(chan error)
+	request := requestAbortConjoinedArchive{
+		Conjoined:  conjoined,
+		resultChan: resultChan}
+
+	writerChan <- request
+	return <-resultChan
+}
+
+// FinishConjoinedArchive completes a conjoined archive
+func (writerChan nimbusioWriterChan) FinishConjoinedArchive(conjoined msg.Conjoined) error {
+	resultChan := make(chan error)
+	request := requestFinishConjoinedArchive{
+		Conjoined:  conjoined,
+		resultChan: resultChan}
+
+	writerChan <- request
+	return <-resultChan
 }

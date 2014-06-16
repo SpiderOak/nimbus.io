@@ -20,14 +20,13 @@ const (
 )
 
 // message handler takes a message and returns a reply
-type messageHandler func(message types.Message)
-
-var (
-	nimbusioWriter writer.NimbusioWriter
-	replyChan      chan<- *reply.ReplyMessage
-)
+type messageHandler func(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage)
 
 func NewMessageHandler() chan<- types.Message {
+	var nimbusioWriter writer.NimbusioWriter
+	var replyChan chan<- *reply.ReplyMessage
 	var err error
 
 	messageChan := make(chan types.Message, messageChanCapacity)
@@ -61,14 +60,17 @@ func NewMessageHandler() chan<- types.Message {
 					message.Type, message.Marshalled)
 				continue
 			}
-			handler(message)
+			go handler(message, nimbusioWriter, replyChan)
 		}
 	}()
 
 	return messageChan
 }
 
-func handleArchiveKeyEntire(message types.Message) {
+func handleArchiveKeyEntire(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var archiveKeyEntire msg.ArchiveKeyEntire
 	var md5Digest []byte
 	var err error
@@ -145,7 +147,10 @@ func handleArchiveKeyEntire(message types.Message) {
 	return
 }
 
-func handleArchiveKeyStart(message types.Message) {
+func handleArchiveKeyStart(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var archiveKeyStart msg.ArchiveKeyStart
 	var md5Digest []byte
 	var err error
@@ -211,7 +216,10 @@ func handleArchiveKeyStart(message types.Message) {
 	return
 }
 
-func handleArchiveKeyNext(message types.Message) {
+func handleArchiveKeyNext(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var archiveKeyNext msg.ArchiveKeyNext
 	var md5Digest []byte
 	var err error
@@ -267,7 +275,10 @@ func handleArchiveKeyNext(message types.Message) {
 	return
 }
 
-func handleArchiveKeyFinal(message types.Message) {
+func handleArchiveKeyFinal(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var archiveKeyFinal msg.ArchiveKeyFinal
 	var md5Digest []byte
 	var err error
@@ -335,7 +346,10 @@ func handleArchiveKeyFinal(message types.Message) {
 	return
 }
 
-func handleArchiveKeyCancel(message types.Message) {
+func handleArchiveKeyCancel(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var archiveKeyCancel msg.ArchiveKeyCancel
 	var err error
 
@@ -364,7 +378,10 @@ func handleArchiveKeyCancel(message types.Message) {
 	return
 }
 
-func handleDestroyKey(message types.Message) {
+func handleDestroyKey(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var destroyKey msg.DestroyKey
 	var err error
 
@@ -393,7 +410,10 @@ func handleDestroyKey(message types.Message) {
 	return
 }
 
-func handleStartConjoinedArchive(message types.Message) {
+func handleStartConjoinedArchive(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var conjoined msg.Conjoined
 	var err error
 
@@ -422,7 +442,10 @@ func handleStartConjoinedArchive(message types.Message) {
 	return
 }
 
-func handleAbortConjoinedArchive(message types.Message) {
+func handleAbortConjoinedArchive(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var conjoined msg.Conjoined
 	var err error
 
@@ -451,7 +474,10 @@ func handleAbortConjoinedArchive(message types.Message) {
 	return
 }
 
-func handleFinishConjoinedArchive(message types.Message) {
+func handleFinishConjoinedArchive(message types.Message,
+	nimbusioWriter writer.NimbusioWriter,
+	replyChan chan<- *reply.ReplyMessage) {
+
 	var conjoined msg.Conjoined
 	var err error
 

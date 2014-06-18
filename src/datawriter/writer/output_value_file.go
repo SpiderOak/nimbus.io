@@ -83,6 +83,7 @@ func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, err
 	}
 
 	valueFile.enableFsync = os.Getenv("NIMBUSIO_ENABLE_FSYNC") == "1"
+	fog.Info("NewOutputValueFile: NIMBUSIO_ENABLE_FSYNC = %t", valueFile.enableFsync)
 
 	return &valueFile, nil
 }

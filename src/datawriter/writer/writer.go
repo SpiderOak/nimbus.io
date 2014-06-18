@@ -21,14 +21,16 @@ type NimbusioWriter interface {
 	StartSegment(userRequestID string, segment msg.Segment, nodeNames msg.NodeNames) error
 
 	// StoreSequence stores data for  an initialized segment
+	// return the ID of the value file written to
 	StoreSequence(userRequestID string, segment msg.Segment,
-		sequence msg.Sequence, data []byte) error
+		sequence msg.Sequence, data []byte) (uint32, error)
 
 	// CancelSegment stops processing the segment
 	CancelSegment(cancel msg.ArchiveKeyCancel) error
 
 	// FinishSegment finishes storing the segment
-	FinishSegment(userRequestID string, segment msg.Segment, file msg.File, metaData []msg.MetaPair) error
+	FinishSegment(userRequestID string, segment msg.Segment, file msg.File,
+		metaData []msg.MetaPair, valueFileID uint32) error
 
 	// DestroyKey makes a key inaccessible
 	DestroyKey(destroyKey msg.DestroyKey) error
@@ -45,6 +47,7 @@ type NimbusioWriter interface {
 
 const (
 	writerChanCapacity = 1000
+	syncInterval       = time.Second * 1
 )
 
 type segmentKey struct {
@@ -63,6 +66,8 @@ type segmentMapEntry struct {
 	LastActionTime time.Time
 }
 
+type nimbusioWriterChan chan<- interface{}
+
 type writerState struct {
 	// map data contained in messages onto our internal segment id
 	NodeIDMap        map[string]uint32
@@ -70,7 +75,12 @@ type writerState struct {
 	FileSpaceInfo    tools.FileSpaceInfo
 	ValueFile        OutputValueFile
 	MaxValueFileSize uint64
+	WriterChan       nimbusioWriterChan
+	SyncTimer        *time.Timer
+	WaitSyncRequests []requestFinishSegment
 }
+
+type requestSync struct{}
 
 type requestStartSegment struct {
 	UserRequestID string
@@ -79,17 +89,30 @@ type requestStartSegment struct {
 	resultChan    chan<- error
 }
 
+type storeSequenceResult struct {
+	ValueFileID uint32
+	Err         error
+}
 type requestStoreSequence struct {
 	UserRequestID string
 	Segment       msg.Segment
 	Sequence      msg.Sequence
 	Data          []byte
-	resultChan    chan<- error
+	resultChan    chan<- storeSequenceResult
 }
 
 type requestCancelSegment struct {
 	Cancel     msg.ArchiveKeyCancel
 	resultChan chan<- error
+}
+
+type requestWaitSyncForFinishSegment struct {
+	UserRequestID string
+	Segment       msg.Segment
+	File          msg.File
+	MetaData      []msg.MetaPair
+	ValueFileID   uint32
+	resultChan    chan<- error
 }
 
 type requestFinishSegment struct {
@@ -119,8 +142,6 @@ type requestFinishConjoinedArchive struct {
 	Conjoined  msg.Conjoined
 	resultChan chan<- error
 }
-
-type nimbusioWriterChan chan<- interface{}
 
 // NewNimbusioWriter returns an entity that implements the NimbusioWriter interface
 func NewNimbusioWriter() (NimbusioWriter, error) {
@@ -154,16 +175,23 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 	}
 
 	writerChan := make(chan interface{}, writerChanCapacity)
+	state.WriterChan = nimbusioWriterChan(writerChan)
+
+	startSyncTimer(&state)
 
 	go func() {
 		for item := range writerChan {
 			switch request := item.(type) {
+			case requestSync:
+				handleSync(&state)
 			case requestStartSegment:
 				handleStartSegment(&state, request)
 			case requestStoreSequence:
 				handleStoreSequence(&state, request)
 			case requestCancelSegment:
 				handleCancelSegment(&state, request)
+			case requestWaitSyncForFinishSegment:
+				handleWaitSyncForFinishSegment(&state, request)
 			case requestFinishSegment:
 				handleFinishSegment(&state, request)
 			case requestDestroyKey:
@@ -180,7 +208,34 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 		}
 	}()
 
-	return nimbusioWriterChan(writerChan), nil
+	return state.WriterChan, nil
+}
+
+func startSyncTimer(state *writerState) {
+	if state.SyncTimer != nil {
+		state.SyncTimer.Stop()
+	}
+
+	state.SyncTimer = time.AfterFunc(
+		syncInterval,
+		func() { state.WriterChan <- requestSync{} })
+}
+
+func handleSync(state *writerState) {
+	if state.SyncTimer != nil {
+		state.SyncTimer.Stop()
+	}
+	state.SyncTimer = nil
+	if err := state.ValueFile.Sync(); err != nil {
+		fog.Error("sync failed %s", err)
+	}
+
+	for _, request := range state.WaitSyncRequests {
+		state.WriterChan <- request
+	}
+	state.WaitSyncRequests = nil
+
+	startSyncTimer(state)
 }
 
 func handleStartSegment(state *writerState, request requestStartSegment) {
@@ -265,19 +320,28 @@ func handleStoreSequence(state *writerState, request requestStoreSequence) {
 
 	if state.ValueFile.Size()+sequence.SegmentSize >= state.MaxValueFileSize {
 		fog.Info("value file full")
+
+		if state.SyncTimer != nil {
+			state.SyncTimer.Stop()
+		}
+		state.SyncTimer = nil
+
 		if err = state.ValueFile.Close(); err != nil {
-			request.resultChan <- fmt.Errorf("error closing value file %s", err)
+			request.resultChan <- storeSequenceResult{Err: fmt.Errorf("error closing value file %s", err)}
 			return
 		}
+
 		if state.ValueFile, err = NewOutputValueFile(state.FileSpaceInfo); err != nil {
-			request.resultChan <- fmt.Errorf("error opening value file %s", err)
+			request.resultChan <- storeSequenceResult{Err: fmt.Errorf("error opening value file %s", err)}
 			return
 		}
+
+		startSyncTimer(state)
 	}
 
 	md5Digest, err = base64.StdEncoding.DecodeString(sequence.EncodedSegmentMD5Digest)
 	if err != nil {
-		request.resultChan <- err
+		request.resultChan <- storeSequenceResult{Err: err}
 		return
 	}
 
@@ -285,14 +349,14 @@ func handleStoreSequence(state *writerState, request requestStoreSequence) {
 		segment.SegmentNum}
 	entry, ok := state.SegmentMap[key]
 	if !ok {
-		request.resultChan <- fmt.Errorf("StoreSequence unknown segment %s", key)
+		request.resultChan <- storeSequenceResult{Err: fmt.Errorf("StoreSequence unknown segment %s", key)}
 		return
 	}
 
 	offset, err = state.ValueFile.Store(segment.CollectionID, entry.SegmentID,
 		data)
 	if err != nil {
-		request.resultChan <- fmt.Errorf("ValueFile.Store %s", err)
+		request.resultChan <- storeSequenceResult{Err: fmt.Errorf("ValueFile.Store %s", err)}
 		return
 	}
 
@@ -308,13 +372,13 @@ func handleStoreSequence(state *writerState, request requestStoreSequence) {
 		md5Digest,
 		sequence.SegmentAdler32)
 	if err != nil {
-		request.resultChan <- fmt.Errorf("new-segment-sequence %s", err)
+		request.resultChan <- storeSequenceResult{Err: fmt.Errorf("new-segment-sequence %s", err)}
 	}
 
 	entry.LastActionTime = tools.Timestamp()
 	state.SegmentMap[key] = entry
 
-	request.resultChan <- nil
+	request.resultChan <- storeSequenceResult{ValueFileID: state.ValueFile.ID()}
 }
 
 // CancelSegment stops storing the segment
@@ -340,6 +404,28 @@ func handleCancelSegment(state *writerState, request requestCancelSegment) {
 	}
 
 	request.resultChan <- nil
+}
+
+// FinishSegment finishes storing the segment
+func handleWaitSyncForFinishSegment(state *writerState, request requestWaitSyncForFinishSegment) {
+
+	finishRequest := requestFinishSegment{
+		UserRequestID: request.UserRequestID,
+		Segment:       request.Segment,
+		File:          request.File,
+		MetaData:      request.MetaData,
+		resultChan:    request.resultChan}
+
+	// We now want to wait until the value file is synced to disk, but
+	// only if the current value file is the last one we wrote to
+	if request.ValueFileID != state.ValueFile.ID() {
+		fog.Warn("%s not waiting for value file sync (%d)", request.UserRequestID,
+			request.ValueFileID)
+		state.WriterChan <- finishRequest
+		return
+	}
+
+	state.WaitSyncRequests = append(state.WaitSyncRequests, finishRequest)
 }
 
 // FinishSegment finishes storing the segment
@@ -695,8 +781,8 @@ func (writerChan nimbusioWriterChan) StartSegment(userRequestID string,
 
 func (writerChan nimbusioWriterChan) StoreSequence(userRequestID string,
 	segment msg.Segment,
-	sequence msg.Sequence, data []byte) error {
-	resultChan := make(chan error)
+	sequence msg.Sequence, data []byte) (uint32, error) {
+	resultChan := make(chan storeSequenceResult)
 	request := requestStoreSequence{
 		UserRequestID: userRequestID,
 		Segment:       segment,
@@ -705,7 +791,8 @@ func (writerChan nimbusioWriterChan) StoreSequence(userRequestID string,
 		resultChan:    resultChan}
 
 	writerChan <- request
-	return <-resultChan
+	result := <-resultChan
+	return result.ValueFileID, result.Err
 }
 
 // CancelSegment stops storing the segment
@@ -721,13 +808,16 @@ func (writerChan nimbusioWriterChan) CancelSegment(cancel msg.ArchiveKeyCancel) 
 
 // FinishSegment finishes storing the segment
 func (writerChan nimbusioWriterChan) FinishSegment(userRequestID string,
-	segment msg.Segment, file msg.File, metaData []msg.MetaPair) error {
+	segment msg.Segment, file msg.File, metaData []msg.MetaPair,
+	valueFileID uint32) error {
+
 	resultChan := make(chan error)
-	request := requestFinishSegment{
+	request := requestWaitSyncForFinishSegment{
 		UserRequestID: userRequestID,
 		Segment:       segment,
 		File:          file,
 		MetaData:      metaData,
+		ValueFileID:   valueFileID,
 		resultChan:    resultChan}
 
 	writerChan <- request

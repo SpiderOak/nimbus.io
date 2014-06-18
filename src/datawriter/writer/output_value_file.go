@@ -27,6 +27,9 @@ type OutputValueFile interface {
 	// Store the data for one sequence, return the offset into the value file
 	Store(collectionID uint32, segmentID uint64, data []byte) (uint64, error)
 
+	// Sync forces the file contents to disk
+	Sync() error
+
 	// Close the underling file and update the database row
 	Close() error
 }
@@ -43,6 +46,7 @@ type outputValueFile struct {
 	collectionIDSet  map[uint32]struct{}
 	filePath         string
 	fileHandle       *os.File
+	enableFsync      bool
 }
 
 // NewOutputValueFile creates an entity implmenting the OutputValueFile interface
@@ -77,6 +81,8 @@ func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, err
 	if err != nil {
 		return nil, fmt.Errorf("os.Create(%s) %s", valueFile.filePath, err)
 	}
+
+	valueFile.enableFsync = os.Getenv("NIMBUSIO_ENABLE_FSYNC") == "1"
 
 	return &valueFile, nil
 }
@@ -119,8 +125,23 @@ func (valueFile *outputValueFile) Store(collectionID uint32, segmentID uint64,
 	return offset, nil
 }
 
+// Sync forces the file contents to disk
+func (valueFile *outputValueFile) Sync() error {
+	var err error
+
+	if valueFile.enableFsync {
+		err = valueFile.fileHandle.Sync()
+	}
+
+	return err
+}
+
 // Close the underling file and update the database row
 func (valueFile *outputValueFile) Close() error {
+	if err := valueFile.Sync(); err != nil {
+		return fmt.Errorf("Sync() %s %s", valueFile.filePath, err)
+	}
+
 	if err := valueFile.fileHandle.Close(); err != nil {
 		return fmt.Errorf("Close() %s %s", valueFile.filePath, err)
 	}

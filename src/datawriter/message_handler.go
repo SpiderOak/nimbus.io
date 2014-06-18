@@ -74,6 +74,7 @@ func handleArchiveKeyEntire(message types.Message,
 	var archiveKeyEntire msg.ArchiveKeyEntire
 	var md5Digest []byte
 	var err error
+	var valueFileID uint32
 
 	archiveKeyEntire, err = msg.UnmarshalArchiveKeyEntire(message.Marshalled)
 	if err != nil {
@@ -120,7 +121,8 @@ func handleArchiveKeyEntire(message types.Message,
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(archiveKeyEntire.UserRequestID,
+	valueFileID, err = nimbusioWriter.StoreSequence(
+		archiveKeyEntire.UserRequestID,
 		archiveKeyEntire.Segment,
 		archiveKeyEntire.Sequence, message.Data)
 	if err != nil {
@@ -134,7 +136,9 @@ func handleArchiveKeyEntire(message types.Message,
 
 	err = nimbusioWriter.FinishSegment(archiveKeyEntire.UserRequestID,
 		archiveKeyEntire.Segment,
-		archiveKeyEntire.File, metaData)
+		archiveKeyEntire.File,
+		metaData,
+		valueFileID)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
 		replyMessage.Error("error", err.Error())
@@ -201,7 +205,7 @@ func handleArchiveKeyStart(message types.Message,
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(archiveKeyStart.UserRequestID,
+	_, err = nimbusioWriter.StoreSequence(archiveKeyStart.UserRequestID,
 		archiveKeyStart.Segment,
 		archiveKeyStart.Sequence, message.Data)
 	if err != nil {
@@ -260,7 +264,7 @@ func handleArchiveKeyNext(message types.Message,
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(archiveKeyNext.UserRequestID,
+	_, err = nimbusioWriter.StoreSequence(archiveKeyNext.UserRequestID,
 		archiveKeyNext.Segment,
 		archiveKeyNext.Sequence, message.Data)
 	if err != nil {
@@ -282,6 +286,7 @@ func handleArchiveKeyFinal(message types.Message,
 	var archiveKeyFinal msg.ArchiveKeyFinal
 	var md5Digest []byte
 	var err error
+	var valueFileID uint32
 
 	archiveKeyFinal, err = msg.UnmarshalArchiveKeyFinal(message.Marshalled)
 	if err != nil {
@@ -319,7 +324,8 @@ func handleArchiveKeyFinal(message types.Message,
 		return
 	}
 
-	err = nimbusioWriter.StoreSequence(archiveKeyFinal.UserRequestID,
+	valueFileID, err = nimbusioWriter.StoreSequence(
+		archiveKeyFinal.UserRequestID,
 		archiveKeyFinal.Segment,
 		archiveKeyFinal.Sequence, message.Data)
 	if err != nil {
@@ -333,7 +339,9 @@ func handleArchiveKeyFinal(message types.Message,
 
 	err = nimbusioWriter.FinishSegment(archiveKeyFinal.UserRequestID,
 		archiveKeyFinal.Segment,
-		archiveKeyFinal.File, metaData)
+		archiveKeyFinal.File,
+		metaData,
+		valueFileID)
 	if err != nil {
 		lgr.Error("FinishSegment: %s", err)
 		replyMessage.Error("error", err.Error())

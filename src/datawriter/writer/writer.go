@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/SpiderOak/gostatgrabber"
+
 	"fog"
 	"tools"
 
@@ -78,6 +80,7 @@ type writerState struct {
 	WriterChan       nimbusioWriterChan
 	SyncTimer        *time.Timer
 	WaitSyncRequests []requestFinishSegment
+	StatGrabber      gostatgrabber.StatGrabber
 }
 
 type requestSync struct{}
@@ -176,6 +179,10 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 
 	writerChan := make(chan interface{}, writerChanCapacity)
 	state.WriterChan = nimbusioWriterChan(writerChan)
+
+	if state.StatGrabber, err = gostatgrabber.NewStatGrabber(); err != nil {
+		return nil, fmt.Errorf("NewStatGrabber failed %s", err)
+	}
 
 	startSyncTimer(&state)
 
@@ -374,6 +381,9 @@ func handleStoreSequence(state *writerState, request requestStoreSequence) {
 	if err != nil {
 		request.resultChan <- storeSequenceResult{Err: fmt.Errorf("new-segment-sequence %s", err)}
 	}
+
+	state.StatGrabber.Accumulate("nimbusio_write_requests", 1)
+	state.StatGrabber.Accumulate("nimbusio_write_bytes", len(data))
 
 	entry.LastActionTime = tools.Timestamp()
 	state.SegmentMap[key] = entry

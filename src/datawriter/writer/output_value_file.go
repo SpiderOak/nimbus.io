@@ -7,7 +7,9 @@ import (
 	"os"
 	"path"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"tools"
@@ -34,6 +36,10 @@ type OutputValueFile interface {
 	Close() error
 }
 
+var (
+	MaxValueFileSize uint64
+)
+
 type outputValueFile struct {
 	creationTime     time.Time
 	spaceID          uint32
@@ -47,6 +53,22 @@ type outputValueFile struct {
 	filePath         string
 	fileHandle       *os.File
 	enableFsync      bool
+}
+
+func init() {
+	maxValueFileSizeStr := os.Getenv("NIMBUS_IO_MAX_VALUE_FILE_SIZE")
+	if maxValueFileSizeStr == "" {
+		MaxValueFileSize = uint64(1024 * 1024 * 1024)
+	} else {
+		var intSize int
+		var err error
+		intSize, err = strconv.Atoi(maxValueFileSizeStr)
+		if err != nil {
+			fog.Critical("invalid NIMBUS_IO_MAX_VALUE_FILE_SIZE '%s'",
+				maxValueFileSizeStr)
+		}
+		MaxValueFileSize = uint64(intSize)
+	}
 }
 
 // NewOutputValueFile creates an entity implmenting the OutputValueFile interface
@@ -80,6 +102,12 @@ func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, err
 	valueFile.fileHandle, err = os.Create(valueFile.filePath)
 	if err != nil {
 		return nil, fmt.Errorf("os.Create(%s) %s", valueFile.filePath, err)
+	}
+
+	err = syscall.Fallocate(int(valueFile.fileHandle.Fd()), 0, 0,
+		int64(MaxValueFileSize))
+	if err != nil {
+		return nil, fmt.Errorf("Fallocate failed %s", err)
 	}
 
 	valueFile.enableFsync = os.Getenv("NIMBUSIO_ENABLE_FSYNC") == "1"

@@ -3,8 +3,6 @@ package writer
 import (
 	"encoding/base64"
 	"fmt"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/SpiderOak/gostatgrabber"
@@ -76,7 +74,6 @@ type writerState struct {
 	SegmentMap       map[segmentKey]segmentMapEntry
 	FileSpaceInfo    tools.FileSpaceInfo
 	ValueFile        OutputValueFile
-	MaxValueFileSize uint64
 	WriterChan       nimbusioWriterChan
 	SyncTimer        *time.Timer
 	WaitSyncRequests []requestFinishSegment
@@ -154,19 +151,6 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 
 	if state.NodeIDMap, err = tools.GetNodeIDMap(); err != nil {
 		return nil, fmt.Errorf("tools.GetNodeIDMap() failed %s", err)
-	}
-
-	maxValueFileSizeStr := os.Getenv("NIMBUS_IO_MAX_VALUE_FILE_SIZE")
-	if maxValueFileSizeStr == "" {
-		state.MaxValueFileSize = uint64(1024 * 1024 * 1024)
-	} else {
-		var intSize int
-		intSize, err = strconv.Atoi(maxValueFileSizeStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid NIMBUS_IO_MAX_VALUE_FILE_SIZE '%s'",
-				maxValueFileSizeStr)
-		}
-		state.MaxValueFileSize = uint64(intSize)
 	}
 
 	if state.FileSpaceInfo, err = tools.NewFileSpaceInfo(nodedb.NodeDB); err != nil {
@@ -325,7 +309,7 @@ func handleStoreSequence(state *writerState, request requestStoreSequence) {
 
 	fog.Debug("%s StoreSequence #%d", userRequestID, sequence.SequenceNum)
 
-	if state.ValueFile.Size()+sequence.SegmentSize >= state.MaxValueFileSize {
+	if state.ValueFile.Size()+sequence.SegmentSize >= MaxValueFileSize {
 		fog.Info("value file full")
 
 		if state.SyncTimer != nil {

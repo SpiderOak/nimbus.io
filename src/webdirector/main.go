@@ -1,4 +1,4 @@
-package main 
+package main
 
 import (
 	"crypto/rand"
@@ -50,6 +50,7 @@ func main() {
 			connection, err := listener.Accept()
 			if err != nil {
 				fog.Error("listener.Accept() %s", err)
+				close(listenerChan)
 				break
 			}
 			listenerChan <- connection
@@ -58,16 +59,19 @@ func main() {
 
 	for running := true; running; {
 		select {
-			case signal := <-signalChannel:
-				fog.Info("terminated by signal: %v", signal)
+		case signal := <-signalChannel:
+			fog.Info("terminated by signal: %v", signal)
+			running = false
+		case conn, ok := <-listenerChan:
+			if ok {
+				fog.Info("connection from %s", conn.RemoteAddr().String())
+				go handleConnection(conn)
+			} else {
 				running = false
-			case connection := <-listenerChan:
-				fog.Info("connection from %s", connection.RemoteAddr().String())
-				running = false
+			}
 		}
 	}
 	listener.Close()
-
 
 	fog.Info("program terminates")
 }
@@ -80,9 +84,12 @@ func getListenAddress() (string, error) {
 }
 
 func loadCertificate() (cert tls.Certificate, err error) {
+
+	// TODO: need to find the real cert for nimbus.io
+
 	keysDir := os.Getenv("SPIDEROAK_KEYS_DIR")
-	keyPath := filepath.Join(keysDir, "nimbus.io-wildcard.pem")
-	certPath := filepath.Join(keysDir, "nimbus.io.pem")
+	keyPath := filepath.Join(keysDir, "privateKeyExample.pem")
+	certPath := filepath.Join(keysDir, "certificateExample.pem")
 
 	return tls.LoadX509KeyPair(certPath, keyPath)
 }

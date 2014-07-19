@@ -29,10 +29,6 @@ func TestSingleManagementAPI(t *testing.T) {
 		t.Fatalf("NewManagementAPIDestinations %s", err)
 	}
 
-	if d.Peek() != testHost {
-		t.Fatalf("unexpected Peek() %s", d.Peek())
-	}
-
 	for i := 0; i < 100; i++ {
 		if d.Next() != testHost {
 			t.Fatalf("unexpected result %s", d.Next())
@@ -51,10 +47,6 @@ func TestMultipleManagementAPI(t *testing.T) {
 	d, err := NewManagementAPIDestinations()
 	if err != nil {
 		t.Fatalf("NewManagementAPIDestinations %s", err)
-	}
-
-	if d.Peek() != testHosts[0] {
-		t.Fatalf("unexpected Peek() %s", d.Peek())
 	}
 
 	for i := 0; i < 100; i++ {

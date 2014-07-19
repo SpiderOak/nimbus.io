@@ -3,7 +3,10 @@ package router
 import (
 	"io"
 	"net/http"
+	"os"
 	"testing"
+
+	"webdirector/mgmtapi"
 )
 
 type routerTestEntry struct {
@@ -16,11 +19,19 @@ type routerTestEntry struct {
 	expectedError    RouterError
 }
 
+const (
+	mgmtApiHost = "mgmtApiHost"
+)
+
 var (
 	routerTestData []routerTestEntry
 )
 
 func init() {
+	var headerMap map[string][]string
+
+	_ = os.Setenv("NIMBUSIO_MANAGEMENT_API_REQUEST_DEST", mgmtApiHost)
+
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "empty request",
@@ -31,7 +42,7 @@ func init() {
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusBadRequest}})
 
-	headerMap := map[string][]string{"HOST": []string{"xxx"}}
+	headerMap = map[string][]string{"HOST": []string{"xxx"}}
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "invalid host",
@@ -41,13 +52,28 @@ func init() {
 			headers:          headerMap,
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusNotFound}})
+
+	headerMap = map[string][]string{"HOST": []string{serviceDomain}}
+	routerTestData = append(routerTestData,
+		routerTestEntry{
+			testName:         "serviceDomain host",
+			method:           "",
+			uri:              "",
+			body:             nil,
+			headers:          headerMap,
+			expectedHostPort: mgmtApiHost,
+			expectedError:    nil})
 }
 
 func TestRouter(t *testing.T) {
+	managmentAPIDests, err := mgmtapi.NewManagementAPIDestinations()
+	if err != nil {
+		t.Fatalf("NewManagementAPIDestinations: %s", err)
+	}
+
+	router := NewRouter(managmentAPIDests)
 
 	for n, testEntry := range routerTestData {
-		router := NewRouter()
-
 		req, err := http.NewRequest(testEntry.method, testEntry.uri,
 			testEntry.body)
 		if err != nil {

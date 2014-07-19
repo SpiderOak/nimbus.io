@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"webdirector/mgmtapi"
 )
 
 type routerErrorImpl struct {
@@ -13,6 +15,7 @@ type routerErrorImpl struct {
 }
 
 type routerImpl struct {
+	managmentAPIDests mgmtapi.ManagementAPIDestinations
 }
 
 var (
@@ -24,8 +27,8 @@ func init() {
 }
 
 // NewRouter returns an entity that implements the Router interface
-func NewRouter() Router {
-	return &routerImpl{}
+func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations) Router {
+	return &routerImpl{managmentAPIDests: managmentAPIDests}
 }
 
 // Route reads a request and decides where it should go <host:port>
@@ -42,6 +45,13 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 	if !strings.HasSuffix(routingHostName, serviceDomain) {
 		return "", routerErrorImpl{httpCode: http.StatusNotFound,
 			errorMessage: fmt.Sprintf("Invalid HOST '%s'", routingHostName)}
+	}
+
+	if routingHostName == serviceDomain {
+		// this is not a request specific to any particular collection
+		// TODO: figure out how to route these requests.
+		// in production, this might not matter.
+		return router.managmentAPIDests.Next(), nil
 	}
 
 	return "", nil

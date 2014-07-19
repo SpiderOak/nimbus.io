@@ -20,10 +20,21 @@ type routerImpl struct {
 
 var (
 	serviceDomain string
+	destPortMap   map[string]string
 )
 
 func init() {
 	serviceDomain = os.Getenv("NIMBUS_IO_SERVICE_DOMAIN")
+
+	readDestPort := os.Getenv("NIMBUSIO_WEB_PUBLIC_READER_PORT")
+	writeDestPort := os.Getenv("NIMBUSIO_WEB_WRITER_PORT")
+	destPortMap = map[string]string{
+		"POST":   writeDestPort,
+		"DELETE": writeDestPort,
+		"PUT":    writeDestPort,
+		"PATCH":  writeDestPort,
+		"HEAD":   readDestPort,
+		"GET":    readDestPort}
 }
 
 // NewRouter returns an entity that implements the Router interface
@@ -52,6 +63,18 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 		// TODO: figure out how to route these requests.
 		// in production, this might not matter.
 		return router.managmentAPIDests.Next(), nil
+	}
+
+	/*destPort*/ _, ok = destPortMap[req.Method]
+	if !ok {
+		return "", routerErrorImpl{httpCode: http.StatusBadRequest,
+			errorMessage: fmt.Sprintf("Unknown method '%s'", req.Method)}
+	}
+
+	collection := parseCollectionFromHostName(routingHostName)
+	if collection == "" {
+		return "", routerErrorImpl{httpCode: http.StatusNotFound,
+			errorMessage: fmt.Sprintf("Unparseable host name '%s'", hostName)}
 	}
 
 	return "", nil

@@ -13,7 +13,8 @@ import (
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	request, err := http.ReadRequest(bufio.NewReaderSize(conn, 4096))
+	reader := bufio.NewReader(conn)
+	request, err := http.ReadRequest(reader)
 	if err != nil {
 		fog.Error("%s http.ReadRequest failed: %s",
 			conn.RemoteAddr().String(), err)

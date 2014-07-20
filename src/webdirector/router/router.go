@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"webdirector/hosts"
 	"webdirector/mgmtapi"
 )
 
@@ -15,7 +16,8 @@ type routerErrorImpl struct {
 }
 
 type routerImpl struct {
-	managmentAPIDests mgmtapi.ManagementAPIDestinations
+	managmentAPIDests  mgmtapi.ManagementAPIDestinations
+	hostsForCollection hosts.HostsForCollection
 }
 
 var (
@@ -38,8 +40,10 @@ func init() {
 }
 
 // NewRouter returns an entity that implements the Router interface
-func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations) Router {
-	return &routerImpl{managmentAPIDests: managmentAPIDests}
+func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
+	hostsForCollection hosts.HostsForCollection) Router {
+	return &routerImpl{managmentAPIDests: managmentAPIDests,
+		hostsForCollection: hostsForCollection}
 }
 
 // Route reads a request and decides where it should go <host:port>
@@ -71,10 +75,16 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 			errorMessage: fmt.Sprintf("Unknown method '%s'", req.Method)}
 	}
 
-	collection := parseCollectionFromHostName(routingHostName)
-	if collection == "" {
+	collectionName := parseCollectionFromHostName(routingHostName)
+	if collectionName == "" {
 		return "", routerErrorImpl{httpCode: http.StatusNotFound,
 			errorMessage: fmt.Sprintf("Unparseable host name '%s'", hostName)}
+	}
+
+	/*hostsForCollection*/ _, err := router.hostsForCollection.GetHostNames(collectionName)
+	if err != nil {
+		return "", routerErrorImpl{httpCode: http.StatusNotFound,
+			errorMessage: fmt.Sprintf("no hosts for collection '%s'", collectionName)}
 	}
 
 	return "", nil

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"webdirector/avail"
 	"webdirector/hosts"
 	"webdirector/mgmtapi"
 )
@@ -18,6 +19,7 @@ type routerErrorImpl struct {
 type routerImpl struct {
 	managmentAPIDests  mgmtapi.ManagementAPIDestinations
 	hostsForCollection hosts.HostsForCollection
+	availability       avail.Availability
 }
 
 var (
@@ -41,9 +43,11 @@ func init() {
 
 // NewRouter returns an entity that implements the Router interface
 func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
-	hostsForCollection hosts.HostsForCollection) Router {
+	hostsForCollection hosts.HostsForCollection,
+	availability avail.Availability) Router {
+
 	return &routerImpl{managmentAPIDests: managmentAPIDests,
-		hostsForCollection: hostsForCollection}
+		hostsForCollection: hostsForCollection, availability: availability}
 }
 
 // Route reads a request and decides where it should go <host:port>
@@ -69,7 +73,7 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 		return router.managmentAPIDests.Next(), nil
 	}
 
-	/*destPort*/ _, ok = destPortMap[req.Method]
+	destPort, ok := destPortMap[req.Method]
 	if !ok {
 		return "", routerErrorImpl{httpCode: http.StatusBadRequest,
 			errorMessage: fmt.Sprintf("Unknown method '%s'", req.Method)}
@@ -81,10 +85,24 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 			errorMessage: fmt.Sprintf("Unparseable host name '%s'", hostName)}
 	}
 
-	/*hostsForCollection*/ _, err := router.hostsForCollection.GetHostNames(collectionName)
+	hostsForCollection, err := router.hostsForCollection.GetHostNames(collectionName)
 	if err != nil {
 		return "", routerErrorImpl{httpCode: http.StatusNotFound,
 			errorMessage: fmt.Sprintf("no hosts for collection '%s'", collectionName)}
+	}
+
+	availableHosts, err := router.availability.AvailableHosts(
+		hostsForCollection, destPort)
+	if err != nil {
+		return "", routerErrorImpl{httpCode: http.StatusInternalServerError,
+			errorMessage: fmt.Sprintf("collection '%s': %s", collectionName, err)}
+	}
+	if len(availableHosts) == 0 {
+		// XXX: the python web_director retries here, after a delay.
+		// IMO, that's what HTTP Status 503 is for
+		return "", routerErrorImpl{httpCode: http.StatusServiceUnavailable,
+			errorMessage: fmt.Sprintf("no hosts available for collection '%s'",
+				collectionName)}
 	}
 
 	return "", nil

@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"webdirector/avail"
 	"webdirector/hosts"
 	"webdirector/mgmtapi"
 )
@@ -18,6 +19,7 @@ type routerTestEntry struct {
 	body             io.Reader
 	headers          map[string][]string
 	hosts            map[string][]string
+	availableHosts   []string
 	expectedHostPort string
 	expectedError    RouterError
 }
@@ -28,9 +30,10 @@ const (
 )
 
 var (
-	routerTestData      []routerTestEntry
-	validDomain         string
-	hostsForValidDomain []string
+	routerTestData     []routerTestEntry
+	validDomain        string
+	validHosts         []string
+	hostsForCollection map[string][]string
 )
 
 func init() {
@@ -39,8 +42,9 @@ func init() {
 	_ = os.Setenv("NIMBUSIO_MANAGEMENT_API_REQUEST_DEST", mgmtApiHost)
 
 	validDomain = fmt.Sprintf("%s.%s", validCollection, serviceDomain)
-	hostsForValidDomain = []string{"host01", "host02", "host03", "host04",
+	validHosts = []string{"host01", "host02", "host03", "host04",
 		"host05", "host06", "host07", "host08", "host09", "host10"}
+	hostsForCollection = map[string][]string{validCollection: validHosts}
 
 	routerTestData = append(routerTestData,
 		routerTestEntry{
@@ -82,8 +86,20 @@ func init() {
 			uri:              "",
 			body:             nil,
 			headers:          headerMap,
-			expectedHostPort: mgmtApiHost,
-			expectedError:    nil})
+			expectedHostPort: "",
+			expectedError:    routerErrorImpl{httpCode: http.StatusNotFound}})
+
+	headerMap = map[string][]string{"HOST": []string{validDomain}}
+	routerTestData = append(routerTestData,
+		routerTestEntry{
+			testName:         "no hosts available for collection",
+			method:           "GET",
+			uri:              "",
+			body:             nil,
+			hosts:            hostsForCollection,
+			headers:          headerMap,
+			expectedHostPort: "",
+			expectedError:    routerErrorImpl{httpCode: http.StatusServiceUnavailable}})
 }
 
 func TestRouter(t *testing.T) {
@@ -94,8 +110,9 @@ func TestRouter(t *testing.T) {
 
 	for n, testEntry := range routerTestData {
 		hostsForCollection := hosts.NewMockHostsForCollection(testEntry.hosts)
+		availableHosts := avail.NewMockAvailability(testEntry.availableHosts)
 
-		router := NewRouter(managmentAPIDests, hostsForCollection)
+		router := NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
 
 		req, err := http.NewRequest(testEntry.method, testEntry.uri,
 			testEntry.body)
@@ -120,18 +137,14 @@ func TestRouter(t *testing.T) {
 					n, testEntry.testName, err, err)
 			}
 			if routerErr.HTTPCode() != testEntry.expectedError.HTTPCode() {
-				t.Fatalf("Route %d %s Unexpected HTTP Status: %d expecting %d",
-					n, testEntry.testName, routerErr.HTTPCode(),
-					testEntry.expectedError.HTTPCode())
+				t.Fatalf("Route %d %s Unexpected HTTP Status: %s expecting %s",
+					n, testEntry.testName, routerErr, testEntry.expectedError)
 			}
-		} else {
-			if err != nil {
-				t.Fatalf("Route %d %s, unexpected error %s", n,
-					testEntry.testName, err)
-			}
-		}
+		} else if err != nil {
+			t.Fatalf("Route %d %s, unexpected error %s", n,
+				testEntry.testName, err)
 
-		if hostPort != testEntry.expectedHostPort {
+		} else if hostPort != testEntry.expectedHostPort {
 			t.Fatalf("Route %d %s Unexpected host:port: %s expecting %s",
 				n, testEntry.testName, hostPort, testEntry.expectedHostPort)
 		}

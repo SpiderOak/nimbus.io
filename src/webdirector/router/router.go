@@ -1,10 +1,14 @@
 package router
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
+
+	"fog"
 
 	"webdirector/avail"
 	"webdirector/hosts"
@@ -20,11 +24,14 @@ type routerImpl struct {
 	managmentAPIDests  mgmtapi.ManagementAPIDestinations
 	hostsForCollection hosts.HostsForCollection
 	availability       avail.Availability
+	requestCounter     uint64
+	roundRobinCounter  uint64
 }
 
 var (
-	serviceDomain string
-	destPortMap   map[string]string
+	serviceDomain          string
+	destPortMap            map[string]string
+	alwaysRouteToFirstNode bool
 )
 
 func init() {
@@ -39,6 +46,9 @@ func init() {
 		"PATCH":  writeDestPort,
 		"HEAD":   readDestPort,
 		"GET":    readDestPort}
+
+	alwaysRouteToFirstNode =
+		os.Getenv("NIMBUSIO_WEB_DIRECTOR_ALWAYS_FIRST_NODE") == "1"
 }
 
 // NewRouter returns an entity that implements the Router interface
@@ -52,6 +62,11 @@ func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
 
 // Route reads a request and decides where it should go <host:port>
 func (router *routerImpl) Route(req *http.Request) (string, error) {
+	var err error
+
+	router.requestCounter += 1
+	fog.Debug("request %d: host=%s, method=%s, URL=%s", router.requestCounter,
+		req.Header["HOST"], req.Method, req.URL)
 
 	// TODO: be able to handle http requests from http 1.0 clients w/o a
 	// host header to at least the website, if nothing else.
@@ -105,7 +120,49 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 				collectionName)}
 	}
 
-	return "", nil
+	var routingMethod string
+	var routedHost string
+	switch {
+	case alwaysRouteToFirstNode:
+		routingMethod = "NIMBUSIO_WEB_DIRECTOR_ALWAYS_FIRST_NODE"
+		routedHost = availableHosts[0]
+	case (req.Method == "GET" || req.Method == "HEAD") &&
+		strings.HasPrefix(req.URL.Path, "/data/") &&
+		len(req.URL.Path) > len("/data/"):
+		routedHost, err = consistentHashDest(hostsForCollection, availableHosts,
+			collectionName, req.URL.Path)
+		if err != nil {
+			return "", routerErrorImpl{httpCode: http.StatusInternalServerError,
+				errorMessage: fmt.Sprintf("collection '%s': %s", collectionName, err)}
+		}
+		routingMethod = "hash"
+	default:
+		if router.roundRobinCounter == 0 {
+			// start the round robin dispatcher at a random number, so all the
+			// workers don't start on the same point.
+			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(hostsForCollection))))
+			if err != nil {
+				return "", routerErrorImpl{httpCode: http.StatusInternalServerError,
+					errorMessage: fmt.Sprintf("collection '%s': %s", collectionName, err)}
+			}
+			router.roundRobinCounter = n.Uint64()
+		} else {
+			router.roundRobinCounter += 1
+		}
+
+		// XXX: the python version works with hostsForCollection and then tries
+		// to find one in availableHosts. IMO, assuming the group of
+		// available hosts if fairly stable, we get the same result working
+		// strictly with availableHosts
+		i := int(router.roundRobinCounter % uint64(len(availableHosts)))
+		routedHost = availableHosts[i]
+		routingMethod = "round robin"
+	}
+
+	fog.Debug("%s %s routed to %s by %s", collectionName, req.URL.Path,
+		routedHost, routingMethod)
+
+	return routedHost, nil
 }
 
 func (err routerErrorImpl) Error() string {

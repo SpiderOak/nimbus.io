@@ -162,7 +162,7 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 	fog.Debug("%s %s routed to %s by %s", collectionName, req.URL.Path,
 		routedHost, routingMethod)
 
-	return routedHost, nil
+	return fmt.Sprintf("%s:%s", routedHost, destPort), nil
 }
 
 func (err routerErrorImpl) Error() string {

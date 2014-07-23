@@ -100,6 +100,21 @@ func init() {
 			headers:          headerMap,
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusServiceUnavailable}})
+
+	headerMap = map[string][]string{"HOST": []string{validDomain}}
+	writerPort := os.Getenv("NIMBUSIO_WEB_WRITER_PORT")
+	availHostPort := fmt.Sprintf("%s:%s", "host07", writerPort)
+	routerTestData = append(routerTestData,
+		routerTestEntry{
+			testName:         "round robin host",
+			method:           "POST",
+			uri:              "",
+			body:             nil,
+			hosts:            hostsForCollection,
+			availableHosts:   []string{availHostPort},
+			headers:          headerMap,
+			expectedHostPort: availHostPort,
+			expectedError:    nil})
 }
 
 func TestRouter(t *testing.T) {

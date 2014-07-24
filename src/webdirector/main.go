@@ -14,7 +14,7 @@ import (
 	"webdirector/avail"
 	"webdirector/hosts"
 	"webdirector/mgmtapi"
-	"webdirector/router"
+	"webdirector/routing"
 )
 
 const (
@@ -54,10 +54,10 @@ func main() {
 		fog.Critical("NewManagementAPIDestinations: %s", err)
 	}
 
-	hostsForCollection := hosts.MockHostsForCollection()
-	availableHosts := avail.MockAvailability()
+	hostsForCollection := hosts.NewHostsForCollection()
+	availableHosts := avail.NewAvailability()
 
-	router := NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
+	router := routing.NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
 
 	listenerChan := make(chan net.Conn, listenerChanCapacity)
 	go func() {

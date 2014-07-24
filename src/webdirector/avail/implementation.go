@@ -9,7 +9,7 @@ type availability struct {
 
 // Availability returns a mock entity that implements the Availability
 // interface. .
-func Newvailability() Availability {
+func NewAvailability() Availability {
 	return availability{}
 }
 

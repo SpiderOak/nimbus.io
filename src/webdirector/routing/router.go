@@ -1,4 +1,4 @@
-package router
+package routing
 
 import (
 	"crypto/rand"
@@ -27,10 +27,6 @@ type routerImpl struct {
 	requestCounter     uint64
 	roundRobinCounter  uint64
 }
-
-const (
-	canonicalHostKey = "Host"
-)
 
 var (
 	serviceDomain          string

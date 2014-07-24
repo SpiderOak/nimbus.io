@@ -1,4 +1,4 @@
-package router
+package routing
 
 import (
 	"fmt"
@@ -25,8 +25,9 @@ type routerTestEntry struct {
 }
 
 const (
-	mgmtApiHost     = "mgmtApiHost"
-	validCollection = "aaa"
+	mgmtApiHost      = "mgmtApiHost"
+	validCollection  = "aaa"
+	canonicalHostKey = "Host"
 )
 
 var (
@@ -56,7 +57,7 @@ func init() {
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusBadRequest}})
 
-	headerMap = map[string][]string{"HOST": []string{"xxx"}}
+	headerMap = map[string][]string{canonicalHostKey: []string{"xxx"}}
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "invalid host",
@@ -67,7 +68,7 @@ func init() {
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusNotFound}})
 
-	headerMap = map[string][]string{"HOST": []string{serviceDomain}}
+	headerMap = map[string][]string{canonicalHostKey: []string{serviceDomain}}
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "serviceDomain host",
@@ -78,7 +79,7 @@ func init() {
 			expectedHostPort: mgmtApiHost,
 			expectedError:    nil})
 
-	headerMap = map[string][]string{"HOST": []string{validDomain}}
+	headerMap = map[string][]string{canonicalHostKey: []string{validDomain}}
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "no hosts for collection",
@@ -89,7 +90,7 @@ func init() {
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusNotFound}})
 
-	headerMap = map[string][]string{"HOST": []string{validDomain}}
+	headerMap = map[string][]string{canonicalHostKey: []string{validDomain}}
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "no hosts available for collection",
@@ -101,7 +102,7 @@ func init() {
 			expectedHostPort: "",
 			expectedError:    routerErrorImpl{httpCode: http.StatusServiceUnavailable}})
 
-	headerMap = map[string][]string{"HOST": []string{validDomain}}
+	headerMap = map[string][]string{canonicalHostKey: []string{validDomain}}
 	writerPort := os.Getenv("NIMBUSIO_WEB_WRITER_PORT")
 	availHostPort := fmt.Sprintf("%s:%s", "host07", writerPort)
 	routerTestData = append(routerTestData,

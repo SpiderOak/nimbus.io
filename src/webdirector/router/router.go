@@ -28,6 +28,10 @@ type routerImpl struct {
 	roundRobinCounter  uint64
 }
 
+const (
+	canonicalHostKey = "Host"
+)
+
 var (
 	serviceDomain          string
 	destPortMap            map[string]string
@@ -64,18 +68,20 @@ func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
 func (router *routerImpl) Route(req *http.Request) (string, error) {
 	var err error
 
+	hostName := req.Header.Get(http.CanonicalHeaderKey("host"))
+
 	router.requestCounter += 1
 	fog.Debug("request %d: host=%s, method=%s, URL=%s", router.requestCounter,
-		req.Header["HOST"], req.Method, req.URL)
+		hostName, req.Method, req.URL)
 
 	// TODO: be able to handle http requests from http 1.0 clients w/o a
 	// host header to at least the website, if nothing else.
-	hostName, ok := req.Header["HOST"]
-	if !ok {
+
+	if hostName == "" {
 		return "", routerErrorImpl{httpCode: http.StatusBadRequest,
 			errorMessage: "HOST header not found"}
 	}
-	routingHostName := strings.Split(hostName[0], ":")[0]
+	routingHostName := strings.Split(hostName, ":")[0]
 	if !strings.HasSuffix(routingHostName, serviceDomain) {
 		return "", routerErrorImpl{httpCode: http.StatusNotFound,
 			errorMessage: fmt.Sprintf("Invalid HOST '%s'", routingHostName)}

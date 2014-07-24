@@ -8,9 +8,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"fog"
+
+	"webdirector/avail"
+	"webdirector/hosts"
+	"webdirector/mgmtapi"
+	"webdirector/router"
 )
 
 const (
@@ -45,6 +49,16 @@ func main() {
 		fog.Critical("tls.Listen %s failed %s", listenAddress, err)
 	}
 
+	managmentAPIDests, err := mgmtapi.NewManagementAPIDestinations()
+	if err != nil {
+		fog.Critical("NewManagementAPIDestinations: %s", err)
+	}
+
+	hostsForCollection := hosts.MockHostsForCollection()
+	availableHosts := avail.MockAvailability()
+
+	router := NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
+
 	listenerChan := make(chan net.Conn, listenerChanCapacity)
 	go func() {
 		for {
@@ -66,7 +80,7 @@ func main() {
 		case conn, ok := <-listenerChan:
 			if ok {
 				fog.Info("connection from %s", conn.RemoteAddr().String())
-				go handleConnection(conn)
+				go handleConnection(router, conn)
 			} else {
 				running = false
 			}

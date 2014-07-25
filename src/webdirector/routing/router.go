@@ -64,7 +64,7 @@ func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
 func (router *routerImpl) Route(req *http.Request) (string, error) {
 	var err error
 
-	hostName := req.Header.Get(http.CanonicalHeaderKey("host"))
+	hostName := req.Host
 
 	router.requestCounter += 1
 	fog.Debug("request %d: host=%s, method=%s, URL=%s", router.requestCounter,

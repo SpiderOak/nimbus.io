@@ -33,13 +33,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		if ok {
 			fog.Error("%s, %s router error: %s",
 				request.Method, request.URL, err)
-			reply := fmt.Sprintf("HTTP/1.0 %d %s\r\n\r\n%s",
-				routerErr.HTTPCode(), http.StatusText(routerErr.HTTPCode()),
-				routerErr.ErrorMessage())
-			if _, err = conn.Write([]byte(reply)); err != nil {
-				fog.Error("%s, %s Write error: %s",
-					request.Method, request.URL, err)
-			}
+			sendErrorReply(conn, routerErr.HTTPCode(), routerErr.ErrorMessage())
 		} else {
 			fog.Error("%s, %s Unexpected error type: %T %s",
 				request.Method, request.URL, err, err)
@@ -48,4 +42,14 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 
 	// routing OK, now proxy
+	sendErrorReply(conn, http.StatusNotImplemented, "handleConnection")
+}
+
+// sendErrorReply sends an error reply to the client
+func sendErrorReply(conn net.Conn, httpCode int, errorMessage string) {
+	reply := fmt.Sprintf("HTTP/1.0 %d %s\r\n\r\n%s",
+		httpCode, http.StatusText(httpCode), errorMessage)
+	if _, err := conn.Write([]byte(reply)); err != nil {
+		fog.Error("Write error: %s %s", reply, err)
+	}
 }

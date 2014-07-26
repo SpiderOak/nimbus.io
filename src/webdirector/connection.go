@@ -17,6 +17,9 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	defer conn.Close()
 	var err error
 
+	// TODO: need to install the UUID library
+	requestID := "I wish this was a UUID"
+
 	reader := bufio.NewReader(conn)
 	request, err := http.ReadRequest(reader)
 	if err != nil {
@@ -25,24 +28,45 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		return
 	}
 
-	fog.Debug("got request %s", request)
+	fog.Debug("%s got request %s", requestID, request)
 
-	/*hostPort*/ _, err = router.Route(request)
+	// change the URL to point to our internal host
+	request.URL.Host, err = router.Route(requestID, request)
 	if err != nil {
 		routerErr, ok := err.(routing.RouterError)
 		if ok {
-			fog.Error("%s, %s router error: %s",
-				request.Method, request.URL, err)
+			fog.Error("%s %s, %s router error: %s",
+				requestID, request.Method, request.URL, err)
 			sendErrorReply(conn, routerErr.HTTPCode(), routerErr.ErrorMessage())
 		} else {
-			fog.Error("%s, %s Unexpected error type: %T %s",
-				request.Method, request.URL, err, err)
+			fog.Error("%s %s, %s Unexpected error type: %T %s",
+				requestID, request.Method, request.URL, err, err)
 		}
 		return
 	}
+	request.URL.Scheme = "http"
 
-	// routing OK, now proxy
-	sendErrorReply(conn, http.StatusNotImplemented, "handleConnection")
+	// heave the incoming RequestURI: can't be set in a client request
+	request.RequestURI = ""
+
+	modifyHeaders(request, conn.RemoteAddr().String(), requestID)
+	fog.Debug("%s routing %s %s", requestID, request.Method, request.URL)
+
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		fog.Error("%s %s, %s internal error: %s",
+			requestID, request.Method, request.URL, err)
+		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if request.Body != nil {
+		request.Body.Close()
+	}
+
+	if err := response.Write(conn); err != nil {
+		fog.Error("%s %s, %s error sending response: %s",
+			requestID, request.Method, request.URL, err)
+	}
 }
 
 // sendErrorReply sends an error reply to the client
@@ -52,4 +76,32 @@ func sendErrorReply(conn net.Conn, httpCode int, errorMessage string) {
 	if _, err := conn.Write([]byte(reply)); err != nil {
 		fog.Error("Write error: %s %s", reply, err)
 	}
+}
+
+// modifyHeaders tweaks the the headers for handoff to the internal server
+func modifyHeaders(request *http.Request, remoteAddress, requestID string) {
+	/*
+		alan says this:
+
+		still I don't feel great about this. from a security standpoint,
+		signaling access control information (such as IP address, which some
+		collections set access policy for) inside a stream of data controlled by
+		the attacker is a bad idea.  downstream http parsers are probably robust
+		enough to not be easily trickable, but I'd feel better about signaling
+		out of band, or adding another header with a HMAC from a secret key.
+	*/
+
+	forwardedForKey := http.CanonicalHeaderKey("x-forwarded-for")
+	existingForwardedFor := request.Header.Get(forwardedForKey)
+	var newForwardedFor string
+	if existingForwardedFor == "" {
+		newForwardedFor = remoteAddress
+	} else {
+		newForwardedFor = fmt.Sprintf("%s, %s", existingForwardedFor,
+			remoteAddress)
+	}
+	request.Header.Set(forwardedForKey, newForwardedFor)
+
+	requestIDKey := http.CanonicalHeaderKey("x-nimbus-io-user-request-id")
+	request.Header.Set(requestIDKey, requestID)
 }

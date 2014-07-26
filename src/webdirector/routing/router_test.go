@@ -28,6 +28,7 @@ const (
 	mgmtApiHost      = "mgmtApiHost"
 	validCollection  = "aaa"
 	canonicalHostKey = "Host"
+	requestID        = "xxxxxxxxxxxxxxxx" // this should be a UUID
 )
 
 var (
@@ -139,8 +140,9 @@ func TestRouter(t *testing.T) {
 		for key := range testEntry.headers {
 			req.Header[key] = testEntry.headers[key]
 		}
+		req.Host = req.Header.Get(canonicalHostKey)
 
-		hostPort, err := router.Route(req)
+		hostPort, err := router.Route(requestID, req)
 
 		if testEntry.expectedError != nil {
 			if err == nil {

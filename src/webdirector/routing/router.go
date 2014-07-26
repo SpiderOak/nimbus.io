@@ -61,14 +61,14 @@ func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
 }
 
 // Route reads a request and decides where it should go <host:port>
-func (router *routerImpl) Route(req *http.Request) (string, error) {
+func (router *routerImpl) Route(requestID string, req *http.Request) (string, error) {
 	var err error
 
 	hostName := req.Host
 
 	router.requestCounter += 1
-	fog.Debug("request %d: host=%s, method=%s, URL=%s", router.requestCounter,
-		hostName, req.Method, req.URL)
+	fog.Debug("request %d: %s host=%s, method=%s, URL=%s", router.requestCounter,
+		requestID, hostName, req.Method, req.URL)
 
 	// TODO: be able to handle http requests from http 1.0 clients w/o a
 	// host header to at least the website, if nothing else.
@@ -83,11 +83,18 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 			errorMessage: fmt.Sprintf("Invalid HOST '%s'", routingHostName)}
 	}
 
+	var routingMethod string
+	var routedHost string
+
 	if routingHostName == serviceDomain {
 		// this is not a request specific to any particular collection
 		// TODO: figure out how to route these requests.
 		// in production, this might not matter.
-		return router.managmentAPIDests.Next(), nil
+		routingMethod = "management API"
+		routedHost = router.managmentAPIDests.Next()
+		fog.Debug("%s routed to %s by %s", req.URL.Path, routedHost,
+			routingMethod)
+		return routedHost, nil
 	}
 
 	destPort, ok := destPortMap[req.Method]
@@ -122,8 +129,6 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 				collectionName)}
 	}
 
-	var routingMethod string
-	var routedHost string
 	switch {
 	case alwaysRouteToFirstNode:
 		routingMethod = "NIMBUSIO_WEB_DIRECTOR_ALWAYS_FIRST_NODE"
@@ -154,15 +159,15 @@ func (router *routerImpl) Route(req *http.Request) (string, error) {
 
 		// XXX: the python version works with hostsForCollection and then tries
 		// to find one in availableHosts. IMO, assuming the group of
-		// available hosts if fairly stable, we get the same result working
+		// available hosts is fairly stable, we get the same result working
 		// strictly with availableHosts
 		i := int(router.roundRobinCounter % uint64(len(availableHosts)))
 		routedHost = availableHosts[i]
 		routingMethod = "round robin"
 	}
 
-	fog.Debug("%s %s routed to %s by %s", collectionName, req.URL.Path,
-		routedHost, routingMethod)
+	fog.Debug("%d %s %s %s routed to %s by %s", router.requestCounter, requestID,
+		collectionName, req.URL.Path, routedHost, routingMethod)
 
 	return fmt.Sprintf("%s:%s", routedHost, destPort), nil
 }

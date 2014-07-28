@@ -67,8 +67,8 @@ func (router *routerImpl) Route(requestID string, req *http.Request) (string, er
 	hostName := req.Host
 
 	router.requestCounter += 1
-	fog.Debug("request %d: %s host=%s, method=%s, URL=%s", router.requestCounter,
-		requestID, hostName, req.Method, req.URL)
+	fog.Debug("%s host=%s, method=%s, URL=%s", requestID, hostName, req.Method,
+		req.URL)
 
 	// TODO: be able to handle http requests from http 1.0 clients w/o a
 	// host header to at least the website, if nothing else.
@@ -92,8 +92,8 @@ func (router *routerImpl) Route(requestID string, req *http.Request) (string, er
 		// in production, this might not matter.
 		routingMethod = "management API"
 		routedHost = router.managmentAPIDests.Next()
-		fog.Debug("%s routed to %s by %s", req.URL.Path, routedHost,
-			routingMethod)
+		fog.Debug("%s %s routed to %s by %s", requestID, req.URL.Path,
+			routedHost, routingMethod)
 		return routedHost, nil
 	}
 
@@ -166,8 +166,8 @@ func (router *routerImpl) Route(requestID string, req *http.Request) (string, er
 		routingMethod = "round robin"
 	}
 
-	fog.Debug("%d %s %s %s routed to %s by %s", router.requestCounter, requestID,
-		collectionName, req.URL.Path, routedHost, routingMethod)
+	fog.Debug("%s %s %s routed to %s by %s", requestID, collectionName,
+		req.URL.Path, routedHost, routingMethod)
 
 	return fmt.Sprintf("%s:%s", routedHost, destPort), nil
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"fog"
+	"tools"
 
 	"webdirector/routing"
 )
@@ -17,18 +18,20 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	defer conn.Close()
 	var err error
 
-	// TODO: need to install the UUID library
-	requestID := "I wish this was a UUID"
+	requestID, err := tools.CreateUUID()
+	if err != nil {
+		fog.Error("%s tools.CreateUUID(): %s", conn.RemoteAddr().String(), err)
+		return
+	}
+	fog.Info("%s starts", requestID)
 
 	reader := bufio.NewReader(conn)
 	request, err := http.ReadRequest(reader)
 	if err != nil {
-		fog.Error("%s http.ReadRequest failed: %s",
-			conn.RemoteAddr().String(), err)
+		fog.Error("%s %s http.ReadRequest failed: %s",
+			requestID, conn.RemoteAddr().String(), err)
 		return
 	}
-
-	fog.Debug("%s got request %s", requestID, request)
 
 	// change the URL to point to our internal host
 	request.URL.Host, err = router.Route(requestID, request)
@@ -42,6 +45,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 			fog.Error("%s %s, %s Unexpected error type: %T %s",
 				requestID, request.Method, request.URL, err, err)
 		}
+		fog.Info("%s aborts", requestID)
 		return
 	}
 	request.URL.Scheme = "http"
@@ -57,6 +61,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Error("%s %s, %s internal error: %s",
 			requestID, request.Method, request.URL, err)
 		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
+		fog.Info("%s aborts", requestID)
 		return
 	}
 	if request.Body != nil {
@@ -67,6 +72,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Error("%s %s, %s error sending response: %s",
 			requestID, request.Method, request.URL, err)
 	}
+	fog.Info("%s ends (%d) %s", requestID, response.StatusCode, response.Status)
 }
 
 // sendErrorReply sends an error reply to the client

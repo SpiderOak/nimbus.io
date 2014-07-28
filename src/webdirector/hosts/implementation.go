@@ -5,14 +5,23 @@ import (
 )
 
 type hostsForCollectionImple struct {
+	collectionMap map[string][]string
 }
 
 // NewHostsForCollection returns a mock implementation of the
 // HostsForCollection interface
 func NewHostsForCollection() HostsForCollection {
-	return hostsForCollectionImple{}
+	h := hostsForCollectionImple{}
+	h.collectionMap = map[string][]string{
+		"collection01": []string{"127.0.0.1"}}
+	return h
 }
 
 func (h hostsForCollectionImple) GetHostNames(collectionName string) ([]string, error) {
-	return nil, fmt.Errorf("GetHostNames not implemented")
+	hostNames, ok := h.collectionMap[collectionName]
+	if !ok {
+		return nil, fmt.Errorf("no hosts for %s", collectionName)
+	}
+
+	return hostNames, nil
 }

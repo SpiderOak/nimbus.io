@@ -23,13 +23,14 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Error("%s tools.CreateUUID(): %s", conn.RemoteAddr().String(), err)
 		return
 	}
-	fog.Info("%s starts", requestID)
+	fog.Info("%s starts %s", requestID, conn.RemoteAddr().String())
 
 	reader := bufio.NewReader(conn)
 	request, err := http.ReadRequest(reader)
 	if err != nil {
 		fog.Error("%s %s http.ReadRequest failed: %s",
 			requestID, conn.RemoteAddr().String(), err)
+		fog.Info("%s aborts", requestID)
 		return
 	}
 

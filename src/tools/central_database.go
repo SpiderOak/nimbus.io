@@ -7,7 +7,7 @@ import (
 
 import (
 	"database/sql"
-	_ "github.com/jbarham/gopgsqldriver"
+	_ "github.com/lib/pq"
 )
 
 // OpenCentralDatabase returns a *sql.DB pointer.

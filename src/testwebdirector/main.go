@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 
@@ -14,41 +13,48 @@ import (
 func main() {
 	fog.Info("testwebdirector starts")
 
-	serviceDomain := os.Getenv("NIMBUS_IO_SERVICE_DOMAIN")
+	adminAddress := os.Getenv("NIMBUSIO_MANAGEMENT_API_REQUEST_DEST")
+	server := NewServer("admin", adminAddress)
+	go server.Serve()
 
-	go server(os.Getenv("NIMBUSIO_MANAGEMENT_API_REQUEST_DEST"))
+	readerAddress := fmt.Sprintf("127.0.0.1:%s", os.Getenv("NIMBUSIO_WEB_PUBLIC_READER_PORT"))
+	server = NewServer("reader", readerAddress)
+	go server.Serve()
+
+	writerAddress := fmt.Sprintf("127.0.0.1:%s", os.Getenv("NIMBUSIO_WEB_WRITER_PORT"))
+	server = NewServer("writer", writerAddress)
+	go server.Serve()
+
+	serviceDomain := os.Getenv("NIMBUS_IO_SERVICE_DOMAIN")
 
 	config := tls.Config{InsecureSkipVerify: true}
 	transport := &http.Transport{TLSClientConfig: &config}
 	client := http.Client{Transport: transport}
 
 	fog.Debug("get")
-	url := fmt.Sprintf("https://%s/satan", serviceDomain)
+	url := fmt.Sprintf("https://%s/admin", serviceDomain)
 	response, err := client.Get(url)
 	if err != nil {
 		fog.Error("get %s", err)
+	} else {
+		fog.Debug("get %s", response.Status)
 	}
-	fog.Debug("get response %s", response)
 
 	fog.Debug("post")
-	url = fmt.Sprintf("https://%s.%s/satan", "collection01", serviceDomain)
-	bodyReader := NewSizeReader(1024)
-	response, err = client.Post(url, "text/plain", bodyReader)
+	var contentLength uint64 = 1024 * 1024
+	url = fmt.Sprintf("https://%s.%s/writer", "collection01", serviceDomain)
+	bodyReader := NewSizeReader(contentLength)
+	request, err := http.NewRequest("POST", url, bodyReader)
+	if err != nil {
+		fog.Critical("NewRequest failed %s")
+	}
+	request.Header.Add("Content-Type", "test/plain")
+	request.Header.Add("Content-Length", fmt.Sprintf("%s", contentLength))
+	response, err = client.Do(request)
 	if err != nil {
 		fog.Error("post %s", err)
 	}
-	fog.Debug("post response %s", response)
+	fog.Debug("post %s", response.Status)
 
 	fog.Info("testwebdirector ends")
-}
-
-func server(address string) {
-	fog.Info("server listening to %s", address)
-	http.HandleFunc("/", handleAll)
-	http.ListenAndServe(address, nil)
-}
-
-func handleAll(w http.ResponseWriter, req *http.Request) {
-	fog.Debug("got request %s", req)
-	io.WriteString(w, "hello, world!\n")
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"net/http"
@@ -9,6 +8,7 @@ import (
 	"fog"
 	"tools"
 
+	"webdirector/passon"
 	"webdirector/routing"
 )
 
@@ -25,10 +25,9 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	fog.Info("%s starts %s", requestID, conn.RemoteAddr().String())
 
-	reader := bufio.NewReader(conn)
-	request, err := http.ReadRequest(reader)
+	request, err := passon.ReadPassOnRequest(conn)
 	if err != nil {
-		fog.Error("%s %s http.ReadRequest failed: %s",
+		fog.Error("%s %s passon.ReadPassOnRequest failed: %s",
 			requestID, conn.RemoteAddr().String(), err)
 		fog.Info("%s aborts", requestID)
 		return
@@ -65,9 +64,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Info("%s aborts", requestID)
 		return
 	}
-	if request.Body != nil {
-		request.Body.Close()
-	}
+	request.Body.Close()
 
 	if err := response.Write(conn); err != nil {
 		fog.Error("%s %s, %s error sending response: %s",

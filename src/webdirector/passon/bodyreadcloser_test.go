@@ -10,7 +10,8 @@ func TestEmptyBodyReadCloser(t *testing.T) {
 	var bytesBuffer []byte
 	var buffer bytes.Buffer
 
-	rc := NewBodyReadCloser(bytesBuffer, ioutil.NopCloser(&buffer))
+	rc := NewBodyReadCloser(uint64(len(bytesBuffer)+buffer.Len()),
+		bytesBuffer, ioutil.NopCloser(&buffer))
 	result, err := ioutil.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("read %s", err)
@@ -25,7 +26,8 @@ func TestBytesBodyReadCloser(t *testing.T) {
 	bytesBuffer := []byte("aaaa")
 	var buffer bytes.Buffer
 
-	rc := NewBodyReadCloser(bytesBuffer, ioutil.NopCloser(&buffer))
+	rc := NewBodyReadCloser(uint64(len(bytesBuffer)+buffer.Len()),
+		bytesBuffer, ioutil.NopCloser(&buffer))
 	result, err := ioutil.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("read %s", err)
@@ -45,7 +47,8 @@ func TestBufferBodyReadCloser(t *testing.T) {
 		t.Fatalf("buffer.Write %s", err)
 	}
 
-	rc := NewBodyReadCloser(bytesBuffer, ioutil.NopCloser(&buffer))
+	rc := NewBodyReadCloser(uint64(len(bytesBuffer)+buffer.Len()),
+		bytesBuffer, ioutil.NopCloser(&buffer))
 	result, err := ioutil.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("read %s", err)
@@ -65,7 +68,8 @@ func TestBytesAndBufferBodyReadCloser(t *testing.T) {
 		t.Fatalf("buffer.Write %s", err)
 	}
 
-	rc := NewBodyReadCloser(bytesBuffer, ioutil.NopCloser(&buffer))
+	rc := NewBodyReadCloser(uint64(len(bytesBuffer)+buffer.Len()),
+		bytesBuffer, ioutil.NopCloser(&buffer))
 	result, err := ioutil.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("read %s", err)

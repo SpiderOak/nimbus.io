@@ -31,7 +31,7 @@ func (s serverImpl) Serve() {
 func (s serverImpl) handleAll(w http.ResponseWriter, req *http.Request) {
 	fog.Debug("(%s) got request %s %s", s.Name, req.Method, req.URL)
 	if req.Body != nil {
-		fog.Debug("(%s) sleepinjg 10 seconds", s.Name)
+		fog.Debug("(%s) sleeping 10 seconds", s.Name)
 		time.Sleep(10 * time.Second)
 		s.readAndDiscard(req.Body)
 		req.Body.Close()

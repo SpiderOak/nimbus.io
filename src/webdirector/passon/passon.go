@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"fog"
+	"strconv"
 )
 
 const (
@@ -18,6 +17,7 @@ const (
 // to be 'passed on' to an internal webserver. Specifically we try to avoid
 // reading the entire body.
 func ReadPassOnRequest(reader io.ReadCloser) (*http.Request, error) {
+
 	// read a lump from the head of the stream, trying to get the full
 	// Request
 	buffer := make([]byte, readSize)
@@ -34,17 +34,21 @@ func ReadPassOnRequest(reader io.ReadCloser) (*http.Request, error) {
 	}
 
 	requestSize := index + len(blankLine)
-	fog.Debug("bytesRead = %d, requestSize = %d, buffer[:requestSize] = %q",
-		bytesRead, requestSize, string(buffer[:requestSize]))
-
 	requestReader := bytes.NewReader(buffer[:requestSize])
 	request, err := http.ReadRequest(bufio.NewReader(requestReader))
 	if err != nil {
 		return nil, fmt.Errorf("http.ReadRequest failed %s", err)
 	}
+	contentLengthStr := request.Header.Get("Content-Length")
 
-	if bytesRead > requestSize {
-		request.Body = NewBodyReadCloser(buffer[requestSize:bytesRead], reader)
+	if contentLengthStr != "" {
+		contentLength, err := strconv.ParseUint(contentLengthStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid content-length '%s', err",
+				contentLengthStr, err)
+		}
+		request.Body = NewBodyReadCloser(contentLength,
+			buffer[requestSize:bytesRead], reader)
 	}
 
 	return request, nil

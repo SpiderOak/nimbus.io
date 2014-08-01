@@ -41,5 +41,6 @@ func (reader *sizeReader) Read(p []byte) (int, error) {
 	}
 	reader.CurrentSize += bytesToSend
 
+	fog.Debug("SizeReader: return %d, %s", bytesToSend, err)
 	return int(bytesToSend), err
 }

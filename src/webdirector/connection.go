@@ -6,7 +6,11 @@ import (
 	"net/http"
 
 	"fog"
-	"tools"
+
+	// TODO: created a webdirector/tools to reduce dependencies on the real tools
+	// which needs zeromq 4. Need to go back to the real tools when we get
+	// the dev environment set up
+	"webdirector/tools"
 
 	"webdirector/passon"
 	"webdirector/routing"

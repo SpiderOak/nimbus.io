@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"fog"
@@ -93,18 +92,21 @@ func main() {
 
 func getListenAddress() (string, error) {
 	// set up the listener port
-	listenHost := os.Getenv("NIMBUSIO_WEB_DIRECTOR_INTERFACE")
+	listenHost := os.Getenv("NIMBUSIO_WEB_DIRECTOR_ADDR")
 	listenPort := os.Getenv("NIMBUSIO_WEB_DIRECTOR_PORT")
+
+	fog.Info("NIMBUSIO_WEB_DIRECTOR_ADDR = '%s', NIMBUSIO_WEB_DIRECTOR_PORT = '%s'",
+		listenHost, listenPort)
+
 	return listenHost + ":" + listenPort, nil
 }
 
 func loadCertificate() (cert tls.Certificate, err error) {
+	certPath := os.Getenv("NIMBUSIO_WILDCARD_SSL_CERT")
+	keyPath := os.Getenv("NIMBUSIO_WILDCARD_SSL_KEY")
 
-	// TODO: need to find the real cert for nimbus.io
-
-	keysDir := os.Getenv("SPIDEROAK_KEYS_DIR")
-	keyPath := filepath.Join(keysDir, "privateKeyExample.pem")
-	certPath := filepath.Join(keysDir, "certificateExample.pem")
+	fog.Info("LoadX509KeyPair: certPath = '%s', keyPath = '%s'",
+		certPath, keyPath)
 
 	return tls.LoadX509KeyPair(certPath, keyPath)
 }

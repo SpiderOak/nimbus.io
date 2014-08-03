@@ -5,6 +5,7 @@ rep_server.py
 a class that manages a zeromq REP socket as a server,
 """
 import logging
+import sys
 
 import zmq
 
@@ -39,8 +40,8 @@ class REPServer(object):
         self._rep_socket.close()
 
     def send_reply(self, message_control, data=None):
-        message = message_format(ident=None, 
-                                 control=message_control, 
+        message = message_format(ident=None,
+                                 control=message_control,
                                  body=data)
         self._send_message(message)
 
@@ -51,17 +52,17 @@ class REPServer(object):
         """
         assert readable
 
-        message = self._receive_message()      
+        message = self._receive_message()
         # if we get None, that means the socket would have blocked
         # go back and wait for more
         if message is None:
             return
         self._receive_queue.append((message.control, message.body, ))
-                
+
     def _send_message(self, message):
         self._log.debug("sending message: {0}".format(message.control))
 
-        # don't send a zero size body 
+        # don't send a zero size body
         if type(message.body) not in [list, tuple, type(None), ]:
             if len(message.body) == 0:
                 message = message._replace(body=None)
@@ -79,7 +80,8 @@ class REPServer(object):
     def _receive_message(self):
         try:
             control = self._rep_socket.recv_json(zmq.NOBLOCK)
-        except zmq.ZMQError, instance:
+        except zmq.ZMQError:
+            instance = sys.exc_info()[1]
             if instance.errno == zmq.EAGAIN:
                 self._log.warn("socket would have blocked")
                 return None

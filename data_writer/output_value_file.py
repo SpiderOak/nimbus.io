@@ -72,10 +72,10 @@ class OutputValueFile(object):
         self._value_file_path = compute_value_file_path(
              repository_path, space_id, self._value_file_id
         )
-        self._log.info("opening %s" % (self._value_file_path, )) 
+        self._log.info("opening %s" % (self._value_file_path, ))
         self._value_file_fd = _open_value_file(self._value_file_path)
         self._creation_time = create_timestamp()
-        self._size = 0L
+        self._size = 0
         self._md5 = hashlib.md5()
         self._segment_sequence_count = 0
         self._min_segment_id = None
@@ -130,7 +130,7 @@ class OutputValueFile(object):
         os.close(self._value_file_fd)
 
         if self._segment_sequence_count == 0:
-            self._log.info("removing empty file %s" % (self._value_file_path,)) 
+            self._log.info("removing empty file %s" % (self._value_file_path,))
             try:
                 os.unlink(self._value_file_path)
             except Exception:
@@ -139,7 +139,7 @@ class OutputValueFile(object):
 
         self._log.info("closing %s size=%s segment_sequence_count=%s" % (
             self._value_file_path, self._size, self._segment_sequence_count
-        )) 
+        ))
         value_file_row = value_file_template(
             id=self._value_file_id,
             space_id=self._space_id,

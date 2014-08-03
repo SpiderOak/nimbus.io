@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-pull_server.py
+reply_pull_server.py
 
-a class that manages a zeromq PULL socket as a server,
-to multiple PUSH clients
+a class that manages a zeromq PULL socket to pass on message replies from
+the writer thread
 """
 import logging
 import sys
@@ -15,26 +15,21 @@ from tools.data_definitions import message_format
 
 _pull_hwm = 100
 
-class PULLServer(object):
+class ReplyPULLServer(object):
     """
     context
         zeromq context
 
     address
-        the address our socket binds to. Sent to the remote server by the
-        resilient client.
+        the address our socket binds to.
 
-    receve_queue
-        The queue (deque) where we put incoming messages. This is shared with
-        the DequeDispatcher
-
-    Each process maintains a single PULL_ socket for all of its resilient
-    clients. This class wraps that socket.
+    reply_function
+        reply function from resilient server
 
     .. _PULL: http://api.zeromq.org/2-1:zmq-socket#toc13
     """
-    def __init__(self, context, address, receive_queue):
-        self._log = logging.getLogger("PULLServer-%s" % (address, ))
+    def __init__(self, context, address, reply_function):
+        self._log = logging.getLogger("ReplyPULLServer-%s" % (address, ))
 
         # we need a valid path for IPC sockets
         if address.startswith("ipc://"):
@@ -45,7 +40,7 @@ class PULLServer(object):
         self._log.debug("binding")
         self._pull_socket.bind(address)
 
-        self._receive_queue = receive_queue
+        self._reply_function = reply_function
 
     def register(self, pollster):
         """
@@ -71,7 +66,7 @@ class PULLServer(object):
         # go back and wait for more
         if message is None:
             return None
-        self._receive_queue.append((message.control, message.body, ))
+        self._reply_function(message.control, data=message.body)
 
     def _receive_message(self):
         try:

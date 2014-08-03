@@ -3,11 +3,11 @@
 nimbus.io back-end servers perform two kinds of tasks:
  * message-driven
  * periodic
- 
+
 The message-driven tasks are periodic also, in the sense that they get messages
 by periodically polling a zeromq dealer (xreq) socket.
 
-All the back-end servers run a series of small tasks, 
+All the back-end servers run a series of small tasks,
  * processing an incoming message and sending a reply
  * performing some recurring job
 
@@ -85,7 +85,7 @@ def _run_until_halt(
                 time_queue.put(task, start_time=start_time)
 
     log.info("main loop starts")
-    
+
     # run until the time queue is empty. This means each task
     # must watch the halt_event and behave correctly at shutdown.
     while len(time_queue) > 0:
@@ -99,7 +99,7 @@ def _run_until_halt(
         if result_list is not None:
             for task, start_time in result_list:
                 time_queue.put(task, start_time=start_time)
-            
+
     log.info("main loop ends")
 
     log.debug("post_loop_action(s)")
@@ -108,7 +108,7 @@ def _run_until_halt(
     log.info("program terminates")
 
 def main(
-    log_path, 
+    log_path,
     state,
     pre_loop_actions,
     post_loop_actions,
@@ -118,7 +118,7 @@ def main(
     """
     This function is run as the main entry point of every time queue driven
     process. It wraps the event loop driven by te time_queue.
-    
+
     log_path
         The full path to the log file for this process
 
@@ -126,7 +126,7 @@ def main(
         State object (usually a dict) passed to callback functions
 
     pre_loop_actions
-        A list of functions to be run before the event loop starts. 
+        A list of functions to be run before the event loop starts.
 
         Function arguments are ``(halt_event, state)``
 
@@ -137,7 +137,7 @@ def main(
         function called ``_startup``, but it can have any name.
 
     post_loop_actions
-        A list of functions to be run after the event loop terminates 
+        A list of functions to be run after the event loop terminates
         (``halt_event`` set)
 
         Function argument is  ``(state)``
@@ -150,7 +150,7 @@ def main(
     exception_action
         A frunction to be executed when the event loop catches and
         exception fromma calback function.
-        
+
         It takes ``(state)`` as an argument
 
         Its return is ignored
@@ -163,12 +163,12 @@ def main(
         used to terminate the event loop.
 
         halt_event is passed to as an argument to callback functions.
-        
+
         If the caller wants greater access, they can create their
         own halt event and pass it here as an argument.
 
     returns 0 for normal termination, nonzero for failure
-        
+
     """
     initialize_logging(log_path)
     log = logging.getLogger("main")
@@ -182,9 +182,9 @@ def main(
                 post_loop_actions,
                 halt_event
             )
-        except Exception, instance:
+        except Exception:
+            instance = sys.exc_info()[1]
             log.exception(instance)
-            print >> sys.stderr, instance.__class__.__name__, str(instance)
             if exception_action is not None:
                 exception_action(state)
             return 12

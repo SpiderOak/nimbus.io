@@ -237,7 +237,10 @@ class Retriever(object):
 
                     # if offset_into_first_block is big enough,
                     # we could run over into yet another block
-                    if offset_into_last_block >= block_size:
+                    if offset_into_last_block == block_size:
+                        offset_into_last_block = 0 
+
+                    if offset_into_last_block > block_size:
                         block_count += 1
                         offset_into_last_block -= block_size 
 

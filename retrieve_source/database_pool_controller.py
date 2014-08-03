@@ -171,7 +171,7 @@ def _analyze_slice_offsets(sequence_rows, block_offset, total_block_count):
     right_offset = 0
     index = 0
 
-    log.debug("rows={0}, block_offset={1}, total_block_count={1}".format(
+    log.debug("rows={0}, block_offset={1}, total_block_count={2}".format(
               len(sequence_rows), block_offset, total_block_count))
 
     while pre_block_count < block_offset:

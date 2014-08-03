@@ -9,15 +9,18 @@ import logging
 
 import zmq
 
+_push_hwm = 100
+
 class PUSHClient(object):
     """
     a class that manages a zeromq PUSH socket as a client,
     The purpose is to have multiple clients pushing to a single PULL server
     """
     def __init__(self, context, address):
-        self._log = logging.getLogger("PUSH{0}".format(address))
+        self._log = logging.getLogger("PUSH.{0}".format(address))
 
         self._push_socket = context.socket(zmq.PUSH)
+        self._push_socket.setsockopt(zmq.HWM, _push_hwm)
         self._push_socket.setsockopt(zmq.LINGER, 5000)
         self._log.debug("connecting")
         self._push_socket.connect(address)

@@ -77,14 +77,14 @@ class PostSyncCompletion(object):
     """
     def __init__(self, 
                  connection,
-                 resilient_server,
+                 reply_pusher,
                  active_segments,
                  archive_message, 
                  reply_message):
         self._log = logging.getLogger("PostSyncCompletion")
 
         self._connection = connection
-        self._resilient_server = resilient_server
+        self._reply_pusher = reply_pusher
         self._active_segments = active_segments
         self._archive_message = archive_message
         self._reply_message = reply_message
@@ -101,7 +101,7 @@ class PostSyncCompletion(object):
             self._archive_message["segment-num"],
             self._archive_message["file-size"],
             self._archive_message["file-adler32"],
-            b64decode(self._archive_message["file-hash"]),
+            b64decode(self._archive_message["file-hash"].encode("utf-8")),
             _extract_meta(self._archive_message),
         )
 
@@ -111,7 +111,7 @@ class PostSyncCompletion(object):
         """
         self._log.info("request {0}".format(
                        self._archive_message["user-request-id"]))
-        self._resilient_server.send_reply(self._reply_message)
+        self._reply_pusher.send(self._reply_message)
 
     def _finish_new_segment(
         self, 

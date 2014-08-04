@@ -9,7 +9,7 @@ type availability struct {
 	availSet map[string]struct{}
 }
 
-// Availability returns a mock entity that implements the Availability
+// Availability returns an entity that implements the Availability
 // interface. .
 func NewAvailability() Availability {
 	var a availability
@@ -25,14 +25,6 @@ func NewAvailability() Availability {
 func (a availability) AvailableHosts(hostNames []string, destPort string) (
 	[]string, error) {
 
-	var availableHostNames []string
-
-	for _, hostName := range hostNames {
-		testName := fmt.Sprintf("%s:%s", hostName, destPort)
-		if _, ok := a.availSet[testName]; ok {
-			availableHostNames = append(availableHostNames, hostName)
-		}
-	}
-
-	return availableHostNames, nil
+	// to start with, just make all hosts available
+	return hostNames, nil
 }

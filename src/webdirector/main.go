@@ -53,10 +53,20 @@ func main() {
 		fog.Critical("NewManagementAPIDestinations: %s", err)
 	}
 
-	hostsForCollection := hosts.NewHostsForCollection()
+	hostsForCollection, err := hosts.NewHostsForCollection()
+	if err != nil {
+		fog.Critical("NewHostsForCollection: %s", err)
+	}
 	availableHosts := avail.NewAvailability()
 
 	router := routing.NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
+
+	fog.Info("NIMBUS_IO_SERVICE_DOMAIN = '%s'",
+		os.Getenv("NIMBUS_IO_SERVICE_DOMAIN"))
+	fog.Info("NIMBUSIO_WEB_PUBLIC_READER_PORT = '%s'",
+		os.Getenv("NIMBUSIO_WEB_PUBLIC_READER_PORT"))
+	fog.Info("NIMBUSIO_WEB_WRITER_PORT = '%s'",
+		os.Getenv("NIMBUSIO_WEB_WRITER_PORT"))
 
 	listenerChan := make(chan net.Conn, listenerChanCapacity)
 	go func() {

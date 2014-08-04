@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"fog"
 )
 
 type managementAPIDestinations struct {
@@ -25,6 +27,8 @@ func NewManagementAPIDestinations() (ManagementAPIDestinations, error) {
 	if len(d.destHosts) == 0 {
 		return nil, fmt.Errorf("too few NIMBUSIO_MANAGEMENT_API_REQUEST_DEST")
 	}
+
+	fog.Info("NIMBUSIO_MANAGEMENT_API_REQUEST_DEST = '%s'", destString)
 
 	return &d, nil
 }

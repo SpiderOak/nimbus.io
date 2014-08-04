@@ -1,20 +1,14 @@
 #!/bin/bash
 
-PROG_DIR="$(cd $(dirname $0) ; pwd)"
+set -e 
+set -x
 
-if [[ ! -z "$NIMBUSIO_WILDCARD_SSL_CERT" ]]; then
-    exec tproxy \
-        -n web_director \
-        -w 4 \
-        -b "${NIMBUSIO_WEB_DIRECTOR_ADDR:?}:${NIMBUSIO_WEB_DIRECTOR_PORT:?}" \
-        --ssl-certfile "${NIMBUSIO_WILDCARD_SSL_CERT?:}" \
-        --ssl-keyfile "${NIMBUSIO_WILDCARD_SSL_KEY?:}" \
-        $PROG_DIR/web_director_main.py 2>&1
-else
-    exec tproxy \
-        -n web_director \
-        -w 4 \
-        -b ${NIMBUS_IO_SERVICE_DOMAIN:?}:${NIMBUSIO_WEB_PUBLIC_READER_PORT:?} \
-        $PROG_DIR/web_director_main.py 2>&1
-fi
+export GOBIN="/home/pandora/nimbus.io/bin"
+export NIMBUSIO_WILDCARD_SSL_CERT="/home/pandora/keys/cacert.pem"
+export NIMBUSIO_WILDCARD_SSL_KEY="/home/pandora/keys/privkey.pem"
+export NIMBUSIO_WEB_DIRECTOR_ADDR="127.0.0.1"
+export NIMBUSIO_WEB_DIRECTOR_PORT="9443"
+export NIMBUS_IO_SERVICE_DOMAIN="127.0.0.1"
+
+exec $GOBIN/webdirector &> /var/log/pandora/nimbus/webdirector.log
 

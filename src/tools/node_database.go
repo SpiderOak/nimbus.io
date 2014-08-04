@@ -26,8 +26,8 @@ func OpenNodeDatabase(nodeName, password, host, port string) (*sql.DB, error) {
 	}
 
 	dataSourceName := fmt.Sprintf(
-		"dbname=%s host=%s port=%s user=%s password=%s",
-		databaseName, host, port, databaseUser, password)
+		"dbname=%s host=%s port=%s user=%s password=%s sslmode=%s",
+		databaseName, host, port, databaseUser, password, "disable")
 
 	return sql.Open("postgres", dataSourceName)
 }

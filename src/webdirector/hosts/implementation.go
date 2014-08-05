@@ -26,7 +26,7 @@ func NewHostsForCollection() (HostsForCollection, error) {
 	h.nodesStatement, err = sqlDB.Prepare(
 		`select hostname from nimbusio_central.node where cluster_id = (
 			select cluster_id from nimbusio_central.collection 
-			where name = '?' and deletion_time is null)`)
+			where name = $1 and deletion_time is null)`)
 	if err != nil {
 		return nil, err
 	}

@@ -112,7 +112,8 @@ func (router *routerImpl) Route(requestID string, req *http.Request) (string, er
 	hostsForCollection, err := router.hostsForCollection.GetHostNames(collectionName)
 	if err != nil {
 		return "", routerErrorImpl{httpCode: http.StatusNotFound,
-			errorMessage: fmt.Sprintf("no hosts for collection '%s'", collectionName)}
+			errorMessage: fmt.Sprintf("no hosts for collection '%s' %s",
+				collectionName, err)}
 	}
 
 	availableHosts, err := router.availability.AvailableHosts(

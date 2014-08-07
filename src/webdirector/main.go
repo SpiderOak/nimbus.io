@@ -57,7 +57,11 @@ func main() {
 	if err != nil {
 		fog.Critical("NewHostsForCollection: %s", err)
 	}
-	availableHosts := avail.NewAvailability()
+
+	availableHosts, err := avail.NewAvailability()
+	if err != nil {
+		fog.Critical("NewAvailability: %s", err)
+	}
 
 	router := routing.NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
 

@@ -40,7 +40,11 @@ func openCentralDatabase() (*sql.DB, error) {
 	if databasePort == "" {
 		databasePort = "5432"
 	}
-	databaseUser := "nimbusio_central_user"
+	databaseUser := os.Getenv("NIMBUSIO_CENTRAL_USER")
+	if databaseUser == "" {
+		databaseUser = "nimbusio_central_user"
+	}
+
 	databasePassword := os.Getenv("NIMBUSIO_CENTRAL_USER_PASSWORD")
 
 	// go-pgsql gets a kernal panic if password is an empty string

@@ -8,8 +8,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 
 	"fog"
-
-	"webdirector/tools"
+	"tools"
 )
 
 type availability struct {

@@ -3,7 +3,7 @@ package hosts
 import (
 	"database/sql"
 
-	"webdirector/tools"
+	"tools"
 )
 
 type hostsForCollectionImple struct {

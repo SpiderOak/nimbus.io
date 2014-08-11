@@ -53,10 +53,7 @@ func main() {
 		fog.Critical("NewManagementAPIDestinations: %s", err)
 	}
 
-	hostsForCollection, err := hosts.NewHostsForCollection()
-	if err != nil {
-		fog.Critical("NewHostsForCollection: %s", err)
-	}
+	hostsForCollection := hosts.NewHostsForCollection()
 
 	availableHosts, err := avail.NewAvailability()
 	if err != nil {

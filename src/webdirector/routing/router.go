@@ -111,9 +111,17 @@ func (router *routerImpl) Route(requestID string, req *http.Request) (string, er
 
 	hostsForCollection, err := router.hostsForCollection.GetHostNames(collectionName)
 	if err != nil {
-		return "", routerErrorImpl{httpCode: http.StatusNotFound,
-			errorMessage: fmt.Sprintf("no hosts for collection '%s' %s",
-				collectionName, err)}
+		switch e := err.(type) {
+		case hosts.HostsDatabaseError:
+			fog.Error("database error: collection '%s' %s", collectionName, e)
+			return "", routerErrorImpl{httpCode: http.StatusInternalServerError,
+				errorMessage: fmt.Sprintf("database error: collection '%s' %s",
+					collectionName, e)}
+		default:
+			return "", routerErrorImpl{httpCode: http.StatusNotFound,
+				errorMessage: fmt.Sprintf("no hosts for collection '%s' %s",
+					collectionName, err)}
+		}
 	}
 
 	availableHosts, err := router.availability.AvailableHosts(

@@ -139,9 +139,10 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 
 func getStmt(name string) (*sql.Stmt, error) {
 	var stmt *sql.Stmt
+	var ok bool
 	var err error
 
-	if stmt, ok := stmtMap[name]; !ok {
+	if stmt, ok = stmtMap[name]; !ok {
 		text := textMap[name]
 		if stmt, err = sqlDB.Prepare(text); err != nil {
 			return nil, err

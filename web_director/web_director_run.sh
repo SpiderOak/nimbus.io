@@ -10,5 +10,5 @@ export NIMBUSIO_WEB_DIRECTOR_ADDR="dev.nimbus.io"
 export NIMBUSIO_WEB_DIRECTOR_PORT="9443"
 export NIMBUS_IO_SERVICE_DOMAIN="dev.nimbus.io"
 
-exec $GOBIN/webdirector &> /var/log/pandora/nimbus/webdirector.log
+exec $GOBIN/webdirector &>> /var/log/pandora/nimbus/webdirector.log
 

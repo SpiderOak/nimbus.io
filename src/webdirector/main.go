@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"centraldb"
 	"fog"
 
 	"webdirector/avail"
-	"webdirector/hosts"
 	"webdirector/mgmtapi"
 	"webdirector/routing"
 )
@@ -53,14 +53,14 @@ func main() {
 		fog.Critical("NewManagementAPIDestinations: %s", err)
 	}
 
-	hostsForCollection := hosts.NewHostsForCollection()
+	centralDB := centraldb.NewCentralDB()
 
 	availableHosts, err := avail.NewAvailability()
 	if err != nil {
 		fog.Critical("NewAvailability: %s", err)
 	}
 
-	router := routing.NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
+	router := routing.NewRouter(managmentAPIDests, centralDB, availableHosts)
 
 	fog.Info("NIMBUS_IO_SERVICE_DOMAIN = '%s'",
 		os.Getenv("NIMBUS_IO_SERVICE_DOMAIN"))

@@ -1,4 +1,4 @@
-package tools
+package centraldb
 
 import (
 	"fmt"
@@ -8,10 +8,6 @@ import (
 import (
 	"database/sql"
 	_ "github.com/lib/pq"
-)
-
-var (
-	sqlDB *sql.DB
 )
 
 // OpenCentralDatabase returns a *sql.DB pointer.

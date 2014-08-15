@@ -8,10 +8,10 @@ import (
 	"os"
 	"strings"
 
+	"centraldb"
 	"fog"
 
 	"webdirector/avail"
-	"webdirector/hosts"
 	"webdirector/mgmtapi"
 )
 
@@ -21,11 +21,11 @@ type routerErrorImpl struct {
 }
 
 type routerImpl struct {
-	managmentAPIDests  mgmtapi.ManagementAPIDestinations
-	hostsForCollection hosts.HostsForCollection
-	availability       avail.Availability
-	requestCounter     uint64
-	roundRobinCounter  uint64
+	managmentAPIDests mgmtapi.ManagementAPIDestinations
+	centralDB         centraldb.CentralDB
+	availability      avail.Availability
+	requestCounter    uint64
+	roundRobinCounter uint64
 }
 
 var (
@@ -53,11 +53,11 @@ func init() {
 
 // NewRouter returns an entity that implements the Router interface
 func NewRouter(managmentAPIDests mgmtapi.ManagementAPIDestinations,
-	hostsForCollection hosts.HostsForCollection,
+	centralDB centraldb.CentralDB,
 	availability avail.Availability) Router {
 
 	return &routerImpl{managmentAPIDests: managmentAPIDests,
-		hostsForCollection: hostsForCollection, availability: availability}
+		centralDB: centralDB, availability: availability}
 }
 
 // Route reads a request and decides where it should go <host:port>
@@ -109,19 +109,12 @@ func (router *routerImpl) Route(requestID string, req *http.Request) (string, er
 			errorMessage: fmt.Sprintf("Unparseable host name '%s'", hostName)}
 	}
 
-	hostsForCollection, err := router.hostsForCollection.GetHostNames(collectionName)
+	hostsForCollection, err := router.centralDB.GetHostsForCollection(collectionName)
 	if err != nil {
-		switch e := err.(type) {
-		case hosts.HostsDatabaseError:
-			fog.Error("database error: collection '%s' %s", collectionName, e)
-			return "", routerErrorImpl{httpCode: http.StatusInternalServerError,
-				errorMessage: fmt.Sprintf("database error: collection '%s' %s",
-					collectionName, e)}
-		default:
-			return "", routerErrorImpl{httpCode: http.StatusNotFound,
-				errorMessage: fmt.Sprintf("no hosts for collection '%s' %s",
-					collectionName, err)}
-		}
+		fog.Error("database error: collection '%s' %s", collectionName, err)
+		return "", routerErrorImpl{httpCode: http.StatusInternalServerError,
+			errorMessage: fmt.Sprintf("database error: collection '%s'",
+				collectionName)}
 	}
 
 	availableHosts, err := router.availability.AvailableHosts(

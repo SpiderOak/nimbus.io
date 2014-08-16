@@ -7,8 +7,9 @@ import (
 	"os"
 	"testing"
 
+	"centraldb"
+
 	"webdirector/avail"
-	"webdirector/hosts"
 	"webdirector/mgmtapi"
 )
 
@@ -126,10 +127,10 @@ func TestRouter(t *testing.T) {
 	}
 
 	for n, testEntry := range routerTestData {
-		hostsForCollection := hosts.NewMockHostsForCollection(testEntry.hosts)
+		centralDB := newMockCentralDB(testEntry.hosts)
 		availableHosts := avail.NewMockAvailability(testEntry.availableHosts)
 
-		router := NewRouter(managmentAPIDests, hostsForCollection, availableHosts)
+		router := NewRouter(managmentAPIDests, centralDB, availableHosts)
 
 		req, err := http.NewRequest(testEntry.method, testEntry.uri,
 			testEntry.body)
@@ -167,4 +168,22 @@ func TestRouter(t *testing.T) {
 				n, testEntry.testName, hostPort, testEntry.expectedHostPort)
 		}
 	}
+}
+
+type mockCentralDB struct {
+	hostsForCollection map[string][]string
+}
+
+func newMockCentralDB(hostsForCollection map[string][]string) centraldb.CentralDB {
+	return mockCentralDB{hostsForCollection: hostsForCollection}
+}
+
+// Close releases the resources held by the CentralDB
+func (m mockCentralDB) Close() {}
+
+// GetHostsForCollection returns a slice of the host names that hold data
+// for the collection
+func (m mockCentralDB) GetHostsForCollection(collectionName string) ([]string, error) {
+	hosts, _ := m.hostsForCollection[collectionName]
+	return hosts, nil
 }

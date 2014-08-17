@@ -7,6 +7,7 @@ import (
 
 	"github.com/SpiderOak/gostatgrabber"
 
+	"centraldb"
 	"fog"
 	"tools"
 
@@ -149,8 +150,8 @@ func NewNimbusioWriter() (NimbusioWriter, error) {
 	var state writerState
 	state.SegmentMap = make(map[segmentKey]segmentMapEntry)
 
-	if state.NodeIDMap, err = tools.GetNodeIDMap(); err != nil {
-		return nil, fmt.Errorf("tools.GetNodeIDMap() failed %s", err)
+	if state.NodeIDMap, err = centraldb.GetNodeIDMap(); err != nil {
+		return nil, fmt.Errorf("centraldb.GetNodeIDMap() failed %s", err)
 	}
 
 	if state.FileSpaceInfo, err = tools.NewFileSpaceInfo(nodedb.NodeDB); err != nil {

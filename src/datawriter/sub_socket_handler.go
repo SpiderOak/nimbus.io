@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/pebbe/zmq4"
 
+	"centraldb"
 	"fog"
 	"tools"
 
@@ -19,8 +21,8 @@ func NewEventSubSocketHandler(eventSubSocket *zmq4.Socket) func(zmq4.State) erro
 	var nodeIDMap map[string]uint32
 	var err error
 
-	if nodeIDMap, err = tools.GetNodeIDMap(); err != nil {
-		fog.Critical("tools.GetNodeIDMap() failed %s", err)
+	if nodeIDMap, err = centraldb.GetNodeIDMap(); err != nil {
+		fog.Critical("centraldb.GetNodeIDMap() failed %s", err)
 	}
 
 	return func(_ zmq4.State) error {
@@ -74,3 +76,5 @@ func NewEventSubSocketHandler(eventSubSocket *zmq4.Socket) func(zmq4.State) erro
 		return nil
 	}
 }
+
+/

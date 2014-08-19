@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"fog"
+	"tools"
 )
 
 // main entry point
@@ -19,10 +20,11 @@ func main() {
 	transport := &http.Transport{TLSClientConfig: &config}
 	client := http.Client{Transport: transport}
 
-	fog.Debug("post")
-	var contentLength uint64 = 1024 * 1024
+	var contentLength uint64 = 1024 * 1024 * 1024
+	fog.Debug("start post %dmb", contentLength/(1024*1024))
+
 	url := fmt.Sprintf("https://%s/admin", serviceDomain)
-	bodyReader := NewSizeReader(contentLength)
+	bodyReader := tools.NewSizeReader(contentLength)
 	request, err := http.NewRequest("POST", url, bodyReader)
 	if err != nil {
 		fog.Critical("NewRequest failed %s")
@@ -36,7 +38,8 @@ func main() {
 		fog.Error("post %s", err)
 		return
 	}
-	fog.Debug("post %s", response.Status)
+
+	fog.Debug("finished post %s", response.Status)
 
 	fog.Info("front ends")
 }

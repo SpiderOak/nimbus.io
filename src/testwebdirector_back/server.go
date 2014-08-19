@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"fog"
+	"tools"
 )
 
 type Server interface {
@@ -28,31 +30,35 @@ func (s serverImpl) Serve() {
 }
 
 func (s serverImpl) handleAll(w http.ResponseWriter, req *http.Request) {
+	switch req.Method {
+	case "GET":
+		s.handleGET(w, req)
+	case "POST":
+		s.handlePOST(w, req)
+	default:
+		fog.Error("(%s) unknown method %s %s", s.Name, req.Method, req.URL)
+	}
+}
+
+func (s serverImpl) handleGET(w http.ResponseWriter, req *http.Request) {
 	fog.Debug("(%s) got request %s %s", s.Name, req.Method, req.URL)
 	if req.Body != nil {
-		s.readAndDiscard(req.Body)
+		tools.ReadAndDiscard(req.Body)
+		req.Body.Close()
+	}
+
+	var contentLength uint64 = 1024 * 1024 * 1024
+	fog.Debug("response body %dmb", contentLength/(1024*1024))
+	bodyReader := tools.NewSizeReader(contentLength)
+
+	http.ServeContent(w, req, "content.txt", time.Now(), bodyReader)
+}
+
+func (s serverImpl) handlePOST(w http.ResponseWriter, req *http.Request) {
+	fog.Debug("(%s) got request %s %s", s.Name, req.Method, req.URL)
+	if req.Body != nil {
+		tools.ReadAndDiscard(req.Body)
 		req.Body.Close()
 	}
 	io.WriteString(w, "hello, world!\n")
-}
-
-func (s serverImpl) readAndDiscard(reader io.Reader) {
-	var bytesRead uint64
-	var mbReported uint64
-	bufferSize := 64 * 1024
-	buffer := make([]byte, bufferSize, bufferSize)
-
-	for true {
-		n, err := reader.Read(buffer)
-		bytesRead += uint64(n)
-		if err != nil {
-			fog.Debug("(%s) %s %d total bytes read", s.Name, err, bytesRead)
-			break
-		}
-		mbRead := bytesRead / (1024 * 1024)
-		if mbRead > mbReported {
-			fog.Debug("(%s) read %dmb", s.Name, mbRead)
-			mbReported = mbRead
-		}
-	}
 }

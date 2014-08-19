@@ -14,7 +14,7 @@ type sizeReader struct {
 
 // NewSizeReader returns an entity which implements the io.Reader interface
 // it enables read of discardable data up to the specified size
-func NewSizeReader(size uint64) io.Reader {
+func NewSizeReader(size uint64) io.ReadSeeker {
 	return &sizeReader{MaxSize: size}
 }
 
@@ -46,4 +46,9 @@ func (reader *sizeReader) Read(p []byte) (int, error) {
 	}
 
 	return int(bytesToSend), err
+}
+
+func (reader *sizeReader) Seek(offset int64, whence int) (int64, error) {
+	// http.ServeContent seeks to end to determine file size
+	return int64(reader.MaxSize), nil
 }

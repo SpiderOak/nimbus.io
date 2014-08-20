@@ -187,3 +187,9 @@ func (m mockCentralDB) GetHostsForCollection(collectionName string) ([]string, e
 	hosts, _ := m.hostsForCollection[collectionName]
 	return hosts, nil
 }
+
+// GetNodeIDsForCluster returns a map of node id keyed by node name,
+// based on the cluster name
+func (m mockCentralDB) GetNodeIDsForCluster(clusterName string) (map[string]uint32, error) {
+	return nil, fmt.Errorf("GetNodeIDsForCluster not implemented")
+}

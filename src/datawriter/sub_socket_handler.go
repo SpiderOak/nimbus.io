@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/pebbe/zmq4"
@@ -76,5 +75,3 @@ func NewEventSubSocketHandler(eventSubSocket *zmq4.Socket) func(zmq4.State) erro
 		return nil
 	}
 }
-
-/

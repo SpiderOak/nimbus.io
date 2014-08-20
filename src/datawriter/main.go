@@ -48,7 +48,7 @@ func main() {
 	var writerSocket *zmq4.Socket
 	var eventSubSocket *zmq4.Socket
 
-	fog.Info("program starts %s", tools.GetZMQVersion())
+	fog.Info("program starts")
 
 	if writerSocket, err = createWriterSocket(); err != nil {
 		fog.Critical("createWriterSocket %s", err)

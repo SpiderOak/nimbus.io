@@ -9,11 +9,11 @@ import httplib
 import logging
 import re
 import time
+import socket
 
 import gevent
 import gevent.greenlet
 import gevent.queue
-import gevent.httplib
 
 class Pinger(gevent.greenlet.Greenlet):
     """
@@ -61,8 +61,10 @@ class Pinger(gevent.greenlet.Greenlet):
                 connection.request(self._method, self._path)
                 response = connection.getresponse()
                 body = response.read()
-            except gevent.httplib.RequestFailed, instance:
-                status = "RequestFailed {0}".format(instance.message)
+            except httplib.HTTPException, instance:
+                status = "HTTPException {0}".format(instance.message)
+            except socket.error, instance:
+                status = "socket error {0}".format(instance.message)
             except Exception, instance:
                 self._log.exception("_ping {0}".format(type(instance)))
                 status = "{0} {1}".format(instance.__class__.__name__,

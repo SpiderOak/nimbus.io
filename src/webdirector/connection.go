@@ -16,6 +16,7 @@ import (
 // expected to be run in a goroutine
 func handleConnection(router routing.Router, conn net.Conn) {
 	defer conn.Close()
+	const bufferSize = 64 * 1024
 	var err error
 	var vsize uint64
 
@@ -31,7 +32,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Error("GetMyVSize %s", err)
 	}
 	fog.Debug("vsize before ReadRequest %dKB", vsize)
-	request, err := http.ReadRequest(bufio.NewReader(conn))
+	request, err := http.ReadRequest(bufio.NewReaderSize(conn, bufferSize))
 	if err != nil {
 		fog.Error("%s %s ReadRequest failed: %s", requestID,
 			conn.RemoteAddr().String(), err)
@@ -91,7 +92,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Info("%s aborts", requestID)
 		return
 	}
-	defer request.Body.Close()
+	request.Body.Close()
 
 	vsize, err = tools.GetMyVSize()
 	if err != nil {
@@ -99,7 +100,8 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	fog.Debug("vsize after request.Write, before http.ReadResponse %dKB", vsize)
 
-	response, err := http.ReadResponse(bufio.NewReader(internalConn), request)
+	response, err := http.ReadResponse(bufio.NewReaderSize(internalConn, bufferSize),
+		request)
 	if err != nil {
 		fog.Error("%s %s, %s http.ReadResponse: %s",
 			requestID, request.Method, request.URL, err)
@@ -118,6 +120,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Error("%s %s, %s error sending response: %s",
 			requestID, request.Method, request.URL, err)
 	}
+	response.Body.Close()
 
 	vsize, err = tools.GetMyVSize()
 	if err != nil {

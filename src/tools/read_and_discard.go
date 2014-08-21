@@ -7,12 +7,13 @@ import (
 )
 
 func ReadAndDiscard(reader io.Reader) {
+	const bufferSize = 64 * 1024
 	var bytesRead uint64
 	var mbReported uint64
-	bufferSize := 64 * 1024
-	buffer := make([]byte, bufferSize)
+	var buffer []byte
 
 	for true {
+		buffer = make([]byte, bufferSize)
 		n, err := reader.Read(buffer)
 		bytesRead += uint64(n)
 		if err != nil {
@@ -20,6 +21,7 @@ func ReadAndDiscard(reader io.Reader) {
 				bytesRead, err)
 			break
 		}
+		fog.Debug("ReadAndDiscard read %d bytes", n)
 		mbRead := bytesRead / (1024 * 1024)
 		if mbRead > mbReported {
 			fog.Debug("ReadAndDiscard read %dmb", mbRead)

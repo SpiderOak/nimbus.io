@@ -17,7 +17,7 @@ import (
 func handleConnection(router routing.Router, conn net.Conn) {
 	defer conn.Close()
 	var err error
-	var freeMemory uint64
+	var vsize uint64
 
 	requestID, err := tools.CreateUUID()
 	if err != nil {
@@ -26,23 +26,23 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	fog.Info("%s starts %s", requestID, conn.RemoteAddr().String())
 
-	freeMemory, err = tools.FreeMemory()
+	vsize, err = tools.GetMyVSize()
 	if err != nil {
-		fog.Error("FreeMemory %s", err)
+		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("free memory before ReadRequest %dmb", freeMemory/1024)
+	fog.Debug("vsize before ReadRequest %dKB", vsize/1024)
 	request, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
-		fog.Error("%s %s passon.ReadPassOnRequest failed: %s",
-			requestID, conn.RemoteAddr().String(), err)
+		fog.Error("%s %s ReadRequest failed: %s", requestID,
+			conn.RemoteAddr().String(), err)
 		fog.Info("%s aborts", requestID)
 		return
 	}
-	freeMemory, err = tools.FreeMemory()
+	vsize, err = tools.GetMyVSize()
 	if err != nil {
-		fog.Error("FreeMemory %s", err)
+		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("free memory after ReadRequest %dmb", freeMemory/1024)
+	fog.Debug("vsize after ReadRequest %dKB", vsize/1024)
 
 	// change the URL to point to our internal host
 	request.URL.Host, err = router.Route(requestID, request)
@@ -67,11 +67,11 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	modifyHeaders(request, conn.RemoteAddr().String(), requestID)
 	fog.Debug("%s routing %s %s", requestID, request.Method, request.URL)
 
-	freeMemory, err = tools.FreeMemory()
+	vsize, err = tools.GetMyVSize()
 	if err != nil {
-		fog.Error("FreeMemory %s", err)
+		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("free memory before response %dmb", freeMemory/1024)
+	fog.Debug("vsize before response %dKB", vsize/1024)
 	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		fog.Error("%s %s, %s internal error: %s",
@@ -81,11 +81,11 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		return
 	}
 	request.Body.Close()
-	freeMemory, err = tools.FreeMemory()
+	vsize, err = tools.GetMyVSize()
 	if err != nil {
-		fog.Error("FreeMemory %s", err)
+		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("free memory after response %dmb", freeMemory/1024)
+	fog.Debug("vsize after response %dKB", vsize/1024)
 
 	if err := response.Write(conn); err != nil {
 		fog.Error("%s %s, %s error sending response: %s",

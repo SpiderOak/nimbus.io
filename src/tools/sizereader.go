@@ -23,12 +23,14 @@ func (reader *sizeReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	fog.Debug("sizereader request for %d bytes", len(p))
+
 	bytesLeft := reader.MaxSize - reader.CurrentSize
 	var bytesToSend uint64
 	var err error
 
-	if bytesLeft > uint64(cap(p)) {
-		bytesToSend = uint64(cap(p))
+	if bytesLeft > uint64(len(p)) {
+		bytesToSend = uint64(len(p))
 	} else {
 		bytesToSend = bytesLeft
 		err = io.EOF

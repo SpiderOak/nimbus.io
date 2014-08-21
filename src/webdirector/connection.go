@@ -30,7 +30,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	if err != nil {
 		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("vsize before ReadRequest %dKB", vsize/1024)
+	fog.Debug("vsize before ReadRequest %dKB", vsize)
 	request, err := http.ReadRequest(bufio.NewReader(conn))
 	if err != nil {
 		fog.Error("%s %s ReadRequest failed: %s", requestID,
@@ -42,7 +42,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	if err != nil {
 		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("vsize after ReadRequest %dKB", vsize/1024)
+	fog.Debug("vsize after ReadRequest %dKB", vsize)
 
 	// change the URL to point to our internal host
 	request.URL.Host, err = router.Route(requestID, request)
@@ -67,30 +67,64 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	modifyHeaders(request, conn.RemoteAddr().String(), requestID)
 	fog.Debug("%s routing %s %s", requestID, request.Method, request.URL)
 
-	vsize, err = tools.GetMyVSize()
+	// TODO: cache the connection to the internal server
+	internalConn, err := net.Dial("tcp", request.URL.Host)
 	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize before response %dKB", vsize/1024)
-	response, err := http.DefaultClient.Do(request)
-	if err != nil {
-		fog.Error("%s %s, %s internal error: %s",
+		fog.Error("%s %s, %s unable to dial internal server: %s",
 			requestID, request.Method, request.URL, err)
 		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
 		fog.Info("%s aborts", requestID)
 		return
 	}
-	request.Body.Close()
+	defer internalConn.Close()
+
 	vsize, err = tools.GetMyVSize()
 	if err != nil {
 		fog.Error("GetMyVSize %s", err)
 	}
-	fog.Debug("vsize after response %dKB", vsize/1024)
+	fog.Debug("vsize before request.Write %dKB", vsize)
+	err = request.Write(internalConn)
+	if err != nil {
+		fog.Error("%s %s, %s request.Write: %s",
+			requestID, request.Method, request.URL, err)
+		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
+		fog.Info("%s aborts", requestID)
+		return
+	}
+	defer request.Body.Close()
+
+	vsize, err = tools.GetMyVSize()
+	if err != nil {
+		fog.Error("GetMyVSize %s", err)
+	}
+	fog.Debug("vsize after request.Write, before http.ReadResponse %dKB", vsize)
+
+	response, err := http.ReadResponse(bufio.NewReader(internalConn), request)
+	if err != nil {
+		fog.Error("%s %s, %s http.ReadResponse: %s",
+			requestID, request.Method, request.URL, err)
+		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
+		fog.Info("%s aborts", requestID)
+		return
+	}
+
+	vsize, err = tools.GetMyVSize()
+	if err != nil {
+		fog.Error("GetMyVSize %s", err)
+	}
+	fog.Debug("vsize after http.ReadResponse, before response.Write %dKB", vsize)
 
 	if err := response.Write(conn); err != nil {
 		fog.Error("%s %s, %s error sending response: %s",
 			requestID, request.Method, request.URL, err)
 	}
+
+	vsize, err = tools.GetMyVSize()
+	if err != nil {
+		fog.Error("GetMyVSize %s", err)
+	}
+	fog.Debug("vsize after response.Write %dKB", vsize)
+
 	fog.Info("%s ends (%d) %s", requestID, response.StatusCode, response.Status)
 }
 

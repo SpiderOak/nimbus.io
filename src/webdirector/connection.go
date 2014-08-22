@@ -18,7 +18,6 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	defer conn.Close()
 	const bufferSize = 64 * 1024
 	var err error
-	var vsize uint64
 
 	requestID, err := tools.CreateUUID()
 	if err != nil {
@@ -27,11 +26,6 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	fog.Info("%s starts %s", requestID, conn.RemoteAddr().String())
 
-	vsize, err = tools.GetMyVSize()
-	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize before ReadRequest %dKB", vsize)
 	request, err := http.ReadRequest(bufio.NewReaderSize(conn, bufferSize))
 	if err != nil {
 		fog.Error("%s %s ReadRequest failed: %s", requestID,
@@ -39,11 +33,6 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		fog.Info("%s aborts", requestID)
 		return
 	}
-	vsize, err = tools.GetMyVSize()
-	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize after ReadRequest %dKB", vsize)
 
 	// change the URL to point to our internal host
 	request.URL.Host, err = router.Route(requestID, request)
@@ -79,11 +68,6 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	defer internalConn.Close()
 
-	vsize, err = tools.GetMyVSize()
-	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize before request.Write %dKB", vsize)
 	err = request.Write(internalConn)
 	if err != nil {
 		fog.Error("%s %s, %s request.Write: %s",
@@ -93,12 +77,6 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		return
 	}
 	request.Body.Close()
-
-	vsize, err = tools.GetMyVSize()
-	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize after request.Write, before http.ReadResponse %dKB", vsize)
 
 	response, err := http.ReadResponse(bufio.NewReaderSize(internalConn, bufferSize),
 		request)
@@ -110,23 +88,11 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		return
 	}
 
-	vsize, err = tools.GetMyVSize()
-	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize after http.ReadResponse, before response.Write %dKB", vsize)
-
 	if err := response.Write(conn); err != nil {
 		fog.Error("%s %s, %s error sending response: %s",
 			requestID, request.Method, request.URL, err)
 	}
 	response.Body.Close()
-
-	vsize, err = tools.GetMyVSize()
-	if err != nil {
-		fog.Error("GetMyVSize %s", err)
-	}
-	fog.Debug("vsize after response.Write %dKB", vsize)
 
 	fog.Info("%s ends (%d) %s", requestID, response.StatusCode, response.Status)
 }

@@ -16,10 +16,6 @@ web_monitor_main.py
  - implements the timeouts via gevent.Timeout.  
    http://www.gevent.org/gevent.html#timeouts
 
- - Must call gevent monkey patch like this, 
-   because it does not patch httplib by default: 
-   gevent.monkey.patch_all(httplib=True)
-
  - Stores reachability results in a redis hash structure.  
    The name of the hash is the "nimbus.io.web_monitor.$HOSTNAME".  
    (i.e. one hash per monitor.)  
@@ -46,7 +42,7 @@ import gevent
 import gevent.queue
 
 from gevent.monkey import patch_all
-patch_all(httplib=True)
+patch_all()
 
 from gevent.event import Event
 

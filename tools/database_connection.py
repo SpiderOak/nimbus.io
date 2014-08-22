@@ -12,7 +12,9 @@ import psycopg2
 import psycopg2.extensions
 
 central_database_name = "nimbusio_central"
-central_database_user = "nimbusio_central_user"
+central_database_user = os.environ.get("NIMBUSIO_CENTRAL_USER", 
+    "nimbusio_central_user")
+
 node_database_name_prefix = "nimbusio_node"
 node_database_user_prefix = "nimbusio_node_user"
 

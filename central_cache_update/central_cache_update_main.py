@@ -31,7 +31,7 @@ _memcached_port = int(os.environ.get("NIMBUSIO_MEMCACHED_PORT", "11211"))
 _memcached_nodes = ["{0}:{1}".format(_memcached_host, _memcached_port), ]
 
 def _create_sub_socket(zeromq_context):
-    log = logging.getLogger("_create_pub_socket")
+    log = logging.getLogger("_create_sub_socket")
     if _skeeter_pub_socket_uri.startswith("ipc://"):
         prepare_ipc_path(_skeeter_pub_socket_uri)
     sub_socket = zeromq_context.socket(zmq.SUB)

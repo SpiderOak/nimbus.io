@@ -17,7 +17,7 @@ import unittest
 import zlib
 
 import gevent
-from gevent_zeromq import zmq
+import zmq
 
 from tools.standard_logging import initialize_logging
 from tools.greenlet_zeromq_pollster import GreenletZeroMQPollster

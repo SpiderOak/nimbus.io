@@ -61,7 +61,7 @@ def _bind_pull_socket(zeromq_context):
     log = logging.getLogger("_bind_pull_socket")
 
     pull_socket = zeromq_context.socket(zmq.PULL)
-    pull_socket.setsockopt(zmq.HWM, _pull_socket_hwm)
+    pull_socket.setsockopt(zmq.RCVHWM, _pull_socket_hwm)
     log.info("binding to {0} hwm = {1}".format(_pull_socket_uri,
                                                _pull_socket_hwm))
     pull_socket.bind(_pull_socket_uri)

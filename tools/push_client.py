@@ -20,7 +20,7 @@ class PUSHClient(object):
         self._log = logging.getLogger("PUSH.{0}".format(address))
 
         self._push_socket = context.socket(zmq.PUSH)
-        self._push_socket.setsockopt(zmq.HWM, _push_hwm)
+        self._push_socket.setsockopt(zmq.SNDHWM, _push_hwm)
         self._push_socket.setsockopt(zmq.LINGER, 5000)
         self._log.debug("connecting")
         self._push_socket.connect(address)

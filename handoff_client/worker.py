@@ -135,12 +135,13 @@ def main(worker_id, host_name, base_port, dest_node_name, rep_socket_uri):
                                              base_port+worker_id)
 
     pull_socket = zeromq_context.socket(zmq.PULL)
-    pull_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    pull_socket.setsockopt(zmq.RCVHWM, _socket_high_water_mark)
     log.info("binding pull socket to {0}".format(pull_socket_uri))
     pull_socket.bind(pull_socket_uri)
 
     req_socket = zeromq_context.socket(zmq.REQ)
-    req_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    req_socket.setsockopt(zmq.RCVHWM, _socket_high_water_mark)
+    req_socket.setsockopt(zmq.SNDHWM, _socket_high_water_mark)
     req_socket.connect(rep_socket_uri)
 
     log.info("sending 'start' message")

@@ -132,7 +132,7 @@ def main():
 
     reporting_socket = zeromq_context.socket(zmq.PUSH)
     reporting_socket.setsockopt(zmq.LINGER, 5000)
-    reporting_socket.setsockopt(zmq.HWM, args.hwm)
+    reporting_socket.setsockopt(zmq.SNDHWM, args.hwm)
     reporting_socket.connect(args.reporting_url)
 
     req_socket = None

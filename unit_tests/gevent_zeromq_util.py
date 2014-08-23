@@ -10,11 +10,8 @@ import logging
 from gevent import monkey
 monkey.patch_all()
 
-import gevent_zeromq
-gevent_zeromq.monkey_patch()
-
 import gevent
-from gevent_zeromq import zmq
+import zmq
 
 from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer

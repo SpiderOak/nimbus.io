@@ -12,7 +12,7 @@ import uuid
 from  gevent.greenlet import Greenlet
 import gevent.queue
 import gevent
-from gevent_zeromq import zmq
+import zmq
 
 from tools.data_definitions import message_format
 

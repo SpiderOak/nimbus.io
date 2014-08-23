@@ -15,12 +15,6 @@ from gevent import monkey
 # hg clone https://bitbucket.org/denis/gevent
 monkey.patch_all()
 
-import gevent_zeromq
-gevent_zeromq.monkey_patch()
-
-import gevent_psycopg2
-gevent_psycopg2.monkey_patch()
-
 import memcache
 
 import logging
@@ -33,8 +27,9 @@ import sys
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 import gevent.queue
-from gevent_zeromq import zmq
 import gevent
+
+import zmq
 
 import gdbpool.interaction_pool
 

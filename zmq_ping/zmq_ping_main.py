@@ -86,9 +86,7 @@ def _process_one_ping(halt_event,
 
     result_message["check-number"] += 1
     req_socket.send_json(ping_message)
-    # BUG IN ZMQ: documentation says it converts to microseconds for the select
-    # system call but it does not!
-    result = poller.poll(timeout=(args.timeout * 1000 * 1000))
+    result = poller.poll(timeout=(args.timeout * 1000))
 
     if len(result) == 0:
         result_message["result"] = "timeout"

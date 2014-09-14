@@ -21,7 +21,7 @@ import sys
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
 import gevent.queue
-import zmq
+import zmq.green as zmq
 import gevent
 
 import gdbpool.interaction_pool

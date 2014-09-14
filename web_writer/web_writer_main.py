@@ -29,7 +29,7 @@ from gevent.event import Event
 import gevent.queue
 import gevent
 
-import zmq
+import zmq.green as zmq
 
 import gdbpool.interaction_pool
 

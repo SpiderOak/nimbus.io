@@ -23,7 +23,7 @@ import sys
 
 from gevent.pywsgi import WSGIServer
 from gevent.event import Event
-import zmq
+import zmq.green as zmq
 import gevent
 
 import memcache

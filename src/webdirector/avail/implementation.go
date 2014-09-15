@@ -50,16 +50,10 @@ func (a availability) AvailableHosts(hostNames []string, destPort string) (
 	[]string, error) {
 	var err error
 
-	conn, err := tools.GetRedisConnection()
-	if err != nil {
-		return nil, err
-	}
-
 	var availHosts []string
 	for _, hostName := range hostNames {
 		var address string
 		var ok bool
-		var err error
 
 		if address, ok = a.ResolveCache[hostName]; !ok {
 			var addressSlice []string
@@ -76,7 +70,8 @@ func (a availability) AvailableHosts(hostNames []string, destPort string) (
 
 		addressKey := fmt.Sprintf("%s:%s", address, destPort)
 
-		availJSON, err := redis.Bytes(conn.Do("HGET", a.RedisWebMonitorHash, addressKey))
+		availJSON, err := redis.Bytes(tools.RedisDo("HGET",
+			a.RedisWebMonitorHash, addressKey))
 		if err != nil {
 			fog.Warn("Host %s not available: '%s %s %s' %s", hostName,
 				"HGET", a.RedisWebMonitorHash, addressKey, err)

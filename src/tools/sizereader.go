@@ -20,10 +20,9 @@ func NewSizeReader(size uint64) io.ReadSeeker {
 
 func (reader *sizeReader) Read(p []byte) (int, error) {
 	if reader.CurrentSize >= reader.MaxSize {
+		fog.Debug("returning 0 bytes and EOF")
 		return 0, io.EOF
 	}
-
-	fog.Debug("sizereader request for %d bytes", len(p))
 
 	bytesLeft := reader.MaxSize - reader.CurrentSize
 	var bytesToSend uint64
@@ -34,6 +33,7 @@ func (reader *sizeReader) Read(p []byte) (int, error) {
 	} else {
 		bytesToSend = bytesLeft
 		err = io.EOF
+		fog.Debug("returning %d bytes and EOF", bytesToSend)
 	}
 
 	for i := 0; i < int(bytesToSend); i++ {

@@ -30,22 +30,24 @@ func main() {
 	signalChannel := make(chan os.Signal)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
 
+	useTLS := os.Getenv("NIMBUS_IO_SERVICE_SSL") == "1"
+	fog.Info("TLS = %t", useTLS)
+
 	listenAddress, err := getListenAddress()
 	if err != nil {
 		fog.Critical("error getListenAddress %s", err)
 	}
 	fog.Info("webdirector listens to %s", listenAddress)
 
-	cert, err := loadCertificate()
-	if err != nil {
-		fog.Critical("unable to load certificate %s", err)
-	}
-	config := tls.Config{Certificates: []tls.Certificate{cert}}
-	config.Rand = rand.Reader
-
-	listener, err := tls.Listen("tcp", listenAddress, &config)
-	if err != nil {
-		fog.Critical("tls.Listen %s failed %s", listenAddress, err)
+	var listener net.Listener
+	if useTLS {
+		if listener, err = getTLSListener(listenAddress); err != nil {
+			fog.Critical("Unable to create TLS listener: %s", err)
+		}
+	} else {
+		if listener, err = getTCPListener(listenAddress); err != nil {
+			fog.Critical("Unable to create TCP listener: %s", err)
+		}
 	}
 
 	managmentAPIDests, err := mgmtapi.NewManagementAPIDestinations()
@@ -112,6 +114,17 @@ func getListenAddress() (string, error) {
 	return listenHost + ":" + listenPort, nil
 }
 
+func getTLSListener(listenAddress string) (net.Listener, error) {
+	cert, err := loadCertificate()
+	if err != nil {
+		return nil, err
+	}
+	config := tls.Config{Certificates: []tls.Certificate{cert}}
+	config.Rand = rand.Reader
+
+	return tls.Listen("tcp", listenAddress, &config)
+}
+
 func loadCertificate() (cert tls.Certificate, err error) {
 	certPath := os.Getenv("NIMBUSIO_WILDCARD_SSL_CERT")
 	keyPath := os.Getenv("NIMBUSIO_WILDCARD_SSL_KEY")
@@ -120,4 +133,8 @@ func loadCertificate() (cert tls.Certificate, err error) {
 		certPath, keyPath)
 
 	return tls.LoadX509KeyPair(certPath, keyPath)
+}
+
+func getTCPListener(listenAddress string) (net.Listener, error) {
+	return net.Listen("tcp", listenAddress)
 }

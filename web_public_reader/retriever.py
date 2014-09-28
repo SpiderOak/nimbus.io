@@ -8,6 +8,7 @@ from base64 import b64encode
 import httplib
 import logging
 import os
+import socket
 
 import urllib2
 

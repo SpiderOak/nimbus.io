@@ -2,7 +2,6 @@ package avail
 
 import (
 	"fmt"
-	"net"
 	"os"
 
 	"github.com/garyburd/redigo/redis"
@@ -14,7 +13,7 @@ import (
 type availability struct {
 	RedisWebMonitorHash string
 	HostAddress         string
-	ResolveCache        map[string]string
+	HostResolver        tools.HostResolver
 }
 
 // Availability returns an entity that implements the Availability
@@ -30,19 +29,12 @@ func NewAvailability() (Availability, error) {
 
 	a.RedisWebMonitorHash = fmt.Sprintf("nimbus.io.web_monitor.%s", hostName)
 
-	hostAddresses, err := net.LookupHost(hostName)
-	if err != nil {
+	a.HostResolver = tools.NewHostResolver()
+	if a.HostAddress, err = a.HostResolver.Lookup(hostName); err != nil {
 		return a, err
 	}
 
-	if len(hostAddresses) != 1 {
-		return a, fmt.Errorf("expecting 1 address %q", hostAddresses)
-	}
-
-	a.HostAddress = hostAddresses[0]
-	a.ResolveCache = make(map[string]string)
-
-	fog.Info("Avaialbility for host %s %s", hostName, a.HostAddress)
+	fog.Info("Availability for host %s %s", hostName, a.HostAddress)
 	return a, nil
 }
 
@@ -53,19 +45,11 @@ func (a availability) AvailableHosts(hostNames []string, destPort string) (
 	var availHosts []string
 	for _, hostName := range hostNames {
 		var address string
-		var ok bool
+		var err error
 
-		if address, ok = a.ResolveCache[hostName]; !ok {
-			var addressSlice []string
-			if addressSlice, err = net.LookupHost(hostName); err != nil {
-				fog.Warn("Host %s not available: net.LookupHost %s", hostName, err)
-				continue
-			}
-			if len(addressSlice) != 1 {
-				fog.Warn("Host %s not available: net.LookupHost %q", hostName, addressSlice)
-				continue
-			}
-			a.ResolveCache[hostName] = addressSlice[0]
+		if address, err = a.HostResolver.Lookup(hostName); err != nil {
+			fog.Warn("Host %s not available: %s", hostName, err)
+			continue
 		}
 
 		addressKey := fmt.Sprintf("%s:%s", address, destPort)

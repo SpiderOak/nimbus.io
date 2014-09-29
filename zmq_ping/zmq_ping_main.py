@@ -79,35 +79,25 @@ def _process_one_ping(halt_event,
 
     if req_socket is None:
         req_socket = zeromq_context.socket(zmq.REQ)
+        req_socket.setsockopt(zmq.RCVTIMEO, args.timeout * 1000)
         req_socket.connect(args.ping_url)
         result_message["socket-reconnection-number"] += 1
 
-    # Ticket #5616 After running for sometime, zmq_ping processes use high CPU
-    # My hypothesis is that the poller isn't handling the 'unregister'
-    # So let's just recreate the poller every time
-    poller = zmq.Poller()
-    poller.register(req_socket, zmq.POLLIN)
-
     result_message["check-number"] += 1
     req_socket.send_json(ping_message)
-    result = poller.poll(timeout=(args.timeout * 1000))
-    poller.unregister(req_socket)
 
-    # we expect at most one result here, 
-    if len(result) == 0:
-        result_message["result"] = "timeout"
-    else:
-        # if the server we are pinging has been shut down
-        # we will block forever waiting to read from it
-        try:
-            _ = req_socket.recv_json(zmq.NOBLOCK)
-        except zmq.ZMQError as instance:
-            if instance.errno == zmq.EAGAIN and halt_event.is_set():
+    try:
+        _ = req_socket.recv_json()
+    except zmq.ZMQError as instance:
+        if instance.errno == zmq.EAGAIN:
+            if halt_event.is_set():
                 result_message["result"] = "ok"
             else:
-                result_message["result"] = "socket-error"
+                result_message["result"] = "timeout"
         else:
-            result_message["result"] = "ok"
+            result_message["result"] = "socket-error"
+    else:
+        result_message["result"] = "ok"
 
     if not halt_event.is_set():
         reporting_socket.send_pyobj(result_message)

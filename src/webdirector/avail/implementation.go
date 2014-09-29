@@ -40,7 +40,6 @@ func NewAvailability() (Availability, error) {
 
 func (a availability) AvailableHosts(hostNames []string, destPort string) (
 	[]string, error) {
-	var err error
 
 	var availHosts []string
 	for _, hostName := range hostNames {

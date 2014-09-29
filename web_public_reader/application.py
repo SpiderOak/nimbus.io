@@ -815,23 +815,27 @@ class Application(object):
         # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
         response.headers["Connection"] = "close"
         response.last_modified = last_modified
-        response.content_length = content_length
 
-        # Ticket #31 Guess Content-Type and Content-Encoding
-        content_type, content_encoding = \
-            mimetypes.guess_type(key, strict=False)
-        if content_type is None:
-            response.content_type = "application/octet-stream"
-        else:
-            response.content_type = content_type
-        if content_encoding is not None:
-            response.content_encoding = content_encoding
+        # GitHub Issue #2 Avoid Sending Regular Content-Length header for 
+        # "304 Not Modified" responses
+        if status == httplib.OK:
+            response.content_length = content_length
 
-        queue_entry = \
-            redis_queue_entry_tuple(timestamp=create_timestamp(),
-                                    collection_id=collection_row["id"],
-                                    value=response.headers["content-length"])
-        self._redis_queue.put(("success_bytes_out", queue_entry, ))
+            # Ticket #31 Guess Content-Type and Content-Encoding
+            content_type, content_encoding = \
+                mimetypes.guess_type(key, strict=False)
+            if content_type is None:
+                response.content_type = "application/octet-stream"
+            else:
+                response.content_type = content_type
+            if content_encoding is not None:
+                response.content_encoding = content_encoding
+
+            queue_entry = \
+                redis_queue_entry_tuple(timestamp=create_timestamp(),
+                                        collection_id=collection_row["id"],
+                                        value=response.headers["content-length"])
+            self._redis_queue.put(("success_bytes_out", queue_entry, ))
 
         return response
 

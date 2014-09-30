@@ -3,6 +3,7 @@ package tools
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 
@@ -15,7 +16,6 @@ const (
 
 var (
 	redisAddress string
-	redisConn    redis.Conn
 )
 
 func init() {
@@ -29,20 +29,21 @@ func init() {
 
 func RedisDo(commandName string, args ...interface{}) (interface{}, error) {
 
+	var redisConn redis.Conn
 	var err error
 
 	for i := 0; i < redisRetryCount; i++ {
-		if redisConn == nil {
-			if redisConn, err = redis.Dial("tcp", redisAddress); err != nil {
-				return nil, err
-			}
+		if redisConn, err = redis.Dial("tcp", redisAddress); err != nil {
+			fog.Warn("redis.Dial: %s", err)
+			time.Sleep(5 * time.Second)
+			continue
 		}
 
 		result, err := redisConn.Do(commandName, args...)
+		redisConn.Close()
 		if err != nil {
 			fog.Warn("RedisDo: %s", err)
-			redisConn.Close()
-			redisConn = nil
+			time.Sleep(1 * time.Second)
 			continue
 		}
 

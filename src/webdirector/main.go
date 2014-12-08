@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime/pprof"
 	"syscall"
 
 	"centraldb"
@@ -20,7 +21,7 @@ const (
 	listenerChanCapacity = 100
 )
 
-// amin entry point for webdirector
+// main entry point for webdirector
 func main() {
 	var err error
 
@@ -29,6 +30,16 @@ func main() {
 	// set up a signal handling channel
 	signalChannel := make(chan os.Signal)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+
+	if profilePath := os.Getenv("WEBDIRECTOR_CPU_PROFILE_PATH"); profilePath != "" {
+		profileFile, err := os.Create(profilePath)
+		if err != nil {
+			fog.Critical("os.Create(%s) failed %s", profilePath, err)
+		}
+		fog.Info("writing CPU profile data to %s", profilePath)
+		pprof.StartCPUProfile(profileFile)
+		defer pprof.StopCPUProfile()
+	}
 
 	useTLS := os.Getenv("NIMBUS_IO_SERVICE_SSL") == "1"
 	fog.Info("TLS = %t", useTLS)

@@ -237,7 +237,7 @@ def _generate_work(connection, file_space_info, value_file_rows):
 
     output_value_file.close()
 
-def _defrag_pass(connection, file_space_info, event_push_client):
+def _defrag_pass(connection, file_space_info):
     """
     Make a single defrag pass
     Open target value files as follows:
@@ -249,22 +249,24 @@ def _defrag_pass(connection, file_space_info, event_push_client):
     """
     log = logging.getLogger("_defrag_pass")
 
-    defraggable_bytes, value_file_rows = _identify_defrag_candidates(
+    defraggable_bytes, all_value_file_rows = _identify_defrag_candidates(
         connection
     )
     if defraggable_bytes == 0:
         return 0
 
     input_value_files = dict()
-    for value_file_row in value_file_rows:
+    value_file_rows = list()
+    for value_file_row in all_value_file_rows:
         try:
-            input_value_file = InputValueFile(
-                connection, _repository_path, value_file_row
-            )
+            input_value_file = InputValueFile(_repository_path, value_file_row)
         except IOError as instance:
             log.error("Error opening {0} {1}".format(value_file_row, instance))
             continue
 
+        # Ticket #5855: we should only iterate over the value files we were 
+        # actually able to open.
+        value_file_rows.append(value_file_row)
         input_value_files[input_value_file.value_file_id] = input_value_file
 
     bytes_defragged = 0
@@ -292,8 +294,11 @@ def _defrag_pass(connection, file_space_info, event_push_client):
                     reference.sequence_size
                 )
             )
-            #TODO - insert into repair table
-            continue
+            # TODO: - insert into repair table
+
+            # Ticket #5855: log the error and copy the data anyway. 
+            # corrupted data is still better than lost data. 
+            # It might be wrong by a single bit.
 
         # write the segment_sequence to the new value file
         new_value_file_offset = output_value_file.size
@@ -316,11 +321,20 @@ def _defrag_pass(connection, file_space_info, event_push_client):
               reference.segment_id,
               reference.sequence_num])
 
-    # close (and remove) the old value files
+    # close (and delete from the database) the old value files
+    paths_to_unlink = list()
     for input_value_file in input_value_files.values():
         input_value_file.close()
 
-    return bytes_defragged
+        # Ticket #5855: unlink the files after commit
+        paths_to_unlink.append(input_value_file.value_file_path)
+
+        connection.execute("""
+            delete from nimbusio_node.value_file
+            where id = %s""", [input_value_file.value_file_id, ])
+
+
+    return (paths_to_unlink, bytes_defragged, )
 
 def main():
     """
@@ -368,9 +382,9 @@ def main():
         bytes_defragged = 0
         connection.begin_transaction()
         try:
-            bytes_defragged = _defrag_pass(connection, 
-                                           file_space_info, 
-                                           event_push_client)
+            paths_to_unlink, bytes_defragged = \
+                _defrag_pass(connection, file_space_info)
+
         except KeyboardInterrupt:
             halt_event.set()
             connection.rollback()
@@ -385,7 +399,16 @@ def main():
         else:
             connection.commit()
 
-        log.info("bytes defragged = {0:,}".format(bytes_defragged))
+            # Ticket #5855: With regard to the database commit and the file 
+            # unlink, of course we can't have both things happen atomically. 
+            # So it's better to put the unlink after the transaction commit, 
+            # because then the consequence of crashing and forgetting to do the 
+            # unlink is just wasted disk space.
+            for path_to_unlink in paths_to_unlink:        
+                log.debug("unlinking {0}".format(path_to_unlink))
+                os.unlink(path_to_unlink)
+
+        log.info("bytes defragged = {0}".format(bytes_defragged))
 
         # if we didn't do anything on this pass...
         if bytes_defragged == 0:

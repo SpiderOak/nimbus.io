@@ -248,12 +248,14 @@ def _defrag_pass(connection, file_space_info):
     return the number of bytes defragged
     """
     log = logging.getLogger("_defrag_pass")
+    paths_to_unlink = list()
+    bytes_defragged = 0
 
     defraggable_bytes, all_value_file_rows = _identify_defrag_candidates(
         connection
     )
     if defraggable_bytes == 0:
-        return 0
+        return (paths_to_unlink, bytes_defragged, )
 
     input_value_files = dict()
     value_file_rows = list()
@@ -269,7 +271,6 @@ def _defrag_pass(connection, file_space_info):
         value_file_rows.append(value_file_row)
         input_value_files[input_value_file.value_file_id] = input_value_file
 
-    bytes_defragged = 0
     for reference, output_value_file in _generate_work(
         connection, file_space_info, value_file_rows
     ):
@@ -322,7 +323,6 @@ def _defrag_pass(connection, file_space_info):
               reference.sequence_num])
 
     # close (and delete from the database) the old value files
-    paths_to_unlink = list()
     for input_value_file in input_value_files.values():
         input_value_file.close()
 

@@ -68,7 +68,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	defer internalConn.Close()
 
-	err = request.Write(internalConn)
+	err = request.Write(bufio.NewWriterSize(internalConn, bufferSize))
 	if err != nil {
 		fog.Error("%s %s, %s request.Write: %s",
 			requestID, request.Method, request.URL, err)
@@ -88,7 +88,7 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		return
 	}
 
-	if err := response.Write(conn); err != nil {
+	if err := response.Write(bufio.NewWriterSize(conn, bufferSize)); err != nil {
 		fog.Error("%s %s, %s error sending response: %s",
 			requestID, request.Method, request.URL, err)
 	}

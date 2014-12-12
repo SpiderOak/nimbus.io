@@ -95,7 +95,8 @@ _handoff_count = 2
 
 _s3_meta_prefix = "x-amz-meta-"
 _sizeof_s3_meta_prefix = len(_s3_meta_prefix)
-_archive_retry_interval = 120
+_archive_retry_range = os.environ.get("NIMBUS_IO_WEB_WRITER_RETRY_INTERVAL",
+                                      "120-300")
 _content_type_json = "application/json"
 _max_sequence_upload_interval = int(os.environ.get("NIMBUSIO_REQUEST_TIMEOUT", 
                                                    "1800"))
@@ -199,6 +200,9 @@ class Application(object):
         self._event_push_client = event_push_client
         self._redis_queue = redis_queue
 
+        low_str, high_str = _archive_retry_range.split("-")
+        self._low_retry_interval = int(low_str)
+        self._high_retry_interval = int(high_str)
 
         self._dispatch_table = {
             action_respond_to_ping      : self._respond_to_ping,
@@ -427,7 +431,8 @@ class Application(object):
             response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            response.retry_after = _archive_retry_interval
+            response.retry_after = random.randint(self._low_retry_interval, 
+                                                  self._high_retry_interval)
             return response
         except Exception, instance:
             # 2012-07-14 dougfort -- were getting
@@ -611,7 +616,8 @@ class Application(object):
             response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            response.retry_after = _archive_retry_interval
+            response.retry_after = random.randint(self._low_retry_interval, 
+                                                  self._high_retry_interval)
             return response
 
         queue_entry = \
@@ -712,7 +718,8 @@ class Application(object):
                                 content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            response.retry_after = _archive_retry_interval
+            response.retry_after = random.randint(self._low_retry_interval, 
+                                                  self._high_retry_interval)
             return response
         except Exception:
             self._log.exception("request {0}".format(user_request_id))
@@ -825,7 +832,8 @@ class Application(object):
             response = Response(status=httplib.SERVICE_UNAVAILABLE, content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            response.retry_after = _archive_retry_interval
+            response.retry_after = random.randint(self._low_retry_interval, 
+                                                  self._high_retry_interval)
             return response
         except Exception:
             self._log.exception("request {0}".format(user_request_id))
@@ -939,7 +947,8 @@ class Application(object):
                                 content_type=None)
             # 2012-09-06 dougfort Ticket #44 (temporary Connection: close)
             response.headers["Connection"] = "close"
-            response.retry_after = _archive_retry_interval
+            response.retry_after = random.randint(self._low_retry_interval, 
+                                                  self._high_retry_interval)
             return response
         except Exception, instance:
             self._log.exception("request {0}: " \

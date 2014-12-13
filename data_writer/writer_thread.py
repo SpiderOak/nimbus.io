@@ -18,6 +18,7 @@ import logging
 import os
 import queue
 from threading import Thread
+import time
 import sys
 
 from tools.file_space import load_file_space_info, file_space_sanity_check
@@ -29,6 +30,12 @@ from data_writer.writer import Writer
 from data_writer.post_sync_completion import PostSyncCompletion
 
 _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
+
+_space_check_interval = int(
+    os.environ.get("NIMBUS_IO_DATA_WRITER_SPACE_CHECK_INTERVAL", "60"))
+_minimum_available_space = long(
+    os.environ.get("NIMBUS_IO_DATA_WRITER_MINIMUM_DISK_SPACE", 
+                   str(5 * 1024 ** 3)))
 _queue_timeout = 1.0
 
 class WriterThread(Thread):
@@ -45,7 +52,8 @@ class WriterThread(Thread):
         self._completions = list()
         self._writer = None
         self._reply_pusher = push_client
-
+        self._available_space = 0
+        self._previous_space_check_time = 0
 
         self._dispatch_table = {
             "archive-key-entire"        : self._handle_archive_key_entire,
@@ -89,6 +97,7 @@ class WriterThread(Thread):
                              _repository_path,
                              self._active_segments,
                              self._completions)
+        self._available_space = self._writer.get_available_space()
 
         log.debug("start halt_event loop")
         while not self._halt_event.is_set():
@@ -99,6 +108,15 @@ class WriterThread(Thread):
                 pass
             else:
                 self._dispatch_table[message["message-type"]](message, data)
+            finally:
+                # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+                current_time = int(time.time())
+                space_check_elapsed = \
+                    current_time - self._previous_space_check_time
+                if space_check_elapsed >= _space_check_interval:
+                    self._available_space = self._writer.get_available_space()
+                    self._previous_space_check_time = current_time
+
         log.debug("end halt_event loop")
 
         # 2012-03-27 dougfort -- we stop the data writer first because it is
@@ -138,6 +156,17 @@ class WriterThread(Thread):
             "result"            : None,
             "error-message"     : None,
         }
+
+        # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+        if self._available_space < _minimum_available_space:
+            error_message = "insufficient space {0} < {1}".format(
+                self._available_space, _minimum_available_space)
+            log.error("request {0}: {1}".format(message["user-request-id"],
+                                                error_message))
+            reply["result"] = "insufficient-space"
+            reply["error-message"] = error_message
+            self._reply_pusher.send(reply)
+            return
 
         # we expect a list of blocks, but if the data is smaller than
         # block size, we get back a string
@@ -243,6 +272,17 @@ class WriterThread(Thread):
             "error-message"     : None,
         }
 
+        # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+        if self._available_space < _minimum_available_space:
+            error_message = "insufficient space {0} < {1}".format(
+                self._available_space, _minimum_available_space)
+            log.error("request {0}: {1}".format(message["user-request-id"],
+                                                error_message))
+            reply["result"] = "insufficient-space"
+            reply["error-message"] = error_message
+            self._reply_pusher.send(reply)
+            return
+
         # we expect a list of blocks, but if the data is smaller than
         # block size, we get back a string
         if type(data) != list:
@@ -339,6 +379,17 @@ class WriterThread(Thread):
             "error-message"     : None,
         }
 
+        # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+        if self._available_space < _minimum_available_space:
+            error_message = "insufficient space {0} < {1}".format(
+                self._available_space, _minimum_available_space)
+            log.error("request {0}: {1}".format(message["user-request-id"],
+                                                error_message))
+            reply["result"] = "insufficient-space"
+            reply["error-message"] = error_message
+            self._reply_pusher.send(reply)
+            return
+
         # we expect a list of blocks, but if the data is smaller than
         # block size, we get back a string
         if type(data) != list:
@@ -419,6 +470,17 @@ class WriterThread(Thread):
             "result"            : None,
             "error-message"     : None,
         }
+
+        # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+        if self._available_space < _minimum_available_space:
+            error_message = "insufficient space {0} < {1}".format(
+                self._available_space, _minimum_available_space)
+            log.error("request {0}: {1}".format(message["user-request-id"],
+                                                error_message))
+            reply["result"] = "insufficient-space"
+            reply["error-message"] = error_message
+            self._reply_pusher.send(reply)
+            return
 
         # we expect a list of blocks, but if the data is smaller than
         # block size, we get back a string

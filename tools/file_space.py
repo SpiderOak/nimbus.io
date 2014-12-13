@@ -42,24 +42,43 @@ def file_space_sanity_check(file_space_info, repository_path):
             assert real_path == file_space_row.path, (real_path, 
                                                       file_space_row.path, )
 
+def available_space_on_volume(path):
+    """
+    compute the available space on a volume
+    """
+    statvfs_result = os.statvfs(path)
+    return statvfs_result.f_bsize * statvfs_result.f_bavail
+
 def find_least_volume_space_id(purpose, file_space_info):
     """
     choses the volume with the greatest available free space, 
     by doing a vfsstat at the "path" of the table spaces and comparing.
     """
+    max_space_id, _ = find_least_volume_space_id_and_path(purpose, 
+                                                          file_space_info)
+    return max_space_id
+
+def find_least_volume_space_id_and_path(purpose, file_space_info):
+    """
+    choses the volume with the greatest available free space, 
+    by doing a vfsstat at the "path" of the table spaces and comparing.
+    This function returns the path along with the id for regular space checks
+    """
     max_avail_space = None
     max_space_id = None
+    max_space_path = None
+
     for file_space_row in file_space_info[purpose]:
-        statvfs_result = os.statvfs(file_space_row.path)
-        avail_space = statvfs_result.f_bsize * statvfs_result.f_bavail
+        avail_space = available_space_on_volume(file_space_row.path)
         if max_avail_space is None or avail_space > max_avail_space:
             max_avail_space = avail_space
             max_space_id = file_space_row.space_id
+            max_space_path = file_space_row.path
 
     if max_space_id is None:
         raise FileSpacesError("No space for purpose '{0}'".format(purpose))
 
-    # XXX: should we have a check for minimum avalable space?
+    # we expect path to be used for a check for minimum available space?
+    # see Ticket #5866 Nimbus.io should avoid filling disks to capacity 
 
-    return max_space_id
-
+    return max_space_id, max_space_path

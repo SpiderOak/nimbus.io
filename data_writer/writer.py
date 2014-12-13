@@ -12,7 +12,8 @@ from tools.data_definitions import segment_sequence_template, \
         parse_timestamp_repr, \
         segment_status_active, \
         segment_status_tombstone
-from tools.file_space import find_least_volume_space_id
+from tools.file_space import available_space_on_volume, \
+        find_least_volume_space_id_and_path
 from data_writer.output_value_file import OutputValueFile
 
 _max_value_file_size = int(os.environ.get(
@@ -275,7 +276,9 @@ class Writer(object):
         self._active_segments = active_segments
         self._completions = completions
         
-        space_id = find_least_volume_space_id("journal", self._file_space_info)
+        space_id, self._space_path = \
+            find_least_volume_space_id_and_path("journal", 
+                                                self._file_space_info)
 
         # open a new value file at startup
         self._value_file = OutputValueFile(self._connection, 
@@ -289,6 +292,12 @@ class Writer(object):
         """
         assert self._value_file is not None
         return hash(self._value_file)
+
+    def get_available_space(self):
+        """
+        return the amount of space available on the destination volume
+        """
+        return available_space_on_volume(self._space_path)
 
     def sync_value_file(self):
         """
@@ -409,8 +418,9 @@ class Writer(object):
         # start a new output value file
         if self._value_file.size + segment_size > _max_value_file_size:
             self._value_file.close()
-            space_id = find_least_volume_space_id("journal",
-                                                  self._file_space_info)
+            space_id, self._space_path = \
+                find_least_volume_space_id_and_path("journal", 
+                                                    self._file_space_info)
             self._value_file = OutputValueFile(self._connection, 
                                                space_id,
                                                self._repository_path)

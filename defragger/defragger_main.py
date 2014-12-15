@@ -294,10 +294,11 @@ def _defrag_pass(connection, file_space_info):
             )
         )
 
-        output_value_file = OutputValueFile(connection, 
-                                            space_id, 
-                                            _repository_path,
-                                            work_item.value_file_size)
+        output_value_file = 
+            OutputValueFile(connection, 
+                            space_id, 
+                            _repository_path,
+                            expected_size=work_item.value_file_size)
 
         for reference in work_item.references:
             # read the segment sequence from the old value_file

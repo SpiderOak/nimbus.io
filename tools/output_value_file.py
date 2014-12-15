@@ -88,8 +88,15 @@ class OutputValueFile(object):
         value_file_dir = os.path.dirname(self._value_file_path)
         if not os.path.exists(value_file_dir):
             os.makedirs(value_file_dir)
+
         flags = os.O_WRONLY | os.O_CREAT
         self._value_file_fd = os.open(self._value_file_path, flags)
+
+        # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+        # Alan has added the requirement to fallocate file space
+        if self._expected_size is not None and hasattr(os, "posix_fallocate"):
+            os.posix_fallocate(self._value_file_fd, 0, self._expected_size)
+
         self._creation_time = create_timestamp()
         self._size = 0
         self._md5 = hashlib.md5()

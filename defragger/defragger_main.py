@@ -19,11 +19,18 @@ from tools.event_push_client import EventPushClient, unhandled_exception_topic
 from tools.data_definitions import value_file_template
 from tools.file_space import load_file_space_info, \
         file_space_sanity_check, \
-        find_least_volume_space_id
+        find_least_volume_space_id_and_path, \
+        available_space_on_volume
 from tools.output_value_file import OutputValueFile
 from tools.process_util import set_signal_handler
 
 from defragger.input_value_file import InputValueFile
+
+class DefraggerInsufficentSpaceError(Exception):
+    """
+    Ticket #5866 Nimbus.io should avoid filling disks to capacity
+    """
+    pass
 
 _local_node_name = os.environ["NIMBUSIO_NODE_NAME"]
 _log_path = "{0}/nimbusio_defragger_{1}.log".format(
@@ -41,6 +48,9 @@ _repository_path = os.environ["NIMBUSIO_REPOSITORY_PATH"]
 _max_value_file_size = int(os.environ.get(
     "NIMBUS_IO_MAX_VALUE_FILE_SIZE", str(1024 * 1024 * 1024))
 )
+_min_destination_space = long(
+    os.environ.get("NIMBUS_IO_DEFRAGGER_MIN_DESTINATION_SPACE",
+        str(5 * 1024 ** 3)))
 
 _reference_template = namedtuple("Reference", [
     "segment_id",
@@ -55,6 +65,8 @@ _reference_template = namedtuple("Reference", [
     "sequence_hash",
     "sequence_adler32"
 ])
+
+_work_template = namedtuple("Work", ["references", "value_file_size", ])
 
 def _query_value_file_candidate_rows(connection):
     """
@@ -137,11 +149,21 @@ def _query_value_file_references(connection, value_file_ids):
     for row in result:
         yield  _reference_template._make(row)
 
-def _generate_work(connection, file_space_info, value_file_rows):
-    log = logging.getLogger("_generate_work")
+def _prepare_work(connection, value_file_rows):
+    """
+    Ticket #5866 Nimbus.io should avoid filling disks to capacity
+    Alan has added on the requirement to fallocate value files.
+    So here we make a pre-pass to compute the sizes of the value files
+    we will need.
+
+    return a list of Work tuples each containing a list of (input) value file
+    references and the size of the (output) value file they will be written to 
+    """
+    log = logging.getLogger("_prepare_work")
     prev_handoff_node_id = None
     prev_collection_id = None
-    output_value_file = None
+    work_items = list()
+    work_item = _work_template._make(list(), 0)
     for reference in _query_value_file_references(
         connection, [row.id for row in value_file_rows]
     ):
@@ -150,92 +172,72 @@ def _generate_work(connection, file_space_info, value_file_rows):
             if reference.handoff_node_id != prev_handoff_node_id:
                 if prev_handoff_node_id is not None:
                     log.debug(
-                        "closing output value file handoff node {0}".format(
-                            prev_handoff_node_id
+                        "handoff node {0}; {1} entries, {2} bytes".format(
+                            prev_handoff_node_id, len(work_item.references),
+                            work_item.value_file_size
                         )
                     )
-                    assert output_value_file is not None
-                    output_value_file.close()
-                    output_value_file = None
-                log.debug(
-                    "opening value file for handoff node {0}".format(
-                        reference.handoff_node_id
-                    )
-                )
-                assert output_value_file is None
-                space_id = find_least_volume_space_id("storage", 
-                                                      file_space_info)
-                output_value_file = OutputValueFile(connection, 
-                                                    space_id, 
-                                                    _repository_path)
+                    assert len(work_item.references) > 0
+                    work_items.append(work_item)
+                    work_item = _work_template._make(list(), 0)
                 prev_handoff_node_id = reference.handoff_node_id
         elif reference.collection_id != prev_collection_id:
             if prev_handoff_node_id is not None:
                 log.debug(
-                    "closing value file for handoff node {0}".format(
-                        prev_handoff_node_id
+                    "handoff node {0}; {1} entries, {2} bytes".format(
+                        prev_handoff_node_id, len(work_item.references),
+                            work_item.value_file_size
                     )
                 )
-                assert output_value_file is not None
-                output_value_file.close()
-                output_value_file = None
+                assert len(work_item.references) > 0
+                work_items.append(work_item)
+                work_item = _work_template._make(list(), 0)
                 prev_handoff_node_id = None
 
             # at least one distinct value file per collection_id
             if prev_collection_id is not None:
                 log.debug(
-                    "closing value file for collection {0}".format(
-                        prev_collection_id
+                    "collection {0}; {1} entries, {2} bytes".format(
+                        prev_collection_id, len(work_item.references),
+                            work_item.value_file_size
                     )
                 )
-                assert output_value_file is not None
-                output_value_file.close()
-                output_value_file = None
+                assert len(work_item.references) > 0
+                work_items.append(work_item)
+                work_item = _work_template._make(list(), 0)
 
-            log.debug(
-                "opening value file for collection {0}".format( 
-                    reference.collection_id
-                )
-            )
-            assert output_value_file is None
-            space_id = find_least_volume_space_id("storage", 
-                                                  file_space_info)
-            output_value_file = OutputValueFile(
-                connection, space_id, _repository_path
-            )
             prev_collection_id = reference.collection_id
-
-        assert output_value_file is not None
 
         # if this write would put us over the max size,
         # start a new output value file
-        expected_size = output_value_file.size + reference.sequence_size
+        expected_size = work_item.value_file_size + reference.sequence_size
         if expected_size > _max_value_file_size:
-            log.debug("closing value_file and opening new one due to size")
-            output_value_file.close()
-            space_id = find_least_volume_space_id("storage", 
-                                                  file_space_info)
-            output_value_file = OutputValueFile(
-                connection, space_id, _repository_path
-            )
+            log.debug("starting new work item due to size {0}".format(
+                expected_size))
+            work_items.append(work_item)
+            work_item = _work_template._make(list(), 0)
 
-        yield reference, output_value_file
+        work_item.references.append(reference)
+        work_item.value_file_size += reference.sequence_size
     
     if prev_handoff_node_id is not None:
         log.debug(
-            "closing final value file for handoff node {0}".format(
-                prev_handoff_node_id
+            "final handoff node {0}; {1} entries, {2} bytes".format(
+                prev_handoff_node_id, len(work_item.references),
+                work_item.value_file_size
             )
         )
-
+        
     if prev_collection_id is not None:
         log.debug(
-            "closing final value file for collection {0}".format(
-                prev_collection_id
+            "final collection {0}; {1} entries, {2} bytes".format(
+                prev_collection_id, len(work_item.references),
+                work_item.value_file_size
             )
         )
 
-    output_value_file.close()
+    work_items.append(work_item)
+    return work_items    
 
 def _defrag_pass(connection, file_space_info):
     """
@@ -271,56 +273,84 @@ def _defrag_pass(connection, file_space_info):
         value_file_rows.append(value_file_row)
         input_value_files[input_value_file.value_file_id] = input_value_file
 
-    for reference, output_value_file in _generate_work(
-        connection, file_space_info, value_file_rows
-    ):
-        # read the segment sequence from the old value_file
-        input_value_file = input_value_files[reference.value_file_id]
-        data = input_value_file.read(
-            reference.value_file_offset, reference.sequence_size
-        )
-        sequence_md5 = hashlib.md5()
-        sequence_md5.update(data)
-        if sequence_md5.digest() != bytes(reference.sequence_hash):
-            log.error(
-                "md5 mismatch {0} {1} {2} {3} {4} {5} {6} {7} {8}".format(
-                    reference.segment_id,
-                    reference.handoff_node_id,
-                    reference.collection_id, 
-                    reference.key, 
-                    reference.timestamp,
-                    reference.sequence_num,
-                    reference.value_file_id,
-                    reference.value_file_offset,
-                    reference.sequence_size
-                )
+    work_items = _prepare_work(connection, value_file_rows)
+
+    for work_item in work_items:
+        space_id, space_path = \
+            find_least_volume_space_id_and_path("storage", file_space_info)
+
+        # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+        available_space = available_space_on_volume(space_path)
+        if available_space - work_item.value_file_size < _min_destination_space:
+            log.warn("Insufficient space: available {0}, value_file {1}, "
+                     "minimum {2}".format(
+                available_space, work_item.value_file_size, 
+                _min_destination_space))
+            raise DefraggerInsufficentSpaceError("insufficient space")
+
+        log.debug(
+            "opening value file at space_id {0}, {1}".format(
+                space_id, space_path
             )
-            # TODO: - insert into repair table
-
-            # Ticket #5855: log the error and copy the data anyway. 
-            # corrupted data is still better than lost data. 
-            # It might be wrong by a single bit.
-
-        # write the segment_sequence to the new value file
-        new_value_file_offset = output_value_file.size
-        output_value_file.write_data_for_one_sequence(
-            reference.collection_id, 
-            reference.segment_id, 
-            data
         )
-        bytes_defragged += reference.sequence_size
 
-        # adjust segment_sequence row
-        connection.execute("""
-            update nimbusio_node.segment_sequence
-            set value_file_id = %s, value_file_offset = %s
-            where collection_id = %s and segment_id = %s
-            and sequence_num = %s
-        """, [output_value_file.value_file_id, 
-              new_value_file_offset,
-              reference.collection_id,
-              reference.segment_id,
-              reference.sequence_num])
+        output_value_file = OutputValueFile(connection, 
+                                            space_id, 
+                                            _repository_path,
+                                            work_item.value_file_size)
+
+        for reference in work_item.references:
+            # read the segment sequence from the old value_file
+            input_value_file = input_value_files[reference.value_file_id]
+            data = input_value_file.read(
+                reference.value_file_offset, reference.sequence_size
+            )
+            sequence_md5 = hashlib.md5()
+            sequence_md5.update(data)
+            if sequence_md5.digest() != bytes(reference.sequence_hash):
+                log.error(
+                    "md5 mismatch {0} {1} {2} {3} {4} {5} {6} {7} {8}".format(
+                        reference.segment_id,
+                        reference.handoff_node_id,
+                        reference.collection_id, 
+                        reference.key, 
+                        reference.timestamp,
+                        reference.sequence_num,
+                        reference.value_file_id,
+                        reference.value_file_offset,
+                        reference.sequence_size
+                    )
+                )
+                # TODO: - insert into repair table
+
+                # Ticket #5855: log the error and copy the data anyway. 
+                # corrupted data is still better than lost data. 
+                # It might be wrong by a single bit.
+
+            # write the segment_sequence to the new value file
+            new_value_file_offset = output_value_file.size
+            output_value_file.write_data_for_one_sequence(
+                reference.collection_id, 
+                reference.segment_id, 
+                data
+            )
+            bytes_defragged += reference.sequence_size
+
+            # adjust segment_sequence row
+            connection.execute("""
+                update nimbusio_node.segment_sequence
+                set value_file_id = %s, value_file_offset = %s
+                where collection_id = %s and segment_id = %s
+                and sequence_num = %s
+            """, [output_value_file.value_file_id, 
+                  new_value_file_offset,
+                  reference.collection_id,
+                  reference.segment_id,
+                  reference.sequence_num])
+
+        assert output_value_file.size == work_item.value_file_size, (
+            output_value_file.size, work_item.value_file_size, )
+        output_value_file.close()
 
     # close (and delete from the database) the old value files
     for input_value_file in input_value_files.values():

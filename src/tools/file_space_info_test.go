@@ -24,11 +24,11 @@ func TestFileSpaceInfo(t *testing.T) {
 	}
 
 	for _, purpose := range FileSpacePurpose {
-		spaceID, err := info.FindMaxAvailSpaceID(purpose)
+		spaceID, space, err := info.FindMaxAvailSpaceID(purpose)
 		if err != nil {
 			t.Fatalf("FindMaxAvailSpaceID(%s) %s", purpose, err)
 		}
-		t.Logf("FindMaxAvailSpaceID(%s) = %d", purpose, spaceID)
+		t.Logf("FindMaxAvailSpaceID(%s) = %d, %d", purpose, spaceID, space)
 	}
 
 }

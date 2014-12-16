@@ -36,8 +36,14 @@ type OutputValueFile interface {
 	Close() error
 }
 
+const (
+	maxValueFileSizeDefault = uint64(1024 * 1024 * 1024)
+	minAvailSpaceDefault    = uint64(5 * 1024 * 1024 * 1024)
+)
+
 var (
 	MaxValueFileSize uint64
+	MinAvailSpace    uint64
 )
 
 type outputValueFile struct {
@@ -56,24 +62,37 @@ type outputValueFile struct {
 }
 
 func init() {
-	maxValueFileSizeStr := os.Getenv("NIMBUS_IO_MAX_VALUE_FILE_SIZE")
-	if maxValueFileSizeStr == "" {
-		MaxValueFileSize = uint64(1024 * 1024 * 1024)
-	} else {
-		var intSize int
-		var err error
-		intSize, err = strconv.Atoi(maxValueFileSizeStr)
-		if err != nil {
-			fog.Critical("invalid NIMBUS_IO_MAX_VALUE_FILE_SIZE '%s'",
-				maxValueFileSizeStr)
-		}
-		MaxValueFileSize = uint64(intSize)
+	var err error
+
+	MaxValueFileSize, err = getEnvSize("NIMBUS_IO_MAX_VALUE_FILE_SIZE",
+		maxValueFileSizeDefault)
+	if err != nil {
+		fog.Critical("invalid NIMBUS_IO_MAX_VALUE_FILE_SIZE '%s', %s",
+			os.Getenv("NIMBUS_IO_MAX_VALUE_FILE_SIZE"), err)
 	}
+
+	MinAvailSpace, err = getEnvSize("NIMBUS_IO_DATA_WRITER_MINIMUM_DISK_SPACE",
+		minAvailSpaceDefault)
+	if err != nil {
+		fog.Critical("invalid NIMBUS_IO_DATA_WRITER_MINIMUM_DISK_SPACE '%s', %s",
+			os.Getenv("NIMBUS_IO_DATA_WRITER_MINIMUM_DISK_SPACE"), err)
+	}
+}
+
+func getEnvSize(name string, defaultValue uint64) (uint64, error) {
+	str := os.Getenv(name)
+
+	if str == "" {
+		return defaultValue, nil
+	}
+
+	return strconv.ParseUint(str, 10, 64)
 }
 
 // NewOutputValueFile creates an entity implmenting the OutputValueFile interface
 func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, error) {
 	var valueFile outputValueFile
+	var availableSpace uint64
 	var err error
 
 	valueFile.creationTime = tools.Timestamp()
@@ -81,8 +100,16 @@ func NewOutputValueFile(fileSpaceInfo tools.FileSpaceInfo) (OutputValueFile, err
 	valueFile.collectionIDSet = make(map[uint32]struct{})
 	repositoryPath := os.Getenv("NIMBUSIO_REPOSITORY_PATH")
 
-	if valueFile.spaceID, err = fileSpaceInfo.FindMaxAvailSpaceID(tools.FileSpaceJournal); err != nil {
+	valueFile.spaceID, availableSpace, err = fileSpaceInfo.FindMaxAvailSpaceID(
+		tools.FileSpaceJournal)
+	if err != nil {
 		return nil, err
+	}
+
+	// Ticket #5866 Nimbus.io should avoid filling disks to capacity
+	if availableSpace < MinAvailSpace {
+		return nil, fmt.Errorf("insufficient space %d available, minimum is %d",
+			availableSpace, MinAvailSpace)
 	}
 
 	if err = valueFile.insertValueFileRow(); err != nil {

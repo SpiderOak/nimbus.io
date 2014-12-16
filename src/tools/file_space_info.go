@@ -13,7 +13,8 @@ import (
 type FileSpaceInfo interface {
 
 	// FindMaxAvailSpaceID returns the space id with the most available space
-	FindMaxAvailSpaceID(purpose string) (uint32, error)
+	// return spaceID, availableSpace, err
+	FindMaxAvailSpaceID(purpose string) (uint32, uint64, error)
 
 	// SanityCheck verifies that the file info map is valid
 	SanityCheck(repositoryPath string) error
@@ -61,7 +62,9 @@ func NewFileSpaceInfo(sqlDB *sql.DB) (FileSpaceInfo, error) {
 }
 
 // FindMaxAvailSpaceID returns the space id with the most space available
-func (info FileSpaceMap) FindMaxAvailSpaceID(purpose string) (uint32, error) {
+// return spaceID, availableSpace, err
+func (info FileSpaceMap) FindMaxAvailSpaceID(purpose string) (uint32, uint64, error) {
+
 	var maxAvailSpace uint64
 	var maxAvailSpaceID uint32
 	var found bool
@@ -69,7 +72,7 @@ func (info FileSpaceMap) FindMaxAvailSpaceID(purpose string) (uint32, error) {
 
 	for _, entry := range info[purpose] {
 		if err := syscall.Statfs(entry.Path, &statfsBuffer); err != nil {
-			return 0, fmt.Errorf("syscall.Statfs(%s, ...) %s", entry.Path, err)
+			return 0, 0, fmt.Errorf("syscall.Statfs(%s, ...) %s", entry.Path, err)
 		}
 		availSpace := uint64(statfsBuffer.Bsize) * statfsBuffer.Bavail
 		fog.Debug("(%d) %s available=%d", entry.SpaceID, entry.Path, availSpace)
@@ -81,10 +84,10 @@ func (info FileSpaceMap) FindMaxAvailSpaceID(purpose string) (uint32, error) {
 	}
 
 	if !found {
-		return 0, fmt.Errorf("no space found")
+		return 0, 0, fmt.Errorf("no space found")
 	}
 
-	return maxAvailSpaceID, nil
+	return maxAvailSpaceID, maxAvailSpace, nil
 }
 
 // SanityCheck verifies that the file info map is valid

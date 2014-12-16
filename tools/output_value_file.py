@@ -163,3 +163,11 @@ class OutputValueFile(object):
         )
         _insert_value_file_row(self._connection, value_file_row)
 
+    def purge(self):
+        """remove the file and release allocated space"""
+        self._log.debug("purging %s size=%s segment_sequence_count=%s" % (
+            self._value_file_path, self._size, self._segment_sequence_count
+        )) 
+
+        os.close(self._value_file_fd)
+        os.unlink(self._value_file_path)

@@ -11,19 +11,30 @@ import os
 from tools.data_definitions import compute_value_file_path
 from tools.file_space import load_file_space_info, \
                              file_space_sanity_check, \
-                             find_least_volume_space_id
+                             find_least_volume_space_id_and_path, \
+                             available_space_on_volume
+
 from tools.output_value_file import OutputValueFile
+
+class GCInsufficientSpaceError(Exception):
+    """
+    Ticket #5866 Nimbus.io should avoid filling disks to capacity
+    """
+    pass
 
 _max_value_file_size = int(os.environ.get(
     "NIMBUS_IO_MAX_VALUE_FILE_SIZE", str(1024 ** 3))
 )
+_min_destination_space = long(
+    os.environ.get("NIMBUS_IO_GC_MIN_DESTINATION_SPACE",
+        str(5 * 1024 ** 3)))
 
 def _allocate_output_value_files(connection, repository_path, refs):
+    log = logging.getLogger("_allocate_output_value_files")
     output_value_file_sizes = defaultdict(list)
 
     file_space_info = load_file_space_info(connection) 
     file_space_sanity_check(file_space_info, repository_path)
-    space_id = find_least_volume_space_id("storage", file_space_info)
 
     for ref in refs:
         if len(output_value_file_sizes[ref.collection_id]) == 0:
@@ -40,6 +51,20 @@ def _allocate_output_value_files(connection, repository_path, refs):
     output_value_files = defaultdict(list)
     for collection_id in output_value_file_sizes.keys():
         for expected_size in output_value_file_sizes[collection_id]:
+            space_id, space_path = \
+                find_least_volume_space_id_and_path("storage", file_space_info)
+
+            # Ticket #5866 Nimbus.io should avoid filling disks to capacity
+            available_space = available_space_on_volume(space_path)
+            if available_space - expected_size < _min_destination_space:
+                log.warn("Insufficient space: available {0}, value_file {1}, "
+                         "minimum {2}".format(
+                    available_space, expected_size, _min_destination_space))
+                for output_value_file_list in output_value_files.values():
+                    for output_value_file in output_value_file_list:
+                        output_value_file.purge()
+                raise GCInsufficientSpaceError("insufficient space")
+
             output_value_files[collection_id].append(
                 OutputValueFile(connection, 
                                 space_id,

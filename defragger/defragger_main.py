@@ -26,7 +26,7 @@ from tools.process_util import set_signal_handler
 
 from defragger.input_value_file import InputValueFile
 
-class DefraggerInsufficentSpaceError(Exception):
+class DefraggerInsufficientSpaceError(Exception):
     """
     Ticket #5866 Nimbus.io should avoid filling disks to capacity
     """
@@ -286,7 +286,7 @@ def _defrag_pass(connection, file_space_info):
                      "minimum {2}".format(
                 available_space, work_item.value_file_size, 
                 _min_destination_space))
-            raise DefraggerInsufficentSpaceError("insufficient space")
+            raise DefraggerInsufficientSpaceError("insufficient space")
 
         log.debug(
             "opening value file at space_id {0}, {1}".format(

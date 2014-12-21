@@ -68,9 +68,16 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	defer internalConn.Close()
 
-	err = request.Write(bufio.NewWriterSize(internalConn, bufferSize))
-	if err != nil {
+	bufferedInternalWriter := bufio.NewWriterSize(internalConn, bufferSize)
+	if err = request.Write(bufferedInternalWriter); err != nil {
 		fog.Error("%s %s, %s request.Write: %s",
+			requestID, request.Method, request.URL, err)
+		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
+		fog.Info("%s aborts", requestID)
+		return
+	}
+	if err = bufferedInternalWriter.Flush(); err != nil {
+		fog.Error("%s %s, %s request.Write Flush(): %s",
 			requestID, request.Method, request.URL, err)
 		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
 		fog.Info("%s aborts", requestID)
@@ -78,8 +85,8 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	request.Body.Close()
 
-	response, err := http.ReadResponse(bufio.NewReaderSize(internalConn, bufferSize),
-		request)
+	bufferedInternalReader := bufio.NewReaderSize(internalConn, bufferSize)
+	response, err := http.ReadResponse(bufferedInternalReader, request)
 	if err != nil {
 		fog.Error("%s %s, %s http.ReadResponse: %s",
 			requestID, request.Method, request.URL, err)
@@ -88,8 +95,13 @@ func handleConnection(router routing.Router, conn net.Conn) {
 		return
 	}
 
-	if err := response.Write(bufio.NewWriterSize(conn, bufferSize)); err != nil {
+	bufferedWriter := bufio.NewWriterSize(conn, bufferSize)
+	if err := response.Write(bufferedWriter); err != nil {
 		fog.Error("%s %s, %s error sending response: %s",
+			requestID, request.Method, request.URL, err)
+	}
+	if err = bufferedWriter.Flush(); err != nil {
+		fog.Error("%s %s, %s error flushing response: %s",
 			requestID, request.Method, request.URL, err)
 	}
 	response.Body.Close()

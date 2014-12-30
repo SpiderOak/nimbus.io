@@ -17,7 +17,7 @@ Much like the SR71 Blackbird does not operate efficiently at low speeds in
 favor of elegant behavior at extreme speed, Nimbus.io is efficient for
 storing vast amounts of data. [#]_ 
 
-Production Nimubs.io storage clusters involve groups of 10 computers acting
+Production Nimbus.io storage clusters involve groups of 10 computers acting
 redundantly with data stripped across all of them.  Much like RAID6
 stripes data across many disks allowing for some disks to fail, Nimbus.io
 stripes data across many whole machines.

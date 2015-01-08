@@ -10,11 +10,8 @@ import logging
 from gevent import monkey
 monkey.patch_all()
 
-import gevent_zeromq
-gevent_zeromq.monkey_patch()
-
 import gevent
-from gevent_zeromq import zmq
+import zmq
 
 from tools.greenlet_resilient_client import GreenletResilientClient
 from tools.greenlet_pull_server import GreenletPULLServer
@@ -74,8 +71,7 @@ def send_request_and_get_reply_and_data(
     # loop until the resilient client connects
     test_status_count = 0
     while True:
-        status_name, _, __ = resilient_client.test_current_status()
-        if status_name == "connected":
+        if resilient_client.connected:
             break
         test_status_count += 1
         if test_status_count > 5:

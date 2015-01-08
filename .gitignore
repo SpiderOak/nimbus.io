@@ -28,3 +28,10 @@ _testmain.go
 
 *.exe
 *.test
+
+
+src/github.com/*
+bin/*
+
+# dougfort 2014-05-22: this is for testing got go version
+data_writer/data_writer_run.sh

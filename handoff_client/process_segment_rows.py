@@ -153,7 +153,8 @@ def process_segment_rows(halt_event,
     prepare_ipc_path(rep_socket_uri)
 
     rep_socket = zeromq_context.socket(zmq.REP)
-    rep_socket.setsockopt(zmq.HWM, _socket_high_water_mark)
+    rep_socket.setsockopt(zmq.SNDHWM, _socket_high_water_mark)
+    rep_socket.setsockopt(zmq.RCVHWM, _socket_high_water_mark)
     log.info("binding rep socket to {0}".format(rep_socket_uri))
     rep_socket.bind(rep_socket_uri)
 

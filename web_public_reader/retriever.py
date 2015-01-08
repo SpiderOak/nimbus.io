@@ -8,11 +8,9 @@ from base64 import b64encode
 import httplib
 import logging
 import os
+import socket
 
 import urllib2
-
-import gevent
-import gevent.httplib
 
 from tools.data_definitions import block_size, \
         create_timestamp
@@ -386,9 +384,9 @@ class Retriever(object):
                     response.status_int = httplib.SERVICE_UNAVAILABLE
                     response.retry_after = _retrieve_retry_interval
                     break
-            except gevent.httplib.RequestFailed, instance:
-                message = "gevent.httplib.RequestFailed '{0}' '{1}'".format(
-                    instance.args, instance.message)
+            except (httplib.HTTPException, socket.error, ) as instance:
+                message = "{0}, '{1}'".format(
+                    instance.__class__.__name__, instance.message)
                 self._log.error(
                     "request {0}: exception {1}".format(
                     self.user_request_id, message))

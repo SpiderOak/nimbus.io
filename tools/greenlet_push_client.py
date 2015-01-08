@@ -7,7 +7,7 @@ The purpose is to have multiple clients pushing to a single PULL server
 """
 import logging
 
-from gevent_zeromq import zmq
+import zmq.green as zmq
 
 class GreenletPUSHClient(object):
     """

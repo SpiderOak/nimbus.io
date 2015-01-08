@@ -36,7 +36,7 @@ class ReplyPULLServer(object):
             prepare_ipc_path(address)
 
         self._pull_socket = context.socket(zmq.PULL)
-        self._pull_socket.setsockopt(zmq.HWM, _pull_hwm)
+        self._pull_socket.setsockopt(zmq.RCVHWM, _pull_hwm)
         self._log.debug("binding")
         self._pull_socket.bind(address)
 

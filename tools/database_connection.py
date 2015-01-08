@@ -15,6 +15,11 @@ central_database_name = "nimbusio_central"
 central_database_user = os.environ.get("NIMBUSIO_CENTRAL_USER", 
     "nimbusio_central_user")
 
+# allow an environment to specify (perhaps for each app) a different local
+# database username. if this is undefined, we fall back to the regular behavior
+# of constructing the local database username from the node name.
+local_database_user = os.environ.get("NIMBUSIO_LOCAL_USER", None)
+
 node_database_name_prefix = "nimbusio_node"
 node_database_user_prefix = "nimbusio_node_user"
 
@@ -182,6 +187,8 @@ def _node_database_name(node_name):
     return ".".join([node_database_name_prefix, node_name, ])
 
 def _node_database_user(node_name):
+    if local_database_user is not None:
+        return local_database_user 
     database_user = "_".join([node_database_user_prefix, node_name, ])
     database_user = database_user.replace("-", "_")
     return database_user

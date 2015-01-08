@@ -60,7 +60,7 @@ def _launch_database_pool_controller():
     args = [sys.executable, module_path, ]
 
     log.info("starting {0}".format(args))
-    return subprocess.Popen(args, stderr=subprocess.PIPE)
+    return subprocess.Popen(args)
 
 def _launch_io_controller():
     log = logging.getLogger("launch_io_controller")
@@ -70,7 +70,7 @@ def _launch_io_controller():
     args = [sys.executable, module_path, ]
 
     log.info("starting {0}".format(args))
-    return subprocess.Popen(args, stderr=subprocess.PIPE)
+    return subprocess.Popen(args)
 
 def _handle_ping(message):
     log = logging.getLogger("_handle_ping")

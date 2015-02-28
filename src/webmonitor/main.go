@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
 	"runtime"
 	"sync"
+	"syscall"
 )
 
 // main entry point for webmonitor
@@ -25,6 +27,13 @@ func main() {
 	}
 	file.Close()
 
+	// set up a signal handling channel
+	signalChannel := make(chan os.Signal)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+
+	// channel to signal end of job
+	haltChan := make(chan struct{})
+
 	// start a pinger for each config entry
 	log.Printf("debug: starting %d pingers", len(configSlice))
 	var waitgroup sync.WaitGroup
@@ -32,11 +41,19 @@ func main() {
 		waitgroup.Add(1)
 		go func(config Config) {
 			defer waitgroup.Done()
-			pinger(config)
+			pinger(haltChan, config)
 		}(config)
 	}
 
-	log.Printf("debug: waiting on pingers")
+	// wait for a signal, like SIGTERM
+	log.Printf("debug: main thread waiting for SIGTERM")
+	signal := <-signalChannel
+	log.Printf("info: terminated by signal %v", signal)
+
+	// notify the pingers by closing the channel
+	close(haltChan)
+
+	log.Printf("debug: waiting for pingers to halt")
 	waitgroup.Wait()
 
 	log.Printf("info: program terminates")

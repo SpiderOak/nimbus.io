@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"tools"
 )
 
 const pollingInterval = time.Duration(3) * time.Second
@@ -19,13 +21,39 @@ func pinger(haltChan <-chan struct{},
 	var err error
 	var timeoutInterval = time.Duration(config.TimeoutSeconds) * time.Second
 	var label = fmt.Sprintf("%s:%s", config.Address, config.Port)
+	var status string = "unknown"
+	var reachable bool = false
 
 	log.Printf("info: pinging %s %s every %v timeout interval = %v",
 		config.Host, label, pollingInterval, timeoutInterval)
 
 	for {
+		var newStatus string
 		if err = ping(config); err != nil {
-			log.Printf("%s: ping failed: %s", label, err)
+			newStatus = err.Error()
+		} else {
+			newStatus = "ok"
+		}
+		newReachable := newStatus == "ok"
+
+		if newStatus != status {
+			log.Printf("%s: changing status from %s to %s; reachable = %t",
+				label, status, newStatus, newReachable)
+			status = newStatus
+			if newReachable != reachable {
+				reachable = newReachable
+
+				hostAvail := tools.HostAvail{
+					Reachable:      reachable,
+					TimestampFloat: float64(tools.Timestamp().Unix())}
+
+				hostAvailforAddress := HostAvailForAddress{
+					HostAvail: hostAvail,
+					Address:   config.Address,
+					Port:      config.Port}
+
+				hostAvailChan <- hostAvailforAddress
+			}
 		}
 
 		time.Sleep(pollingInterval)
@@ -33,7 +61,7 @@ func pinger(haltChan <-chan struct{},
 		select {
 		case _, _ = <-haltChan:
 			// the only way we get something from this channel is when it closes
-			log.Printf("debug: haltChan closed")
+			log.Printf("%s: debug: haltChan closed", label)
 			return
 		default:
 		}

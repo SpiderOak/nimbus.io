@@ -14,6 +14,7 @@ func main() {
 	var err error
 	var file *os.File
 	var configSlice []Config
+	var hostAvailChan chan<- HostAvailForAddress
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
@@ -34,6 +35,11 @@ func main() {
 	// channel to signal end of job
 	haltChan := make(chan struct{})
 
+	// set up the redis sink
+	if hostAvailChan, err = NewRedisHostAvailSink(); err != nil {
+		log.Fatalf("critical: unable to create redis sink %s", err)
+	}
+
 	// start a pinger for each config entry
 	log.Printf("debug: starting %d pingers", len(configSlice))
 	var waitgroup sync.WaitGroup
@@ -41,7 +47,7 @@ func main() {
 		waitgroup.Add(1)
 		go func(config Config) {
 			defer waitgroup.Done()
-			pinger(haltChan, config)
+			pinger(haltChan, hostAvailChan, config)
 		}(config)
 	}
 
@@ -55,6 +61,8 @@ func main() {
 
 	log.Printf("debug: waiting for pingers to halt")
 	waitgroup.Wait()
+
+	close(hostAvailChan)
 
 	log.Printf("info: program terminates")
 }

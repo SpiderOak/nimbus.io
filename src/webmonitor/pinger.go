@@ -12,7 +12,10 @@ import (
 
 const pollingInterval = time.Duration(3) * time.Second
 
-func pinger(haltChan <-chan struct{}, config Config) {
+func pinger(haltChan <-chan struct{},
+	hostAvailChan chan<- HostAvailForAddress,
+	config Config) {
+
 	var err error
 	var timeoutInterval = time.Duration(config.TimeoutSeconds) * time.Second
 	var label = fmt.Sprintf("%s:%s", config.Address, config.Port)

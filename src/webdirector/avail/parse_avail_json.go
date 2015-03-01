@@ -2,15 +2,12 @@ package avail
 
 import (
 	"encoding/json"
+
+	"tools"
 )
 
-type HostAvail struct {
-	Reachable      bool    `json:"reachable"`
-	TimestampFloat float64 `json:"timestamp"`
-}
-
-func parseAvailJSON(rawData []byte) (HostAvail, error) {
-	var hostAvail HostAvail
+func parseAvailJSON(rawData []byte) (tools.HostAvail, error) {
+	var hostAvail tools.HostAvail
 	err := json.Unmarshal(rawData, &hostAvail)
 	return hostAvail, err
 }

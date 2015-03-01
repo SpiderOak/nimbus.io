@@ -4,6 +4,12 @@ import (
 	"fmt"
 )
 
+// HostAvail is encoded to JSON and stored/retrieved in the redis HASH
+type HostAvail struct {
+	Reachable      bool    `json:"reachable"`
+	TimestampFloat float64 `json:"timestamp"`
+}
+
 // RedisWebMonitorHashName returns the name of the redis HASH
 // for storing and retrieving web monitor availability information
 func RedisWebMonitorHashName(hostName string) string {

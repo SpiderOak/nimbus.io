@@ -1,7 +1,6 @@
 package avail
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/garyburd/redigo/redis"
@@ -27,7 +26,7 @@ func NewAvailability() (Availability, error) {
 		return a, err
 	}
 
-	a.RedisWebMonitorHash = fmt.Sprintf("nimbus.io.web_monitor.%s", hostName)
+	a.RedisWebMonitorHash = tools.RedisWebMonitorHashName(hostName)
 
 	a.HostResolver = tools.NewHostResolver()
 	if a.HostAddress, err = a.HostResolver.Lookup(hostName); err != nil {
@@ -51,7 +50,7 @@ func (a availability) AvailableHosts(hostNames []string, destPort string) (
 			continue
 		}
 
-		addressKey := fmt.Sprintf("%s:%s", address, destPort)
+		addressKey := tools.RedisWebMonitorHashKey(address, destPort)
 
 		availJSON, err := redis.Bytes(tools.RedisDo("HGET",
 			a.RedisWebMonitorHash, addressKey))

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 
@@ -19,20 +20,24 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	const bufferSize = 64 * 1024
 	var err error
 
+	request, err := http.ReadRequest(bufio.NewReaderSize(conn, bufferSize))
+	switch err {
+	case nil:
+	case io.EOF:
+		// some ha server is connecting to our port and then hanging up
+		return
+	default:
+		fog.Error("%s ReadRequest failed: %s", conn.RemoteAddr().String(), err)
+		return
+	}
+
 	requestID, err := tools.CreateUUID()
 	if err != nil {
 		fog.Error("%s tools.CreateUUID(): %s", conn.RemoteAddr().String(), err)
 		return
 	}
-	fog.Info("%s starts %s", requestID, conn.RemoteAddr().String())
 
-	request, err := http.ReadRequest(bufio.NewReaderSize(conn, bufferSize))
-	if err != nil {
-		fog.Error("%s %s ReadRequest failed: %s", requestID,
-			conn.RemoteAddr().String(), err)
-		fog.Info("%s aborts", requestID)
-		return
-	}
+	fog.Info("%s starts %s", requestID, conn.RemoteAddr().String())
 
 	// change the URL to point to our internal host
 	request.URL.Host, err = router.Route(requestID, request)

@@ -80,7 +80,7 @@ func parseRequest(request *http.Request) (ParsedRequest, error) {
 	parsedRequest.Key = pathKey
 
 	switch pathDir {
-	case "data/":
+	case "/data/":
 		if upperCaseMethod == "DELETE" {
 			parsedRequest.Type = DeleteKey
 			return parsedRequest, nil
@@ -100,7 +100,7 @@ func parseRequest(request *http.Request) (ParsedRequest, error) {
 			return parsedRequest, nil
 		}
 
-	case "conjoined/":
+	case "/conjoined/":
 		if upperCaseMethod != "POST" {
 			return parsedRequest, fmt.Errorf("%s invalid method %s for path %s",
 				parsedRequest.RequestID, request.Method, request.URL.Path)
@@ -133,8 +133,8 @@ func parseRequest(request *http.Request) (ParsedRequest, error) {
 		}
 
 	default:
-		return parsedRequest, fmt.Errorf("%s invalid path %s",
-			parsedRequest.RequestID, request.URL.Path)
+		return parsedRequest, fmt.Errorf("%s invalid path %s; (%s, %s)",
+			parsedRequest.RequestID, request.URL.Path, pathDir, pathKey)
 	}
 
 	return parsedRequest, fmt.Errorf("%s unparsable request; method %s; path %s",

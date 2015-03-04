@@ -13,7 +13,8 @@ func main() {
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
 
-	err = http.ListenAndServe(getListenAddress(), NewHandler())
+	http.Handle("/", NewHandler())
+	err = http.ListenAndServe(getListenAddress(), nil)
 
 	if err != nil {
 		log.Printf("error: program terminates %s")

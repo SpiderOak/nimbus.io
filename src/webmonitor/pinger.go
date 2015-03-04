@@ -78,7 +78,7 @@ func ping(config Config) error {
 	var body []byte
 	var matched bool
 
-	if strings.HasPrefix("/", config.Path) {
+	if strings.HasPrefix(config.Path, "/") {
 		path = config.Path[1:]
 	} else {
 		path = config.Path

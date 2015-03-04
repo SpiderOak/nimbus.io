@@ -36,6 +36,8 @@ var (
 
 func (r RequestType) String() string {
 	switch r {
+	case RespondToPing:
+		return "RespondToPing"
 	case ArchiveKey:
 		return "ArchiveKey"
 	case DeleteKey:
@@ -55,7 +57,9 @@ func parseRequest(request *http.Request) (ParsedRequest, error) {
 	var parsedRequest ParsedRequest
 	var err error
 
-	if request.Method == "GET" && request.URL.Path == "/ping" {
+	upperCaseMethod := strings.ToUpper(request.Method)
+
+	if upperCaseMethod == "GET" && request.URL.Path == "/ping" {
 		parsedRequest.Type = RespondToPing
 		return parsedRequest, nil
 	}
@@ -77,12 +81,12 @@ func parseRequest(request *http.Request) (ParsedRequest, error) {
 
 	switch pathDir {
 	case "data/":
-		if request.Method == "DELETE" {
+		if upperCaseMethod == "DELETE" {
 			parsedRequest.Type = DeleteKey
 			return parsedRequest, nil
 		}
 
-		if request.Method != "POST" {
+		if upperCaseMethod != "POST" {
 			return parsedRequest, fmt.Errorf("%s invalid method %s for path %s",
 				parsedRequest.RequestID, request.Method, request.URL.Path)
 		}
@@ -97,7 +101,7 @@ func parseRequest(request *http.Request) (ParsedRequest, error) {
 		}
 
 	case "conjoined/":
-		if request.Method != "POST" {
+		if upperCaseMethod != "POST" {
 			return parsedRequest, fmt.Errorf("%s invalid method %s for path %s",
 				parsedRequest.RequestID, request.Method, request.URL.Path)
 		}

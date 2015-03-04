@@ -6,11 +6,10 @@ import (
 )
 
 func respondToPing(responseWriter http.ResponseWriter,
-	request *http.Request, parsedRequest ParsedRequest) {
+	_ *http.Request, parsedRequest ParsedRequest) {
 
-	var err error
-
-	if _, err = responseWriter.Write([]byte("ok")); err != nil {
-		log.Printf("error: ping responseWriter.Write %s", err)
+	if _, err := responseWriter.Write([]byte("ok")); err != nil {
+		log.Printf("error: %s; error responseWriter.Write %s",
+			parsedRequest.Type, err)
 	}
 }

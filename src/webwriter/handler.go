@@ -29,7 +29,8 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	var parsedRequest ParsedRequest
 
 	if parsedRequest, err = parseRequest(request); err != nil {
-		log.Printf("error: unparsable request: %s", err)
+		log.Printf("error: unparsable request: %s, method='%s'", err,
+			request.Method)
 		http.Error(responseWriter, "unparsable request", http.StatusBadRequest)
 		return
 	}
@@ -40,16 +41,16 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 
 	switch parsedRequest.Type {
 	case RespondToPing:
-		go respondToPing(responseWriter, request, parsedRequest)
+		respondToPing(responseWriter, request, parsedRequest)
 	case ArchiveKey:
-		go archiveKey(responseWriter, request, parsedRequest)
+		archiveKey(responseWriter, request, parsedRequest)
 	case DeleteKey:
-		go deleteKey(responseWriter, request, parsedRequest)
+		deleteKey(responseWriter, request, parsedRequest)
 	case StartConjoined:
-		go startConjoined(responseWriter, request, parsedRequest)
+		startConjoined(responseWriter, request, parsedRequest)
 	case FinishConjoined:
-		go finishConjoined(responseWriter, request, parsedRequest)
+		finishConjoined(responseWriter, request, parsedRequest)
 	case AbortConjoined:
-		go abortConjoined(responseWriter, request, parsedRequest)
+		abortConjoined(responseWriter, request, parsedRequest)
 	}
 }

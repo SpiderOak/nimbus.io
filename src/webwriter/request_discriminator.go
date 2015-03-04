@@ -34,6 +34,23 @@ var (
 	validKeyRegexp        = regexp.MustCompile(`^\S+$`)
 )
 
+func (r RequestType) String() string {
+	switch r {
+	case ArchiveKey:
+		return "ArchiveKey"
+	case DeleteKey:
+		return "DeleteKey"
+	case StartConjoined:
+		return "StartConjoined"
+	case FinishConjoined:
+		return "FinishConjoined"
+	case AbortConjoined:
+		return "AbortConjoined"
+	default:
+		return fmt.Sprintf("unknown request (%d)", int64(r))
+	}
+}
+
 func parseRequest(request *http.Request) (ParsedRequest, error) {
 	var parsedRequest ParsedRequest
 	var err error

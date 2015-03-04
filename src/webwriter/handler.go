@@ -34,10 +34,22 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		return
 	}
 
-	log.Printf("debug: %s method=%s, collection=%s path=%s query=%s fragment=%s URI=%s %s",
+	log.Printf("debug: %s method=%s, collection=%s path=%s query=%s %s",
 		parsedRequest.RequestID, request.Method, parsedRequest.CollectionName,
-		request.URL.Path, request.URL.RawQuery, request.URL.Fragment,
-		request.RequestURI, request.RemoteAddr)
+		request.URL.Path, request.URL.RawQuery, request.RemoteAddr)
 
-	http.NotFound(responseWriter, request)
+	switch parsedRequest.Type {
+	case RespondToPing:
+		go respondToPing(responseWriter, request, parsedRequest)
+	case ArchiveKey:
+		go archiveKey(responseWriter, request, parsedRequest)
+	case DeleteKey:
+		go deleteKey(responseWriter, request, parsedRequest)
+	case StartConjoined:
+		go startConjoined(responseWriter, request, parsedRequest)
+	case FinishConjoined:
+		go finishConjoined(responseWriter, request, parsedRequest)
+	case AbortConjoined:
+		go abortConjoined(responseWriter, request, parsedRequest)
+	}
 }

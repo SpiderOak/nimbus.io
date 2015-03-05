@@ -43,6 +43,7 @@ func init() {
 	var headerMap map[string][]string
 
 	_ = os.Setenv("NIMBUSIO_MANAGEMENT_API_REQUEST_DEST", mgmtApiHost)
+	serviceDomain = "servicedomain"
 
 	validDomain = fmt.Sprintf("%s.%s", validCollection, serviceDomain)
 	validHosts = []string{"host01", "host02", "host03", "host04",
@@ -63,7 +64,7 @@ func init() {
 	routerTestData = append(routerTestData,
 		routerTestEntry{
 			testName:         "invalid host",
-			method:           "",
+			method:           "POST",
 			uri:              "",
 			body:             nil,
 			headers:          headerMap,

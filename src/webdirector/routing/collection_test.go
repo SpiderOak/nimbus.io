@@ -15,6 +15,7 @@ var (
 )
 
 func init() {
+	serviceDomain = "servicedomain"
 	parseCollectionTestData = []parseCollectionTestEntry{
 		parseCollectionTestEntry{"", ""},
 		parseCollectionTestEntry{serviceDomain, ""},

@@ -73,14 +73,15 @@ func handleConnection(router routing.Router, conn net.Conn) {
 	}
 	defer internalConn.Close()
 
-	err = request.Write(bufio.NewWriterSize(internalConn, bufferSize))
-	if err != nil {
+	writer := bufio.NewWriterSize(internalConn, bufferSize)
+	if err = request.Write(writer); err != nil {
 		fog.Error("%s %s, %s request.Write: %s",
 			requestID, request.Method, request.URL, err)
 		sendErrorReply(conn, http.StatusInternalServerError, err.Error())
 		fog.Info("%s aborts", requestID)
 		return
 	}
+	writer.Flush()
 	request.Body.Close()
 
 	response, err := http.ReadResponse(bufio.NewReaderSize(internalConn, bufferSize),

@@ -25,6 +25,7 @@ const (
 func main() {
 	var err error
 
+	fog.SetFlags(0) // suppress timestamp, svlogd handles that
 	fog.Info("program starts")
 
 	// set up a signal handling channel

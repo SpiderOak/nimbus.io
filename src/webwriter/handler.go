@@ -35,9 +35,12 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		return
 	}
 
-	log.Printf("debug: %s method=%s, collection=%s path=%s query=%s %s",
-		parsedRequest.RequestID, request.Method, parsedRequest.CollectionName,
-		request.URL.Path, request.URL.RawQuery, request.RemoteAddr)
+	if request.URL.Path != "/ping" {
+		log.Printf("debug: %s method=%s, collection=%s path=%s query=%s %s",
+			parsedRequest.RequestID, request.Method,
+			parsedRequest.CollectionName, request.URL.Path,
+			request.URL.RawQuery, request.RemoteAddr)
+	}
 
 	switch parsedRequest.Type {
 	case RespondToPing:

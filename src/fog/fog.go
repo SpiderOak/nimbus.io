@@ -24,6 +24,11 @@ func init() {
 	log.SetFlags(log.LstdFlags)
 }
 
+// Set the log flags
+func SetFlags(flags int) {
+	log.SetFlags(flags)
+}
+
 // Debug prepends literal 'DEBUG' to log message
 func Debug(text string, args ...interface{}) {
 	log.Printf("%s %s", DebugPrefix, fmt.Sprintf(text, args...))

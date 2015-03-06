@@ -103,7 +103,6 @@ func main() {
 			running = false
 		case conn, ok := <-listenerChan:
 			if ok {
-				fog.Info("connection from %s", conn.RemoteAddr().String())
 				go handleConnection(router, conn)
 			} else {
 				running = false

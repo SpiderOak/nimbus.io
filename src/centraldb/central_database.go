@@ -10,21 +10,6 @@ import (
 	_ "github.com/lib/pq"
 )
 
-// OpenCentralDatabase returns a *sql.DB pointer.
-// This is NOT a database connection
-// see http://go-database-sql.org/accessing.html
-func OpenCentralDatabase() (*sql.DB, error) {
-	var err error
-
-	if sqlDB == nil {
-		if sqlDB, err = openCentralDatabase(); err != nil {
-			return nil, err
-		}
-	}
-
-	return sqlDB, err
-}
-
 func openCentralDatabase() (*sql.DB, error) {
 	databaseName := "nimbusio_central"
 

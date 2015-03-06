@@ -1,16 +1,16 @@
-package main
+package handler
 
 import (
 	"log"
 	"net/http"
 )
 
-func abortConjoined(responseWriter http.ResponseWriter,
+func deleteKey(responseWriter http.ResponseWriter,
 	request *http.Request, parsedRequest ParsedRequest) {
 
-	log.Printf("debug: %s; %s %s %s %d", parsedRequest.Type,
+	log.Printf("debug: %s; %s %s %s", parsedRequest.Type,
 		parsedRequest.RequestID, parsedRequest.CollectionName,
-		parsedRequest.Key, parsedRequest.UnifiedID)
+		parsedRequest.Key)
 
 	http.Error(responseWriter, "Not implemented",
 		http.StatusInternalServerError)

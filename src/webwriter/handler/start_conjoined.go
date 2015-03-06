@@ -1,11 +1,11 @@
-package main
+package handler
 
 import (
 	"log"
 	"net/http"
 )
 
-func deleteKey(responseWriter http.ResponseWriter,
+func startConjoined(responseWriter http.ResponseWriter,
 	request *http.Request, parsedRequest ParsedRequest) {
 
 	log.Printf("debug: %s; %s %s %s", parsedRequest.Type,

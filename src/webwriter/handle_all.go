@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net/http"
+
+	"webwriter/handler"
 )
 
 type handlerStruct struct {
@@ -44,16 +46,16 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 
 	switch parsedRequest.Type {
 	case RespondToPing:
-		respondToPing(responseWriter, request, parsedRequest)
+		handler.respondToPing(responseWriter, request, parsedRequest)
 	case ArchiveKey:
-		archiveKey(responseWriter, request, parsedRequest)
+		handler.archiveKey(responseWriter, request, parsedRequest)
 	case DeleteKey:
-		deleteKey(responseWriter, request, parsedRequest)
+		handler.deleteKey(responseWriter, request, parsedRequest)
 	case StartConjoined:
-		startConjoined(responseWriter, request, parsedRequest)
+		handler.startConjoined(responseWriter, request, parsedRequest)
 	case FinishConjoined:
-		finishConjoined(responseWriter, request, parsedRequest)
+		handler.finishConjoined(responseWriter, request, parsedRequest)
 	case AbortConjoined:
-		abortConjoined(responseWriter, request, parsedRequest)
+		handler.abortConjoined(responseWriter, request, parsedRequest)
 	}
 }

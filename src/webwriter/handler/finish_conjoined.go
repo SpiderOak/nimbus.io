@@ -3,11 +3,13 @@ package handler
 import (
 	"log"
 	"net/http"
+
+	"webwriter/req"
 )
 
-func finishConjoined(responseWriter http.ResponseWriter,
+func FinishConjoined(responseWriter http.ResponseWriter,
+	request *http.Request, parsedRequest req.ParsedRequest) {
 
-	request *http.Request, parsedRequest ParsedRequest) {
 	log.Printf("debug: %s; %s %s %s %d", parsedRequest.Type,
 		parsedRequest.RequestID, parsedRequest.CollectionName,
 		parsedRequest.Key, parsedRequest.UnifiedID)

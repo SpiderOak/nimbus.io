@@ -3,10 +3,12 @@ package handler
 import (
 	"log"
 	"net/http"
+
+	"webwriter/req"
 )
 
-func abortConjoined(responseWriter http.ResponseWriter,
-	request *http.Request, parsedRequest ParsedRequest) {
+func AbortConjoined(responseWriter http.ResponseWriter,
+	request *http.Request, parsedRequest req.ParsedRequest) {
 
 	log.Printf("debug: %s; %s %s %s %d", parsedRequest.Type,
 		parsedRequest.RequestID, parsedRequest.CollectionName,

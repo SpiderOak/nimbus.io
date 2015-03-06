@@ -3,10 +3,12 @@ package handler
 import (
 	"log"
 	"net/http"
+
+	"webwriter/req"
 )
 
-func deleteKey(responseWriter http.ResponseWriter,
-	request *http.Request, parsedRequest ParsedRequest) {
+func DeleteKey(responseWriter http.ResponseWriter,
+	request *http.Request, parsedRequest req.ParsedRequest) {
 
 	log.Printf("debug: %s; %s %s %s", parsedRequest.Type,
 		parsedRequest.RequestID, parsedRequest.CollectionName,

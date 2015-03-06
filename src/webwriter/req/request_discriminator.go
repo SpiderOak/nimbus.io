@@ -1,4 +1,4 @@
-package main
+package req
 
 import (
 	"fmt"
@@ -53,7 +53,7 @@ func (r RequestType) String() string {
 	}
 }
 
-func parseRequest(request *http.Request) (ParsedRequest, error) {
+func ParseRequest(request *http.Request) (ParsedRequest, error) {
 	var parsedRequest ParsedRequest
 	var err error
 

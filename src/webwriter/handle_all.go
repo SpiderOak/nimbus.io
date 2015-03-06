@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"webwriter/handler"
+	"webwriter/req"
 )
 
 type handlerStruct struct {
@@ -28,9 +29,9 @@ func NewHandler() http.Handler {
 func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	request *http.Request) {
 	var err error
-	var parsedRequest ParsedRequest
+	var parsedRequest req.ParsedRequest
 
-	if parsedRequest, err = parseRequest(request); err != nil {
+	if parsedRequest, err = req.ParseRequest(request); err != nil {
 		log.Printf("error: unparsable request: %s, method='%s'", err,
 			request.Method)
 		http.Error(responseWriter, "unparsable request", http.StatusBadRequest)
@@ -45,17 +46,17 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	}
 
 	switch parsedRequest.Type {
-	case RespondToPing:
-		handler.respondToPing(responseWriter, request, parsedRequest)
-	case ArchiveKey:
-		handler.archiveKey(responseWriter, request, parsedRequest)
-	case DeleteKey:
-		handler.deleteKey(responseWriter, request, parsedRequest)
-	case StartConjoined:
-		handler.startConjoined(responseWriter, request, parsedRequest)
-	case FinishConjoined:
-		handler.finishConjoined(responseWriter, request, parsedRequest)
-	case AbortConjoined:
-		handler.abortConjoined(responseWriter, request, parsedRequest)
+	case req.RespondToPing:
+		handler.RespondToPing(responseWriter, request, parsedRequest)
+	case req.ArchiveKey:
+		handler.ArchiveKey(responseWriter, request, parsedRequest)
+	case req.DeleteKey:
+		handler.DeleteKey(responseWriter, request, parsedRequest)
+	case req.StartConjoined:
+		handler.StartConjoined(responseWriter, request, parsedRequest)
+	case req.FinishConjoined:
+		handler.FinishConjoined(responseWriter, request, parsedRequest)
+	case req.AbortConjoined:
+		handler.AbortConjoined(responseWriter, request, parsedRequest)
 	}
 }

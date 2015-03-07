@@ -57,7 +57,8 @@ func NewCentralDB() CentralDB {
 	          order by node_number_in_cluster`,
 		"node-ids-for-cluster": `select id, name from nimbusio_central.node where cluster_id = (
 			select id from nimbusio_central.cluster where name = $1`,
-		"collection-row": `select * from nimbusio_central.collection where name = $1 
+		"collection-row": `select id, name, customer_id, cluster_id, versioning, access_control, creation_time
+			from nimbusio_central.collection where name = $1 
             and deletion_time is null`}
 
 	requestChan := make(chan interface{}, requestChanCapacity)
@@ -292,6 +293,7 @@ func handleGetCollectionRow(request getCollectionRowRequest) {
 	var collectionRow types.CollectionRow
 	var marshalledCollectionRow []byte
 	var row *sql.Row
+	var accessControl sql.NullString
 	var err error
 
 	memcacheKey := fmt.Sprintf(memcacheKeyTemplate, request.collectionName)
@@ -328,14 +330,16 @@ func handleGetCollectionRow(request getCollectionRowRequest) {
 		&collectionRow.CustomerID,
 		&collectionRow.ClusterID,
 		&collectionRow.Versioning,
-		&collectionRow.AccessControl,
-		&collectionRow.CreationTime,
-		&collectionRow.DeletionTime)
+		&accessControl,
+		&collectionRow.CreationTime)
 	if err != nil {
 		log.Printf("error: querying %s; %s", stmtName, err)
 		removeStmt(stmtName, stmt)
 		request.resultChan <- DatabaseError
 		return
+	}
+	if accessControl.Valid {
+		collectionRow.AccessControl = accessControl.String
 	}
 
 	marshalledCollectionRow, err = json.Marshal(collectionRow)

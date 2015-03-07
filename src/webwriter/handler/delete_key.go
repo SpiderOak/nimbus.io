@@ -1,19 +1,22 @@
 package handler
 
 import (
+	"fmt"
 	"log"
 	"net/http"
+
+	"types"
 
 	"webwriter/req"
 )
 
 func DeleteKey(responseWriter http.ResponseWriter,
-	request *http.Request, parsedRequest req.ParsedRequest) {
+	request *http.Request, parsedRequest req.ParsedRequest,
+	collectionRow types.CollectionRow) error {
 
 	log.Printf("debug: %s; %s %s %s", parsedRequest.Type,
 		parsedRequest.RequestID, parsedRequest.CollectionName,
 		parsedRequest.Key)
 
-	http.Error(responseWriter, "Not implemented",
-		http.StatusInternalServerError)
+	return fmt.Errorf("%s not Implemented", parsedRequest.Type)
 }

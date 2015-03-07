@@ -19,7 +19,7 @@ type handlerEntry struct {
 
 type handlerStruct struct {
 	CentralDB centraldb.CentralDB
-	Dispatch  map[parsedRequest.Type]handlerEntry
+	Dispatch  map[req.RequestType]handlerEntry
 }
 
 // NewHandler returns an entity that implements the http.Handler interface
@@ -92,8 +92,18 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	collectionRow, err = h.CentralDB.GetCollectionRow(
 		parsedRequest.CollectionName)
 	if err != nil {
-		log.Printf("error: unknown collection: %s", collectionName)
+		log.Printf("error: unknown collection: %s",
+			parsedRequest.CollectionName)
 		http.Error(responseWriter, "unknown collection", http.StatusNotFound)
+		return
+	}
+
+	err = dispatchEntry.Func(responseWriter, request, parsedRequest,
+		collectionRow)
+	if err != nil {
+		log.Printf("error: %s handler failed: %s", parsedRequest.Type, err)
+		http.Error(responseWriter, "handler failed",
+			http.StatusInternalServerError)
 		return
 	}
 }

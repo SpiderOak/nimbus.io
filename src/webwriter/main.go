@@ -15,7 +15,7 @@ func main() {
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
 
-	centralDB := centralDB.NewCentralDB()
+	centralDB := centraldb.NewCentralDB()
 
 	http.Handle("/", NewHandler(centralDB))
 	err = http.ListenAndServe(getListenAddress(), nil)

@@ -1,17 +1,21 @@
 package handler
 
 import (
-	"log"
+	"fmt"
 	"net/http"
+
+	"types"
 
 	"webwriter/req"
 )
 
 func RespondToPing(responseWriter http.ResponseWriter,
-	_ *http.Request, parsedRequest req.ParsedRequest) {
+	_ *http.Request, parsedRequest req.ParsedRequest,
+	collectionRow types.CollectionRow) error {
 
 	if _, err := responseWriter.Write([]byte("ok")); err != nil {
-		log.Printf("error: %s; error responseWriter.Write %s",
-			parsedRequest.Type, err)
+		return fmt.Errorf("responseWriter.Write %s", err)
 	}
+
+	return nil
 }

@@ -1,5 +1,9 @@
 package centraldb
 
+import (
+	"types"
+)
+
 type CentralDB interface {
 
 	// Close releases the resources held by the CentralDB
@@ -12,4 +16,7 @@ type CentralDB interface {
 	// GetNodeIDsForCluster returns a map of node id keyed by node name,
 	// based on the cluster name
 	GetNodeIDsForCluster(clusterName string) (map[string]uint32, error)
+
+	// GetCollectionRow returns the database row for the collection
+	GetCollectionRow(collectionName string) (types.CollectionRow, error)
 }

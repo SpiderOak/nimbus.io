@@ -4,6 +4,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+
+	"centraldb"
 )
 
 // main entry point for webdirector
@@ -13,7 +15,9 @@ func main() {
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
 
-	http.Handle("/", NewHandler())
+	centralDB := centralDB.NewCentralDB()
+
+	http.Handle("/", NewHandler(centralDB))
 	err = http.ListenAndServe(getListenAddress(), nil)
 
 	if err != nil {

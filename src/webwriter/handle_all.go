@@ -4,17 +4,42 @@ import (
 	"log"
 	"net/http"
 
+	"auth"
+	"centraldb"
+	"types"
+
 	"webwriter/handler"
 	"webwriter/req"
 )
 
+type handlerEntry struct {
+	Func   handler.RequestHandler
+	Access auth.AccessType
+}
+
 type handlerStruct struct {
+	CentralDB centraldb.CentralDB
+	Dispatch  map[parsedRequest.Type]handlerEntry
 }
 
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
-func NewHandler() http.Handler {
-	return &handlerStruct{}
+func NewHandler(centralDB centraldb.CentralDB) http.Handler {
+	h := handlerStruct{CentralDB: centralDB}
+	h.Dispatch = map[req.RequestType]handlerEntry{
+		req.RespondToPing: handlerEntry{Func: handler.RespondToPing,
+			Access: auth.None},
+		req.ArchiveKey: handlerEntry{Func: handler.ArchiveKey,
+			Access: auth.Write},
+		req.DeleteKey: handlerEntry{Func: handler.DeleteKey,
+			Access: auth.Delete},
+		req.StartConjoined: handlerEntry{Func: handler.StartConjoined,
+			Access: auth.Write},
+		req.FinishConjoined: handlerEntry{Func: handler.FinishConjoined,
+			Access: auth.Write},
+		req.AbortConjoined: handlerEntry{Func: handler.AbortConjoined,
+			Access: auth.Write}}
+	return &h
 }
 
 // ServeHTTP implements the http.Handler interface
@@ -30,6 +55,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	request *http.Request) {
 	var err error
 	var parsedRequest req.ParsedRequest
+	var collectionRow types.CollectionRow
 
 	if parsedRequest, err = req.ParseRequest(request); err != nil {
 		log.Printf("error: unparsable request: %s, method='%s'", err,
@@ -45,18 +71,29 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 			request.URL.RawQuery, request.RemoteAddr)
 	}
 
-	switch parsedRequest.Type {
-	case req.RespondToPing:
-		handler.RespondToPing(responseWriter, request, parsedRequest)
-	case req.ArchiveKey:
-		handler.ArchiveKey(responseWriter, request, parsedRequest)
-	case req.DeleteKey:
-		handler.DeleteKey(responseWriter, request, parsedRequest)
-	case req.StartConjoined:
-		handler.StartConjoined(responseWriter, request, parsedRequest)
-	case req.FinishConjoined:
-		handler.FinishConjoined(responseWriter, request, parsedRequest)
-	case req.AbortConjoined:
-		handler.AbortConjoined(responseWriter, request, parsedRequest)
+	dispatchEntry, ok := h.Dispatch[parsedRequest.Type]
+	if !ok {
+		// this shouldn't happen
+		log.Printf("error: unknown request type: %s", parsedRequest.Type)
+		http.Error(responseWriter, "unknown request type",
+			http.StatusInternalServerError)
+		return
+	}
+
+	if dispatchEntry.Access == auth.None {
+		err = dispatchEntry.Func(responseWriter, request, parsedRequest,
+			types.CollectionRow{})
+		if err != nil {
+			log.Printf("error: ping %s", err)
+		}
+		return
+	}
+
+	collectionRow, err = h.CentralDB.GetCollectionRow(
+		parsedRequest.CollectionName)
+	if err != nil {
+		log.Printf("error: unknown collection: %s", collectionName)
+		http.Error(responseWriter, "unknown collection", http.StatusNotFound)
+		return
 	}
 }

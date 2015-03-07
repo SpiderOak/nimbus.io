@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/bradfitz/gomemcache/memcache"
 
-	"fog"
 	"tools"
+	"types"
 )
 
 const (
@@ -29,6 +30,11 @@ type getHostsForCollectionRequest struct {
 type getNodeIDsForClusterRequest struct {
 	clusterName string
 	resultChan  chan<- interface{}
+}
+
+type getCollectionRowRequest struct {
+	collectionName string
+	resultChan     chan<- interface{}
 }
 
 var (
@@ -50,7 +56,9 @@ func NewCentralDB() CentralDB {
 				where name = $1 and deletion_time is null)
 	          order by node_number_in_cluster`,
 		"node-ids-for-cluster": `select id, name from nimbusio_central.node where cluster_id = (
-			select id from nimbusio_central.cluster where name = $1`}
+			select id from nimbusio_central.cluster where name = $1`,
+		"collection-row": `select * from nimbusio_central.collection where name = $1 
+            and deletion_time is null`}
 
 	requestChan := make(chan interface{}, requestChanCapacity)
 	i.requestChan = requestChan
@@ -66,7 +74,7 @@ func NewCentralDB() CentralDB {
 			// check for this
 			if sqlDB == nil {
 				if sqlDB, err = openCentralDatabase(); err != nil {
-					fog.Error("central db: error in Open: %s", err)
+					log.Printf("error: central db: error in Open: %s", err)
 				}
 			}
 
@@ -74,7 +82,7 @@ func NewCentralDB() CentralDB {
 			// to verify
 			if sqlDB != nil {
 				if err = sqlDB.Ping(); err != nil {
-					fog.Error("central db: error in Ping: %s", err)
+					log.Printf("error: central db: error in Ping: %s", err)
 					closeDB()
 				}
 			}
@@ -84,12 +92,14 @@ func NewCentralDB() CentralDB {
 				handleGetHostsForCollection(request)
 			case getNodeIDsForClusterRequest:
 				handleGetNodeIDsForCluster(request)
+			case getCollectionRowRequest:
+				handleGetCollectionRow(request)
 			default:
-				fog.Error("central db: unknown request type %T %q",
+				log.Printf("error: central db: unknown request type %T %q",
 					request, request)
 			}
 		}
-		fog.Debug("central db: end request loop")
+		log.Printf("debug: central db: end request loop")
 		closeDB()
 	}()
 
@@ -120,7 +130,7 @@ func closeDB() {
 }
 
 func handleGetHostsForCollection(request getHostsForCollectionRequest) {
-	fog.Debug("central db: handleGetHostsForCollection(%s)",
+	log.Printf("debug: central db: handleGetHostsForCollection(%s)",
 		request.collectionName)
 	const stmtName = "hosts-for-collection"
 	const memcacheKeyTemplate = "nimbusio_central_hosts_for_%s"
@@ -133,12 +143,12 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 
 	item, err := memcacheClient.Get(memcacheKey)
 	if err != nil {
-		fog.Warn("unable to Get %s, %s", memcacheKey, err)
+		log.Printf("warning: unable to Get %s, %s", memcacheKey, err)
 	} else {
 		marshalledHostnames := item.Value
 		err = json.Unmarshal(marshalledHostnames, &hostNames)
 		if err != nil {
-			fog.Warn("unable to unmarshal %s, %s", memcacheKey, err)
+			log.Printf("warning: unable to unmarshal %s, %s", memcacheKey, err)
 		} else {
 			request.resultChan <- hostNames
 			return
@@ -152,14 +162,14 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 
 	stmt, err := getStmt(stmtName)
 	if err != nil {
-		fog.Error("Error preparing %s; %s", stmtName, err)
+		log.Printf("error: preparing %s; %s", stmtName, err)
 		request.resultChan <- DatabaseError
 		return
 	}
 
 	rows, err = stmt.Query(request.collectionName)
 	if err != nil {
-		fog.Error("Error querying %s; %s", stmtName, err)
+		log.Printf("error: querying %s; %s", stmtName, err)
 		removeStmt(stmtName, stmt)
 		request.resultChan <- DatabaseError
 		return
@@ -169,7 +179,7 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 	for rows.Next() {
 		var hostName string
 		if err = rows.Scan(&hostName); err != nil {
-			fog.Error("Error scanning %s; %s", stmtName, err)
+			log.Printf("error: scanning %s; %s", stmtName, err)
 			request.resultChan <- DatabaseError
 			return
 		}
@@ -177,19 +187,19 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 	}
 
 	if err = rows.Err(); err != nil {
-		fog.Error("rows.Err %s; %s", stmtName, err)
+		log.Printf("error: rows.Err %s; %s", stmtName, err)
 		request.resultChan <- DatabaseError
 		return
 	}
 
 	marshalledHostnames, err = json.Marshal(hostNames)
 	if err != nil {
-		fog.Warn("unable to marshal %q: %s", hostNames, err)
+		log.Printf("warning: unable to marshal %q: %s", hostNames, err)
 	} else {
 		err := memcacheClient.Set(&memcache.Item{Key: memcacheKey,
 			Value: marshalledHostnames})
 		if err != nil {
-			fog.Warn("unable to Set %s, %s", memcacheKey, err)
+			log.Printf("warning: unable to Set %s, %s", memcacheKey, err)
 		}
 	}
 
@@ -197,7 +207,7 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 }
 
 func handleGetNodeIDsForCluster(request getNodeIDsForClusterRequest) {
-	fog.Debug("central db: handleGetNodeIDsForCluster(%s)",
+	log.Printf("debug: central db: handleGetNodeIDsForCluster(%s)",
 		request.clusterName)
 	const stmtName = "node-ids-for-cluster"
 	const memcacheKeyTemplate = "nimbusio_node_ids_for_%s"
@@ -210,12 +220,12 @@ func handleGetNodeIDsForCluster(request getNodeIDsForClusterRequest) {
 
 	item, err := memcacheClient.Get(memcacheKey)
 	if err != nil {
-		fog.Warn("unable to Get %s, %s", memcacheKey, err)
+		log.Printf("warning: unable to Get %s, %s", memcacheKey, err)
 	} else {
 		marshalledNodeIDMap := item.Value
 		err = json.Unmarshal(marshalledNodeIDMap, &nodeIDMap)
 		if err != nil {
-			fog.Warn("unable to unmarshal %s, %s", memcacheKey, err)
+			log.Printf("warning: unable to unmarshal %s, %s", memcacheKey, err)
 		} else {
 			request.resultChan <- nodeIDMap
 			return
@@ -229,14 +239,14 @@ func handleGetNodeIDsForCluster(request getNodeIDsForClusterRequest) {
 
 	stmt, err := getStmt(stmtName)
 	if err != nil {
-		fog.Error("Error preparing %s; %s", stmtName, err)
+		log.Printf("error: preparing %s; %s", stmtName, err)
 		request.resultChan <- DatabaseError
 		return
 	}
 
 	rows, err = stmt.Query(request.clusterName)
 	if err != nil {
-		fog.Error("Error querying %s; %s", stmtName, err)
+		log.Printf("error: querying %s; %s", stmtName, err)
 		removeStmt(stmtName, stmt)
 		request.resultChan <- DatabaseError
 		return
@@ -247,7 +257,7 @@ func handleGetNodeIDsForCluster(request getNodeIDsForClusterRequest) {
 		var nodeID uint32
 		var nodeName string
 		if err := rows.Scan(&nodeID, &nodeName); err != nil {
-			fog.Error("Error scanning %s; %s", stmtName, err)
+			log.Printf("error: scanning %s; %s", stmtName, err)
 			request.resultChan <- DatabaseError
 			return
 		}
@@ -255,23 +265,91 @@ func handleGetNodeIDsForCluster(request getNodeIDsForClusterRequest) {
 	}
 
 	if err = rows.Err(); err != nil {
-		fog.Error("rows.Err %s; %s", stmtName, err)
+		log.Printf("error: rows.Err %s; %s", stmtName, err)
 		request.resultChan <- DatabaseError
 		return
 	}
 
 	marshalledNodeIDMap, err = json.Marshal(nodeIDMap)
 	if err != nil {
-		fog.Warn("unable to marshal %q: %s", nodeIDMap, err)
+		log.Printf("warning: unable to marshal %q: %s", nodeIDMap, err)
 	} else {
 		err := memcacheClient.Set(&memcache.Item{Key: memcacheKey,
 			Value: marshalledNodeIDMap})
 		if err != nil {
-			fog.Warn("unable to Set %s, %s", memcacheKey, err)
+			log.Printf("warning: unable to Set %s, %s", memcacheKey, err)
 		}
 	}
 
 	request.resultChan <- nodeIDMap
+}
+
+func handleGetCollectionRow(request getCollectionRowRequest) {
+	log.Printf("debug: central db: handleGetCollectionRow(%s)",
+		request.collectionName)
+	const stmtName = "collection-row"
+	const memcacheKeyTemplate = "nimbusio_collection_row_for_%s"
+	var collectionRow types.CollectionRow
+	var marshalledCollectionRow []byte
+	var row *sql.Row
+	var err error
+
+	memcacheKey := fmt.Sprintf(memcacheKeyTemplate, request.collectionName)
+
+	item, err := memcacheClient.Get(memcacheKey)
+	if err != nil {
+		log.Printf("warning: unable to Get %s, %s", memcacheKey, err)
+	} else {
+		marshalledCollectionRow := item.Value
+		err = json.Unmarshal(marshalledCollectionRow, &collectionRow)
+		if err != nil {
+			log.Printf("warning: unable to unmarshal %s, %s", memcacheKey, err)
+		} else {
+			request.resultChan <- collectionRow
+			return
+		}
+	}
+
+	if sqlDB == nil {
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	stmt, err := getStmt(stmtName)
+	if err != nil {
+		log.Printf("error: preparing %s; %s", stmtName, err)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	row = stmt.QueryRow(request.collectionName)
+	err = row.Scan(&collectionRow.ID,
+		&collectionRow.Name,
+		&collectionRow.CustomerID,
+		&collectionRow.ClusterID,
+		&collectionRow.Versioning,
+		&collectionRow.AccessControl,
+		&collectionRow.CreationTime,
+		&collectionRow.DeletionTime)
+	if err != nil {
+		log.Printf("error: querying %s; %s", stmtName, err)
+		removeStmt(stmtName, stmt)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	marshalledCollectionRow, err = json.Marshal(collectionRow)
+	if err != nil {
+		log.Printf("warning: unable to marshal %q: %s", collectionRow, err)
+	} else {
+		err := memcacheClient.Set(&memcache.Item{Key: memcacheKey,
+			Value: marshalledCollectionRow})
+		if err != nil {
+			log.Printf("warning: unable to Set %s, %s", memcacheKey, err)
+		}
+	}
+
+	request.resultChan <- collectionRow
 }
 
 func getStmt(name string) (*sql.Stmt, error) {
@@ -292,20 +370,20 @@ func getStmt(name string) (*sql.Stmt, error) {
 
 func removeStmt(name string, stmt *sql.Stmt) {
 	if err := stmt.Close(); err != nil {
-		fog.Warn("error closing statement %s; %s",
+		log.Printf("warning: error closing statement %s; %s",
 			name, err)
 	}
 	delete(stmtMap, name)
 }
 
 func (i centralDBImpl) Close() {
-	fog.Debug("central db: Close")
+	log.Printf("debug: central db: Close")
 	close(i.requestChan)
 }
 
 func (i centralDBImpl) GetHostsForCollection(collectionName string) (
 	[]string, error) {
-	fog.Debug("central db: GetHostsForCollection(%s)", collectionName)
+	log.Printf("debug: central db: GetHostsForCollection(%s)", collectionName)
 
 	resultChan := make(chan interface{})
 	request := getHostsForCollectionRequest{collectionName: collectionName,
@@ -320,13 +398,14 @@ func (i centralDBImpl) GetHostsForCollection(collectionName string) (
 		return result, nil
 	}
 
-	fog.Error("GetHostsForCollection: unexpected result %T, %q", rawResult, rawResult)
+	log.Printf("error: GetHostsForCollection: unexpected result %T, %q",
+		rawResult, rawResult)
 	return nil, fmt.Errorf("Internal error in %s", "GetHostsForCollection")
 }
 
 func (i centralDBImpl) GetNodeIDsForCluster(clusterName string) (
 	map[string]uint32, error) {
-	fog.Debug("central db: GetNodeIDsForCluster(%s)", clusterName)
+	log.Printf("debug: central db: GetNodeIDsForCluster(%s)", clusterName)
 
 	resultChan := make(chan interface{})
 	request := getNodeIDsForClusterRequest{clusterName: clusterName,
@@ -341,6 +420,32 @@ func (i centralDBImpl) GetNodeIDsForCluster(clusterName string) (
 		return result, nil
 	}
 
-	fog.Error("GetNodeIDsForCluster: unexpected result %T, %q", rawResult, rawResult)
+	log.Printf("error: GetNodeIDsForCluster: unexpected result %T, %q",
+		rawResult, rawResult)
 	return nil, fmt.Errorf("Internal error in %s", "GetNodeIDsForCluster")
+}
+
+// GetCollectionRow returns the database row for the collection
+func (i centralDBImpl) GetCollectionRow(collectionName string) (
+	types.CollectionRow, error) {
+	log.Printf("debug: central db: GetCollectionRow(%s)", collectionName)
+
+	resultChan := make(chan interface{})
+	request := getCollectionRowRequest{collectionName: collectionName,
+		resultChan: resultChan}
+
+	i.requestChan <- request
+	rawResult := <-resultChan
+	switch result := rawResult.(type) {
+	case error:
+		return types.CollectionRow{}, result
+	case types.CollectionRow:
+		return result, nil
+	}
+
+	log.Printf("error: GetCollectionRow: unexpected result %T, %q",
+		rawResult, rawResult)
+	return types.CollectionRow{},
+		fmt.Errorf("Internal error in %s", "GetCollectionRow")
+
 }

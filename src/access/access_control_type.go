@@ -190,6 +190,17 @@ func (a AccessControlEntry) Equal(b AccessControlEntry) bool {
 			return false
 		}
 
+		for i := 0; i < len(a.IPv4WhiteList); i++ {
+			if a.IPv4WhiteList[i].String() != b.IPv4WhiteList[i].String() {
+				log.Printf("debug: whitelist #%d mismatch %s != %s",
+					i+1, a.IPv4WhiteList[i].String(), b.IPv4WhiteList[i].String())
+				return false
+			}
+		}
+	} else {
+		if b.IPv4WhiteList != nil {
+			return false
+		}
 	}
 
 	return true
@@ -265,6 +276,11 @@ func parseIPV4Whitelist(rawData interface{}) ([]net.IPNet, error) {
 
 func parseSliceOfString(rawData interface{}) ([]string, error) {
 	var stringSlice []string
+
+	if rawData == nil {
+		return stringSlice, nil
+	}
+
 	b, ok := rawData.([]interface{})
 	if !ok {
 		return stringSlice, fmt.Errorf("unable to cast to []interface{}")
@@ -282,5 +298,52 @@ func parseSliceOfString(rawData interface{}) ([]string, error) {
 
 func parseLocations(rawData interface{}) ([]LocationEntry, error) {
 	var locations []LocationEntry
+	var err error
+
+	if rawData == nil {
+		return locations, nil
+	}
+
+	b, ok := rawData.([]interface{})
+	if !ok {
+		return locations, fmt.Errorf("unable to cast to []interface{}")
+	}
+
+	for i, rawLocation := range b {
+		unmarshaledMap, ok := rawLocation.(map[string]interface{})
+		if !ok {
+			return locations, fmt.Errorf("unable to cast to map[string]interface{}")
+		}
+
+		if len(unmarshaledMap) == 0 {
+			return locations, nil
+		}
+
+		var locationEntry LocationEntry
+		for key := range unmarshaledMap {
+
+			rawLocationData := unmarshaledMap[key]
+
+			switch key {
+			case "prefix":
+				locationEntry.Prefix, err = castToString(rawLocationData)
+				if err != nil {
+					return locations, fmt.Errorf("#%d %s %s", i+1, key, err)
+				}
+			case "regexp":
+				rawRegexp, err := castToString(rawLocationData)
+				if !ok {
+					return locations, fmt.Errorf("#%d %s %s", i+1, key, err)
+				}
+				locationEntry.Regexp, err = regexp.Compile(rawRegexp)
+				if err != nil {
+					return locations, fmt.Errorf("#%d %s error unable to compile %s",
+						i+1, key, err)
+				}
+			}
+		}
+		log.Printf("debug: #%d %s", i+1, unmarshaledMap)
+	}
+
 	return locations, fmt.Errorf("locations not implemented")
 }

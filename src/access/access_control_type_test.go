@@ -3,6 +3,7 @@ package access
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"regexp"
 	"testing"
 )
@@ -29,7 +30,48 @@ var (
 				Entry: AccessControlEntry{AllowUnauthenticatedRead: true}}},
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "ipv4_whitelist": nil},
-			ExpectedValue: AccessControlType{Version: "1.0"}}}
+			ExpectedValue: AccessControlType{Version: "1.0"}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "ipv4_whitelist": "clam"},
+			ExpectedValue: AccessControlType{},
+			ErrorRegexp:   regexp.MustCompile(`^.*unable to cast.*$`)},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "ipv4_whitelist": []string{}},
+			ExpectedValue: AccessControlType{Version: "1.0"}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "ipv4_whitelist": []string{"192.168.1.102"}},
+			ExpectedValue: AccessControlType{Version: "1.0",
+				Entry: AccessControlEntry{IPv4WhiteList: []net.IPNet{
+					net.IPNet{IP: net.ParseIP("192.168.1.102"), Mask: net.CIDRMask(32, 32)}}}}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "unauth_referrer_whitelist": nil},
+			ExpectedValue: AccessControlType{Version: "1.0"}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "unauth_referrer_whitelist": "clam"},
+			ExpectedValue: AccessControlType{},
+			ErrorRegexp:   regexp.MustCompile(`^.*unable to cast.*$`)},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "unauth_referrer_whitelist": []string{}},
+			ExpectedValue: AccessControlType{Version: "1.0"}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "unauth_referrer_whitelist": []string{"example.com/myapp"}},
+			ExpectedValue: AccessControlType{Version: "1.0",
+				Entry: AccessControlEntry{UnauthReferrerWhitelist: []string{"example.com/myapp"}}}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "locations": nil},
+			ExpectedValue: AccessControlType{Version: "1.0"}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "locations": "clam"},
+			ExpectedValue: AccessControlType{},
+			ErrorRegexp:   regexp.MustCompile(`^.*unable to cast.*$`)},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "locations": []interface{}{map[string]interface{}{}}},
+			ExpectedValue: AccessControlType{Version: "1.0"}},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "locations": []interface{}{map[string]interface{}{"regexp": "["}}},
+			ExpectedValue: AccessControlType{},
+			ErrorRegexp:   regexp.MustCompile(`^.*unable to compile.*$`)},
+	}
 )
 
 func TestAccessControlCleanse(t *testing.T) {
@@ -49,14 +91,14 @@ func TestAccessControlCleanse(t *testing.T) {
 		accessControl, err := LoadAccessControl(marshaledData)
 		if err != nil {
 			if testCase.ErrorRegexp == nil {
-				t.Fatalf("%d unexpected error %s", i+1, err)
+				t.Fatalf("#%d unexpected error %s", i+1, err)
 			}
 			if !testCase.ErrorRegexp.MatchString(err.Error()) {
-				t.Fatalf("%d unmatched error %s", i+1, err)
+				t.Fatalf("#%d unmatched error %s", i+1, err)
 			}
 		} else {
 			if testCase.ErrorRegexp != nil {
-				t.Fatalf("%d expected error found nil", i+1)
+				t.Fatalf("#%d expected error found nil", i+1)
 			}
 			if !accessControl.Equal(testCase.ExpectedValue) {
 				t.Fatalf("#%d value mismatch expecting %v found %v",

@@ -10,7 +10,7 @@ type CollectionRow struct {
 	CustomerID    uint32    `json:"customer_id"`
 	ClusterID     uint32    `json:"cluster_id"`
 	Versioning    bool      `json:"versioning"`
-	AccessControl string    `json:"access_control"`
+	AccessControl []byte    `json:"access_control"`
 	CreationTime  time.Time `json:"creation_time"`
 	DeletionTime  time.Time `json:"deletion_time"`
 }

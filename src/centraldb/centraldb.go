@@ -339,7 +339,7 @@ func handleGetCollectionRow(request getCollectionRowRequest) {
 		return
 	}
 	if accessControl.Valid {
-		collectionRow.AccessControl = accessControl.String
+		collectionRow.AccessControl = []byte(accessControl.String)
 	}
 
 	marshalledCollectionRow, err = json.Marshal(collectionRow)

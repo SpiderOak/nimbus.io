@@ -132,43 +132,17 @@ func LoadAccessControl(marshalledAccessControl []byte) (AccessControlType, error
 			if err != nil {
 				return result, fmt.Errorf("version: %s", err)
 			}
-		case "allow_unauth_read":
-			result.AllowUnauthenticatedRead, err = castToBool(rawData)
-			if err != nil {
-				return result, fmt.Errorf("allow_unauth_read: %s", err)
-			}
-		case "allow_unauth_write":
-			result.AllowUnauthenticatedWrite, err = castToBool(rawData)
-			if err != nil {
-				return result, fmt.Errorf("allow_unauth_write: %s", err)
-			}
-		case "allow_unauth_list":
-			result.AllowUnauthenticatedList, err = castToBool(rawData)
-			if err != nil {
-				return result, fmt.Errorf("allow_unauth_list: %s", err)
-			}
-		case "allow_unauth_delete":
-			result.AllowUnauthenticatedDelete, err = castToBool(rawData)
-			if err != nil {
-				return result, fmt.Errorf("allow_unauth_delete: %s", err)
-			}
-		case "ipv4_whitelist":
-			result.IPv4WhiteList, err = parseIPV4Whitelist(rawData)
-			if err != nil {
-				return result, fmt.Errorf("ipv4_whitelist: %s", err)
-			}
-		case "unauth_referrer_whitelist":
-			result.UnauthReferrerWhitelist, err = parseSliceOfString(rawData)
-			if err != nil {
-				return result, fmt.Errorf("unauth_referrer_whitelist: %s", err)
-			}
 		case "locations":
 			result.Locations, err = parseLocations(rawData)
 			if err != nil {
 				return result, fmt.Errorf("locations: %s", err)
 			}
 		default:
-			return result, fmt.Errorf("Unknown key '%s'", key)
+			err = updateAccessControlEntry(&result.AccessControlEntry, key,
+				rawData)
+			if err != nil {
+				return result, err
+			}
 		}
 	}
 
@@ -217,6 +191,49 @@ func (a AccessControlType) Equal(b AccessControlType) bool {
 	}
 
 	return true
+}
+
+func updateAccessControlEntry(entry *AccessControlEntry, key string,
+	rawData interface{}) error {
+
+	var err error
+
+	switch key {
+	case "allow_unauth_read":
+		entry.AllowUnauthenticatedRead, err = castToBool(rawData)
+		if err != nil {
+			return fmt.Errorf("allow_unauth_read: %s", err)
+		}
+	case "allow_unauth_write":
+		entry.AllowUnauthenticatedWrite, err = castToBool(rawData)
+		if err != nil {
+			return fmt.Errorf("allow_unauth_write: %s", err)
+		}
+	case "allow_unauth_list":
+		entry.AllowUnauthenticatedList, err = castToBool(rawData)
+		if err != nil {
+			return fmt.Errorf("allow_unauth_list: %s", err)
+		}
+	case "allow_unauth_delete":
+		entry.AllowUnauthenticatedDelete, err = castToBool(rawData)
+		if err != nil {
+			return fmt.Errorf("allow_unauth_delete: %s", err)
+		}
+	case "ipv4_whitelist":
+		entry.IPv4WhiteList, err = parseIPV4Whitelist(rawData)
+		if err != nil {
+			return fmt.Errorf("ipv4_whitelist: %s", err)
+		}
+	case "unauth_referrer_whitelist":
+		entry.UnauthReferrerWhitelist, err = parseSliceOfString(rawData)
+		if err != nil {
+			return fmt.Errorf("unauth_referrer_whitelist: %s", err)
+		}
+	default:
+		return fmt.Errorf("Unknown key '%s'", key)
+	}
+
+	return nil
 }
 
 func castToString(rawData interface{}) (string, error) {
@@ -315,6 +332,8 @@ func parseLocations(rawData interface{}) ([]LocationEntry, error) {
 			return locations, fmt.Errorf("unable to cast to map[string]interface{}")
 		}
 
+		log.Printf("debug: #%d %s", i+1, unmarshaledMap)
+
 		if len(unmarshaledMap) == 0 {
 			return locations, nil
 		}
@@ -340,10 +359,15 @@ func parseLocations(rawData interface{}) ([]LocationEntry, error) {
 					return locations, fmt.Errorf("#%d %s error unable to compile %s",
 						i+1, key, err)
 				}
+			default:
+				err = updateAccessControlEntry(&locationEntry.AccessControlEntry,
+					key, rawLocationData)
+				if err != nil {
+					return locations, err
+				}
 			}
 		}
-		log.Printf("debug: #%d %s", i+1, unmarshaledMap)
 	}
 
-	return locations, fmt.Errorf("locations not implemented")
+	return locations, nil
 }

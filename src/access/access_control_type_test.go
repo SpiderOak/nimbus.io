@@ -71,6 +71,12 @@ var (
 			"version": "1.0", "locations": []interface{}{map[string]interface{}{"regexp": "["}}},
 			ExpectedValue: AccessControlType{},
 			ErrorRegexp:   regexp.MustCompile(`^.*unable to compile.*$`)},
+		cleanseTestCase{Data: map[string]interface{}{
+			"version": "1.0", "locations": []interface{}{map[string]interface{}{"prefix": "aaa",
+				"allow_unauth_read": true}}},
+			ExpectedValue: AccessControlType{Version: "1.0",
+				Locations: []LocationEntry{LocationEntry{Prefix: "aaa",
+					AccessControlEntry: AccessControlEntry{AllowUnauthenticatedRead: true}}}}},
 	}
 )
 

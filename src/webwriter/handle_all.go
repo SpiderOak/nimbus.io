@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"strings"
 
 	"access"
-	"auth"
 	"centraldb"
 	"types"
 
@@ -15,7 +17,7 @@ import (
 
 type handlerEntry struct {
 	Func   handler.RequestHandler
-	Access auth.AccessType
+	Access access.AccessType
 }
 
 type handlerStruct struct {
@@ -23,23 +25,28 @@ type handlerStruct struct {
 	Dispatch  map[req.RequestType]handlerEntry
 }
 
+var (
+	forwardedForKey = http.CanonicalHeaderKey("x-forwarded-for")
+	refererKey      = http.CanonicalHeaderKey("referer")
+)
+
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
 func NewHandler(centralDB centraldb.CentralDB) http.Handler {
 	h := handlerStruct{CentralDB: centralDB}
 	h.Dispatch = map[req.RequestType]handlerEntry{
 		req.RespondToPing: handlerEntry{Func: handler.RespondToPing,
-			Access: auth.None},
+			Access: access.NoAccess},
 		req.ArchiveKey: handlerEntry{Func: handler.ArchiveKey,
-			Access: auth.Write},
+			Access: access.Write},
 		req.DeleteKey: handlerEntry{Func: handler.DeleteKey,
-			Access: auth.Delete},
+			Access: access.Delete},
 		req.StartConjoined: handlerEntry{Func: handler.StartConjoined,
-			Access: auth.Write},
+			Access: access.Write},
 		req.FinishConjoined: handlerEntry{Func: handler.FinishConjoined,
-			Access: auth.Write},
+			Access: access.Write},
 		req.AbortConjoined: handlerEntry{Func: handler.AbortConjoined,
-			Access: auth.Write}}
+			Access: access.Write}}
 	return &h
 }
 
@@ -82,7 +89,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		return
 	}
 
-	if dispatchEntry.Access == auth.None {
+	if dispatchEntry.Access == access.NoAccess {
 		err = dispatchEntry.Func(responseWriter, request, parsedRequest,
 			types.CollectionRow{})
 		if err != nil {
@@ -108,6 +115,51 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		return
 	}
 
+	requesterIP, err := getRequesterIP(request.Header.Get(forwardedForKey))
+	if err != nil {
+		log.Printf("error: unable to get requester IP from headers: %s", err)
+		http.Error(responseWriter, "unable to get requester IP",
+			http.StatusBadRequest)
+		return
+	}
+
+	referrer, err := getReferer(request.Header.Get(refererKey))
+	if err != nil {
+		log.Printf("error: unable to get referer: %s", err)
+		http.Error(responseWriter, "unable to get referer",
+			http.StatusBadRequest)
+		return
+	}
+
+	accessStatus, err := access.CheckAccess(dispatchEntry.Access,
+		accessControl, request.URL.Path, requesterIP)
+
+	accessGranted := false
+	switch accessStatus {
+	case access.Allowed:
+		accessGranted = true
+	case access.RequiresPasswordAuthentication:
+		accessGranted, err := checkPasswordAuthentication()
+		if err != nil {
+			log.Printf("error: checkPasswordAuthentication failed: %s", err)
+			http.Error(responseWriter, "password check aborted",
+				http.StatusInternalServerError)
+			return
+		}
+	case access.Forbidden:
+	default:
+		log.Printf("error: unknown access: %s", accessStatus)
+		http.Error(responseWriter, "unknown access",
+			http.StatusInternalServerError)
+		return
+	}
+
+	if !accessGranted {
+		log.Printf("warning: access forbidden")
+		http.Error(responseWriter, "invalid", http.StatusForbidden)
+		return
+	}
+
 	err = dispatchEntry.Func(responseWriter, request, parsedRequest,
 		collectionRow)
 	if err != nil {
@@ -116,4 +168,32 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 			http.StatusInternalServerError)
 		return
 	}
+}
+
+func getRequesterIP(forwardwedForHeader string) (net.IP, error) {
+	if forwardwedForHeader == "" {
+		return nil, fmt.Errorf("no data for %s", forwardedForKey)
+	}
+
+	//  the header can have multiple forwards of the form
+	// address1, address2, ...
+	// we want the first one which should be the original sender's
+	forwardSlice := strings.Split(forwardwedForHeader, ", ")
+	addressAndPort := forwardSlice[0]
+	address := strings.Split(addressAndPort, ":")
+
+	ip := net.ParseIP(address)
+	if ip == nil {
+		return nil, fmt.Errorf("unable to parse address '%s'", address)
+	}
+
+	return ip, nil
+}
+
+func getReferer(refererHeader string) (string, error) {
+	// it's OK to not have a referer
+	if len(refererHeader) == 0 {
+		return refererHeader, nil
+	}
+
 }

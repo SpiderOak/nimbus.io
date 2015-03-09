@@ -7,7 +7,7 @@ import (
 type AccessType uint8
 
 const (
-	None AccessType = iota
+	NoAccess AccessType = iota
 	Read
 	Write
 	List

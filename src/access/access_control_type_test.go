@@ -6,7 +6,6 @@ import (
 	"net"
 	"regexp"
 	"testing"
-	"types"
 )
 
 type cleanseTestCase struct {
@@ -16,9 +15,11 @@ type cleanseTestCase struct {
 }
 
 type checkTestCase struct {
-	AccessType     types.AccessType
-	AccessControl  AccessControlType
-	ExpectedResult types.AccessStatus
+	RequestedAccessType AccessType
+	AccessControl       AccessControlType
+	Path                string
+	RequesterIP         net.IP
+	ExpectedResult      AccessStatus
 }
 
 var (
@@ -87,9 +88,13 @@ var (
 	}
 
 	checkTestCases = []checkTestCase{
-		checkTestCase{AccessType: types.ReadAccess, 
-			AccessControl: AccessControlType{}
-			ExpectedResult: },
+		checkTestCase{RequestedAccessType: Read,
+			AccessControl:  AccessControlType{},
+			ExpectedResult: RequiresPasswordAuthentication},
+		checkTestCase{RequestedAccessType: Read,
+			AccessControl: AccessControlType{Version: "1.0",
+				AccessControlEntry: AccessControlEntry{AllowUnauthenticatedRead: true}},
+			ExpectedResult: Allowed},
 	}
 )
 
@@ -130,5 +135,16 @@ func TestAccessControlCleanse(t *testing.T) {
 func TestAccessControlCheck(t *testing.T) {
 	for i, testCase := range checkTestCases {
 		var err error
+		var result AccessStatus
+
+		result, err = CheckAccess(testCase.RequestedAccessType,
+			testCase.AccessControl, testCase.Path, testCase.RequesterIP)
+		if err != nil {
+			t.Fatalf("#%d CheckAccess returned error %s", i+1, err)
+		}
+		if result != testCase.ExpectedResult {
+			t.Fatalf("#%d access mismatch: expecting %s found %s",
+				i+1, testCase.ExpectedResult, result)
+		}
 	}
 }

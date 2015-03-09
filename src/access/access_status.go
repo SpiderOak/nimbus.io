@@ -7,8 +7,8 @@ import (
 type AccessStatus uint8
 
 const (
-	_               = iota
-	None AccessType = iota
+	_                     = iota
+	NoStatus AccessStatus = iota
 	Allowed
 	RequiresPasswordAuthentication
 	Forbidden

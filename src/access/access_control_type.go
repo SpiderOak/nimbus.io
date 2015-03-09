@@ -52,7 +52,7 @@ type AccessControlEntry struct {
 type LocationEntry struct {
 	Prefix string
 	Regexp *regexp.Regexp
-	Entry  AccessControlEntry
+	AccessControlEntry
 }
 
 // AccessControlType is a struct loaded loaded from the JSON value found
@@ -60,8 +60,8 @@ type LocationEntry struct {
 type AccessControlType struct {
 	Version string
 
-	// All applies to all reuests not overridden by location
-	Entry AccessControlEntry
+	// applies to all requests not overridden by location
+	AccessControlEntry
 
 	/*
 		the locations property allows a way to specify more
@@ -133,32 +133,32 @@ func LoadAccessControl(marshalledAccessControl []byte) (AccessControlType, error
 				return result, fmt.Errorf("version: %s", err)
 			}
 		case "allow_unauth_read":
-			result.Entry.AllowUnauthenticatedRead, err = castToBool(rawData)
+			result.AllowUnauthenticatedRead, err = castToBool(rawData)
 			if err != nil {
 				return result, fmt.Errorf("allow_unauth_read: %s", err)
 			}
 		case "allow_unauth_write":
-			result.Entry.AllowUnauthenticatedWrite, err = castToBool(rawData)
+			result.AllowUnauthenticatedWrite, err = castToBool(rawData)
 			if err != nil {
 				return result, fmt.Errorf("allow_unauth_write: %s", err)
 			}
 		case "allow_unauth_list":
-			result.Entry.AllowUnauthenticatedList, err = castToBool(rawData)
+			result.AllowUnauthenticatedList, err = castToBool(rawData)
 			if err != nil {
 				return result, fmt.Errorf("allow_unauth_list: %s", err)
 			}
 		case "allow_unauth_delete":
-			result.Entry.AllowUnauthenticatedDelete, err = castToBool(rawData)
+			result.AllowUnauthenticatedDelete, err = castToBool(rawData)
 			if err != nil {
 				return result, fmt.Errorf("allow_unauth_delete: %s", err)
 			}
 		case "ipv4_whitelist":
-			result.Entry.IPv4WhiteList, err = parseIPV4Whitelist(rawData)
+			result.IPv4WhiteList, err = parseIPV4Whitelist(rawData)
 			if err != nil {
 				return result, fmt.Errorf("ipv4_whitelist: %s", err)
 			}
 		case "unauth_referrer_whitelist":
-			result.Entry.UnauthReferrerWhitelist, err = parseSliceOfString(rawData)
+			result.UnauthReferrerWhitelist, err = parseSliceOfString(rawData)
 			if err != nil {
 				return result, fmt.Errorf("unauth_referrer_whitelist: %s", err)
 			}
@@ -212,7 +212,7 @@ func (a AccessControlType) Equal(b AccessControlType) bool {
 		return false
 	}
 
-	if !a.Entry.Equal(b.Entry) {
+	if !a.AccessControlEntry.Equal(b.AccessControlEntry) {
 		return false
 	}
 

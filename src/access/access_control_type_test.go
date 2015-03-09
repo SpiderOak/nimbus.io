@@ -27,7 +27,7 @@ var (
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "allow_unauth_read": true},
 			ExpectedValue: AccessControlType{Version: "1.0",
-				Entry: AccessControlEntry{AllowUnauthenticatedRead: true}}},
+				AccessControlEntry: AccessControlEntry{AllowUnauthenticatedRead: true}}},
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "ipv4_whitelist": nil},
 			ExpectedValue: AccessControlType{Version: "1.0"}},
@@ -41,7 +41,7 @@ var (
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "ipv4_whitelist": []string{"192.168.1.102"}},
 			ExpectedValue: AccessControlType{Version: "1.0",
-				Entry: AccessControlEntry{IPv4WhiteList: []net.IPNet{
+				AccessControlEntry: AccessControlEntry{IPv4WhiteList: []net.IPNet{
 					net.IPNet{IP: net.ParseIP("192.168.1.102"), Mask: net.CIDRMask(32, 32)}}}}},
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "unauth_referrer_whitelist": nil},
@@ -56,7 +56,7 @@ var (
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "unauth_referrer_whitelist": []string{"example.com/myapp"}},
 			ExpectedValue: AccessControlType{Version: "1.0",
-				Entry: AccessControlEntry{UnauthReferrerWhitelist: []string{"example.com/myapp"}}}},
+				AccessControlEntry: AccessControlEntry{UnauthReferrerWhitelist: []string{"example.com/myapp"}}}},
 		cleanseTestCase{Data: map[string]interface{}{
 			"version": "1.0", "locations": nil},
 			ExpectedValue: AccessControlType{Version: "1.0"}},

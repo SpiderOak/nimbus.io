@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 
+	"access"
 	"auth"
 	"centraldb"
 	"types"
@@ -56,6 +57,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	var err error
 	var parsedRequest req.ParsedRequest
 	var collectionRow types.CollectionRow
+	var accessControl access.AccessControlType
 
 	if parsedRequest, err = req.ParseRequest(request); err != nil {
 		log.Printf("error: unparsable request: %s, method='%s'", err,
@@ -95,6 +97,14 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		log.Printf("error: unknown collection: %s",
 			parsedRequest.CollectionName)
 		http.Error(responseWriter, "unknown collection", http.StatusNotFound)
+		return
+	}
+
+	accessControl, err = access.LoadAccessControl(collectionRow.AccessControl)
+	if err != nil {
+		log.Printf("error: unable to load access control: %s", err)
+		http.Error(responseWriter, "unable to load access control",
+			http.StatusInternalServerError)
 		return
 	}
 

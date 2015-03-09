@@ -6,12 +6,19 @@ import (
 	"net"
 	"regexp"
 	"testing"
+	"types"
 )
 
 type cleanseTestCase struct {
 	Data          map[string]interface{}
 	ExpectedValue AccessControlType
 	ErrorRegexp   *regexp.Regexp
+}
+
+type checkTestCase struct {
+	AccessType     types.AccessType
+	AccessControl  AccessControlType
+	ExpectedResult types.AccessStatus
 }
 
 var (
@@ -78,6 +85,12 @@ var (
 				Locations: []LocationEntry{LocationEntry{Prefix: "aaa",
 					AccessControlEntry: AccessControlEntry{AllowUnauthenticatedRead: true}}}}},
 	}
+
+	checkTestCases = []checkTestCase{
+		checkTestCase{AccessType: types.ReadAccess, 
+			AccessControl: AccessControlType{}
+			ExpectedResult: },
+	}
 )
 
 func TestAccessControlCleanse(t *testing.T) {
@@ -115,4 +128,7 @@ func TestAccessControlCleanse(t *testing.T) {
 }
 
 func TestAccessControlCheck(t *testing.T) {
+	for i, testCase := range checkTestCases {
+		var err error
+	}
 }

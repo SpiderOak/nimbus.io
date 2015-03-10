@@ -27,6 +27,7 @@ func CheckAccess(requestedAccess AccessType,
 	}
 
 	normalizedPath := normalizePath(path)
+
 	accessControlEntry := accessControl.AccessControlEntry
 	for i, locationEntry := range accessControl.Locations {
 		if locationEntry.Prefix != "" {
@@ -78,15 +79,42 @@ func CheckAccess(requestedAccess AccessType,
 	   automatically allowed. It is allowed only if it should be allowed
 	   according to allow_unauth_read, allow_unauth_write, etc.
 	*/
-	allowUnauthReferrers = true
+	allowUnauthReferrers := true
 	if accessControlEntry.UnauthReferrerWhitelist != nil {
 		allowUnauthReferrers = false
-		for i, whiteListEntry := range accessControlEntry.UnauthReferrerWhitelist {
 
+		for i, whiteListEntry := range accessControlEntry.UnauthReferrerWhitelist {
+			normalizedPrefix := normalizePath(whiteListEntry)
+			if strings.HasPrefix(normalizedPath, normalizedPrefix) {
+				log.Printf("using UnauthReferrerWhitelist #%d prefix %s matches %s",
+					i+1, whiteListEntry, path)
+				allowUnauthReferrers = true
+				break
+			}
 		}
 	}
 
-	return Forbidden, fmt.Errorf("Not implemented")
+	if !allowUnauthReferrers {
+		return RequiresPasswordAuthentication, nil
+	}
+
+	if requestedAccess == Read && accessControlEntry.AllowUnauthenticatedRead {
+		return Allowed, nil
+	}
+
+	if requestedAccess == Write && accessControlEntry.AllowUnauthenticatedWrite {
+		return Allowed, nil
+	}
+
+	if requestedAccess == List && accessControlEntry.AllowUnauthenticatedList {
+		return Allowed, nil
+	}
+
+	if requestedAccess == Delete && accessControlEntry.AllowUnauthenticatedDelete {
+		return Allowed, nil
+	}
+
+	return RequiresPasswordAuthentication, nil
 }
 
 func normalizePath(path string) string {

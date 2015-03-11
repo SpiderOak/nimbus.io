@@ -15,7 +15,8 @@ import (
 )
 
 const (
-	requestChanCapacity = 1024
+	requestChanCapacity         = 1024
+	memcachedCentralKeyTemplate = "nimbusio_central_%s_by_%s_%s"
 )
 
 type centralDBImpl struct {
@@ -35,6 +36,21 @@ type getNodeIDsForClusterRequest struct {
 type getCollectionRowRequest struct {
 	collectionName string
 	resultChan     chan<- interface{}
+}
+
+type getCustomerRowByNameRequest struct {
+	customerName string
+	resultChan   chan<- interface{}
+}
+
+type getCustomerRowByIDRequest struct {
+	customerID uint32
+	resultChan chan<- interface{}
+}
+
+type getCustomerKeyRowRequest struct {
+	keyID      uint32
+	resultChan chan<- interface{}
 }
 
 var (
@@ -59,7 +75,17 @@ func NewCentralDB() CentralDB {
 			select id from nimbusio_central.cluster where name = $1`,
 		"collection-row": `select id, name, customer_id, cluster_id, versioning, access_control, creation_time
 			from nimbusio_central.collection where name = $1 
-            and deletion_time is null`}
+            and deletion_time is null`,
+		"customer-row-by-name": `select id, user_name, creation_time
+        	from from nimbusio_central.customer 
+            where username = $1 and deletion_time is null`,
+		"customer-row-by-id": `select id, user_name, creation_time
+        	from from nimbusio_central.customer 
+            where id = $1 and deletion_time is null`,
+		"customer-key": `select id, customer_id, key, description, creation_time
+        	from from nimbusio_central.customer_key 
+            where id = $1 and deletion_time is null`,
+	}
 
 	requestChan := make(chan interface{}, requestChanCapacity)
 	i.requestChan = requestChan
@@ -95,6 +121,12 @@ func NewCentralDB() CentralDB {
 				handleGetNodeIDsForCluster(request)
 			case getCollectionRowRequest:
 				handleGetCollectionRow(request)
+			case getCustomerRowByNameRequest:
+				handleGetCustomerRowByName(request)
+			case getCustomerRowByIDRequest:
+				handleGetCustomerRowByID(request)
+			case getCustomerKeyRowRequest:
+				handleGetCustomerKeyRow(request)
 			default:
 				log.Printf("error: central db: unknown request type %T %q",
 					request, request)
@@ -134,13 +166,13 @@ func handleGetHostsForCollection(request getHostsForCollectionRequest) {
 	log.Printf("debug: central db: handleGetHostsForCollection(%s)",
 		request.collectionName)
 	const stmtName = "hosts-for-collection"
-	const memcacheKeyTemplate = "nimbusio_central_hosts_for_%s"
+	const memcacheKeyFormat = "nimbusio_central_hosts_for_%s"
 	var hostNames []string
 	var marshalledHostnames []byte
 	var rows *sql.Rows
 	var err error
 
-	memcacheKey := fmt.Sprintf(memcacheKeyTemplate, request.collectionName)
+	memcacheKey := fmt.Sprintf(memcacheKeyFormat, request.collectionName)
 
 	item, err := memcacheClient.Get(memcacheKey)
 	if err != nil {
@@ -211,13 +243,13 @@ func handleGetNodeIDsForCluster(request getNodeIDsForClusterRequest) {
 	log.Printf("debug: central db: handleGetNodeIDsForCluster(%s)",
 		request.clusterName)
 	const stmtName = "node-ids-for-cluster"
-	const memcacheKeyTemplate = "nimbusio_node_ids_for_%s"
+	const memcacheKeyFormat = "nimbusio_node_ids_for_%s"
 	nodeIDMap := make(map[string]uint32)
 	var marshalledNodeIDMap []byte
 	var rows *sql.Rows
 	var err error
 
-	memcacheKey := fmt.Sprintf(memcacheKeyTemplate, request.clusterName)
+	memcacheKey := fmt.Sprintf(memcacheKeyFormat, request.clusterName)
 
 	item, err := memcacheClient.Get(memcacheKey)
 	if err != nil {
@@ -289,14 +321,14 @@ func handleGetCollectionRow(request getCollectionRowRequest) {
 	log.Printf("debug: central db: handleGetCollectionRow(%s)",
 		request.collectionName)
 	const stmtName = "collection-row"
-	const memcacheKeyTemplate = "nimbusio_collection_row_for_%s"
+	const memcacheKeyFormat = "nimbusio_central_collection_by_name_%s"
 	var collectionRow types.CollectionRow
 	var marshalledCollectionRow []byte
 	var row *sql.Row
 	var accessControl sql.NullString
 	var err error
 
-	memcacheKey := fmt.Sprintf(memcacheKeyTemplate, request.collectionName)
+	memcacheKey := fmt.Sprintf(memcacheKeyFormat, request.collectionName)
 
 	item, err := memcacheClient.Get(memcacheKey)
 	if err != nil {
@@ -354,6 +386,202 @@ func handleGetCollectionRow(request getCollectionRowRequest) {
 	}
 
 	request.resultChan <- collectionRow
+}
+
+func handleGetCustomerRowByName(request getCustomerRowByNameRequest) {
+	log.Printf("debug: central db: handleGetCcustomerRowByName(%s)",
+		request.customerName)
+	const stmtName = "customer-row-by-name"
+	const memcacheKeyFormat = "nimbusio_central_customer_by_name_%s"
+	var customerRow types.CustomerRow
+	var marshalledCustomerRow []byte
+	var row *sql.Row
+	var err error
+
+	memcacheKey := fmt.Sprintf(memcacheKeyFormat, request.customerName)
+
+	item, err := memcacheClient.Get(memcacheKey)
+	if err != nil {
+		log.Printf("warning: unable to Get %s, %s", memcacheKey, err)
+	} else {
+		marshalledCustomerRow := item.Value
+		err = json.Unmarshal(marshalledCustomerRow, &customerRow)
+		if err != nil {
+			log.Printf("warning: unable to unmarshal %s, %s", memcacheKey, err)
+		} else {
+			request.resultChan <- customerRow
+			return
+		}
+	}
+
+	if sqlDB == nil {
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	stmt, err := getStmt(stmtName)
+	if err != nil {
+		log.Printf("error: preparing %s; %s", stmtName, err)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	row = stmt.QueryRow(request.customerName)
+	err = row.Scan(&customerRow.ID,
+		&customerRow.UserName,
+		&customerRow.CreationTime)
+	if err != nil {
+		log.Printf("error: querying %s; %s", stmtName, err)
+		removeStmt(stmtName, stmt)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	marshalledCustomerRow, err = json.Marshal(customerRow)
+	if err != nil {
+		log.Printf("warning: unable to marshal %q: %s", customerRow, err)
+	} else {
+		err := memcacheClient.Set(&memcache.Item{Key: memcacheKey,
+			Value: marshalledCustomerRow})
+		if err != nil {
+			log.Printf("warning: unable to Set %s, %s", memcacheKey, err)
+		}
+	}
+
+	request.resultChan <- customerRow
+}
+
+func handleGetCustomerRowByID(request getCustomerRowByIDRequest) {
+	log.Printf("debug: central db: handleGetCustomerRowByID(%d)",
+		request.customerID)
+	const stmtName = "customer-row-by-id"
+	const memcacheKeyFormat = "nimbusio_central_customer_by_id_%d"
+	var customerRow types.CustomerRow
+	var marshalledCustomerRow []byte
+	var row *sql.Row
+	var err error
+
+	memcacheKey := fmt.Sprintf(memcacheKeyFormat, request.customerID)
+
+	item, err := memcacheClient.Get(memcacheKey)
+	if err != nil {
+		log.Printf("warning: unable to Get %s, %s", memcacheKey, err)
+	} else {
+		marshalledCustomerRow := item.Value
+		err = json.Unmarshal(marshalledCustomerRow, &customerRow)
+		if err != nil {
+			log.Printf("warning: unable to unmarshal %s, %s", memcacheKey, err)
+		} else {
+			request.resultChan <- customerRow
+			return
+		}
+	}
+
+	if sqlDB == nil {
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	stmt, err := getStmt(stmtName)
+	if err != nil {
+		log.Printf("error: preparing %s; %s", stmtName, err)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	row = stmt.QueryRow(request.customerID)
+	err = row.Scan(&customerRow.ID,
+		&customerRow.UserName,
+		&customerRow.CreationTime)
+	if err != nil {
+		log.Printf("error: querying %s; %s", stmtName, err)
+		removeStmt(stmtName, stmt)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	marshalledCustomerRow, err = json.Marshal(customerRow)
+	if err != nil {
+		log.Printf("warning: unable to marshal %q: %s", customerRow, err)
+	} else {
+		err := memcacheClient.Set(&memcache.Item{Key: memcacheKey,
+			Value: marshalledCustomerRow})
+		if err != nil {
+			log.Printf("warning: unable to Set %s, %s", memcacheKey, err)
+		}
+	}
+
+	request.resultChan <- customerRow
+}
+
+func handleGetCustomerKeyRow(request getCustomerKeyRowRequest) {
+	log.Printf("debug: central db: handleGetCustomerKeyRow(%d)",
+		request.keyID)
+	const stmtName = "customer-key-row"
+	const memcacheKeyFormat = "nimbusio_central_customer_key_by_id_%d"
+	var customerKeyRow types.CustomerKeyRow
+	var marshalledCustomerKeyRow []byte
+	var row *sql.Row
+	var description sql.NullString
+	var err error
+
+	memcacheKey := fmt.Sprintf(memcacheKeyFormat, request.keyID)
+
+	item, err := memcacheClient.Get(memcacheKey)
+	if err != nil {
+		log.Printf("warning: unable to Get %s, %s", memcacheKey, err)
+	} else {
+		marshalledCustomerKeyRow := item.Value
+		err = json.Unmarshal(marshalledCustomerKeyRow, &customerKeyRow)
+		if err != nil {
+			log.Printf("warning: unable to unmarshal %s, %s", memcacheKey, err)
+		} else {
+			request.resultChan <- customerKeyRow
+			return
+		}
+	}
+
+	if sqlDB == nil {
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	stmt, err := getStmt(stmtName)
+	if err != nil {
+		log.Printf("error: preparing %s; %s", stmtName, err)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	row = stmt.QueryRow(request.keyID)
+	err = row.Scan(&customerKeyRow.ID,
+		&customerKeyRow.CustomerID,
+		&customerKeyRow.Key,
+		&description,
+		&customerKeyRow.CreationTime)
+	if err != nil {
+		log.Printf("error: querying %s; %s", stmtName, err)
+		removeStmt(stmtName, stmt)
+		request.resultChan <- DatabaseError
+		return
+	}
+
+	if description.Valid {
+		customerKeyRow.Description = description.String
+	}
+
+	marshalledCustomerKeyRow, err = json.Marshal(customerKeyRow)
+	if err != nil {
+		log.Printf("warning: unable to marshal %q: %s", customerKeyRow, err)
+	} else {
+		err := memcacheClient.Set(&memcache.Item{Key: memcacheKey,
+			Value: marshalledCustomerKeyRow})
+		if err != nil {
+			log.Printf("warning: unable to Set %s, %s", memcacheKey, err)
+		}
+	}
+
+	request.resultChan <- customerKeyRow
 }
 
 func getStmt(name string) (*sql.Stmt, error) {
@@ -451,5 +679,80 @@ func (i centralDBImpl) GetCollectionRow(collectionName string) (
 		rawResult, rawResult)
 	return types.CollectionRow{},
 		fmt.Errorf("Internal error in %s", "GetCollectionRow")
+
+}
+
+// GetCustomerRowByName returns the database row for the customer
+func (i centralDBImpl) GetCustomerRowByName(customerName string) (
+	types.CustomerRow, error) {
+	log.Printf("debug: central db: GetCustomerRowByName(%s)", customerName)
+
+	resultChan := make(chan interface{})
+	request := getCustomerRowByNameRequest{customerName: customerName,
+		resultChan: resultChan}
+
+	i.requestChan <- request
+	rawResult := <-resultChan
+	switch result := rawResult.(type) {
+	case error:
+		return types.CustomerRow{}, result
+	case types.CustomerRow:
+		return result, nil
+	}
+
+	log.Printf("error: GetCustomerRowByName: unexpected result %T, %q",
+		rawResult, rawResult)
+	return types.CustomerRow{},
+		fmt.Errorf("Internal error in %s", "GetCustomerRowByName")
+
+}
+
+// GetCustomerRowByID returns the database row for the customer
+func (i centralDBImpl) GetCustomerRowByID(customerID uint32) (
+	types.CustomerRow, error) {
+	log.Printf("debug: central db: GetCustomerRowByID(%d)", customerID)
+
+	resultChan := make(chan interface{})
+	request := getCustomerRowByIDRequest{customerID: customerID,
+		resultChan: resultChan}
+
+	i.requestChan <- request
+	rawResult := <-resultChan
+	switch result := rawResult.(type) {
+	case error:
+		return types.CustomerRow{}, result
+	case types.CustomerRow:
+		return result, nil
+	}
+
+	log.Printf("error: GetCustomerRowByID: unexpected result %T, %q",
+		rawResult, rawResult)
+	return types.CustomerRow{},
+		fmt.Errorf("Internal error in %s", "GetCustomerRowByID")
+
+}
+
+// GetCustomerKeyRow returns the database row for the customer key
+func (i centralDBImpl) GetCustomerKeyRow(keyID uint32) (
+	types.CustomerKeyRow, error) {
+	log.Printf("debug: central db: GetCustomerKeyRow(%d)", keyID)
+
+	resultChan := make(chan interface{})
+	request := getCustomerKeyRowRequest{keyID: keyID,
+		resultChan: resultChan}
+
+	i.requestChan <- request
+	rawResult := <-resultChan
+	switch result := rawResult.(type) {
+	case error:
+		return types.CustomerKeyRow{}, result
+	case types.CustomerKeyRow:
+		return result, nil
+	}
+
+	log.Printf("error: GetCustomerKeyRow: unexpected result %T, %q",
+		rawResult, rawResult)
+	return types.CustomerKeyRow{},
+		fmt.Errorf("Internal error in %s", "GetCustomerKeyRow")
 
 }

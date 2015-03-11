@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"access"
@@ -65,6 +66,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	var parsedRequest req.ParsedRequest
 	var collectionRow types.CollectionRow
 	var accessControl access.AccessControlType
+	var customerRow types.CustomerRow
 
 	if parsedRequest, err = req.ParseRequest(request); err != nil {
 		log.Printf("error: unparsable request: %s, method='%s'", err,
@@ -101,8 +103,8 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	collectionRow, err = h.CentralDB.GetCollectionRow(
 		parsedRequest.CollectionName)
 	if err != nil {
-		log.Printf("error: unknown collection: %s",
-			parsedRequest.CollectionName)
+		log.Printf("error: unknown collection: %s; %s",
+			parsedRequest.CollectionName, err)
 		http.Error(responseWriter, "unknown collection", http.StatusNotFound)
 		return
 	}
@@ -132,13 +134,22 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	}
 
 	accessStatus, err := access.CheckAccess(dispatchEntry.Access,
-		accessControl, request.URL.Path, requesterIP)
+		accessControl, request.URL.Path, requesterIP, referrer)
 
 	accessGranted := false
 	switch accessStatus {
 	case access.Allowed:
 		accessGranted = true
 	case access.RequiresPasswordAuthentication:
+		customerRow, err = h.CentralDB.GetCustomerRowByID(
+			collectionRow.CustomerID)
+		if err != nil {
+			log.Printf("error: unable to get customer row: %d, %s",
+				collectionRow.CustomerID, err)
+			http.Error(responseWriter, "unable to get customer row",
+				http.StatusInternalServerError)
+			return
+		}
 		accessGranted, err := checkPasswordAuthentication()
 		if err != nil {
 			log.Printf("error: checkPasswordAuthentication failed: %s", err)
@@ -182,9 +193,9 @@ func getRequesterIP(forwardwedForHeader string) (net.IP, error) {
 	addressAndPort := forwardSlice[0]
 	address := strings.Split(addressAndPort, ":")
 
-	ip := net.ParseIP(address)
+	ip := net.ParseIP(address[0])
 	if ip == nil {
-		return nil, fmt.Errorf("unable to parse address '%s'", address)
+		return nil, fmt.Errorf("unable to parse address '%s'", addressAndPort)
 	}
 
 	return ip, nil
@@ -193,7 +204,13 @@ func getRequesterIP(forwardwedForHeader string) (net.IP, error) {
 func getReferer(refererHeader string) (string, error) {
 	// it's OK to not have a referer
 	if len(refererHeader) == 0 {
-		return refererHeader, nil
+		return "", nil
 	}
 
+	referrerURL, err := url.Parse(refererHeader)
+	if err != nil {
+		return "", err
+	}
+
+	return referrerURL.Path, nil
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"access"
+	"auth"
 	"centraldb"
 	"types"
 
@@ -66,7 +67,6 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	var parsedRequest req.ParsedRequest
 	var collectionRow types.CollectionRow
 	var accessControl access.AccessControlType
-	var customerRow types.CustomerRow
 
 	if parsedRequest, err = req.ParseRequest(request); err != nil {
 		log.Printf("error: unparsable request: %s, method='%s'", err,
@@ -141,16 +141,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	case access.Allowed:
 		accessGranted = true
 	case access.RequiresPasswordAuthentication:
-		customerRow, err = h.CentralDB.GetCustomerRowByID(
-			collectionRow.CustomerID)
-		if err != nil {
-			log.Printf("error: unable to get customer row: %d, %s",
-				collectionRow.CustomerID, err)
-			http.Error(responseWriter, "unable to get customer row",
-				http.StatusInternalServerError)
-			return
-		}
-		accessGranted, err := checkPasswordAuthentication()
+		accessGranted, err := auth PasswordAuthentication()
 		if err != nil {
 			log.Printf("error: checkPasswordAuthentication failed: %s", err)
 			http.Error(responseWriter, "password check aborted",

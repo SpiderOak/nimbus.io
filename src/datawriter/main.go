@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"syscall"
 	"time"
 
@@ -25,23 +24,6 @@ var (
 	eventAggregatorPubAddress = os.Getenv("NIMBUSIO_EVENT_AGGREGATOR_PUB_ADDRESS")
 )
 
-func init() {
-	// Issue #2
-	// if max procs is specfied in the environment, leave it
-	// otherwise set it to one less than the number of available cores
-	maxProcsStr := os.Getenv("GOMAXPROCS")
-	if maxProcsStr == "" {
-		maxProcs := runtime.NumCPU() - 1
-		if maxProcs < 1 {
-			maxProcs = 1
-		}
-		fog.Info("setting GOMAXPROCS to %d internally", maxProcs)
-		runtime.GOMAXPROCS(maxProcs)
-	} else {
-		fog.Info("GOMAXPROCS set to %s in environment", maxProcsStr)
-	}
-}
-
 // main entry point for data writer
 func main() {
 	var err error
@@ -49,6 +31,7 @@ func main() {
 	var eventSubSocket *zmq4.Socket
 
 	fog.Info("program starts")
+	tools.SetMaxProcs()
 
 	if writerSocket, err = createWriterSocket(); err != nil {
 		fog.Critical("createWriterSocket %s", err)

@@ -11,6 +11,7 @@ import (
 
 	"centraldb"
 	"fog"
+	"tools"
 
 	"webdirector/avail"
 	"webdirector/mgmtapi"
@@ -27,6 +28,7 @@ func main() {
 
 	fog.SetFlags(0) // suppress timestamp, svlogd handles that
 	fog.Info("program starts")
+	tools.SetMaxProcs()
 
 	// set up a signal handling channel
 	signalChannel := make(chan os.Signal)

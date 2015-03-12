@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"centraldb"
+	"tools"
 )
 
 // main entry point for webdirector
@@ -14,6 +15,7 @@ func main() {
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
+	tools.SetMaxProcs()
 
 	centralDB := centraldb.NewCentralDB()
 

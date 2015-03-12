@@ -4,9 +4,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
+
+	"tools"
 )
 
 // main entry point for webmonitor
@@ -18,6 +19,8 @@ func main() {
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
+
+	tools.SetMaxProcs()
 
 	// load the JSON config file from disk
 	if file, err = os.Open(os.Args[1]); err != nil {
@@ -65,20 +68,4 @@ func main() {
 	close(hostAvailChan)
 
 	log.Printf("info: program terminates")
-}
-
-func setMaxProcs() {
-	// if max procs is specified in the environment, leave it
-	// otherwise set it to one less than the number of available cores
-	maxProcsStr := os.Getenv("GOMAXPROCS")
-	if maxProcsStr == "" {
-		maxProcs := runtime.NumCPU() - 1
-		if maxProcs < 1 {
-			maxProcs = 1
-		}
-		log.Printf("info: setting GOMAXPROCS to %d internally", maxProcs)
-		runtime.GOMAXPROCS(maxProcs)
-	} else {
-		log.Printf("info: GOMAXPROCS set to %s in environment", maxProcsStr)
-	}
 }

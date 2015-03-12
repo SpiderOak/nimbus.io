@@ -28,8 +28,9 @@ type handlerStruct struct {
 }
 
 var (
-	forwardedForKey = http.CanonicalHeaderKey("x-forwarded-for")
-	refererKey      = http.CanonicalHeaderKey("referer")
+	forwardedForKey  = http.CanonicalHeaderKey("x-forwarded-for")
+	refererKey       = http.CanonicalHeaderKey("referer")
+	authorizationKey = http.CanonicalHeaderKey("authorization")
 )
 
 // NewHandler returns an entity that implements the http.Handler interface
@@ -141,7 +142,8 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	case access.Allowed:
 		accessGranted = true
 	case access.RequiresPasswordAuthentication:
-		accessGranted, err := auth PasswordAuthentication()
+		accessGranted, err := auth.PasswordAuthentication(h.CentralDB,
+			collectionRoq.CustomerID, request.Header.Get(authorizationKey))
 		if err != nil {
 			log.Printf("error: checkPasswordAuthentication failed: %s", err)
 			http.Error(responseWriter, "password check aborted",

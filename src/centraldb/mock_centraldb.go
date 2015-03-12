@@ -68,7 +68,7 @@ func (m MockCentralDB) GetCustomerRowByName(customerName string) (types.Customer
 func (m MockCentralDB) GetCustomerRowByID(customerID uint32) (types.CustomerRow, error) {
 	if m.GetCustomerRowByIDFunc == nil {
 		return types.CustomerRow{},
-			fmt.Errorf("GetCustomerRowByName not implemented")
+			fmt.Errorf("GetCustomerRowByID not implemented")
 	}
 
 	return m.GetCustomerRowByIDFunc(customerID)

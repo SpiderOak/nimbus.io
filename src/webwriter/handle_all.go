@@ -31,6 +31,7 @@ var (
 	forwardedForKey  = http.CanonicalHeaderKey("x-forwarded-for")
 	refererKey       = http.CanonicalHeaderKey("referer")
 	authorizationKey = http.CanonicalHeaderKey("authorization")
+	timestampKey     = http.CanonicalHeaderKey("x-nimbus-io-timestamp")
 )
 
 // NewHandler returns an entity that implements the http.Handler interface
@@ -142,14 +143,13 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	case access.Allowed:
 		accessGranted = true
 	case access.RequiresPasswordAuthentication:
-		accessGranted, err := auth.PasswordAuthentication(h.CentralDB,
-			collectionRoq.CustomerID, request.Header.Get(authorizationKey))
-		if err != nil {
-			log.Printf("error: checkPasswordAuthentication failed: %s", err)
-			http.Error(responseWriter, "password check aborted",
-				http.StatusInternalServerError)
-			return
-		}
+		err = auth.PasswordAuthentication(h.CentralDB,
+			collectionRow.CustomerID,
+			request.Method,
+			request.Header.Get(timestampKey),
+			request.URL.Path,
+			request.Header.Get(authorizationKey))
+		accessGranted = err == nil
 	case access.Forbidden:
 	default:
 		log.Printf("error: unknown access: %s", accessStatus)

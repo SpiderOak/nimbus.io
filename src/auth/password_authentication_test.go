@@ -11,7 +11,7 @@ type testAuthEntry struct {
 	customerID    uint32
 	userName      string
 	method        string
-	timestamp     int64
+	timestamp     string
 	path          string
 	customerKeyID uint32
 	key           []byte
@@ -26,7 +26,7 @@ func TestPasswordAuthentication(t *testing.T) {
 			customerID:    42,
 			userName:      "motoboto-benchmark-000",
 			method:        "HEAD",
-			timestamp:     1344970933,
+			timestamp:     "1344970933",
 			path:          "/data/xxx",
 			customerKeyID: 2,
 			key:           []byte("iKn/OxpggHSXzB0oUAihTMTf+n6Bsyywwm3bXMQfdKo"),
@@ -37,7 +37,7 @@ func TestPasswordAuthentication(t *testing.T) {
 			customerID:    42,
 			userName:      "motoboto-benchmark-003",
 			method:        "POST",
-			timestamp:     1344970936,
+			timestamp:     "1344970936",
 			path:          "/data/xxx",
 			customerKeyID: 5,
 			key:           []byte("9dJwBh1YWNlrs31F+Fx2BY2KZUtFYmBH3hmocH+6Ggk"),
@@ -48,7 +48,7 @@ func TestPasswordAuthentication(t *testing.T) {
 			customerID:    42,
 			userName:      "motoboto-benchmark-003",
 			method:        "POST",
-			timestamp:     1344970936,
+			timestamp:     "1344970936",
 			path:          "/data/xxx",
 			customerKeyID: 5,
 			key:           []byte("9dJwBh1YWNlrs31F+Fx2BY2KZUtFYmBH3hmocH+6Ggk"),

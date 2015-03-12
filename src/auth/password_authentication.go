@@ -20,7 +20,7 @@ var (
 func PasswordAuthentication(centralDB centraldb.CentralDB,
 	customerID uint32,
 	method string,
-	timestamp int64,
+	timestamp string,
 	path string,
 	authText string) error {
 
@@ -52,7 +52,7 @@ func PasswordAuthentication(centralDB centraldb.CentralDB,
 			customerID, err)
 	}
 
-	stringToSign := fmt.Sprintf("%s\n%s\n%d\n%s",
+	stringToSign := fmt.Sprintf("%s\n%s\n%s\n%s",
 		customerRow.UserName,
 		method,
 		timestamp,

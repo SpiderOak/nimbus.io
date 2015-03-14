@@ -7,7 +7,6 @@ import (
 
 	"github.com/pebbe/zmq4"
 
-	"centraldb"
 	"fog"
 	"tools"
 
@@ -16,13 +15,8 @@ import (
 )
 
 // NewEventSubSocketHandler returns a function that handles event notifications
-func NewEventSubSocketHandler(eventSubSocket *zmq4.Socket) func(zmq4.State) error {
-	var nodeIDMap map[string]uint32
-	var err error
-
-	if nodeIDMap, err = centraldb.GetNodeIDMap(); err != nil {
-		fog.Critical("centraldb.GetNodeIDMap() failed %s", err)
-	}
+func NewEventSubSocketHandler(nodeIDMap map[string]uint32,
+	eventSubSocket *zmq4.Socket) func(zmq4.State) error {
 
 	return func(_ zmq4.State) error {
 		var err error

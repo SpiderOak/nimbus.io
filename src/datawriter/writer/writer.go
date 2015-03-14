@@ -7,7 +7,6 @@ import (
 
 	"github.com/SpiderOak/gostatgrabber"
 
-	"centraldb"
 	"fog"
 	"tools"
 
@@ -145,14 +144,12 @@ type requestFinishConjoinedArchive struct {
 }
 
 // NewNimbusioWriter returns an entity that implements the NimbusioWriter interface
-func NewNimbusioWriter() (NimbusioWriter, error) {
+func NewNimbusioWriter(nodeIDMap map[string]uint32) (NimbusioWriter, error) {
 	var err error
 	var state writerState
 	state.SegmentMap = make(map[segmentKey]segmentMapEntry)
 
-	if state.NodeIDMap, err = centraldb.GetNodeIDMap(); err != nil {
-		return nil, fmt.Errorf("centraldb.GetNodeIDMap() failed %s", err)
-	}
+	state.NodeIDMap = nodeIDMap
 
 	if state.FileSpaceInfo, err = tools.NewFileSpaceInfo(nodedb.NodeDB); err != nil {
 		return nil, err

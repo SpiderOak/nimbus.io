@@ -8,6 +8,7 @@ import (
 
 	"github.com/pebbe/zmq4"
 
+	"centraldb"
 	"fog"
 	"tools"
 )
@@ -27,11 +28,16 @@ var (
 // main entry point for data writer
 func main() {
 	var err error
+	var nodeIDMap map[string]uint32
 	var writerSocket *zmq4.Socket
 	var eventSubSocket *zmq4.Socket
 
 	fog.Info("program starts")
 	tools.SetMaxProcs()
+
+	if nodeIDMap, err = getNodeIDMap(); err != nil {
+		fog.Critical("getNodeIDMap %s", err)
+	}
 
 	if writerSocket, err = createWriterSocket(); err != nil {
 		fog.Critical("createWriterSocket %s", err)
@@ -53,17 +59,17 @@ func main() {
 		fog.Critical("Connect(%s) %s", eventAggregatorPubAddress, err)
 	}
 
-	messageChan := NewMessageHandler()
+	messageChan := NewMessageHandler(nodeIDMap)
 
 	reactor := zmq4.NewReactor()
 	reactor.AddChannel(tools.NewSignalWatcher(), 1, tools.SigtermHandler)
 	reactor.AddSocket(writerSocket, zmq4.POLLIN,
 		NewWriterSocketHandler(writerSocket, messageChan))
 	reactor.AddSocket(eventSubSocket, zmq4.POLLIN,
-		NewEventSubSocketHandler(eventSubSocket))
+		NewEventSubSocketHandler(nodeIDMap, eventSubSocket))
 
 	fog.Debug("starting reactor.Run")
-	reactor.SetVerbose(true)
+	//	reactor.SetVerbose(true)
 	err = reactor.Run(reactorPollingInterval)
 	if err == tools.SigtermError {
 		fog.Info("program terminates normally due to SIGTERM")
@@ -78,6 +84,20 @@ func main() {
 	} else {
 		fog.Error("reactor.Run returns %T %s", err, err)
 	}
+}
+
+// GetNodeIDMap returns a map of node id keyed by node name, based on the
+// NIMBUSIO_CLUSTER_NAME environment variable
+func getNodeIDMap() (map[string]uint32, error) {
+	clusterName := os.Getenv("NIMBUSIO_CLUSTER_NAME")
+	if clusterName == "" {
+		return nil, fmt.Errorf("missing NIMBUSIO_CLUSTER_NAME")
+	}
+
+	centralDB := centraldb.NewCentralDB()
+	defer centralDB.Close()
+
+	return centralDB.GetNodeIDsForCluster(clusterName)
 }
 
 func createWriterSocket() (*zmq4.Socket, error) {

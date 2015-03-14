@@ -24,7 +24,7 @@ type messageHandler func(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage)
 
-func NewMessageHandler() chan<- types.Message {
+func NewMessageHandler(nodeIDMap map[string]uint32) chan<- types.Message {
 	var nimbusioWriter writer.NimbusioWriter
 	var replyChan chan<- *reply.ReplyMessage
 	var err error
@@ -35,7 +35,7 @@ func NewMessageHandler() chan<- types.Message {
 		fog.Critical("NewMessageHandler: nodedb.Initialize failed %s", err)
 	}
 
-	if nimbusioWriter, err = writer.NewNimbusioWriter(); err != nil {
+	if nimbusioWriter, err = writer.NewNimbusioWriter(nodeIDMap); err != nil {
 		fog.Critical("NewMessageHandler: NewNimbusioWriter() failed %s", err)
 	}
 

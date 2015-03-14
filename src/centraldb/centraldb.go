@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/bradfitz/gomemcache/memcache"
 
@@ -72,7 +71,7 @@ func NewCentralDB() CentralDB {
 				where name = $1 and deletion_time is null)
 	          order by node_number_in_cluster`,
 		"node-ids-for-cluster": `select id, name from nimbusio_central.node where cluster_id = (
-			select id from nimbusio_central.cluster where name = $1`,
+			select id from nimbusio_central.cluster where name = $1)`,
 		"collection-row": `select id, name, customer_id, cluster_id, versioning, access_control, creation_time
 			from nimbusio_central.collection where name = $1 
             and deletion_time is null`,
@@ -137,20 +136,6 @@ func NewCentralDB() CentralDB {
 	}()
 
 	return i
-}
-
-// GetNodeIDMap returns a map of node id keyed by node name, based on the
-// NIMBUSIO_CLUSTER_NAME environment variable
-func GetNodeIDMap() (map[string]uint32, error) {
-	clusterName := os.Getenv("NIMBUSIO_CLUSTER_NAME")
-	if clusterName == "" {
-		return nil, fmt.Errorf("missing NIMBUSIO_CLUSTER_NAME")
-	}
-
-	centralDB := NewCentralDB()
-	defer centralDB.Close()
-
-	return centralDB.GetNodeIDsForCluster(clusterName)
 }
 
 func closeDB() {

@@ -17,8 +17,11 @@ import (
 func OpenNodeDatabase(nodeName, password, host, port string) (*sql.DB, error) {
 	databaseName := fmt.Sprintf("nimbusio_node.%s", nodeName)
 
-	databaseUser := fmt.Sprintf("nimbusio_node_user_%s",
-		strings.Replace(nodeName, "-", "_", -1))
+	databaseUser := os.Getenv("NIMBUSIO_LOCAL_USER")
+	if databaseUser == "" {
+		databaseUser = fmt.Sprintf("nimbusio_node_user_%s",
+			strings.Replace(nodeName, "-", "_", -1))
+	}
 
 	// go-pgsql gets a kernal panic if password is an empty string
 	if password == "" {

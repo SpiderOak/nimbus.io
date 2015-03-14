@@ -76,14 +76,14 @@ func NewCentralDB() CentralDB {
 		"collection-row": `select id, name, customer_id, cluster_id, versioning, access_control, creation_time
 			from nimbusio_central.collection where name = $1 
             and deletion_time is null`,
-		"customer-row-by-name": `select id, user_name, creation_time
-        	from from nimbusio_central.customer 
+		"customer-row-by-name": `select id, username, creation_time
+        	from nimbusio_central.customer 
             where username = $1 and deletion_time is null`,
-		"customer-row-by-id": `select id, user_name, creation_time
-        	from from nimbusio_central.customer 
+		"customer-row-by-id": `select id, username, creation_time
+        	from nimbusio_central.customer 
             where id = $1 and deletion_time is null`,
 		"customer-key": `select id, customer_id, key, description, creation_time
-        	from from nimbusio_central.customer_key 
+        	from nimbusio_central.customer_key 
             where id = $1 and deletion_time is null`,
 	}
 
@@ -517,7 +517,7 @@ func handleGetCustomerRowByID(request getCustomerRowByIDRequest) {
 func handleGetCustomerKeyRow(request getCustomerKeyRowRequest) {
 	log.Printf("debug: central db: handleGetCustomerKeyRow(%d)",
 		request.keyID)
-	const stmtName = "customer-key-row"
+	const stmtName = "customer-key"
 	const memcacheKeyFormat = "nimbusio_central_customer_key_by_id_%d"
 	var customerKeyRow types.CustomerKeyRow
 	var marshalledCustomerKeyRow []byte
@@ -590,7 +590,10 @@ func getStmt(name string) (*sql.Stmt, error) {
 	var err error
 
 	if stmt, ok = stmtMap[name]; !ok {
-		text := textMap[name]
+		text, ok := textMap[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown statement '%s'", name)
+		}
 		if stmt, err = sqlDB.Prepare(text); err != nil {
 			return nil, err
 		}

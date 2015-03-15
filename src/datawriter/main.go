@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	signalChannelCapacity  = 1
 	writerSocketReceiveHWM = 100
 	writerSocketSendHWM    = 10
 	reactorPollingInterval = time.Second
@@ -32,6 +31,7 @@ func main() {
 	var writerSocket *zmq4.Socket
 	var eventSubSocket *zmq4.Socket
 
+	fog.SetFlags(0) // suppress log timestamp: svlogd handles that
 	fog.Info("program starts")
 	tools.SetMaxProcs()
 

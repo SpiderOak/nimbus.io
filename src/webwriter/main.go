@@ -1,106 +1,54 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
-	"syscall"
-	"time"
+	"strconv"
 
-	"github.com/pebbe/zmq4"
-
-	"centraldb"
 	"tools"
-)
-
-const (
-	reactorPollingInterval = time.Second
-	pullSocketReceiveHWM   = 1024
-)
-
-var (
-	pullSocketAddress = os.Getenv("NIMBUSIO_WEB_WRITER_PIPELINE_ADDRESS")
 )
 
 // main entry point for webdirector
 func main() {
 	var err error
-	var pullSocket *zmq4.Socket
+	var listenAddress net.TCPAddr
+	var listener *net.TCPListener
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
 	tools.SetMaxProcs()
 
-	go func() {
-		centralDB := centraldb.NewCentralDB()
+	_ = NewPullSocketHandler()
 
-		http.Handle("/", NewHandler(centralDB))
-		err = http.ListenAndServe(getListenAddress(), nil)
-
-		if err != nil {
-			log.Printf("error: program terminates %s")
-		} else {
-			log.Printf("info: program terminates")
-		}
-	}()
-
-	if pullSocket, err = createPullSocket(); err != nil {
-		log.Fatalf("critical: createPullSocket %s", err)
-	}
-	defer pullSocket.Close()
-
-	log.Printf("info: binding pull socket to %s", pullSocketAddress)
-	if err = pullSocket.Bind(pullSocketAddress); err != nil {
-		log.Fatalf("critical: Bind(%s) %s", pullSocketAddress, err)
+	if listenAddress, err = getListenAddress(); err != nil {
+		log.Fatalf("critical: listen address %s", err)
 	}
 
-	reactor := zmq4.NewReactor()
-	//	reactor.SetVerbose(true)
+	log.Printf("info: listening for HTTP on %s", listenAddress)
 
-	reactor.AddSocket(pullSocket, zmq4.POLLIN,
-		NewPullSocketHandler(pullSocket))
+	if listener, err = net.ListenTCP("tcp", &listenAddress); err != nil {
+		log.Fatalf("critical: ListenTCP %s", err)
+	}
 
-	err = reactor.Run(reactorPollingInterval)
-	if err == tools.SigtermError {
-		log.Printf("info: program terminates normally due to SIGTERM")
-	} else if errno, ok := err.(syscall.Errno); ok {
-		// we can get 'interrupted system call' if we get SIGTERM while
-		// a socket is waiting on a read. That's not too bad.
-		if errno == syscall.EINTR {
-			log.Printf("warning: reactor.Run returns '%s' assuming SIGTERM",
-				errno)
-		} else {
-			log.Printf("error: reactor.Run returns %T '%s'", errno, errno)
-		}
+	http.Handle("/", NewHandler())
+
+	err = http.Serve(listener, nil)
+
+	if err != nil {
+		log.Printf("error: program terminates %s")
 	} else {
-		log.Printf("error: reactor.Run returns %T %s", err, err)
+		log.Printf("info: program terminates")
 	}
 }
 
-func createPullSocket() (*zmq4.Socket, error) {
+func getListenAddress() (net.TCPAddr, error) {
+	var listenAddress net.TCPAddr
 	var err error
-	var pullSocket *zmq4.Socket
 
-	if pullSocket, err = zmq4.NewSocket(zmq4.PULL); err != nil {
-		return nil, fmt.Errorf("NewSocket PULL %s", err)
-	}
+	listenAddress.IP = net.ParseIP(os.Getenv("NIMBUSIO_WEB_WRITER_HOST"))
+	listenAddress.Port, err = strconv.Atoi(os.Getenv("NIMBUSIO_WEB_WRITER_PORT"))
 
-	if err = pullSocket.SetRcvhwm(pullSocketReceiveHWM); err != nil {
-		return nil, fmt.Errorf("pullSocket.SetRcvhwm(%d) %s",
-			pullSocketReceiveHWM, err)
-	}
-
-	return pullSocket, nil
-}
-
-func getListenAddress() string {
-	// set up the listener port
-	listenHost := os.Getenv("NIMBUSIO_WEB_WRITER_HOST")
-	listenPort := os.Getenv("NIMBUSIO_WEB_WRITER_PORT")
-
-	log.Printf("info: NIMBUSIO_WEB_WRITER_HOST = '%s', NIMBUSIO_WEB_WRITER_PORT = '%s'",
-		listenHost, listenPort)
-
-	return listenHost + ":" + listenPort
+	return listenAddress, err
 }

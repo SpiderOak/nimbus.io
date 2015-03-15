@@ -36,8 +36,8 @@ var (
 
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
-func NewHandler(centralDB centraldb.CentralDB) http.Handler {
-	h := handlerStruct{CentralDB: centralDB}
+func NewHandler() http.Handler {
+	h := handlerStruct{CentralDB: centraldb.NewCentralDB()}
 	h.Dispatch = map[req.RequestType]handlerEntry{
 		req.RespondToPing: handlerEntry{Func: handler.RespondToPing,
 			Access: access.NoAccess},

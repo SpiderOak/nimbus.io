@@ -6,9 +6,9 @@ import (
 	"encoding/base64"
 
 	"fog"
+	"writermsg"
 
 	"datawriter/logger"
-	"datawriter/msg"
 	"datawriter/nodedb"
 	"datawriter/reply"
 	"datawriter/types"
@@ -71,12 +71,12 @@ func handleArchiveKeyEntire(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var archiveKeyEntire msg.ArchiveKeyEntire
+	var archiveKeyEntire writermsg.ArchiveKeyEntire
 	var md5Digest []byte
 	var err error
 	var valueFileID uint32
 
-	archiveKeyEntire, err = msg.UnmarshalArchiveKeyEntire(message.Marshalled)
+	archiveKeyEntire, err = writermsg.UnmarshalArchiveKeyEntire(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalArchiveKeyEntire failed %s", err)
 		return
@@ -132,7 +132,7 @@ func handleArchiveKeyEntire(message types.Message,
 		return
 	}
 
-	metaData := msg.GetMetaFromJSON(message.Marshalled)
+	metaData := writermsg.GetMetaFromJSON(message.Marshalled)
 
 	err = nimbusioWriter.FinishSegment(archiveKeyEntire.UserRequestID,
 		archiveKeyEntire.Segment,
@@ -155,11 +155,11 @@ func handleArchiveKeyStart(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var archiveKeyStart msg.ArchiveKeyStart
+	var archiveKeyStart writermsg.ArchiveKeyStart
 	var md5Digest []byte
 	var err error
 
-	archiveKeyStart, err = msg.UnmarshalArchiveKeyStart(message.Marshalled)
+	archiveKeyStart, err = writermsg.UnmarshalArchiveKeyStart(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalArchiveKeyStart failed %s", err)
 		return
@@ -224,11 +224,11 @@ func handleArchiveKeyNext(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var archiveKeyNext msg.ArchiveKeyNext
+	var archiveKeyNext writermsg.ArchiveKeyNext
 	var md5Digest []byte
 	var err error
 
-	archiveKeyNext, err = msg.UnmarshalArchiveKeyNext(message.Marshalled)
+	archiveKeyNext, err = writermsg.UnmarshalArchiveKeyNext(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalArchiveKeyNext failed %s", err)
 		return
@@ -283,12 +283,12 @@ func handleArchiveKeyFinal(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var archiveKeyFinal msg.ArchiveKeyFinal
+	var archiveKeyFinal writermsg.ArchiveKeyFinal
 	var md5Digest []byte
 	var err error
 	var valueFileID uint32
 
-	archiveKeyFinal, err = msg.UnmarshalArchiveKeyFinal(message.Marshalled)
+	archiveKeyFinal, err = writermsg.UnmarshalArchiveKeyFinal(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalArchiveKeyFinal failed %s", err)
 		return
@@ -335,7 +335,7 @@ func handleArchiveKeyFinal(message types.Message,
 		return
 	}
 
-	metaData := msg.GetMetaFromJSON(message.Marshalled)
+	metaData := writermsg.GetMetaFromJSON(message.Marshalled)
 
 	err = nimbusioWriter.FinishSegment(archiveKeyFinal.UserRequestID,
 		archiveKeyFinal.Segment,
@@ -358,10 +358,10 @@ func handleArchiveKeyCancel(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var archiveKeyCancel msg.ArchiveKeyCancel
+	var archiveKeyCancel writermsg.ArchiveKeyCancel
 	var err error
 
-	archiveKeyCancel, err = msg.UnmarshalArchiveKeyCancel(message.Marshalled)
+	archiveKeyCancel, err = writermsg.UnmarshalArchiveKeyCancel(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalArchiveKeyCancel failed %s", err)
 		return
@@ -390,10 +390,10 @@ func handleDestroyKey(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var destroyKey msg.DestroyKey
+	var destroyKey writermsg.DestroyKey
 	var err error
 
-	destroyKey, err = msg.UnmarshalDestroyKey(message.Marshalled)
+	destroyKey, err = writermsg.UnmarshalDestroyKey(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalDestroyKey failed %s", err)
 		return
@@ -422,10 +422,10 @@ func handleStartConjoinedArchive(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var conjoined msg.Conjoined
+	var conjoined writermsg.Conjoined
 	var err error
 
-	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
+	conjoined, err = writermsg.UnmarshalConjoined(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalConjoined failed %s", err)
 		return
@@ -454,10 +454,10 @@ func handleAbortConjoinedArchive(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var conjoined msg.Conjoined
+	var conjoined writermsg.Conjoined
 	var err error
 
-	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
+	conjoined, err = writermsg.UnmarshalConjoined(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalConjoined failed %s", err)
 		return
@@ -486,10 +486,10 @@ func handleFinishConjoinedArchive(message types.Message,
 	nimbusioWriter writer.NimbusioWriter,
 	replyChan chan<- *reply.ReplyMessage) {
 
-	var conjoined msg.Conjoined
+	var conjoined writermsg.Conjoined
 	var err error
 
-	conjoined, err = msg.UnmarshalConjoined(message.Marshalled)
+	conjoined, err = writermsg.UnmarshalConjoined(message.Marshalled)
 	if err != nil {
 		fog.Error("UnmarshalConjoined failed %s", err)
 		return

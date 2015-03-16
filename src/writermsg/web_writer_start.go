@@ -1,4 +1,4 @@
-package msg
+package writermsg
 
 // WebWriterStart contains a message published by web writer at startup
 type WebWriterStart struct {

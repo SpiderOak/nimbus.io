@@ -62,11 +62,11 @@ func NewPullSocketHandler() MessageChannel {
 	return messageChannel
 }
 
-func createPullSocket() (*zmq4.Socket, error) {
+func createPullSocket(zmqContext *zmq4.Context) (*zmq4.Socket, error) {
 	var err error
 	var pullSocket *zmq4.Socket
 
-	if pullSocket, err = zmq4.NewSocket(zmq4.PULL); err != nil {
+	if pullSocket, err = zmqContext.NewSocket(zmq4.PULL); err != nil {
 		return nil, fmt.Errorf("NewSocket PULL %s", err)
 	}
 

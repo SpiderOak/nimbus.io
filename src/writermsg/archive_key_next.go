@@ -1,20 +1,20 @@
-package msg
+package writermsg
 
 import (
 	"encoding/json"
 	"fmt"
 )
 
-type DestroyKey struct {
-	UserRequestID      string `json:"user-request-id"`
-	UnifiedIDToDestroy uint64 `json:"unified-id-to-delete"`
+type ArchiveKeyNext struct {
+	UserRequestID string `json:"user-request-id"`
 	ReturnAddress
 	NodeNames
 	Segment
+	Sequence
 }
 
-func UnmarshalDestroyKey(rawMessage string) (DestroyKey, error) {
-	var result DestroyKey
+func UnmarshalArchiveKeyNext(rawMessage string) (ArchiveKeyNext, error) {
+	var result ArchiveKeyNext
 	var err error
 
 	err = json.Unmarshal([]byte(rawMessage), &result)

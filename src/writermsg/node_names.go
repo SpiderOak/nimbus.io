@@ -1,4 +1,4 @@
-package msg
+package writermsg
 
 // NodeNames contains the names to pertinent nodes
 type NodeNames struct {

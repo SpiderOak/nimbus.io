@@ -1,4 +1,4 @@
-package msg
+package writermsg
 
 // Segment contains message data referring to a specific segment
 type Segment struct {

@@ -7,8 +7,7 @@ import (
 	"github.com/pebbe/zmq4"
 
 	"fog"
-
-	"datawriter/msg"
+	"writermsg"
 )
 
 const (
@@ -22,7 +21,7 @@ type ReplyMessage struct {
 }
 
 func NewReplyMessage(messageType, messageID, userRequestID string,
-	returnAddress msg.ReturnAddress) *ReplyMessage {
+	returnAddress writermsg.ReturnAddress) *ReplyMessage {
 	var replyMessage ReplyMessage
 
 	replyMessage.ClientAddress = returnAddress.ClientAddress

@@ -8,8 +8,8 @@ import (
 	"github.com/pebbe/zmq4"
 
 	"fog"
+	"writermsg"
 
-	"datawriter/msg"
 	"datawriter/types"
 )
 
@@ -39,11 +39,11 @@ func NewWriterSocketHandler(writerSocket *zmq4.Socket,
 		message.Marshalled = rawMessage[0]
 		message.Data = []byte(strings.Join(rawMessage[1:], ""))
 
-		if message.Type, err = msg.GetMessageType(message.Marshalled); err != nil {
+		if message.Type, err = writermsg.GetMessageType(message.Marshalled); err != nil {
 			return fmt.Errorf("GetMessageType %s", err)
 		}
 
-		if message.ID, err = msg.GetMessageID(message.Marshalled); err != nil {
+		if message.ID, err = writermsg.GetMessageID(message.Marshalled); err != nil {
 			return fmt.Errorf("GetMessageID %s", err)
 		}
 
@@ -89,7 +89,7 @@ func handlePing(_ types.Message) {
 }
 
 func handleHandshake(message types.Message) {
-	returnAddress, err := msg.UnmarshalReturnAddress(message.Marshalled)
+	returnAddress, err := writermsg.UnmarshalReturnAddress(message.Marshalled)
 	if err != nil {
 		fog.Error("handleHandshake: unable to unmarshall %s", err)
 		return
@@ -98,7 +98,7 @@ func handleHandshake(message types.Message) {
 }
 
 func handleSignoff(message types.Message) {
-	returnAddress, err := msg.UnmarshalReturnAddress(message.Marshalled)
+	returnAddress, err := writermsg.UnmarshalReturnAddress(message.Marshalled)
 	if err != nil {
 		fog.Error("handleSignoff: unable to unmarshall %s", err)
 		return

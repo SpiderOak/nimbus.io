@@ -1,4 +1,4 @@
-package msg
+package writermsg
 
 // Sequence contains data from messages on the sequence level within
 // a segment

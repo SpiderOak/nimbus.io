@@ -1,21 +1,20 @@
-package msg
+package writermsg
 
 import (
 	"encoding/json"
 	"fmt"
 )
 
-type ArchiveKeyEntire struct {
+type ArchiveKeyStart struct {
 	UserRequestID string `json:"user-request-id"`
 	ReturnAddress
 	NodeNames
 	Segment
 	Sequence
-	File
 }
 
-func UnmarshalArchiveKeyEntire(rawMessage string) (ArchiveKeyEntire, error) {
-	var result ArchiveKeyEntire
+func UnmarshalArchiveKeyStart(rawMessage string) (ArchiveKeyStart, error) {
+	var result ArchiveKeyStart
 	var err error
 
 	err = json.Unmarshal([]byte(rawMessage), &result)

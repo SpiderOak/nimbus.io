@@ -9,8 +9,8 @@ import (
 
 	"fog"
 	"tools"
+	"writermsg"
 
-	"datawriter/msg"
 	"datawriter/nodedb"
 )
 
@@ -18,31 +18,31 @@ type NimbusioWriter interface {
 
 	// StartSegment initializes a new segment and prepares to receive data
 	// for it
-	StartSegment(userRequestID string, segment msg.Segment, nodeNames msg.NodeNames) error
+	StartSegment(userRequestID string, segment writermsg.Segment, nodeNames writermsg.NodeNames) error
 
 	// StoreSequence stores data for  an initialized segment
 	// return the ID of the value file written to
-	StoreSequence(userRequestID string, segment msg.Segment,
-		sequence msg.Sequence, data []byte) (uint32, error)
+	StoreSequence(userRequestID string, segment writermsg.Segment,
+		sequence writermsg.Sequence, data []byte) (uint32, error)
 
 	// CancelSegment stops processing the segment
-	CancelSegment(cancel msg.ArchiveKeyCancel) error
+	CancelSegment(cancel writermsg.ArchiveKeyCancel) error
 
 	// FinishSegment finishes storing the segment
-	FinishSegment(userRequestID string, segment msg.Segment, file msg.File,
-		metaData []msg.MetaPair, valueFileID uint32) error
+	FinishSegment(userRequestID string, segment writermsg.Segment, file writermsg.File,
+		metaData []writermsg.MetaPair, valueFileID uint32) error
 
 	// DestroyKey makes a key inaccessible
-	DestroyKey(destroyKey msg.DestroyKey) error
+	DestroyKey(destroyKey writermsg.DestroyKey) error
 
 	// StartConjoinedArchive begins a conjoined archive
-	StartConjoinedArchive(conjoined msg.Conjoined) error
+	StartConjoinedArchive(conjoined writermsg.Conjoined) error
 
 	// AbortConjoinedArchive cancels conjoined archive
-	AbortConjoinedArchive(conjoined msg.Conjoined) error
+	AbortConjoinedArchive(conjoined writermsg.Conjoined) error
 
 	// FinishConjoinedArchive completes a conjoined archive
-	FinishConjoinedArchive(conjoined msg.Conjoined) error
+	FinishConjoinedArchive(conjoined writermsg.Conjoined) error
 }
 
 const (
@@ -84,8 +84,8 @@ type requestSync struct{}
 
 type requestStartSegment struct {
 	UserRequestID string
-	Segment       msg.Segment
-	NodeNames     msg.NodeNames
+	Segment       writermsg.Segment
+	NodeNames     writermsg.NodeNames
 	resultChan    chan<- error
 }
 
@@ -95,51 +95,51 @@ type storeSequenceResult struct {
 }
 type requestStoreSequence struct {
 	UserRequestID string
-	Segment       msg.Segment
-	Sequence      msg.Sequence
+	Segment       writermsg.Segment
+	Sequence      writermsg.Sequence
 	Data          []byte
 	resultChan    chan<- storeSequenceResult
 }
 
 type requestCancelSegment struct {
-	Cancel     msg.ArchiveKeyCancel
+	Cancel     writermsg.ArchiveKeyCancel
 	resultChan chan<- error
 }
 
 type requestWaitSyncForFinishSegment struct {
 	UserRequestID string
-	Segment       msg.Segment
-	File          msg.File
-	MetaData      []msg.MetaPair
+	Segment       writermsg.Segment
+	File          writermsg.File
+	MetaData      []writermsg.MetaPair
 	ValueFileID   uint32
 	resultChan    chan<- error
 }
 
 type requestFinishSegment struct {
 	UserRequestID string
-	Segment       msg.Segment
-	File          msg.File
-	MetaData      []msg.MetaPair
+	Segment       writermsg.Segment
+	File          writermsg.File
+	MetaData      []writermsg.MetaPair
 	resultChan    chan<- error
 }
 
 type requestDestroyKey struct {
-	DestroyKey msg.DestroyKey
+	DestroyKey writermsg.DestroyKey
 	resultChan chan<- error
 }
 
 type requestStartConjoinedArchive struct {
-	Conjoined  msg.Conjoined
+	Conjoined  writermsg.Conjoined
 	resultChan chan<- error
 }
 
 type requestAbortConjoinedArchive struct {
-	Conjoined  msg.Conjoined
+	Conjoined  writermsg.Conjoined
 	resultChan chan<- error
 }
 
 type requestFinishConjoinedArchive struct {
-	Conjoined  msg.Conjoined
+	Conjoined  writermsg.Conjoined
 	resultChan chan<- error
 }
 
@@ -758,7 +758,7 @@ func handleFinishConjoinedArchive(state *writerState, request requestFinishConjo
 }
 
 func (writerChan nimbusioWriterChan) StartSegment(userRequestID string,
-	segment msg.Segment, nodeNames msg.NodeNames) error {
+	segment writermsg.Segment, nodeNames writermsg.NodeNames) error {
 
 	resultChan := make(chan error)
 	request := requestStartSegment{
@@ -772,8 +772,8 @@ func (writerChan nimbusioWriterChan) StartSegment(userRequestID string,
 }
 
 func (writerChan nimbusioWriterChan) StoreSequence(userRequestID string,
-	segment msg.Segment,
-	sequence msg.Sequence, data []byte) (uint32, error) {
+	segment writermsg.Segment,
+	sequence writermsg.Sequence, data []byte) (uint32, error) {
 	resultChan := make(chan storeSequenceResult)
 	request := requestStoreSequence{
 		UserRequestID: userRequestID,
@@ -788,7 +788,7 @@ func (writerChan nimbusioWriterChan) StoreSequence(userRequestID string,
 }
 
 // CancelSegment stops storing the segment
-func (writerChan nimbusioWriterChan) CancelSegment(cancel msg.ArchiveKeyCancel) error {
+func (writerChan nimbusioWriterChan) CancelSegment(cancel writermsg.ArchiveKeyCancel) error {
 	resultChan := make(chan error)
 	request := requestCancelSegment{
 		Cancel:     cancel,
@@ -800,7 +800,7 @@ func (writerChan nimbusioWriterChan) CancelSegment(cancel msg.ArchiveKeyCancel) 
 
 // FinishSegment finishes storing the segment
 func (writerChan nimbusioWriterChan) FinishSegment(userRequestID string,
-	segment msg.Segment, file msg.File, metaData []msg.MetaPair,
+	segment writermsg.Segment, file writermsg.File, metaData []writermsg.MetaPair,
 	valueFileID uint32) error {
 
 	resultChan := make(chan error)
@@ -817,7 +817,7 @@ func (writerChan nimbusioWriterChan) FinishSegment(userRequestID string,
 }
 
 // DestroyKey makes a key inaccessible
-func (writerChan nimbusioWriterChan) DestroyKey(destroyKey msg.DestroyKey) error {
+func (writerChan nimbusioWriterChan) DestroyKey(destroyKey writermsg.DestroyKey) error {
 	resultChan := make(chan error)
 	request := requestDestroyKey{
 		DestroyKey: destroyKey,
@@ -828,7 +828,7 @@ func (writerChan nimbusioWriterChan) DestroyKey(destroyKey msg.DestroyKey) error
 }
 
 // StartConjoinedArchive begins a conjoined archive
-func (writerChan nimbusioWriterChan) StartConjoinedArchive(conjoined msg.Conjoined) error {
+func (writerChan nimbusioWriterChan) StartConjoinedArchive(conjoined writermsg.Conjoined) error {
 	resultChan := make(chan error)
 	request := requestStartConjoinedArchive{
 		Conjoined:  conjoined,
@@ -839,7 +839,7 @@ func (writerChan nimbusioWriterChan) StartConjoinedArchive(conjoined msg.Conjoin
 }
 
 // AbortConjoinedArchive cancels conjoined archive
-func (writerChan nimbusioWriterChan) AbortConjoinedArchive(conjoined msg.Conjoined) error {
+func (writerChan nimbusioWriterChan) AbortConjoinedArchive(conjoined writermsg.Conjoined) error {
 	resultChan := make(chan error)
 	request := requestAbortConjoinedArchive{
 		Conjoined:  conjoined,
@@ -850,7 +850,7 @@ func (writerChan nimbusioWriterChan) AbortConjoinedArchive(conjoined msg.Conjoin
 }
 
 // FinishConjoinedArchive completes a conjoined archive
-func (writerChan nimbusioWriterChan) FinishConjoinedArchive(conjoined msg.Conjoined) error {
+func (writerChan nimbusioWriterChan) FinishConjoinedArchive(conjoined writermsg.Conjoined) error {
 	resultChan := make(chan error)
 	request := requestFinishConjoinedArchive{
 		Conjoined:  conjoined,

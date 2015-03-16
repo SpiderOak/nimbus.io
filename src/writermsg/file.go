@@ -1,4 +1,4 @@
-package msg
+package writermsg
 
 // File contains data for the entire file
 type File struct {

@@ -9,8 +9,8 @@ import (
 
 	"fog"
 	"tools"
+	"writermsg"
 
-	"datawriter/msg"
 	"datawriter/nodedb"
 )
 
@@ -21,7 +21,7 @@ func NewEventSubSocketHandler(nodeIDMap map[string]uint32,
 	return func(_ zmq4.State) error {
 		var err error
 		var ok bool
-		var webWriterStart msg.WebWriterStart
+		var webWriterStart writermsg.WebWriterStart
 		var timestamp time.Time
 		var sourceNodeID uint32
 

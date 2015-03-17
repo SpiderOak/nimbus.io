@@ -33,7 +33,7 @@ func NewPullSocketHandler() MessageChannel {
 			log.Fatalf("critical: pull socket NewContext %s", err)
 		}
 
-		if pullSocket, err = createPullSocket(); err != nil {
+		if pullSocket, err = createPullSocket(zmqContext); err != nil {
 			log.Fatalf("critical: createPullSocket %s", err)
 		}
 

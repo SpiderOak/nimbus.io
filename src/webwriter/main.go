@@ -15,12 +15,17 @@ func main() {
 	var err error
 	var listenAddress net.TCPAddr
 	var listener *net.TCPListener
+	var dataWritersChan DataWritersChan
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
 	tools.SetMaxProcs()
 
 	_ = NewPullSocketHandler()
+
+	if dataWritersChan, err = NewDataWriterClients(); err != nil {
+		log.Fatalf("critical: NewDataWriterClients failed %s", err)
+	}
 
 	if listenAddress, err = getListenAddress(); err != nil {
 		log.Fatalf("critical: listen address %s", err)
@@ -32,7 +37,7 @@ func main() {
 		log.Fatalf("critical: ListenTCP %s", err)
 	}
 
-	http.Handle("/", NewHandler())
+	http.Handle("/", NewHandler(dataWritersChan))
 
 	err = http.Serve(listener, nil)
 

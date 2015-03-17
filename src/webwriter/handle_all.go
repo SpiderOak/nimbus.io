@@ -23,8 +23,9 @@ type handlerEntry struct {
 }
 
 type handlerStruct struct {
-	CentralDB centraldb.CentralDB
-	Dispatch  map[req.RequestType]handlerEntry
+	CentralDB       centraldb.CentralDB
+	DataWritersChan DataWritersChan
+	Dispatch        map[req.RequestType]handlerEntry
 }
 
 var (
@@ -36,7 +37,7 @@ var (
 
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
-func NewHandler() http.Handler {
+func NewHandler(dataWritersChan DataWritersChan) http.Handler {
 	h := handlerStruct{CentralDB: centraldb.NewCentralDB()}
 	h.Dispatch = map[req.RequestType]handlerEntry{
 		req.RespondToPing: handlerEntry{Func: handler.RespondToPing,

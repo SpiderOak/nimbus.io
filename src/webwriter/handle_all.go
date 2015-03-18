@@ -6,12 +6,14 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 
 	"access"
 	"auth"
 	"centraldb"
 	"types"
+	"unifiedid"
 
 	"webwriter/handler"
 	"webwriter/req"
@@ -23,12 +25,15 @@ type handlerEntry struct {
 }
 
 type handlerStruct struct {
-	CentralDB       centraldb.CentralDB
-	DataWritersChan DataWritersChan
-	Dispatch        map[req.RequestType]handlerEntry
+	CentralDB        centraldb.CentralDB
+	DataWriterChans  []DataWriterClientChan
+	UnifiedIDFactory unifiedid.UnifiedIDFactory
+	Dispatch         map[req.RequestType]handlerEntry
 }
 
 var (
+	clusterName      = os.Getenv("NIMBUSIO_CLUSTER_NAME")
+	localNodeName    = os.Getenv("NIMBUSIO_NODE_NAME")
 	forwardedForKey  = http.CanonicalHeaderKey("x-forwarded-for")
 	refererKey       = http.CanonicalHeaderKey("referer")
 	authorizationKey = http.CanonicalHeaderKey("authorization")
@@ -37,8 +42,18 @@ var (
 
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
-func NewHandler(dataWritersChan DataWritersChan) http.Handler {
-	h := handlerStruct{CentralDB: centraldb.NewCentralDB()}
+func NewHandler(dataWriterChans []DataWriterClientChan) (http.Handler, error) {
+	var err error
+
+	h := handlerStruct{
+		CentralDB:       centraldb.NewCentralDB(),
+		DataWriterChans: dataWriterChans,
+	}
+
+	if h.UnifiedIDFactory, err = createUnifiedIDFactory(h.CentralDB); err != nil {
+		return nil, err
+	}
+
 	h.Dispatch = map[req.RequestType]handlerEntry{
 		req.RespondToPing: handlerEntry{Func: handler.RespondToPing,
 			Access: access.NoAccess},
@@ -51,8 +66,27 @@ func NewHandler(dataWritersChan DataWritersChan) http.Handler {
 		req.FinishConjoined: handlerEntry{Func: handler.FinishConjoined,
 			Access: access.Write},
 		req.AbortConjoined: handlerEntry{Func: handler.AbortConjoined,
-			Access: access.Write}}
-	return &h
+			Access: access.Write},
+	}
+
+	return &h, nil
+}
+
+func createUnifiedIDFactory(centralDB centraldb.CentralDB) (unifiedid.UnifiedIDFactory, error) {
+	var err error
+	var nodeIDMap map[string]uint32
+	var localNodeID uint32
+	var ok bool
+
+	if nodeIDMap, err = centralDB.GetNodeIDsForCluster(clusterName); err != nil {
+		return nil, err
+	}
+
+	if localNodeID, ok = nodeIDMap[localNodeName]; !ok {
+		return nil, fmt.Errorf("unknown local node: '%s'", localNodeName)
+	}
+
+	return unifiedid.NewUnifiedIDFactory(localNodeID)
 }
 
 // ServeHTTP implements the http.Handler interface

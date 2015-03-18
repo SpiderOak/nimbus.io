@@ -15,7 +15,8 @@ func main() {
 	var err error
 	var listenAddress net.TCPAddr
 	var listener *net.TCPListener
-	var dataWritersChan DataWritersChan
+	var dataWriterClientChans []DataWriterClientChan
+	var handler http.Handler
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
 	log.Printf("info: program starts")
@@ -23,7 +24,7 @@ func main() {
 
 	_ = NewPullSocketHandler()
 
-	if dataWritersChan, err = NewDataWriterClients(); err != nil {
+	if dataWriterClientChans, err = NewDataWriterClients(); err != nil {
 		log.Fatalf("critical: NewDataWriterClients failed %s", err)
 	}
 
@@ -37,7 +38,10 @@ func main() {
 		log.Fatalf("critical: ListenTCP %s", err)
 	}
 
-	http.Handle("/", NewHandler(dataWritersChan))
+	if handler, err = NewHandler(dataWriterClientChans); err != nil {
+		log.Fatalf("critical: NewHandler %s", err)
+	}
+	http.Handle("/", handler)
 
 	err = http.Serve(listener, nil)
 

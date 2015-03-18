@@ -15,10 +15,9 @@ import (
 	"writermsg"
 )
 
-type DataWritersChan chan<- []byte
+type DataWriterClientChan chan<- []byte
 
 const (
-	dataWritersChanCapacity      = 100
 	dataWriterClientChanCapacity = 1
 	clientSocketReceiveHWM       = 1
 	clientSocketSendHWM          = 1
@@ -35,10 +34,10 @@ var (
 	clientTag              string
 )
 
-// NewDataWriterClients returns a channel for sending data to all data writers
-func NewDataWriterClients() (DataWritersChan, error) {
+// NewDataWriterClients returns a slice of channels
+// for sending data to all data writers
+func NewDataWriterClients() ([]DataWriterClientChan, error) {
 	var err error
-	dataWritersChan := make(chan []byte, dataWritersChanCapacity)
 	dataWriterClientChans := make([]DataWriterClientChan, len(nodeNames))
 
 	if ackTimeout, err = getAckTimeout(); err != nil {
@@ -59,19 +58,7 @@ func NewDataWriterClients() (DataWritersChan, error) {
 		}
 	}
 
-	go func() {
-		for message := range dataWritersChan {
-			for _, dataWriterClientChan := range dataWriterClientChans {
-				dataWriterClientChan <- message
-			}
-		}
-
-		for _, dataWriterClientChan := range dataWriterClientChans {
-			close(dataWriterClientChan)
-		}
-	}()
-
-	return dataWritersChan, nil
+	return dataWriterClientChans, nil
 }
 
 func getAckTimeout() (time.Duration, error) {
@@ -82,8 +69,6 @@ func getAckTimeout() (time.Duration, error) {
 	ackTimeoutInt, err := strconv.Atoi(ackTimeoutStr)
 	return time.Second * time.Duration(ackTimeoutInt), err
 }
-
-type DataWriterClientChan chan<- []byte
 
 func NewDataWriterClient(nodeName, address string) (DataWriterClientChan, error) {
 	var err error

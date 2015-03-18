@@ -7,8 +7,10 @@ import (
 	"strconv"
 
 	"types"
+	"unifiedid"
 
 	"webwriter/req"
+	"webwriter/writers"
 )
 
 var (
@@ -16,9 +18,13 @@ var (
 	contentMD5Key    = http.CanonicalHeaderKey("content-md5")
 )
 
-func ArchiveKey(responseWriter http.ResponseWriter,
-	request *http.Request, parsedRequest req.ParsedRequest,
-	collectionRow types.CollectionRow) error {
+func ArchiveKey(
+	responseWriter http.ResponseWriter,
+	request *http.Request,
+	parsedRequest req.ParsedRequest,
+	collectionRow types.CollectionRow,
+	unifiedIDChannel unifiedid.UnifiedIDChan,
+	dataWriterClientChans []writers.DataWriterClientChan) error {
 
 	var err error
 	var contentLength int

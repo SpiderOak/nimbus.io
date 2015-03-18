@@ -1,4 +1,4 @@
-package main
+package writers
 
 import (
 	"encoding/json"
@@ -31,7 +31,8 @@ var (
 	maxIdleTime            time.Duration
 	reportingInterval      time.Duration
 	connectDelay           time.Duration
-	clientTag              string
+
+//	clientTag              string
 )
 
 // NewDataWriterClients returns a slice of channels
@@ -47,7 +48,7 @@ func NewDataWriterClients() ([]DataWriterClientChan, error) {
 	maxIdleTime = time.Minute * 10
 	reportingInterval = time.Minute
 	connectDelay = time.Minute
-	clientTag = fmt.Sprintf("web-writer-%s", os.Getenv("NIMBUSIO_NODE_NAME"))
+	//	clientTag = fmt.Sprintf("web-writer-%s", os.Getenv("NIMBUSIO_NODE_NAME"))
 
 	for i, nodeName := range nodeNames {
 		dataWriterClientChans[i], err = NewDataWriterClient(nodeName,
@@ -150,8 +151,8 @@ func connectClientSocket(zmqContext *zmq4.Context, address string) (*zmq4.Socket
 	message := map[string]interface{}{
 		"message-type":   "resilient-server-handshake",
 		"message-id":     uuid,
-		"client-tag":     clientTag,
-		"client-address": pullSocketAddress,
+		"client-tag":     "",
+		"client-address": "",
 	}
 
 	if marshaledMessage, err = json.Marshal(message); err != nil {

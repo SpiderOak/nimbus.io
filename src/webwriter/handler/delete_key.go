@@ -6,13 +6,19 @@ import (
 	"net/http"
 
 	"types"
+	"unifiedid"
 
 	"webwriter/req"
+	"webwriter/writers"
 )
 
-func DeleteKey(responseWriter http.ResponseWriter,
-	request *http.Request, parsedRequest req.ParsedRequest,
-	collectionRow types.CollectionRow) error {
+func DeleteKey(
+	responseWriter http.ResponseWriter,
+	request *http.Request,
+	parsedRequest req.ParsedRequest,
+	collectionRow types.CollectionRow,
+	unifiedIDChannel unifiedid.UnifiedIDChan,
+	dataWriterClientChans []writers.DataWriterClientChan) error {
 
 	log.Printf("debug: %s; %s %s %s", parsedRequest.Type,
 		parsedRequest.RequestID, parsedRequest.CollectionName,

@@ -17,6 +17,7 @@ import (
 
 	"webwriter/handler"
 	"webwriter/req"
+	"webwriter/writers"
 )
 
 type handlerEntry struct {
@@ -25,10 +26,10 @@ type handlerEntry struct {
 }
 
 type handlerStruct struct {
-	CentralDB        centraldb.CentralDB
-	DataWriterChans  []DataWriterClientChan
-	UnifiedIDFactory unifiedid.UnifiedIDFactory
-	Dispatch         map[req.RequestType]handlerEntry
+	CentralDB             centraldb.CentralDB
+	DataWriterClientChans []writers.DataWriterClientChan
+	UnifiedIDChan         unifiedid.UnifiedIDChan
+	Dispatch              map[req.RequestType]handlerEntry
 }
 
 var (
@@ -42,15 +43,17 @@ var (
 
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
-func NewHandler(dataWriterChans []DataWriterClientChan) (http.Handler, error) {
+func NewHandler(
+	dataWriterClientChans []writers.DataWriterClientChan) (http.Handler, error) {
+
 	var err error
 
 	h := handlerStruct{
-		CentralDB:       centraldb.NewCentralDB(),
-		DataWriterChans: dataWriterChans,
+		CentralDB:             centraldb.NewCentralDB(),
+		DataWriterClientChans: dataWriterClientChans,
 	}
 
-	if h.UnifiedIDFactory, err = createUnifiedIDFactory(h.CentralDB); err != nil {
+	if h.UnifiedIDChan, err = createUnifiedIDFactory(h.CentralDB); err != nil {
 		return nil, err
 	}
 
@@ -72,7 +75,7 @@ func NewHandler(dataWriterChans []DataWriterClientChan) (http.Handler, error) {
 	return &h, nil
 }
 
-func createUnifiedIDFactory(centralDB centraldb.CentralDB) (unifiedid.UnifiedIDFactory, error) {
+func createUnifiedIDFactory(centralDB centraldb.CentralDB) (unifiedid.UnifiedIDChan, error) {
 	var err error
 	var nodeIDMap map[string]uint32
 	var localNodeID uint32
@@ -129,8 +132,13 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 	}
 
 	if dispatchEntry.Access == access.NoAccess {
-		err = dispatchEntry.Func(responseWriter, request, parsedRequest,
-			types.CollectionRow{})
+		err = dispatchEntry.Func(
+			responseWriter,
+			request,
+			parsedRequest,
+			types.CollectionRow{},
+			h.UnifiedIDChan,
+			h.DataWriterClientChans)
 		if err != nil {
 			log.Printf("error: ping %s", err)
 		}
@@ -199,8 +207,13 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		return
 	}
 
-	err = dispatchEntry.Func(responseWriter, request, parsedRequest,
-		collectionRow)
+	err = dispatchEntry.Func(
+		responseWriter,
+		request,
+		parsedRequest,
+		collectionRow,
+		h.UnifiedIDChan,
+		h.DataWriterClientChans)
 	if err != nil {
 		log.Printf("error: %s handler failed: %s", parsedRequest.Type, err)
 		http.Error(responseWriter, "handler failed",

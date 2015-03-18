@@ -8,6 +8,8 @@ import (
 	"strconv"
 
 	"tools"
+
+	"webwriter/writers"
 )
 
 // main entry point for webdirector
@@ -15,7 +17,7 @@ func main() {
 	var err error
 	var listenAddress net.TCPAddr
 	var listener *net.TCPListener
-	var dataWriterClientChans []DataWriterClientChan
+	var dataWriterClientChans []writers.DataWriterClientChan
 	var handler http.Handler
 
 	log.SetFlags(0) // suppress date/time: svlogd supplies that
@@ -24,7 +26,7 @@ func main() {
 
 	_ = NewPullSocketHandler()
 
-	if dataWriterClientChans, err = NewDataWriterClients(); err != nil {
+	if dataWriterClientChans, err = writers.NewDataWriterClients(); err != nil {
 		log.Fatalf("critical: NewDataWriterClients failed %s", err)
 	}
 

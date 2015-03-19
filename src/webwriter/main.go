@@ -12,11 +12,17 @@ import (
 	"webwriter/writers"
 )
 
+var (
+	pullSocketAddress = os.Getenv("NIMBUSIO_WEB_WRITER_PIPELINE_ADDRESS")
+)
+
 // main entry point for webdirector
 func main() {
 	var err error
 	var listenAddress net.TCPAddr
 	var listener *net.TCPListener
+	var messageChannel tools.MessageChannel
+	var deliverator tools.Deliverator
 	var dataWriterClientChans []writers.DataWriterClientChan
 	var handler http.Handler
 
@@ -24,7 +30,11 @@ func main() {
 	log.Printf("info: program starts")
 	tools.SetMaxProcs()
 
-	_ = NewPullSocketHandler()
+	deliverator = tools.NewDeliverator()
+
+	if err = NewPullSocketHandler(deliverator, pullSocketAddress); err != nil {
+		log.Fatalf("critical: NewPullSocketHandler failed %s", err)
+	}
 
 	if dataWriterClientChans, err = writers.NewDataWriterClients(); err != nil {
 		log.Fatalf("critical: NewDataWriterClients failed %s", err)
@@ -40,7 +50,7 @@ func main() {
 		log.Fatalf("critical: ListenTCP %s", err)
 	}
 
-	if handler, err = NewHandler(dataWriterClientChans); err != nil {
+	if handler, err = NewHandler(deliverator, dataWriterClientChans); err != nil {
 		log.Fatalf("critical: NewHandler %s", err)
 	}
 	http.Handle("/", handler)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"tools"
 	"types"
 	"unifiedid"
 
@@ -24,6 +25,7 @@ func ArchiveKey(
 	parsedRequest req.ParsedRequest,
 	collectionRow types.CollectionRow,
 	unifiedIDChannel unifiedid.UnifiedIDChan,
+	deliverator tools.Deliverator,
 	dataWriterClientChans []writers.DataWriterClientChan) error {
 
 	var err error
@@ -41,6 +43,10 @@ func ArchiveKey(
 		contentLength,
 		request.Header.Get(contentMD5Key),
 	)
+
+	replyChan := make(chan []byte)
+	deliverator.Register(parsedRequest.RequestID, replyChan)
+	defer deliverator.Unregister(parsedRequest.RequestID)
 
 	return fmt.Errorf("%s not Implemented", parsedRequest.Type)
 }

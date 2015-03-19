@@ -21,7 +21,6 @@ func main() {
 	var err error
 	var listenAddress net.TCPAddr
 	var listener *net.TCPListener
-	var messageChannel tools.MessageChannel
 	var deliverator tools.Deliverator
 	var dataWriterClientChans []writers.DataWriterClientChan
 	var handler http.Handler
@@ -32,7 +31,7 @@ func main() {
 
 	deliverator = tools.NewDeliverator()
 
-	if err = NewPullSocketHandler(deliverator, pullSocketAddress); err != nil {
+	if err = tools.NewPullSocketHandler(deliverator, pullSocketAddress); err != nil {
 		log.Fatalf("critical: NewPullSocketHandler failed %s", err)
 	}
 

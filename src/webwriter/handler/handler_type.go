@@ -3,6 +3,7 @@ package handler
 import (
 	"net/http"
 
+	"tools"
 	"types"
 	"unifiedid"
 
@@ -16,4 +17,5 @@ type RequestHandler func(
 	req.ParsedRequest,
 	types.CollectionRow,
 	unifiedid.UnifiedIDChan,
+	tools.Deliverator,
 	[]writers.DataWriterClientChan) error

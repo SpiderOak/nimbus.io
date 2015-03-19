@@ -12,6 +12,7 @@ import (
 	"access"
 	"auth"
 	"centraldb"
+	"tools"
 	"types"
 	"unifiedid"
 
@@ -29,6 +30,7 @@ type handlerStruct struct {
 	CentralDB             centraldb.CentralDB
 	DataWriterClientChans []writers.DataWriterClientChan
 	UnifiedIDChan         unifiedid.UnifiedIDChan
+	Deliverator           tools.Deliverator
 	Dispatch              map[req.RequestType]handlerEntry
 }
 
@@ -44,12 +46,14 @@ var (
 // NewHandler returns an entity that implements the http.Handler interface
 // this handles all incoming requests
 func NewHandler(
+	deliverator tools.Deliverator,
 	dataWriterClientChans []writers.DataWriterClientChan) (http.Handler, error) {
 
 	var err error
 
 	h := handlerStruct{
 		CentralDB:             centraldb.NewCentralDB(),
+		Deliverator:           deliverator,
 		DataWriterClientChans: dataWriterClientChans,
 	}
 
@@ -138,6 +142,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 			parsedRequest,
 			types.CollectionRow{},
 			h.UnifiedIDChan,
+			h.Deliverator,
 			h.DataWriterClientChans)
 		if err != nil {
 			log.Printf("error: ping %s", err)
@@ -213,6 +218,7 @@ func (h *handlerStruct) ServeHTTP(responseWriter http.ResponseWriter,
 		parsedRequest,
 		collectionRow,
 		h.UnifiedIDChan,
+		h.Deliverator,
 		h.DataWriterClientChans)
 	if err != nil {
 		log.Printf("error: %s handler failed: %s", parsedRequest.Type, err)

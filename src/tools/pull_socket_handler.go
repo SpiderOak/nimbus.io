@@ -17,8 +17,6 @@ const (
 // NewPullSocketHandler returns a channel that will contain messages
 // sent to the pull socket
 func NewPullSocketHandler(deliverator Deliverator, pullSocketAddress string) error {
-	messageChannel := make(chan interface{}, messageChannelCapacity)
-
 	var err error
 	var zmqContext *zmq4.Context
 	var pullSocket *zmq4.Socket
@@ -56,7 +54,13 @@ func NewPullSocketHandler(deliverator Deliverator, pullSocketAddress string) err
 				log.Fatalf("critical: pullSocket.RecvBytes() %s", err)
 			}
 
-			messageChannel <- rawData
+			requestID, err := GetRequestID(string(rawData))
+			if err != nil {
+				log.Printf("error: pull socket, no request id %v", rawData)
+				continue
+			}
+
+			deliverator.Deliver(requestID, rawData)
 		}
 	}()
 

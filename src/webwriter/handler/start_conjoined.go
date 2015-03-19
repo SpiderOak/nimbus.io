@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"tools"
 	"types"
 	"unifiedid"
 
@@ -18,6 +19,7 @@ func StartConjoined(
 	parsedRequest req.ParsedRequest,
 	collectionRow types.CollectionRow,
 	unifiedIDChannel unifiedid.UnifiedIDChan,
+	deliverator tools.Deliverator,
 	dataWriterClientChans []writers.DataWriterClientChan) error {
 
 	log.Printf("debug: %s; %s %s %s", parsedRequest.Type,

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"tools"
 	"types"
 	"unifiedid"
 
@@ -17,6 +18,7 @@ func RespondToPing(
 	_ req.ParsedRequest,
 	_ types.CollectionRow,
 	_ unifiedid.UnifiedIDChan,
+	_ tools.Deliverator,
 	_ []writers.DataWriterClientChan) error {
 
 	if _, err := responseWriter.Write([]byte("ok")); err != nil {

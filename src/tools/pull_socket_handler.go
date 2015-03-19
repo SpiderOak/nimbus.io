@@ -3,7 +3,6 @@ package tools
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/pebbe/zmq4"
 )

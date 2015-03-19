@@ -1,4 +1,4 @@
-package writermsg
+package tools
 
 /*
 python message dict

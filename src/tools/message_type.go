@@ -1,4 +1,4 @@
-package writermsg
+package tools
 
 import (
 	"fmt"
@@ -6,13 +6,8 @@ import (
 )
 
 var (
-	messageTypeRegexp *regexp.Regexp
-)
-
-func init() {
-	// "message-type": "start-conjoined-archive"
 	messageTypeRegexp = regexp.MustCompile(`"message-type"\s*\:\s*"(.+?)"`)
-}
+)
 
 // GetMessageType parses a JSON string to retrieve the message-type
 func GetMessageType(message string) (string, error) {

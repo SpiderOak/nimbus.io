@@ -7,7 +7,7 @@ import (
 type Deliverator interface {
 
 	// Register a channel for receiving messages with the specified request id
-	Register(requestID string, messageChan chan<- []bytes)
+	Register(requestID string, messageChan chan<- []byte)
 
 	// Unregister channel
 	Unregister(requestID string)
@@ -21,7 +21,7 @@ type Deliverator interface {
 
 type deliveratorRegisterRequest struct {
 	RequestID   string
-	MessageChan chan<- []bytes
+	MessageChan chan<- []byte
 }
 
 type deliveratorUnregisterRequest struct {
@@ -42,11 +42,11 @@ const (
 // NewDeliverator returns an entity that implements the Deliverator interface
 func NewDeliverator() Deliverator {
 	requestChan := make(chan interface{}, deliveratorRequestChanCapacity)
-	deliveryMap := make(map[string]chan<- []bytes)
+	deliveryMap := make(map[string]chan<- []byte)
 
 	go func() {
-		for request := range rquestChan {
-			switch request.(type) {
+		for rawRequest := range requestChan {
+			switch request := rawRequest.(type) {
 			case deliveratorRegisterRequest:
 				handleRegisterRequest(deliveryMap, request)
 			case deliveratorUnregisterRequest:
@@ -59,10 +59,10 @@ func NewDeliverator() Deliverator {
 		}
 	}()
 
-	return requestChan
+	return deliveratorRequestChan(requestChan)
 }
 
-func handleRegisterRequest(deliveryMap map[string]chan<- []bytes,
+func handleRegisterRequest(deliveryMap map[string]chan<- []byte,
 	request deliveratorRegisterRequest) {
 
 	if _, ok := deliveryMap[request.RequestID]; ok {
@@ -73,7 +73,7 @@ func handleRegisterRequest(deliveryMap map[string]chan<- []bytes,
 	deliveryMap[request.RequestID] = request.MessageChan
 }
 
-func handleUnegisterRequest(deliveryMap map[string]chan<- []bytes,
+func handleUnegisterRequest(deliveryMap map[string]chan<- []byte,
 	request deliveratorUnregisterRequest) {
 
 	if _, ok := deliveryMap[request.RequestID]; !ok {
@@ -81,10 +81,10 @@ func handleUnegisterRequest(deliveryMap map[string]chan<- []bytes,
 			request.RequestID)
 	}
 
-	delete(deliveryMap[request.RequestID])
+	delete(deliveryMap, request.RequestID)
 }
 
-func handleDeliverRequest(deliveryMap map[string]chan<- []bytes,
+func handleDeliverRequest(deliveryMap map[string]chan<- []byte,
 	request deliveratorDeliverRequest) {
 
 	messageChan, ok := deliveryMap[request.RequestID]
@@ -99,7 +99,7 @@ func handleDeliverRequest(deliveryMap map[string]chan<- []bytes,
 
 // Register a channel for receiving messages with the specified request id
 func (requestChan deliveratorRequestChan) Register(requestID string,
-	messageChan chan<- []bytes) {
+	messageChan chan<- []byte) {
 	requestChan <- deliveratorRegisterRequest{
 		RequestID:   requestID,
 		MessageChan: messageChan}
